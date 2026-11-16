@@ -116,7 +116,10 @@ Use the ordinary platform-plan command above for a retained non-amd64 plan.
 
 The same consumer runner freezes sources, recursive submodules, data and
 dependency locks, preserves command statuses/logs and checks tracked-source
-cleanliness and container/ownership cleanup. It uses the checked local digest
+cleanliness and container/ownership cleanup. Both registry and local runs retain
+every successful versioned checkout, recursive Git store and log; a passed receipt
+does not delete those sources. Build outputs are retained too; storage cleanup
+requires a separate scoped decision. It uses the checked local digest
 alias with pull disabled; it never invents a GHCR reference or intercepts a pull.
 Before alias preparation it verifies the original runtime unit, exact complete
 source proof, full host-worker closure and original Android receipt hashes,
@@ -125,7 +128,8 @@ the actual source tag and is read back through the shared metadata helper.
 A fresh post-consumer observation must match before the receipt can pass.
 
 Local receipts use schema 2 and explicit local transport and retain the alias
-receipt/hash and both producer/image observations. Keep those files, all consumer
+receipt/hash and both producer/image observations. Keep those files, all versioned consumer
+checkouts with their recursive Git stores, all consumer
 logs and the original producer/source/parent evidence. Replay uses the same
 `--local-runtime-invocation`, `--replay` and another fresh workspace; its hub revision,
 image, original producer and complete consumer source/lock bindings must match.

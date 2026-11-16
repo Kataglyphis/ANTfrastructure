@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-16 — retain successful acceptance sources
+
+- Both acceptance transports keep successful versioned consumer checkouts and recursive Git stores beside their logs.
+- Independent preservation waits for completed source preparation and verifies clean, self-contained Git trees on reuse; real local Git regressions cover corruption and unsafe reuse.
+- Source preservation proves committed bytes only, not build outputs, source authentication or GPU execution.
+
 > **Older entries** are archived, newest archive first:
 > [`2026-11-06 … 2026-11-12`](docs/changelog-archive-2026-11-12.md) ·
 > [`2026-11-05`](docs/changelog-archive-2026-11-05.md) ·

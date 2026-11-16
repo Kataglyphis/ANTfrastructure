@@ -173,6 +173,7 @@ class LocalFixture:
 
     def snapshot(self, checkout: Path, spec: dict[str, Any], expected: dict | None) -> dict[str, Any]:
         checkout.mkdir(parents=True, exist_ok=True)
+        (checkout / "source.txt").write_text(spec["name"] + " versioned fixture\n")
         self.received_sources.append(expected)
         return {'repository':spec['repository'], 'revision':'d' * 40, 'submodules':'', 'data_locks':{'models.lock':'e' * 64}}
 

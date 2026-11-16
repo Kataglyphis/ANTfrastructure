@@ -60,7 +60,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    exist for the next session.
    Image publication also requires the digest-specific consumer receipt before a public tag
    moves; see [image-acceptance.md](docs/image-acceptance.md) for replay and its coverage limits.
-   Successful consumers must preserve versioned sources. Manual promotion also preserves
+   Successful consumers retain their versioned checkouts, recursive Git stores and logs; safe layer cleanup must not delete them.
+   Independent source copies wait for the consumer log and recheck clean bytes and independent objects on reuse. Manual promotion also preserves
    the target's runtime platforms; an early shell-gate override cannot bypass acceptance.
    Native consumer CI pins the image, exact clean tooling and all recursive source snapshots;
    its plan changes only platform. Require a matching host and checked cleanup; job metadata

@@ -37771,16 +37771,16 @@
  {
   "id": "python-types.native-image-proof-strict-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
-  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "the isolated type fixture must detect removing the native proof driver from mandatory checks"
  },
  {
   "id": "python-types.native-image-proof-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "the isolated type fixture must detect removing the native proof driver from mandatory checks"
  },
@@ -51632,8 +51632,8 @@
  {
   "id": "python-types.runtime-owned-nerdctl-args-2",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned-nerdctl.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned-nerdctl.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "Independent fixture type and annotation errors must fail when either runtime ownership companion leaves its mandatory scope; no runtime or cleanup execution is proved."
  },
@@ -51648,8 +51648,8 @@
  {
   "id": "python-types.runtime-owned-nerdctl-2",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "Independent fixture type and annotation errors must fail when either runtime ownership companion leaves its mandatory scope; no runtime or cleanup execution is proved."
  },
@@ -52352,8 +52352,8 @@
  {
   "id": "image-acceptance.local-before-prune-validation",
   "target": "linux/scripts/image-acceptance.py",
-  "find": "        validate_receipt(receipt, args.image, args.plan, allow_local=local)\n        prune_consumer_checkouts",
-  "replace": "        pass\n        prune_consumer_checkouts",
+  "find": "        validate_receipt(receipt, args.image, args.plan, allow_local=local)\n    except ",
+  "replace": "        pass\n    except ",
   "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
   "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
  },
@@ -52512,8 +52512,8 @@
  {
   "id": "python-types.image-acceptance-local-strict-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py'",
-  "replace": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py'",
+  "find": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py'",
+  "replace": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py'",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated annotation fixture must catch removal of the local FINAL module from mandatory ANN001/ANN201; coverage expands without diagnostic exceptions."
  },
@@ -53032,32 +53032,32 @@
  {
   "id": "python-types.runtime-storage-module-strict-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
-  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
  },
  {
   "id": "python-types.runtime-storage-cli-strict-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
-  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-local-final.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
  },
  {
   "id": "python-types.runtime-storage-module-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
  },
  {
   "id": "python-types.runtime-storage-cli-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
  },
@@ -53520,16 +53520,16 @@
  {
   "id": "python-types.bounded-local-final-strict-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
-  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated real bad-return and annotation controls must keep the FINAL launcher in fatal coverage; this proves no actual image or consumer acceptance."
  },
  {
   "id": "python-types.bounded-local-final-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated real bad-return and annotation controls must keep the FINAL launcher in fatal coverage; this proves no actual image or consumer acceptance."
  },
@@ -54328,17 +54328,113 @@
  {
   "id": "python-types.runtime-terminal-scope-1",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
-  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
  },
  {
   "id": "python-types.runtime-terminal-scope-2",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.consumer-sources-consumer-log-readiness",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "            or not (checkouts / (name + \".log\")).is_file()\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Real local Git controls must reject unsafe preservation; this proves neither source authentication, build outputs nor GPU execution."
+ },
+ {
+  "id": "image-acceptance.consumer-sources-no-object-hardlinks",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "            \"--no-hardlinks\",\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Real local Git controls must reject unsafe preservation; this proves neither source authentication, build outputs nor GPU execution."
+ },
+ {
+  "id": "image-acceptance.consumer-sources-cached-worktree-clean",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "        not git(\n            root,\n            \"status\",",
+  "replace": "        True or not git(\n            root,\n            \"status\",",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Real local Git controls must reject unsafe preservation; this proves neither source authentication, build outputs nor GPU execution."
+ },
+ {
+  "id": "image-acceptance.consumer-sources-cached-index",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "index_sha256 is None or digest == index_sha256",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Real local Git controls must reject unsafe preservation; this proves neither source authentication, build outputs nor GPU execution."
+ },
+ {
+  "id": "image-acceptance.consumer-sources-object-independence",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "objects.is_relative_to(root)\n        and not (objects / \"info/alternates\").exists()\n        and not list((objects / \"pack\").glob(\"*.promisor\"))",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Real local Git controls must reject unsafe preservation; this proves neither source authentication, build outputs nor GPU execution."
+ },
+ {
+  "id": "image-acceptance.consumer-sources-cached-fsck",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "    git(root, \"fsck\", \"--full\", \"--strict\", \"--no-reflogs\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Real local Git controls must reject unsafe preservation; this proves neither source authentication, build outputs nor GPU execution."
+ },
+ {
+  "id": "image-acceptance.consumer-sources-cached-nonempty-roots",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "record[\"roots\"]\n                and record[\"roots\"][0][\"preserved\"] == str(directory / name)",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Real local Git controls must reject unsafe preservation; this proves neither source authentication, build outputs nor GPU execution."
+ },
+ {
+  "id": "image-acceptance.consumer-sources-cached-child-boundary",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "root.is_relative_to(directory / name),",
+  "replace": "True,",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Real local Git controls must reject unsafe preservation; this proves neither source authentication, build outputs nor GPU execution."
+ },
+ {
+  "id": "image-acceptance.consumer-sources-cached-byte-verification",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "                verify_tree(root, row[\"head\"], row[\"versioned_index_sha256\"])\n",
+  "replace": "                pass\n",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Real local Git controls must reject unsafe preservation; this proves neither source authentication, build outputs nor GPU execution."
+ },
+ {
+  "id": "image-acceptance.consumer-sources-retained-successful-checkouts",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        validate_receipt(receipt, args.image, args.plan, allow_local=local)\n    except ",
+  "replace": "        validate_receipt(receipt, args.image, args.plan, allow_local=local)\n        for spec in plan[\"consumers\"]:\n            __import__(\"shutil\").rmtree(work / spec[\"name\"])\n    except ",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Real local Git controls must reject unsafe preservation; this proves neither source authentication, build outputs nor GPU execution."
+ },
+ {
+  "id": "python-types.consumer-source-preserver-scope-1",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The new source preserver remains in strict ty and parameter/return annotation scopes; the isolated fixture must reject a wrong return type or missing annotations."
+ },
+ {
+  "id": "python-types.consumer-source-preserver-scope-2",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The new source preserver remains in strict ty and parameter/return annotation scopes; the isolated fixture must reject a wrong return type or missing annotations."
  }
 ]

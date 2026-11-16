@@ -26,6 +26,11 @@ class LocalAcceptanceTests(unittest.TestCase):
             MAIN.check(self.fixture.args)
         return json.loads(Path(self.fixture.args.receipt).read_text())
 
+    def assert_retained_sources(self) -> None:
+        for name in NAMES:
+            source = Path(self.fixture.args.workspace) / name / "source.txt"
+            self.assertEqual(source.read_text(), name + " versioned fixture\n")
+
     def test_full_contract_runs_all_six_without_a_registry_pull_and_keeps_bindings(self) -> None:
         receipt = self.passed_receipt()
         self.assertEqual(receipt['schema_version'], 2)
@@ -50,7 +55,7 @@ class LocalAcceptanceTests(unittest.TestCase):
             self.assertEqual(command[command.index('--pull') + 1], 'never')
         self.fixture.full_source.assert_has_calls([mock.call(self.fixture.source, self.fixture.full_proof, 'a' * 40)] * 2)
         self.fixture.terminal.assert_has_calls([mock.call(self.fixture.unit)] * 2)
-        self.assertFalse((Path(self.fixture.args.workspace) / NAMES[0]).exists())
+        self.assert_retained_sources()
         self.assertTrue((Path(self.fixture.args.workspace) / (NAMES[0] + '.log')).is_file())
 
     def test_registry_check_keeps_its_schema_pull_and_full_shared_runner(self) -> None:
@@ -68,6 +73,7 @@ class LocalAcceptanceTests(unittest.TestCase):
         self.assertEqual(sum(command[:2] == ['engine', 'pull'] for command in self.fixture.calls), 1)
         self.fixture.full_source.assert_not_called()
         self.fixture.terminal.assert_not_called()
+        self.assert_retained_sources()
 
     def test_replay_cannot_silently_use_changed_producer_evidence(self) -> None:
         self.passed_receipt()
