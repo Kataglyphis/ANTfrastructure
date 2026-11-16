@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Explicit application selection keeps executable helpers out of generated launchers.
+# shellcheck source=linux/scripts/lib/log-bootstrap.sh
+source "$(dirname "${BASH_SOURCE[0]}")/log-bootstrap.sh" || return $?
+
 app_packaging_detect_bundle_binary() {
   local bundle_dir="${1:?bundle_dir required}"
   if [[ ! -d "$bundle_dir" ]]; then

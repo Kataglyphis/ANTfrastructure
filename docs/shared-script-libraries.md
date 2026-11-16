@@ -1694,6 +1694,7 @@ its first argument for behavior comparison.
 The public deb, AppImage and Flatpak bundle entry points keep their arguments.
 `app-packaging-entrypoint.sh` owns executable selection and is a required companion
 of copied `app-packaging.sh`; a missing module or export fails during import.
+The selector sources `log-bootstrap.sh` itself, including when imported directly.
 Set `APP_PACKAGING_BINARY_NAME` for a bundle containing executable helpers, such
 as OxidANT with its HIP worker. It selects the application for the installed DEB
 wrapper, AppRun and Flatpak command. A nonempty value must be an ASCII portable

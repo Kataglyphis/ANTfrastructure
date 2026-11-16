@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-16 — retain standalone entrypoint-module logging
+
+- The bundle executable selector imports the shared logging bootstrap when sourced directly. Existing standalone-library assertions and a real import-removal mutation cover the contract; package/GPU execution remains a separate check.
+
 ## 2026-11-16 — select bundle application entry points explicitly
 
 - Shared DEB, AppImage and Flatpak packaging accepts `APP_PACKAGING_BINARY_NAME` so an executable native helper cannot replace the declared application. Invalid or absent declared files fail without fallback.

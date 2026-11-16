@@ -227,7 +227,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Gradle wrapper updates change only the version in one distribution URL; duplicate properties and checksum-pinned archives refuse before writing.
    Shared harness mutation suites stay host-portable; native batch execution remains in the separately discovered Windows suite.
    Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order.
-   Copied `app-packaging.sh` carries `app-packaging-license.sh` and `app-packaging-entrypoint.sh`; both it and `pe-icon-tools.sh` carry `log-bootstrap.sh` in the shared lib layout. Package the original project license and validate declared texts in built artifacts.
+   Copied `app-packaging.sh` carries `app-packaging-license.sh` and `app-packaging-entrypoint.sh`; both it and `pe-icon-tools.sh` carry `log-bootstrap.sh` in the shared lib layout. Package the original project license and validate declared texts in built artifacts. The standalone entrypoint selector also imports the canonical logging bootstrap.
    Native and Python app DEBs use gzip compression and root-owned payloads; retain both properties when changing their builders.
    Python DEB discovery rejects a host library with multiple reported package owners; retain that refusal without assuming it proves architecture or loader selection.
    Shared bundle DEBs must store payload entries as uid 0 and gid 0 even when built by an unprivileged container user.

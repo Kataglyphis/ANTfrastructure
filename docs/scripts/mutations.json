@@ -54492,5 +54492,13 @@
   "replace": ": \"${READELF_FAIL:-0}\"",
   "test": "bash linux/scripts/tests/test-deb-control-rendering.sh",
   "why": "The readelf control must fail after successful real ELF and deterministic package discovery; a swallowed failure cannot satisfy the negative control."
+ },
+ {
+  "id": "lib.app-packaging-entrypoint-logging-import",
+  "target": "linux/scripts/lib/app-packaging-entrypoint.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/log-bootstrap.sh\" || return $?",
+  "replace": ": \"missing canonical logging import\"",
+  "test": "bash linux/scripts/tests/test-lib-modules.sh",
+  "why": "The declared-entrypoint selector must import canonical logging when sourced standalone; a caller already loading logging cannot satisfy that library contract. This does not prove a real package or GPU execution."
  }
 ]
