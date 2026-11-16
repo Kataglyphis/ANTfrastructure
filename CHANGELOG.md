@@ -16,6 +16,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-16 — preserve portable bundle results after package checks
+
+- Keep successful MSI/ZIP checker output in the build log and return only the
+  portable bundle object, preserving fatal package-check failures.
+- Cover chatty callbacks and rejected installers with valid output-routing and
+  failure-propagation mutations. Real package validation remains separately tested.
+
 ## 2026-11-16 — keep the torchvision patch fixture within Python quality gates
 
 - Load the patched temporary module through runpy with explicit compiler and

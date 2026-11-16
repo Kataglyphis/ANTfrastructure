@@ -2615,6 +2615,18 @@ it keeps elevated-only ICD registration. `Lavapipe.HostVisibility.Tests.ps1` che
 host import AST and probes the shared export in a cold PowerShell process; removing
 the direct import makes its mutation check fail.
 
+### A Windows portable bundle fails because `Bundle` is missing
+
+**Symptom.** Packaging finishes its licence checks, then the build fails with
+`The property 'Bundle' cannot be found on this object`.
+
+**Cause.** A successful `New-PortableBundle` package checker wrote its proof line to
+the success stream. PowerShell returned that string together with the bundle object.
+
+**Fix.** Route the package-check callback through `Out-Host`, as the CMake runner
+already does. Keep checker failures fatal. `CrossBundle.Common.Tests.ps1` rejects
+output contamination and swallowed failures; separate licence suites check package bytes.
+
 ### A consumer's CMake says clang-cl "is not able to compile a simple test program"
 
 **Symptom.** A consumer's Windows CI lane, building inside `:winamd64`, stops at CMake's compiler

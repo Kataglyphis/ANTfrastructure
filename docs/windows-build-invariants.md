@@ -245,7 +245,9 @@ keeps must end in `| Out-Host`, or the caller receives an array. The ROCm TVM br
 LLVM log as its `llvm-config` path, and `cmd.exe` refused the command line built from it (2026-10-29); the
 nvidia and CPU lanes find `llvm-config` on PATH and never build that LLVM. `SourceBuild.NinjaReturnLeak.Tests.ps1`
 fails a value-returning function that leaves `Invoke-NinjaBuildWithRetry` uncaptured while a caller keeps its
-result; it does not cover other native calls.
+result; it does not cover other native calls. `New-PortableBundle` also routes successful
+package-check output to the host. Its callback tests require one returned bundle object
+and preserve checker exceptions; they do not validate MSI or ZIP contents.
 
 ### Windows stage scripts must end with an explicit `exit 0`
 

@@ -610,6 +610,12 @@ copied to `packages`. With `-RequireCompleteInstall` a DLL the closure has to ad
 the installers pack the install tree and would all lack it; AccelerANTgine wants that, and
 BeschleunigerBallett does not set it yet. `-Runner` takes the build's logged cmake call.
 
+`-PackageCheck` validates every finished MSI and ZIP before it is copied. Both callbacks
+write their success output to the host log; the function returns exactly one object with
+`Bundle`, `Packages`, `Added` and `Installers`. Checker exceptions still fail the bundle.
+`CrossBundle.Common.Tests.ps1` checks chatty callbacks and rejected packages; the package
+licence suites validate real archive contents separately.
+
 **x64 packages carry the same closure** (owner decision 2026-09-25). A clean x64 PC lacks the
 media stack and may lack the VC++ runtime too. A CMake consumer whose packages come from CPack
 fills the closure into a directory it names at configure time as

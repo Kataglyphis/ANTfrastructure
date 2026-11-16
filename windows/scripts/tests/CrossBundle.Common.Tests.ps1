@@ -1,5 +1,5 @@
 #requires -Version 7.0
-# Cross-build configure args and the DLL closure over synthetic PE import tables; real binaries are the arch gate's job.
+# Synthetic PE/install fixtures and callback streams; real package validation and device execution belong to their own gates.
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsCrossBundle.Common.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'WindowsSourceBuild.GraphFixture.psm1') -ErrorAction Stop
@@ -128,14 +128,19 @@ Describe 'New-PortableBundle' {
             $build = Join-Path $dir 'build'
             foreach ($f in 'app.msi', 'app.zip', 'app.exe', 'unit_tests.exe') { $null = New-Item -ItemType File -Force -Path (Join-Path $build $f) }
             $checked = [System.Collections.Generic.List[string]]::new()
-            $check = { param($Path, $RedistText) $checked.Add((Split-Path $Path -Leaf)) }.GetNewClosure()
+            $check = { param($Path, $RedistText) $checked.Add((Split-Path $Path -Leaf)); "PASS: $Path" }.GetNewClosure()
             $bundleArgs = @{ BuildDir = $build; DistDir = "$dir\dist"; Arch = 'arm64'; SearchDirectory = $search; Runner = (New-FakeInstall $dir); PackageCheck = $check }
-            $r = New-PortableBundle @bundleArgs
+            $r = @(New-PortableBundle @bundleArgs)
+            Assert-Equal 1 $r.Count 'package-check success lines do not join the returned bundle object'
+            $r = $r[0]
             Assert-Equal "cmake --install $build --prefix $dir\dist\bundle --config Release" (Get-Content -LiteralPath "$dir\install.log")
             Assert-Equal 'app.msi,app.zip' (@($checked | Sort-Object) -join ',') 'every CPack MSI and ZIP is checked for the MSVC runtime notice'
             Assert-Equal 'a.dll,B.DLL,c.dll,d.dll' (@($r.Added | Sort-Object) -join ',') 'the closure of app.exe'
             Assert-True (Test-Path -LiteralPath "$dir\dist\bundle\bin\d.dll") 'beside the binary'
             Assert-Equal 'app.exe,app.msi,app.zip' (@(Get-ChildItem -LiteralPath "$dir\dist\packages" -Name | Sort-Object) -join ',')
+            $reject = { param($Path, $RedistText) throw "package-check rejected: $Path" }
+            Assert-Throws { New-PortableBundle @bundleArgs -PackageCheck $reject } -MessagePattern 'package-check rejected: .*app\.(msi|zip)'
+            Assert-Equal 0 @(Get-ChildItem -LiteralPath "$dir\dist\packages" -File).Count 'a failed check cannot publish an installer'
         }
     }
 
