@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-16 — select bundle application entry points explicitly
+
+- Shared DEB, AppImage and Flatpak packaging accepts `APP_PACKAGING_BINARY_NAME` so an executable native helper cannot replace the declared application. Invalid or absent declared files fail without fallback.
+- Regression controls exercise real AppRun dispatch and the rendered DEB wrapper with stub builders; actual package and GPU checks remain separate.
+- Normal source-commit units retain system utility directories. The raw-readelf regression uses a real ELF and explicit package/cache stubs, so unrelated host multilib packages cannot fail its positive control; normal hooks and production dependency checks remain unchanged.
+
 ## 2026-11-16 — retain successful acceptance sources
 
 - Both acceptance transports keep successful versioned consumer checkouts and recursive Git stores beside their logs.

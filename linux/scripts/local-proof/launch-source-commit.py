@@ -44,7 +44,7 @@ command = ['systemd-run', '--user', '--no-block', '--expand-environment=no', f'-
 for value in ['Type=oneshot', 'RemainAfterExit=yes', 'TimeoutStartSec=1200', 'TimeoutStopSec=300', 'KillMode=control-group',
               f'WorkingDirectory={source}', f'StandardOutput=append:{out}/commit.log', f'StandardError=append:{out}/commit.log']:
     command += ['-p', value]
-for value in ['LC_ALL=C', f'HOME={Path.home()}', f'TMPDIR={temporary}', f'PATH={Path.home()}/.local/bin:{Path.home()}/.cargo/bin:/usr/local/bin:/usr/bin:/bin']:
+for value in ['LC_ALL=C', f'HOME={Path.home()}', f'TMPDIR={temporary}', f'PATH={Path.home()}/.local/bin:{Path.home()}/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin']:
     command += ['-E', value]
 command += ['git', '-c', 'user.name=Codex', '-c', 'user.email=codex@local', '-c', 'core.hooksPath=linux/host-config/git-hooks', 'commit', '-m', args.message]
 record = {'created_at': datetime.datetime.now(datetime.UTC).isoformat(), 'source': str(source), 'unit': args.unit,

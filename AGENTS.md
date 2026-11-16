@@ -227,7 +227,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Gradle wrapper updates change only the version in one distribution URL; duplicate properties and checksum-pinned archives refuse before writing.
    Shared harness mutation suites stay host-portable; native batch execution remains in the separately discovered Windows suite.
    Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order.
-   Copied `app-packaging.sh` carries `app-packaging-license.sh`; both it and `pe-icon-tools.sh` carry `log-bootstrap.sh` in the shared lib layout. Package the original project license and validate declared texts in built artifacts.
+   Copied `app-packaging.sh` carries `app-packaging-license.sh` and `app-packaging-entrypoint.sh`; both it and `pe-icon-tools.sh` carry `log-bootstrap.sh` in the shared lib layout. Package the original project license and validate declared texts in built artifacts.
    Native and Python app DEBs use gzip compression and root-owned payloads; retain both properties when changing their builders.
    Python DEB discovery rejects a host library with multiple reported package owners; retain that refusal without assuming it proves architecture or loader selection.
    Shared bundle DEBs must store payload entries as uid 0 and gid 0 even when built by an unprivileged container user.
@@ -343,6 +343,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Standalone fallback registration keeps caller lookup policy; copied Abseil and payload entry points carry the logging bootstrap in its documented layout.
    Smoke ELF inspection carries its platform owner and preserves caller parser overrides without leaking platform initialization.
    Bundle packagers share scoped facts, bundle copying, desktop/icon staging and artifact verdicts; invoke renderers unconditionally so Bash errexit remains active.
+   Bundles with executable helpers set APP_PACKAGING_BINARY_NAME to their actual application; a declared missing, linked or nonexecutable entry refuses instead of selecting another file.
    ONNX web steps share lockfile retries and JS artifact verdicts; keep install failures fatal and check both source and copied artifacts.
    Agentic build, test and quality phases share execution; preserve fatal build/test results and advisory quality results.
    Runtime and cross orchestrators share common CLI dispatch; preserve consumed-argument counts and help code 255.
@@ -1058,7 +1059,7 @@ transcript. Each was a child that outlived whatever started it. So:
 1. **An agent starts a background job as a named user unit**, never `setsid nohup … &`:
    `systemd-run --user --unit=<name> -p RuntimeMaxSec=<bound> bash <script>`. Then
    `systemctl --user list-units '<prefix>*'` shows what runs, `systemctl --user stop <name>` ends
-   it with every child, and nothing outlives its bound. A job meant to outlive the session (a
+   it with every child, and nothing outlives its bound. User units retain system utility directories in PATH, including `/usr/sbin` and `/sbin`, for probes such as `ldconfig`. A job meant to outlive the session (a
    chain, a watcher) says so in its handoff, by unit name.
    Literal shell expressions in unit argv require `--expand-environment=no`; host-shell quoting does not disable systemd expansion.
    Container engines may keep their payload outside the starter unit; use the versioned owned-container ExecStopPost hook and verify cleanup separately before handoff. Command success without stopped/PID0 or absence is insufficient; retained failed containers stay stopped.

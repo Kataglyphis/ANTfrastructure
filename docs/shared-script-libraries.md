@@ -1692,6 +1692,17 @@ its first argument for behavior comparison.
 ### Shared bundle packaging lifetime
 
 The public deb, AppImage and Flatpak bundle entry points keep their arguments.
+`app-packaging-entrypoint.sh` owns executable selection and is a required companion
+of copied `app-packaging.sh`; a missing module or export fails during import.
+Set `APP_PACKAGING_BINARY_NAME` for a bundle containing executable helpers, such
+as OxidANT with its HIP worker. It selects the application for the installed DEB
+wrapper, AppRun and Flatpak command. A nonempty value must be an ASCII portable
+basename (letters, digits, `_`, `.`, `+`, `-`), excluding `.` and `..`, and name
+a regular executable file inside the bundle. Missing, nonexecutable or linked
+selections fail without choosing a different program. Unset or empty values keep
+the existing automatic discovery policy. The entrypoint suite executes the real
+rendered AppRun and inspects the DEB wrapper using stub builders; it proves no
+compression, installation or GPU execution.
 They share a dispatcher that owns local bundle facts, the common icon name
 and the final nonempty-artifact verdict. Format callbacks retain their layout,
 commands, output names and diagnostics. A callback failure propagates before

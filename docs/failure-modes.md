@@ -1670,6 +1670,21 @@ for its own tree.
 a suite and a mutation recipe (`onnx-ep-amdgpu.merge-copy-present`). Prove a new path on the PINNED media
 image (`nerdctl run … ls <path>`), not on the branch's log.
 
+### An AppImage starts a bundled helper instead of the application
+
+**Symptom.** The payload files pass verification, but AppRun exits before the
+application produces its profile. The DEB payload runs directly while its
+installed `/usr/bin` wrapper may have the same wrong target.
+
+**Cause.** Automatic bundle discovery selects the first executable alphabetically;
+a native helper can precede the application. The actual Rust package launched
+`kataglyphis-rust-hip-probe` rather than `oxidant`.
+
+**Fix.** Set `APP_PACKAGING_BINARY_NAME` to the application before invoking the
+shared packagers, then rebuild and verify the finished launchers. The explicit
+selection must exist as a regular executable; a typo must fail. Direct payload
+execution does not prove the installed DEB wrapper or AppRun target.
+
 ### An AppImage GPU profile times out while the DEB passes
 
 **Symptom.** OmniAccelerANT's `profile-gpu-packages.sh` passes the tarball and the DEB, then stops without
