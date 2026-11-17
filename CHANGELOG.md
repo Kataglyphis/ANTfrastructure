@@ -27,6 +27,14 @@
   `0.19.0+965c019.pr2809`, which carries it, and `Test-SccacheModuleSafe` already admits it; the cache-bypass
   advice now applies only to an older sccache.
 
+## 2026-11-17 — mingw and the windows-gnu Rust target in the amd64 image (CON239, in source)
+
+- The package stage asks for `gcc-mingw-w64-x86-64` by name on amd64, and `install-rust.sh` adds the
+  `x86_64-pc-windows-gnu` target there (owner decision 2026-11-17, reversing 2026-11-03): OxidANT's push will
+  type-check Windows on the GNU target, whose `ring` needs mingw's C. About 600 MB on amd64; arm64 and riscv64
+  carry neither, which `test-setup-package-image.sh` holds. `docs/image-decisions.md` records it. A chain
+  publishes it.
+
 ## 2026-11-17 — a host without a tool the image has runs the push suites in the image (CON277)
 
 - The shared pre-push hook tees `scripts/linux/pre-push-checks.sh`'s output. When the run fails on

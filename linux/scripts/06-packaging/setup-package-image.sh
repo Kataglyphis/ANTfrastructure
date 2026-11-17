@@ -151,6 +151,11 @@ select_dev_packages() {
 
     # Gradle needs a JDK; by name, since a silently skipped JDK ships an Android SDK that builds nothing.
     _sdp_out+=("${JDK_PACKAGE:?JDK_PACKAGE is required (01-core/versions.env)}")
+
+    # CON239 (owner 2026-11-17): a push type-checks OxidANT for Windows on the GNU target, whose ring needs mingw's C.
+    if [ "$(dpkg --print-architecture)" = amd64 ]; then
+        _sdp_out+=(gcc-mingw-w64-x86-64)
+    fi
 }
 
 # A JAVA_HOME that survives JDK bumps. See docs/consumer-image-contract.md § The Android lane needs a JDK

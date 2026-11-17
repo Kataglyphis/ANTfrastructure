@@ -105,9 +105,10 @@ These are recorded so nobody files them as gaps:
 - No added `libgtk-4-dev` in the amd64 GPU images (owner, 2026-11-03, confirmed 2026-11-04). It pulls back the distro GTK
   and GStreamer runtime that `drop_redundant_distro_gtk4` removes, and OxidANT's CLI links without
   it on the published `:latest-rocm` and `:latest-nvidia` (amd64, 2026-11-04).
-- No `gcc-mingw-w64-x86-64` (owner, 2026-11-03). Only OxidANT's `clippy-windows.sh` needs it, for
-  `ring`'s C on the Windows target, and installs it when missing. Its apt closure is about 600 MB on
-  Ubuntu 26.04, which every image would carry for one lint step.
+- `gcc-mingw-w64-x86-64` and the `x86_64-pc-windows-gnu` Rust target in the **amd64** images (owner,
+  2026-11-17, reversing 2026-11-03's no; CON239): OxidANT's push type-checks Windows on the GNU target, whose
+  `ring` needs mingw's C. 24 of 43 OxidANT commits to Windows-lane paths had been built on Windows only about a
+  day later. It costs about 600 MB of apt closure on amd64; arm64 and riscv64 carry neither.
 - No TensorRT SDK in any published image: only the runtime `.so`/`.dll` files its SLA names
   distributable. Headers, dev links, `trtexec`, Python bindings and SDK trees stay in build stages;
   `check_gpu_runtime`, `deepstream-verify.sh` and the Windows smoke fail an image that carries one

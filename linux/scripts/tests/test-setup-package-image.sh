@@ -217,6 +217,25 @@ t_assert_eq "openjdk-21-jdk-headless" \
   "$(grep -oP '(?<=^JDK_PACKAGE=).*' "${TESTS_DIR}/../01-core/versions.env")" \
   "the pin lives in versions.env, next to the android keys"
 
+t_case "CON239: amd64 asks for mingw by name, and no other arch carries it"
+_sdp_run() {
+  (
+    apt_package_exists() { return 1; }
+    append_optional_available_packages() { :; }
+    append_available_packages() { :; }
+    gtk4_dev_packages() { :; }
+    dpkg() { printf '%s\n' "${FAKE_ARCH}"; }
+    eval "${_sdp}"
+    local -a picked=()
+    LLVM_RELEASE=23.1.5 JDK_PACKAGE=openjdk-21-jdk-headless select_dev_packages picked 3.15 16
+    printf '%s\n' "${picked[@]}"
+  )
+}
+t_assert_contains "$(FAKE_ARCH=amd64 _sdp_run)" "gcc-mingw-w64-x86-64"
+for _a in arm64 riscv64; do
+  t_assert_eq "0" "$(FAKE_ARCH="${_a}" _sdp_run | grep -c mingw || true)" "${_a} carries no mingw"
+done
+
 t_case "JAVA_HOME is anchored to a symlink, so a JDK bump does not silently break the ENV"
 t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _anchor="$(t_fn_src "${SUBJECT}" anchor_java_home)"

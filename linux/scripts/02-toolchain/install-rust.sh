@@ -98,6 +98,11 @@ rustup_required rustup target add wasm32-unknown-unknown
 # Required: Cargokit builds an Android app's Rust for it, and adding it per build needs the network.
 rustup_required rustup target add aarch64-linux-android
 
+# Required on amd64 (CON239): OxidANT's push type-checks Windows on the GNU target, beside mingw in the package image.
+if [ "${host_rust_target}" = x86_64-unknown-linux-gnu ]; then
+  rustup_required rustup target add x86_64-pc-windows-gnu
+fi
+
 # Pinned nightly (a bare "nightly" floats to today's build).
 : "${RUST_NIGHTLY_TOOLCHAIN:=nightly-2026-06-28}"
 nightly_toolchain="${RUST_NIGHTLY_TOOLCHAIN}-${host_rust_target}"
