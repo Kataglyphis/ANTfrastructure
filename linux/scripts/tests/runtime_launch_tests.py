@@ -69,13 +69,13 @@ class RuntimeTests(unittest.TestCase):
                      context: Path | None = None, dirty: bool = False, selected_source: Path | None = None,
                      source_proof: Path | None = None, serial_smoke: bool = False) -> tuple[int, mock.Mock]:
         original = PROFILE.checked_run
-        def checked(command: list[str], **options: object) -> subprocess.CompletedProcess[str]:
+        def checked(command: list[str], timeout: float = 60) -> subprocess.CompletedProcess[str]:
             if command[0] == 'git':
                 value = ' M host-tool' if dirty else ''
                 if command[-1] == 'HEAD':
                     value = 'b' * 40
                 return subprocess.CompletedProcess(command, 0, value, '')
-            return original(command, **options)
+            return original(command, timeout=timeout)
         launcher = mock.Mock(return_value=47)
         smoke_options: SmokeOptions = {'serial_smoke':True} if serial_smoke else {}
         with mock.patch.object(PROFILE, 'checked_run', side_effect=checked), mock.patch.object(PROFILE, 'launch_build', launcher), \
@@ -172,7 +172,7 @@ class RuntimeTests(unittest.TestCase):
             selected, review = SOURCE_PROFILE.select_runtime_source(invocation, source, proof)
         full.assert_called_once_with(source.resolve(), proof.resolve(), '2aa1a7780861db8012cb769e04d3de474dddca37')
         self.assertEqual(selected, source)
-        self.assertIsNotNone(review)
+        assert review is not None, 'Explicit runtime source requires its review receipt'
         self.assertEqual(review['profile'], 'stable-wheel-context-without-smoke-import')
         self.assertEqual(review['Android_source_revision'], invocation['source_revision'])
         self.assertEqual(review['runtime_source_revision'], '2aa1a7780861db8012cb769e04d3de474dddca37')

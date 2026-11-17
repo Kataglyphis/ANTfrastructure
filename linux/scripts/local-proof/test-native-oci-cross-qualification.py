@@ -10,6 +10,7 @@ from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--module',type=Path,default=Path(__file__).with_name('native-oci-handoff.py'))
+parser.add_argument('--current-profile', action='store_true')
 args = parser.parse_args()
 module = runpy.run_path(str(args.module))
 mode = {'status':'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only', 'mode':'default',
@@ -21,6 +22,9 @@ proof = {'status':'passed-fresh-image-baked-compiler-native-tool-and-loader-sele
          'native_facts':{'native_tool_count':157}, 'cross_wrapper_checks_required':True, 'cross_wrapper_CPU_checks_passed':True,
          'cross_wrapper_modes':{'default':mode,'login':login}}
 plan = {'source_revision':'synthetic-fixture','launcher_contract':2, 'local_image':'ant-local/webgpu-fixture:cross-compiler-amd64', 'unit':'fixture-compiler.service'}
+if args.current_profile:
+    plan.pop('launcher_contract')
+    plan.update(source_proofs={}, image_qualification_profile='compiler-cross-cpu')
 controls = []
 with tempfile.TemporaryDirectory(prefix='cross-oci-fixture-') as temporary:
     path = Path(temporary) / 'fixture.json'

@@ -895,6 +895,10 @@ The full-tree Ruff annotation scan writes
 `logs/code-quality/ruff-annotations-gate.txt`. A second full-tree ANN202 gate writes
 `logs/code-quality/ruff-private-returns-gate.txt`. The maintained parameter/return scope has fatal
 ANN001/ANN201 checks in `logs/code-quality/ruff-parameters-returns-gate.txt`.
+Compiler image subject and OCI modules belong to both strict scopes. The shared search paths
+include media runtime, packaging, script tests, gateway end-to-end tests and local proof tools.
+The real-ty fixture imports through every sibling root and rejects type or annotation errors
+in either profile module; those source checks do not prove runtime imports or image acceptance.
 The Linux x64 workflow uploads
 these files after preflight. Any finding in the full Ruff annotation scan or the generic
 Linux/Windows ty reports fails preflight. A failed download, invalid configuration or
@@ -967,7 +971,7 @@ masked-assignment and trailing-conditional verifiers, the lint-scope and callbac
 nine small docs, host, image, wheel and test files, plus the mutation verifier,
 gate registry, image acceptance driver, image-env verifier, complexity and
 dead-function verifiers, ORT census probe, venv version probe, GStreamer metadata
-helper, ORT venv census, QNN query tests, chain ORT fixtures, sudo policy, raw pin reader, cross-active registration, compiler candidate, media-file set, smoke query contract, Clang job policy, binfmt probe, Meson dispatch, host Cargo preparation, target Cargo pipeline and host Python pin tests, Flutter performance reporter, media-pin advisory, directory-visitor, verified-installer, toolchain download-loader and fleet dependency tests, workflow conventions verifier, site-link verifier, shared quality allow and gate scope helpers, comment-size and ShellCheck ratchet verifiers, the Dart documentation renderer, free-threaded sysconfig tool, SHA-256 data-lock fetcher, Ansible status report, Jetson webcam app, validator probe, runtime child-stop, wheel tag resolution, runtime SDK help, triplet query, advertised-key verifier, CLI help exit, image-reference CLI, native smoke dispatch, nerdctl service receipts, binfmt probe controls, native GCC environment tests, Dockerfile ENV ordering verifier, image-consumer bootstrap tests, NPM Python transport tests, Python provider context tests, serving stack tests, LLM network guard, libcamera report tests, consumer quality wiring tests, embedded Python extractor, Corrosion toolchain tests, sudo policy closure tests, wheel archive transport tests, WebDAV download tests, Meson bound provider tests, Flutter trace summary, wheelhouse manifest, chain sibling PID and log-dir consumer tests, gateway log-tail tests, the WebDAV downloader, and the Renovate PEP git resolver. ANN001/ANN201 fail in those 122 files.
+helper, ORT venv census, QNN query tests, chain ORT fixtures, sudo policy, raw pin reader, cross-active registration, compiler candidate, media-file set, smoke query contract, Clang job policy, binfmt probe, Meson dispatch, host Cargo preparation, target Cargo pipeline and host Python pin tests, Flutter performance reporter, media-pin advisory, directory-visitor, verified-installer, toolchain download-loader and fleet dependency tests, workflow conventions verifier, site-link verifier, shared quality allow and gate scope helpers, comment-size and ShellCheck ratchet verifiers, the Dart documentation renderer, free-threaded sysconfig tool, SHA-256 data-lock fetcher, Ansible status report, Jetson webcam app, validator probe, runtime child-stop, wheel tag resolution, runtime SDK help, triplet query, advertised-key verifier, CLI help exit, image-reference CLI, native smoke dispatch, nerdctl service receipts, binfmt probe controls, native GCC environment tests, Dockerfile ENV ordering verifier, image-consumer bootstrap tests, NPM Python transport tests, Python provider context tests, serving stack tests, LLM network guard, libcamera report tests, consumer quality wiring tests, embedded Python extractor, Corrosion toolchain tests, sudo policy closure tests, wheel archive transport tests, WebDAV download tests, Meson bound provider tests, Flutter trace summary, wheelhouse manifest, chain sibling PID and log-dir consumer tests, gateway log-tail tests, the WebDAV downloader, and the Renovate PEP git resolver. The focused files include the compiler image subject and OCI modules; `lint-python-types.sh` owns the exact ANN001/ANN201 set.
 All eight Ruff annotation rules in this scan are fatal across every tracked Python file.
 The focused suite injects unannotated signatures, and selector, scope and verdict mutations
 prove the gates can fail. The annotation and ty scans preserve their own diagnostics and
@@ -1228,7 +1232,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **6840 entries** over **812 distinct test commands**; both digits are
+manifest holds **6856 entries** over **814 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

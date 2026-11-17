@@ -520,7 +520,11 @@ Five of them are RULES and stay here:
   inputs, extracted code and reports under `logs/`. Add missing recurring functionality to Git before
   its next use. Local BuildKit cache transfers use `local-proof/seed-buildkit-cache.py` with its
   stopped-producer proof; preserve separate mutable metadata and verify the actual next command's
-  cache import before launch. A transport receipt does not prove cache hits. The permanent isolated preflight, unit watcher
+  cache import before launch. A transport receipt does not prove cache hits. Current compiler plans with `source_proofs` require
+  `image_qualification_profile=compiler-cross-cpu`; retain both shell modes, all six wrappers and the OCI parent refusals.
+  Its subject and OCI modules stay in strict ty and ANN001/ANN201 scopes; retain their sibling module search roots.
+  Direct-suite failures retain raw failed status and assertion logs; a missing mutator log cannot become passing mutation evidence.
+  The permanent isolated preflight, unit watcher
   and native plugin probe are documented in [quality tooling](docs/code-quality-tooling.md#preserved-local-proof-workflows).
   Copied host proof tools carry `host_commands.py`; the watcher also carries `preflight-status.py`,
   and isolated preflight carries both scripts under `isolated-preflight/`.

@@ -175,7 +175,7 @@ class CompilerUniqueProfileTests(CompilerPlanFixture):
             {**original,'source_revision':'c' * 40},
             {**original,'unchanged_bound_files':{}},
             {**original,'changed_bound_files':{FILES[0]:{'current':self.old_inputs[FILES[0]]}}},
-            {**original,'unchanged_bound_files':{**original['unchanged_bound_files'],FILES[-1]:{}}},
+            {**original,'unchanged_bound_files':{**self.old_inputs,FILES[-1]:{}}},
         ]
         self.plan()
         template = self.inputs / 'template.json'

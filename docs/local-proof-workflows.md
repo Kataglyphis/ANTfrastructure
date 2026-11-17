@@ -338,6 +338,9 @@ and Wasm cache reuse or an empty log does not prove either flavor actually built
 Supply the actual live PID, producer unit, original reviewed transport template and a fresh output. The reader opens only the existing regular `/proc/<pid>/root/tmp/sccache.log`, tracks process start identity and refuses replacement of that live log inode. It retains all bytes before closing the descriptor, including after the RUN filesystem disappears. Each replay writes its unit log beside the new invocation. `seal-sccache-log-capture.py` verifies worker/companion hashes, raw terminal status, file size/SHA and stopped/PID0 state. A reader timeout is explicitly partial, and neither an empty file nor a completed reader classifies compiler-cache errors or accepts an image. `test-live-cache-capture.sh` uses synthetic process files and command doubles; it does not prove a genuine build or source provenance.
 
 `audit-failed-source-check.py` also retains a completed mutation run containing `SURVIVED` failures before preflight starts. Its failed receipt requires exact passed/survived IDs, the matching failure summary, actual failed/PID0 unit, cleanup and independent absence. Quality-only failures retain their strict complete mutation proof. Interrupted or other incomplete mutation failures need separate inspection; a failure audit never accepts source.
+An early direct-suite assertion failure can be retained without creating a mutation log. The
+audit requires the original failed assertion report and no later preflight report, retains
+the raw failed unit status, and explicitly records that mutation execution did not start.
 
 ## Local BuildKit cache transfer
 
@@ -495,6 +498,20 @@ the aggregate diagnostic. It refuses invalid temporary allocation and records fa
 Its C input through both drivers still does not prove the full C++ ABI or final runtime.
 Object and link suites share the harness's invalid-allocation emitter; its failed, empty and
 missing-directory outcomes remain distinct.
+
+## Explicit compiler image qualification
+
+A current canonical compiler run can supply `image_qualification_profile: "compiler-cross-cpu"`
+in its separate qualification input, preserving the original producer invocation unchanged.
+Plans carrying `source_proofs` require that explicit profile; unknown profile values fail.
+The historical `launcher_contract: 2` path still selects the same complete CPU checks.
+Both default and login modes require all six cross wrappers, four foreign static executions,
+native C/C++ programs, the four LLVM backends and the actual loader/default selection checks.
+The OCI parent validator uses that same required scope. Synthetic profile and transport
+fixtures do not prove an image, GPU inference, receipt provenance or finished consumers.
+The subject and OCI modules belong to strict ty and focused annotation coverage. The type
+driver supplies their real sibling roots; its fixture imports across those roots and plants
+type and annotation errors in both modules without reducing the existing scan.
 
 ## SDK component qualification
 

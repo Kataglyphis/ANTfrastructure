@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-17 — select complete compiler image checks explicitly
+
+- Current compiler inputs with `source_proofs` require `image_qualification_profile=compiler-cross-cpu` for image qualification and native OCI handoff. Both shell modes, all six wrappers and the original CPU/backend/loader checks remain mandatory; historical launcher profiles retain their behavior.
+- Synthetic profile and launch transports cover the selector, unknown or missing profiles and both legacy/current incomplete-parent refusals. These controls do not prove actual image, GPU or consumer acceptance.
+- The type driver retains the sibling roots needed by existing runtime, packaging and test modules, adds the local proof root, and keeps both image-profile modules in strict type and focused annotation coverage. Real-ty import, type and annotation fixtures guard the selection without scan exclusions.
+- Early direct-suite assertion failures preserve their original failed status and logs while explicitly recording that the mutator never started; absent failure evidence or an inconsistent later preflight report refuses that failure classification.
+- Compiler/runtime fixtures retain their declared mapping, timeout and required-review types when reached through the actual module roots; the generated gate table records the expanded mutation coverage.
+
 ## 2026-11-16 — retain required compiler-cache setup failures
 
 - Python cache initialization directly precedes launcher resolution. The site check accepts strict raw-status propagation alongside the unchanged optional-core fallback, and a real removal mutation proves the parent setup remains mandatory. The command fixture also proves newly imported APIs publish in the compiling shell. These source checks do not prove compilation or cache hits.

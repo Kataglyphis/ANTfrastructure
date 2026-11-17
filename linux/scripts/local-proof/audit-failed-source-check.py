@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Retain a completed SURVIVED-mutation or quality failure with cleanup; other incomplete failures and source acceptance are not covered."""
+"""Retain direct assertion, completed mutation or quality failures; incomplete mutator failures and source acceptance are not covered."""
 
 from __future__ import annotations
 
 import argparse
+import collections
 import datetime
 import hashlib
 import json
 import re
 import runpy
 import subprocess
+import sys
 from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -39,33 +41,45 @@ query = subprocess.run([str(Path.home() / '.local/bin/nerdctl'), 'ps', '-a', '--
 rows = [json.loads(line) for line in query.stdout.splitlines() if line.strip()]
 assert not any(inv['run_id'] in json.dumps(row) or cid.startswith(row['ID']) or row['ID'].startswith(cid) for row in rows)
 (out / 'failure-engine-query.json').write_text(json.dumps({'returncode': query.returncode, 'stdout': query.stdout, 'stderr': query.stderr}, indent=2) + '\n')
-import sys
-
 sys.path.insert(0, str(source / 'linux/scripts'))
-mutation_text = re.sub(r'\x1b\[[0-9;]*m', '', (out / 'mutations.log').read_text())
-survived = re.findall(r'^\[\d+/\d+\]\s+FAIL:\s+(\S+)\s+SURVIVED\b', mutation_text, re.MULTILINE)
-if survived:
-    import collections
 
-    passed = re.findall(r'^\[\d+/\d+\]\s+bites\s+(\S+)\s', mutation_text, re.MULTILINE)
-    expected = [row['id'] for row in json.loads((out / 'selected-mutations.json').read_text())]
-    assert len(expected) == len(set(expected)) and collections.Counter(passed + survived) == collections.Counter(expected)
-    summary = re.search(r'^FAILED: (\d+) of (\d+) entr', mutation_text, re.MULTILINE)
-    assert summary and (int(summary[1]), int(summary[2])) == (len(survived), len(expected))
-    assert 'OK: every recorded mutation is caught' not in mutation_text
-    count, failed_groups = len(passed), ['mutation gate (can the tests fail?)']
-else:
+
+def failure_accounting() -> tuple[int, list[str], list[str], list[str]]:
+    mutation_log = out / 'mutations.log'
+    if not mutation_log.exists():
+        reports = [path.name for path in sorted(out.glob('*-tests.log')) if re.search(
+            r'\d+/\d+ assertion\(s\) FAILED|^FAILED\b', path.read_text(), re.MULTILINE)]
+        assert reports, 'Missing direct suite failure evidence'
+        assert not (out / 'preflight.log').exists(), 'Direct failure cannot contain a preflight report'
+        return 0, [], ['direct source suites'], reports
+    mutation_text = re.sub(r'\x1b\[[0-9;]*m', '', mutation_log.read_text())
+    survived = re.findall(r'^\[\d+/\d+\]\s+FAIL:\s+(\S+)\s+SURVIVED\b', mutation_text, re.MULTILINE)
+    if survived:
+        passed = re.findall(r'^\[\d+/\d+\]\s+bites\s+(\S+)\s', mutation_text, re.MULTILINE)
+        expected = [row['id'] for row in json.loads((out / 'selected-mutations.json').read_text())]
+        assert len(expected) == len(set(expected)) and collections.Counter(passed + survived) == collections.Counter(expected)
+        summary = re.search(r'^FAILED: (\d+) of (\d+) entr', mutation_text, re.MULTILINE)
+        assert summary and (int(summary[1]), int(summary[2])) == (len(survived), len(expected))
+        assert 'OK: every recorded mutation is caught' not in mutation_text
+        return len(passed), survived, ['mutation gate (can the tests fail?)'], []
     counter = runpy.run_path(str(source / 'linux/scripts/seal-mutation-unit.py'))['mutation_ids']
-    count = counter(out / 'selected-mutations.json', out / 'mutations.log', False)
+    count = counter(out / 'selected-mutations.json', mutation_log, False)
     text = re.sub(r'\x1b\[[0-9;]*m', '', (out / 'preflight.log').read_text())
     failed_groups = re.findall(r'^✗ (.+)$', text, re.MULTILINE)
     assert failed_groups and 'All preflight checks passed.' not in text
-inputs = ['invocation.json', 'cleanup.json', 'mutations.log', 'selected-mutations.json']
+    return count, [], failed_groups, []
+
+
+count, survived, failed_groups, direct_reports = failure_accounting()
+inputs = ['invocation.json', 'cleanup.json', 'selected-mutations.json', *direct_reports]
+if (out / 'mutations.log').exists():
+    inputs.append('mutations.log')
 if (out / 'preflight.log').exists():
     inputs.append('preflight.log')
 proof = {'status': 'failed-targeted-source-check-preserved', 'observed_at': datetime.datetime.now(datetime.UTC).isoformat(),
          'unit': inv['unit'], 'terminal_before_stop': before, 'raw_status': int(before['ExecMainStatus']),
          'actual_mutations_passed': count, 'actual_mutations_survived': survived, 'failed_preflight_groups': failed_groups,
+         'direct_failed_logs': direct_reports, 'mutation_execution_started': (out / 'mutations.log').exists(),
          'cleanup_exit_status': 0, 'independent_engine_query_exit_status': 0, 'owned_container_absent': True,
          'source_accepted': False, 'scope': __doc__,
          'inputs_sha256': {name: hashlib.sha256((out / name).read_bytes()).hexdigest() for name in inputs}}

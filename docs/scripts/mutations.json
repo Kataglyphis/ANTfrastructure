@@ -47456,7 +47456,7 @@
  {
   "id": "compiler-llvm-tools.preserved-parent-guard-01",
   "target": "linux/scripts/local-proof/native-oci-handoff.py",
-  "find": "    elif plan.get('launcher_contract') == 2:\n        assert proof['cross_wrapper_checks_required'] and proof['cross_wrapper_CPU_checks_passed']\n        assert set(proof['cross_wrapper_modes']) == {'default','login'}\n        for mode,result in proof['cross_wrapper_modes'].items():\n            assert result['status'] == 'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only' and result['mode'] == mode\n            assert result['native_backends'] == ['AArch64','AMDGPU','RISCV','X86'] and result['wrapper_count'] == 6\n            assert result['foreign_static_executions_required'] == 4 and result['native_languages'] == ['c','cxx']\n",
+  "find": "    elif subject['cross_required']:\n        assert proof['cross_wrapper_checks_required'] and proof['cross_wrapper_CPU_checks_passed']\n        assert set(proof['cross_wrapper_modes']) == {'default','login'}\n        for mode,result in proof['cross_wrapper_modes'].items():\n            assert result['status'] == 'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only' and result['mode'] == mode\n            assert result['native_backends'] == ['AArch64','AMDGPU','RISCV','X86'] and result['wrapper_count'] == 6\n            assert result['foreign_static_executions_required'] == 4 and result['native_languages'] == ['c','cxx']\n",
   "replace": "    pass\n",
   "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
   "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
@@ -54756,5 +54756,133 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
   "why": "Every resolver retains a directly preceding parent-shell environment call; strict callers preserve the raw failure. Source fixtures do not prove compilation or cache hits."
+ },
+ {
+  "id": "compiler-llvm-tools.image-profile-known-selector",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert profile in (None, 'compiler-cross-cpu'), 'Unknown image qualification profile'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k current_compiler_profile",
+  "why": "Synthetic current and historical controls must reject a missing or unknown selector and retain the complete CPU scope; no actual image acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.image-profile-current-selector-required",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "        assert profile == 'compiler-cross-cpu', 'Current source plans require the complete compiler CPU profile'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k current_compiler_profile",
+  "why": "Synthetic current and historical controls must reject a missing or unknown selector and retain the complete CPU scope; no actual image acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.image-profile-explicit-cross-required",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    return profile == 'compiler-cross-cpu' or plan.get('launcher_contract') == 2\n",
+  "replace": "    return plan.get('launcher_contract') == 2\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k current_compiler_profile",
+  "why": "Synthetic current and historical controls must reject a missing or unknown selector and retain the complete CPU scope; no actual image acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.image-profile-historical-cross-retained",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    return profile == 'compiler-cross-cpu' or plan.get('launcher_contract') == 2\n",
+  "replace": "    return profile == 'compiler-cross-cpu'\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k current_compiler_profile",
+  "why": "Synthetic current and historical controls must reject a missing or unknown selector and retain the complete CPU scope; no actual image acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.image-profile-OCI-cross-required",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "    elif subject['cross_required']:\n",
+  "replace": "    elif plan.get('launcher_contract') == 2:\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The current explicit profile must retain every original incomplete cross-wrapper parent refusal, with no historical launcher-contract label."
+ },
+ {
+  "id": "python-types.profile-root-runtime",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  --extra-search-path linux/scripts/03-media/runtime\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Real ty fixtures must fail when a required sibling root or compiler-profile strict scope is removed; runtime imports and image acceptance remain separate."
+ },
+ {
+  "id": "python-types.profile-root-packaging",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  --extra-search-path linux/scripts/06-packaging\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Real ty fixtures must fail when a required sibling root or compiler-profile strict scope is removed; runtime imports and image acceptance remain separate."
+ },
+ {
+  "id": "python-types.profile-root-tests",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  --extra-search-path linux/scripts/tests\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Real ty fixtures must fail when a required sibling root or compiler-profile strict scope is removed; runtime imports and image acceptance remain separate."
+ },
+ {
+  "id": "python-types.profile-root-gateway",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  --extra-search-path linux/llm-stack/tests/gateway_e2e\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Real ty fixtures must fail when a required sibling root or compiler-profile strict scope is removed; runtime imports and image acceptance remain separate."
+ },
+ {
+  "id": "python-types.profile-root-local-proof",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  --extra-search-path linux/scripts/local-proof)\n",
+  "replace": ")\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Real ty fixtures must fail when a required sibling root or compiler-profile strict scope is removed; runtime imports and image acceptance remain separate."
+ },
+ {
+  "id": "python-types.profile-quality-subject",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/local-proof/proof_subject.py' 'linux/scripts/local-proof/native-oci-handoff.py' \\\n",
+  "replace": "  'linux/scripts/local-proof/native-oci-handoff.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Real ty fixtures must fail when a required sibling root or compiler-profile strict scope is removed; runtime imports and image acceptance remain separate."
+ },
+ {
+  "id": "python-types.profile-annotations-subject",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/local-proof/proof_subject.py' \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Real ty fixtures must fail when a required sibling root or compiler-profile strict scope is removed; runtime imports and image acceptance remain separate."
+ },
+ {
+  "id": "python-types.profile-quality-oci",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/local-proof/proof_subject.py' 'linux/scripts/local-proof/native-oci-handoff.py' \\\n",
+  "replace": "  'linux/scripts/local-proof/proof_subject.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Real ty fixtures must fail when a required sibling root or compiler-profile strict scope is removed; runtime imports and image acceptance remain separate."
+ },
+ {
+  "id": "python-types.profile-annotations-oci",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/local-proof/native-oci-handoff.py' \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Real ty fixtures must fail when a required sibling root or compiler-profile strict scope is removed; runtime imports and image acceptance remain separate."
+ },
+ {
+  "id": "compiler-llvm-tools.direct-failure-assertion-evidence",
+  "target": "linux/scripts/local-proof/audit-failed-source-check.py",
+  "find": "        assert reports, 'Missing direct suite failure evidence'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k direct_failure_audit",
+  "why": "Failure preservation requires actual direct assertion evidence before the mutator/preflight stages; a retained failure never accepts source."
+ },
+ {
+  "id": "compiler-llvm-tools.direct-failure-no-later-preflight",
+  "target": "linux/scripts/local-proof/audit-failed-source-check.py",
+  "find": "        assert not (out / 'preflight.log').exists(), 'Direct failure cannot contain a preflight report'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k direct_failure_audit",
+  "why": "Failure preservation requires actual direct assertion evidence before the mutator/preflight stages; a retained failure never accepts source."
  }
 ]

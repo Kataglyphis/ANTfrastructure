@@ -43,6 +43,7 @@ parameter_returns_report="${report_dir}/ruff-parameters-returns-gate.txt"
 
 mapfile -d '' -t py_files < <(git ls-files -z -- '*.py')
 mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs/scripts/*.py' \
+  'linux/scripts/local-proof/proof_subject.py' 'linux/scripts/local-proof/native-oci-handoff.py' \
   'linux/ansible/scripts/*.py' 'linux/host-config/*.py' 'linux/llm-stack/gateway/*.py' \
   'linux/llm-stack/tests/*.py' \
   'linux/scripts/01-core/manifest-*.py' 'linux/scripts/01-core/registry-*.py' \
@@ -74,6 +75,8 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/extract_embedded_python.py' 'linux/webserver/scripts/*.py' 'shared/python/*.py')
 mapfile -d '' -t windows_quality_files < <(git ls-files -z -- 'windows/scripts/certificates/*.py')
 mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
+  'linux/scripts/local-proof/proof_subject.py' \
+  'linux/scripts/local-proof/native-oci-handoff.py' \
   'linux/jetson-webcam/app.py' \
   'linux/ansible/scripts/ansible_run_status.py' \
   'linux/scripts/develop_red.py' 'linux/scripts/layer-audit.py' \
@@ -198,7 +201,7 @@ windows_environment_checked_files=('windows/scripts/build/litert-wheel-smoke.py'
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#parameter_return_files[@]}" -eq 142 ] || { echo "Expected 142 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 144 ] || { echo "Expected 144 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
 jetson_dockerfile="${ROOT}/linux/Dockerfile.torch"
 [ -f "${jetson_dockerfile}" ] || { echo "Torch Dockerfile is missing for the Jetson type gate" >&2; exit 2; }
 grep -Fq 'source=linux/jetson-webcam/app.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro' "${jetson_dockerfile}" || {
@@ -240,7 +243,12 @@ for file in "${py_files[@]}"; do
 done
 
 ty=(uvx "ty@${TY_VERSION}" check --python "${quality_python}" --python-version 3.14 --output-format concise)
-search=(--extra-search-path docs/scripts --extra-search-path linux/scripts --extra-search-path shared/python)
+search=(--extra-search-path docs/scripts --extra-search-path linux/scripts --extra-search-path shared/python
+  --extra-search-path linux/scripts/03-media/runtime
+  --extra-search-path linux/scripts/06-packaging
+  --extra-search-path linux/scripts/tests
+  --extra-search-path linux/llm-stack/tests/gateway_e2e
+  --extra-search-path linux/scripts/local-proof)
 
 strict_scan() {
   local label="$1" report="$2" count="$3" rc=0

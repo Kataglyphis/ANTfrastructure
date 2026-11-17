@@ -28,6 +28,10 @@ class ToolTests(unittest.TestCase):
     def run_tool(self, path: Path, *args: str) -> subprocess.CompletedProcess:
         return subprocess.run([sys.executable, str(path), *args], env=self.env, capture_output=True, text=True, timeout=30, check=False)
 
+    def fake_tool(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.symlink_to(Path(__file__).with_name('operational_systemd_fixture.py'))
+
     def test_inventory_retains_every_canonical_file_and_machine_portability(self) -> None:
         inventory = json.loads((TOOLS / 'inventory.json').read_text())
         self.assertEqual(len({row['name'] for row in inventory['scripts']}), len(inventory['scripts']))
@@ -48,9 +52,27 @@ class ToolTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)['refusal_controls'], 27)
 
     def test_sdk_parent_receipt_refusals(self) -> None:
-        result = self.run_tool(TOOLS / 'test-native-oci-cross-qualification.py')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout)['refusal_controls'], 9)
+        for extra in [(), ('--current-profile',)]:
+            with self.subTest(profile=extra):
+                result = self.run_tool(TOOLS / 'test-native-oci-cross-qualification.py', *extra)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout)['refusal_controls'], 9)
+
+    def test_current_compiler_profile_requires_explicit_complete_scope(self) -> None:
+        subject = runpy.run_path(str(TOOLS / 'proof_subject.py'))['image_subject']
+        base = {'local_image':'ant-local/webgpu-fixture:cross-compiler-amd64', 'unit':'fixture.service'}
+        self.assertFalse(subject(base)['cross_required'])
+        self.assertTrue(subject(dict(base, launcher_contract=2))['cross_required'])
+        current = dict(base, source_proofs={})
+        for profile in ['', 'native-only', 'compiler-cross-cpu-unknown']:
+            for candidate in [base, current]:
+                with self.subTest(profile=profile, current=candidate is current), self.assertRaisesRegex(AssertionError, 'profile'):
+                    subject(dict(candidate, image_qualification_profile=profile))
+        with self.assertRaisesRegex(AssertionError, 'complete compiler CPU profile'):
+            subject(dict(current, image_qualification_profile=None))
+        with self.assertRaisesRegex(AssertionError, 'complete compiler CPU profile'):
+            subject(current)
+        self.assertTrue(subject(dict(current, image_qualification_profile='compiler-cross-cpu'))['cross_required'])
 
     def test_sdk_image_profile_refusals(self) -> None:
         result = self.run_tool(TOOLS / 'test-sdk-image-profile.py', '--source', str(ROOT))
@@ -76,8 +98,7 @@ class ToolTests(unittest.TestCase):
         original.joinpath('invocation.json').write_text(json.dumps({'input_sha256':{'plain-load.py':hashlib.sha256((TOOLS / 'probe-soname-load.py').read_bytes()).hexdigest()}}))
         for name in ['git','nerdctl']:
             binary = self.work / ('bin/git' if name == 'git' else '.local/bin/nerdctl')
-            binary.parent.mkdir(parents=True,exist_ok=True)
-            binary.symlink_to(Path(__file__).with_name('operational_systemd_fixture.py'))
+            self.fake_tool(binary)
         self.env.update(OPERATIONAL_GIT_REVISION='synthetic-fixture', OPERATIONAL_IMAGE_FIXTURE=str(self.work / 'image.json'),
                         OPERATIONAL_UNIT_FIXTURE=str(self.work / 'units.json'))
         return data
@@ -85,10 +106,15 @@ class ToolTests(unittest.TestCase):
     def test_sdk_image_profile_launch_transport(self) -> None:
         data = self.sdk_transport_fixture()
         terminal = {'LoadState':'loaded','ActiveState':'active','SubState':'exited','MainPID':'0','ExecMainStatus':'0','Result':'success'}
-        for sdk in [False,True]:
-            with self.subTest(sdk=sdk):
-                kind = 'sdk' if sdk else 'compiler'
-                unit = 'webgpu-' + kind + '-image-qualification-fixture.service'
+        for kind in ['compiler','sdk','current']:
+            sdk = kind == 'sdk'
+            with self.subTest(kind=kind):
+                profile = copy.deepcopy(data['plan'])
+                if kind == 'current':
+                    profile.pop('launcher_contract')
+                    profile.update(source_proofs={}, image_qualification_profile='compiler-cross-cpu')
+                (self.work / 'plan.json').write_text(json.dumps(profile))
+                unit = 'webgpu-' + ('sdk' if sdk else 'compiler') + '-image-qualification-' + kind + '.service'
                 units = {data['plan']['unit']:terminal, data['invocation']['unit']:terminal, unit:{'LoadState':'not-found'}}
                 (self.work / 'units.json').write_text(json.dumps(units))
                 image = data['invocation']['image'] if sdk else data['plan']['local_image']
@@ -119,8 +145,45 @@ class ToolTests(unittest.TestCase):
         binary.mkdir()
         for name in ['systemctl', 'systemd-run']:
             path = binary / name
-            path.symlink_to(Path(__file__).with_name('operational_systemd_fixture.py'))
+            self.fake_tool(path)
         self.env['PATH'] = str(binary) + os.pathsep + os.environ['PATH']
+
+    def test_direct_failure_audit_preserves_only_observed_assertion_failures(self) -> None:
+        self.fake_systemd()
+        self.fake_tool(self.work / '.local/bin/nerdctl')
+        unit = 'source-failed-fixture.service'
+        terminal = {'Id':unit, 'LoadState':'loaded', 'ActiveState':'failed', 'SubState':'failed',
+                    'MainPID':'0', 'ExecMainStatus':'23', 'Result':'exit-code', 'ExecMainExitTimestampMonotonic':'1'}
+        (self.work / 'units.json').write_text(json.dumps({unit:terminal}))
+        (self.work / 'containers.jsonl').write_text('')
+        self.env.update(OPERATIONAL_UNIT_FIXTURE=str(self.work / 'units.json'),
+                        OPERATIONAL_PS_FIXTURE=str(self.work / 'containers.jsonl'))
+        for name, marker, preflight in [('missing',False,False), ('late',True,True), ('direct',True,False)]:
+            with self.subTest(case=name):
+                out = self.work / name
+                out.mkdir()
+                (out / 'invocation.json').write_text(json.dumps({'unit':unit, 'source':str(ROOT),
+                    'owner_label':'org.kataglyphis.migraphx-source', 'run_id':'fixture-run'}))
+                (out / 'cleanup.json').write_text(json.dumps({'exit_status':0, 'run_id':'fixture-run'}))
+                (out / 'container.cid').write_text('a' * 64)
+                (out / 'selected-mutations.json').write_text('[{"id":"not-started"}]')
+                (out / 'python-type-tests.log').write_text('1/2 assertion(s) FAILED\n' if marker else 'passed\n')
+                if preflight:
+                    (out / 'preflight.log').write_text('a later phase ran\n')
+                result = self.run_tool(TOOLS / 'audit-failed-source-check.py', '--directory', str(out))
+                if name != 'direct':
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('Direct failure cannot' if preflight else 'Missing direct suite', result.stderr)
+                    self.assertFalse((out / 'failure-proof.json').exists())
+                    continue
+                self.assertEqual(result.returncode, 0, result.stderr)
+                proof = json.loads((out / 'failure-proof-stopped.json').read_text())
+                self.assertEqual(proof['raw_status'], 23)
+                self.assertEqual(proof['actual_mutations_passed'], 0)
+                self.assertEqual(proof['direct_failed_logs'], ['python-type-tests.log'])
+                self.assertFalse(proof['source_accepted'])
+                self.assertFalse(proof['mutation_execution_started'])
+                self.assertFalse((out / 'mutations.log').exists())
 
     def test_cleanup_requires_existing_owner_authorization_before_launch(self) -> None:
         self.fake_systemd()

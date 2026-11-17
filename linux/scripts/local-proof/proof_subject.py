@@ -39,10 +39,18 @@ def validate_sdk(plan: Json, invocation: Json, parent: Json, full: Json) -> None
     assert '--push' not in command and '--gates-only' not in command, 'SDK profile requires an actual local build'
 
 
+def compiler_cross_required(plan: Json) -> bool:
+    profile = plan.get('image_qualification_profile')
+    assert profile in (None, 'compiler-cross-cpu'), 'Unknown image qualification profile'
+    if 'source_proofs' in plan:
+        assert profile == 'compiler-cross-cpu', 'Current source plans require the complete compiler CPU profile'
+    return profile == 'compiler-cross-cpu' or plan.get('launcher_contract') == 2
+
+
 def image_subject(plan: Json, invocation: Json | None = None, parent: Json | None = None, full: Json | None = None) -> Json:
     value = {'kind': 'compiler', 'image': plan['local_image'], 'producer_unit': plan['unit'],
              'native_prefix': '/opt/llvm-target-amd64', 'cpu_profile': 'compiler',
-             'cross_required': plan.get('launcher_contract') == 2,
+             'cross_required': compiler_cross_required(plan),
              'unit_prefix': 'webgpu-compiler-image-qualification-',
              'qualification_status': 'passed-fresh-image-baked-compiler-native-tool-and-loader-selection-only'}
     if invocation is not None:

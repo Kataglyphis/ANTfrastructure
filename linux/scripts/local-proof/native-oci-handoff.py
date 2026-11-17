@@ -65,7 +65,7 @@ def qualification(path: Path, plan: Json, sdk_invocation: Path | None = None) ->
     assert proof["native_facts"]["native_tool_count"] == 157
     if subject['kind'] == 'sdk-amd64':
         sdk_cpu_qualification(proof, subject)
-    elif plan.get('launcher_contract') == 2:
+    elif subject['cross_required']:
         assert proof['cross_wrapper_checks_required'] and proof['cross_wrapper_CPU_checks_passed']
         assert set(proof['cross_wrapper_modes']) == {'default','login'}
         for mode,result in proof['cross_wrapper_modes'].items():
