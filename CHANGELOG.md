@@ -15,6 +15,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-17 — the docs lock moves soupsieve 3.0.4 to 4.1.1 (GHSA, Dependabot alert 10)
+
+- Soup Sieve before 4.0.0 takes polynomial time in the descendant combinator. `uv lock --upgrade-package soupsieve`
+  in `docs/` moves it alone; the site builds with it.
+
 ## 2026-11-17 — the sccache module docs name the image's fixed build
 
 - `windows-container-build-performance.md` § *sccache on a C++23 modules build* and `windows-build-resources.md`
