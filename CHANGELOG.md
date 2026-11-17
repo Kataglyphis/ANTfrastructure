@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-17 — `build-docs.yml` takes the publish job's limit (`publish-timeout-minutes`)
+
+- The publish job's `timeout-minutes` comes from `publish-timeout-minutes` (default 30, unchanged). An upload the
+  limit cuts off saves no sync state, so every later run uploads the same file again: BeschleunigerBallett's site
+  has not published since 2026-11-15, when its WebGPU demo gained a 61 MB scene that the server takes at about
+  74 kB/s (runs 43956352416, 43987817445 stopped on it at 30 min).
+
 ## 2026-11-16 — a source tree beside a Python package gets its own coverage floor (CON250, third part)
 
 - `ci_tests.sh` reads `PYTHON_COVERAGE_EXTRA` (`coverage-extra` on `python-ci-linux.yml`, comma-separated `DIR=MIN`):

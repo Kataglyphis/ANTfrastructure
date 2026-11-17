@@ -67,6 +67,12 @@ on:
         description: Also publish a workflow_dispatch run on develop or main.
         type: boolean
         default: false
+      publish-timeout-minutes:
+        description: >-
+          The publish job's limit. A site whose new files take longer at the server's rate never
+          lands: a cut-off upload saves no sync state, so the next run starts over.
+        type: number
+        default: 30
       server-dir:
         description: >-
           Remote directory. Empty is the FTP account's login directory, which is every family
@@ -205,7 +211,7 @@ jobs:
       && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
       && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish-on-dispatch))
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ inputs.publish-timeout-minutes }}
     # One upload per repository and site at a time, never cancelled half-way: the library deletes what it has not uploaded yet.
     concurrency:
       group: docs-publish-${{ inputs.site-name }}

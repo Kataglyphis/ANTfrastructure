@@ -70,6 +70,7 @@ commit changes only docs. The hub's own caller is `.github/workflows/docs.yml`.
 | `htaccess` | `true` | Add the hub's `.htaccess` and 404 page; `false` for a site that ships its own |
 | `publish` | `true` | `false` builds and checks only, and needs no secrets |
 | `publish-on-dispatch` | `false` | Also publish a `workflow_dispatch` run on `develop` or `main` |
+| `publish-timeout-minutes` | `30` | The publish job's limit. An upload it cuts off saves no sync state, so a file too large to finish in time is retried from scratch on every run: BeschleunigerBallett's 61 MB demo scene at about 74 kB/s never landed under 30 |
 | `server-dir` | `''` | Remote directory; empty is the FTP login directory, every family site's docroot |
 | `submodules` | `recursive` | `actions/checkout` submodules. Pass a value as an expression (`${{ 'true' }}`): actionlint reads a bare `'true'` as a bool |
 | `container-args` | `''` | Extra `docker run` arguments for the build, verbatim: never untrusted text |
