@@ -4,7 +4,7 @@
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -DisableNameChecking
 
-# A mounted script's transitive imports must all be mounted, and leaf stages must keep one consumer; BuildKit checks neither.
+# Static closure and source-view checks cannot prove mounted-file readability; keep a separate engine probe.
 
 Describe 'BuildKit module closure' {
 
@@ -98,6 +98,23 @@ Describe 'BuildKit module closure' {
         $report.Checked | Should -BeGreaterThan 5 -Because 'the RUN/mount scan found almost nothing — the Dockerfile layout moved and this gate is checking air'
         $report.Missing | Should -BeNullOrEmpty -Because ("a module imported at RUN time but not mounted throws 'Required module not found' " +
             "inside the container, typically ~40 min into a compile, and never on a dev box where the whole modules dir is on disk:`n  " + ($report.Missing -join "`n  "))
+    }
+
+    It 'gives every copied module closure a final readable view layer' {
+        $checked = 0
+        foreach ($name in @('Dockerfile.media-builder', 'Dockerfile.media-merge-builder', 'Dockerfile.rocm-migraphx', 'Dockerfile.rocm-llama')) {
+            $docker = Get-TestDockerfileStagesFromPath -Path (Join-Path $script:repoRoot ('windows/' + $name)) `
+                -JoinContinuations -IgnoreComments -TrimLines -StrictFromHeader
+            foreach ($stage in $docker.Stages) {
+                if (-not @($stage.Lines | Where-Object { $_ -match '^COPY .*bkmods' }).Count) { continue }
+                @($stage.Lines | Where-Object { $_ -ceq 'RUN cmd /c exit 0' }).Count | Should -Be 1 `
+                    -Because "$name/$($stage.Name) needs its own readable bind-mount view"
+                $stage.Lines[-1] | Should -BeExactly 'RUN cmd /c exit 0' `
+                    -Because 'every module COPY must precede the view layer'
+                $checked++
+            }
+        }
+        $checked | Should -Be 5 -Because 'shared, TVM-private, merge and both ROCm module closures must be checked'
     }
 
     It 'keeps the TVM leaf module OUT of the shared buildmods closure' {

@@ -47,6 +47,18 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
   cache-mount counts. Existing-host success and a cleanup exit zero are not this
   acceptance. See [current scope and new-host procedure](docs/windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts).
 
+## Windows copied-module bind mounts
+
+- [ ] Verify the module source-view correction in complete Windows lanes and
+  after normal regular-cache maintenance. At private `b10ebe57`, four CPU
+  requests ended raw `[1,1,1,1]`: two storage stops before merge and two
+  required-module import failures before compilation. The latter recurred
+  with 99.4 GiB free after cleanup had preserved 22 tags and all six current
+  cache IDs. Source now gives all five copied module stages their own final
+  view layer. Structural/mutation checks and isolated reads do not complete
+  producer, hardware, hosted CI or publication acceptance. Keep CON228 open
+  and retain the historical source-specific evidence. See the [diagnosis](docs/failure-modes.md#a-bind-mount-of-a-branch-image-lists-its-files-but-opens-none).
+
 ## Next image build — GPU consumer findings
 
 **Windows patch drift, 2026-11-16:** the complete local gate at private `3e83d0cc`

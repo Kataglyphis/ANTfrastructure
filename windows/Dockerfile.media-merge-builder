@@ -45,6 +45,8 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsRustToolchain.Common.psm1 `
      windows\scripts\modules\WindowsPythonWheel.Common.psm1 `
      C:\bkmods\
+# The view keeps copied module files readable through Windows bind mounts.
+RUN cmd /c exit 0
 
 # No script COPYs in the fan-in: mounting keeps these layers out of every script's cache key.
 FROM ${BASE_IMAGE} AS merge-fanin

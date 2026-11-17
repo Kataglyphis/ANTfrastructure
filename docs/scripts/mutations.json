@@ -32029,7 +32029,7 @@
   "target": "windows/Dockerfile.media-builder",
   "find": "$env:UV_CACHE_DIR = 'C:\\lw\\ty-uv-cache'",
   "replace": "$env:UV_CACHE_DIR = 'C:\\bzl-repo-cache\\ty-uv-cache'",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.LitertUvCache.Tests.ps1 -ResultFile logs/code-quality/litert-ty-uv-cache-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.LitertUvCache.Tests.ps1 -ResultFile logs/code-quality/litert-ty-uv-cache-mutation.json",
   "why": "uv's renames into a cache mount an earlier RUN filled fail with os error 3, which stopped the amd64 chain's LiteRT stage"
  },
  {
@@ -39183,5 +39183,61 @@
   "replace": "https://github.com/pytorch/vision.git",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Patches.ApplyClean.Tests.ps1 -ResultFile logs/code-quality/patch-drift-mutation.json",
   "why": "torch/utils/cpp_extension.py belongs to PyTorch even though torchvision consumes this host compiler adapter"
+ },
+ {
+  "id": "lib.windows-module-view-shared",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "     C:\\bkmods\\\n# The view keeps copied module files readable through Windows bind mounts.\nRUN cmd /c exit 0",
+  "replace": "     C:\\bkmods\\\n# The view keeps copied module files readable through Windows bind mounts.",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.ModuleClosure.Tests.ps1 -ResultFile logs/code-quality/module-view-mutation.json",
+  "why": "A copied shared module closure must keep its own readable source view before a long compile can import it."
+ },
+ {
+  "id": "lib.windows-module-view-tvm",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "COPY windows\\scripts\\modules\\WindowsTvm.Common.psm1 C:\\bkmods\\\n# The private COPY needs its own readable view after the shared closure.\nRUN cmd /c exit 0",
+  "replace": "COPY windows\\scripts\\modules\\WindowsTvm.Common.psm1 C:\\bkmods\\\n# The private COPY needs its own readable view after the shared closure.",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.ModuleClosure.Tests.ps1 -ResultFile logs/code-quality/module-view-mutation.json",
+  "why": "A copied tvm module closure must keep its own readable source view before a long compile can import it."
+ },
+ {
+  "id": "lib.windows-module-view-merge",
+  "target": "windows/Dockerfile.media-merge-builder",
+  "find": "     C:\\bkmods\\\n# The view keeps copied module files readable through Windows bind mounts.\nRUN cmd /c exit 0",
+  "replace": "     C:\\bkmods\\\n# The view keeps copied module files readable through Windows bind mounts.",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.ModuleClosure.Tests.ps1 -ResultFile logs/code-quality/module-view-mutation.json",
+  "why": "A copied merge module closure must keep its own readable source view before a long compile can import it."
+ },
+ {
+  "id": "lib.windows-module-view-migraphx",
+  "target": "windows/Dockerfile.rocm-migraphx",
+  "find": "     C:\\bkmods\\\n# The view keeps copied module files readable through Windows bind mounts.\nRUN cmd /c exit 0",
+  "replace": "     C:\\bkmods\\\n# The view keeps copied module files readable through Windows bind mounts.",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.ModuleClosure.Tests.ps1 -ResultFile logs/code-quality/module-view-mutation.json",
+  "why": "A copied migraphx module closure must keep its own readable source view before a long compile can import it."
+ },
+ {
+  "id": "lib.windows-module-view-llama",
+  "target": "windows/Dockerfile.rocm-llama",
+  "find": "     C:\\bkmods\\\n# The view keeps copied module files readable through Windows bind mounts.\nRUN cmd /c exit 0",
+  "replace": "     C:\\bkmods\\\n# The view keeps copied module files readable through Windows bind mounts.",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.ModuleClosure.Tests.ps1 -ResultFile logs/code-quality/module-view-mutation.json",
+  "why": "A copied llama module closure must keep its own readable source view before a long compile can import it."
+ },
+ {
+  "id": "lib.windows-module-view-copy-order",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "COPY windows\\scripts\\modules\\WindowsTvm.Common.psm1 C:\\bkmods\\\n# The private COPY needs its own readable view after the shared closure.\nRUN cmd /c exit 0",
+  "replace": "RUN cmd /c exit 0\nCOPY windows\\scripts\\modules\\WindowsTvm.Common.psm1 C:\\bkmods\\\n# The private COPY needs its own readable view after the shared closure.",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.ModuleClosure.Tests.ps1 -ResultFile logs/code-quality/module-view-mutation.json",
+  "why": "A view before the private COPY leaves a new unmaterialized top layer and must fail the order guard."
+ },
+ {
+  "id": "lib.windows-module-view-scan-coverage",
+  "target": "windows/scripts/tests/BuildKit.ModuleClosure.Tests.ps1",
+  "find": "'Dockerfile.rocm-migraphx', 'Dockerfile.rocm-llama'",
+  "replace": "'Dockerfile.rocm-migraphx'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.ModuleClosure.Tests.ps1 -ResultFile logs/code-quality/module-view-mutation.json",
+  "why": "Dropping a copied ROCm closure from the scan must fail the complete five-stage accounting."
  }
 ]

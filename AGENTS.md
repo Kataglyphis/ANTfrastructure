@@ -659,6 +659,10 @@ evidence no longer matches the code is a bug in the rule.
 ROCm installers called from flat BuildKit mounts receive `-ModuleRoot` explicitly; direct
 checkout calls default to `windows/scripts`. See [`windows-rocm.md`](docs/windows-rocm.md).
 
+Copied Windows module stages keep a no-op `RUN` after their last `COPY`, including
+the TVM-private and ROCm closures. Keep these source views outside delivered image
+ancestry and retain narrow per-file closures. See the [readable module view rule](docs/windows-build-invariants.md#copied-module-stages-need-a-readable-view).
+
 The three most often regressed:
 
 - **pwsh 7 everywhere**: no `powershell.exe`, no `cmd` SHELL directives.

@@ -16,6 +16,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-17 — keep copied Windows module closures readable
+
+- End shared media, TVM-private, merge and ROCm module-copy stages with a
+  readable source view, preserving narrow closures and product image parents.
+- Guard all five stages, COPY/view order and scan coverage with regression
+  checks and executable mutations. Full image and device acceptance remain
+  separate from structural checks and module-read probes.
+- Invoke the existing LiteRT mutation runner directly on Windows; its report
+  directory is created by the shared runner, without a POSIX shell prefix.
+
 ## 2026-11-16 — include the PyTorch adapter in Windows patch drift checks
 
 - Check the torchvision host-cache patch against its actual PyTorch upstream at

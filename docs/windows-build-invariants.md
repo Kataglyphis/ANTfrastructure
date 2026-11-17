@@ -843,6 +843,23 @@ in Dockerfile.media-builder / .media-merge-builder). Verify a from-stage
 mount with a `Test-Path` assertion through it, NOT with `Get-ChildItem` — an
 empty mount lists cleanly and exits 0, so a bare listing proves nothing.
 
+### Copied module stages need a readable view
+
+End every stage that copies a narrow module closure into `C:\bkmods` with
+`RUN cmd /c exit 0`, after its last `COPY`. This includes shared media,
+TVM-private, merge, MIGraphX and llama module stages. Their consumers bind
+the view; product stages retain their existing parents, so these intermediate
+layers do not enter delivered image ancestry. Do not widen a closure or replace
+the workaround with `--no-cache`, a compiler-cache reset or a daemon restart.
+
+On 2026-11-17 the seven cached modules were listed but could not be opened
+before Hailo and ONNX compilation. The failure recurred after a successful
+regular-only cleanup that retained all image tags and compiler-cache IDs.
+An empty source-view layer made the same module bytes readable; the kernel
+cause and a causal link to pruning remain unproven. The structural suite checks
+all five module stages and the final instruction order; only an engine probe
+and subsequent real builds establish mounted-file readability and image acceptance.
+
 ### A whole-directory `modules` mount puts EVERY module in the cache key
 
 **Never bind-mount `windows/scripts/modules` as a DIRECTORY — mount the

@@ -45,6 +45,8 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsTargetArch.Common.psm1 `
      windows\scripts\modules\WindowsPythonWheel.Common.psm1 `
      C:\bkmods\
+# The view keeps copied module files readable through Windows bind mounts.
+RUN cmd /c exit 0
 
 # Owner 2026-10-21: the ORT build compiles against the TensorRT SDK through a mount, so no layer the image inherits holds it.
 FROM ${TENSORRT_SDK_IMAGE} AS trt-sdk
@@ -55,6 +57,8 @@ RUN if (-not (Test-Path C:\tensorrt)) { $null = New-Item -ItemType Directory -Pa
 # TVM-private closure, so a TVM edit never re-keys ONNX; mount it from media-tvm-built only (ModuleClosure tests enforce it).
 FROM buildmods AS tvmmods
 COPY windows\scripts\modules\WindowsTvm.Common.psm1 C:\bkmods\
+# The private COPY needs its own readable view after the shared closure.
+RUN cmd /c exit 0
 
 # media-litert version env
 FROM common AS media-litert-env

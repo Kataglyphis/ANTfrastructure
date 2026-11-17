@@ -17,6 +17,8 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsMigraphx.Common.psm1 `
      windows\scripts\modules\WindowsContainerImage.Common.psm1 `
      C:\bkmods\
+# The view keeps copied module files readable through Windows bind mounts.
+RUN cmd /c exit 0
 
 FROM ${BASE_IMAGE} AS built
 

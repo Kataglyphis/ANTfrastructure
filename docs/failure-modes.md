@@ -2114,6 +2114,17 @@ Do not delete `hcs*` directories or snapshot-store files by hand.
 
 **Fix.** The merge binds `media-core-view` and `media-tvm-view`, two stages that add `RUN cmd /c exit 0` on top of each branch image (`Dockerfile.media-merge-builder`). The `COPY --from=` steps keep reading the images themselves, which works. The view layer never reaches the image, since only the merged files are kept.
 
+The same symptom was observed for a seven-file `C:\bkmods` COPY closure on
+2026-11-17: `WindowsSourceBuild.Common.psm1` was listed but not loadable before
+Hailo and ONNX compilation, including after a successful cache-only cleanup.
+A forced-fresh diagnostic COPY briefly restored reads but replaced two mutable
+cache generations; it was not a durable fix. Use the [module source-view
+invariant](windows-build-invariants.md#copied-module-stages-need-a-readable-view):
+each shared, TVM-private, merge and ROCm module COPY stage ends with its own
+empty `RUN`. Keep the final COPY before that view, keep compiler-cache mounts
+and image tags intact, and validate actual reads separately from a directory
+listing or a cached probe. Do not infer a kernel cause from the cleanup timing.
+
 ---
 
 ## Windows: container networking
