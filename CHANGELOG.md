@@ -27,6 +27,13 @@
   `0.19.0+965c019.pr2809`, which carries it, and `Test-SccacheModuleSafe` already admits it; the cache-bypass
   advice now applies only to an older sccache.
 
+## 2026-11-17 — the raw-pin test passes on a host with bash 5.2 (CON278)
+
+- `raw_pin_reader_tests.py` drops bash 5.2's `pop_var_context: head of shell_variables not a function context`
+  line from the stderr it compares: 5.2 prints it when errexit unwinds a file sourced inside a function, 5.3 does
+  not. On a Debian dev host the test failed 12 of 3081 assertions with unchanged code, so the commit and push hooks'
+  `lib.raw-pin-rust-*` recipes read as vacuous and stopped every change to `install-rust.sh`.
+
 ## 2026-11-17 — mingw and the windows-gnu Rust target in the amd64 image (CON239, in source)
 
 - The package stage asks for `gcc-mingw-w64-x86-64` by name on amd64, and `install-rust.sh` adds the

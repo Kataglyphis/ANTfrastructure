@@ -107,6 +107,14 @@ printf 'RESULT:%s\n' "$status"
 '''
 
 
+# bash 5.2 prints this when errexit unwinds a file sourced inside a function; 5.3 does not (CON278).
+BASH52_UNWIND_NOISE = ': pop_var_context: head of shell_variables not a function context'
+
+
+def without_bash52_noise(stderr: str) -> str:
+    return ''.join(line for line in stderr.splitlines(keepends=True) if BASH52_UNWIND_NOISE not in line)
+
+
 def capture(row: Mapping[str, Any], snippets: Mapping[str, str], owner: pathlib.Path) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix='ant raw pin [] ') as directory:
         work = pathlib.Path(directory)
@@ -117,7 +125,7 @@ def capture(row: Mapping[str, Any], snippets: Mapping[str, str], owner: pathlib.
         command.append(str(pin))
         process = subprocess.run(command, cwd=work, capture_output=True, text=True, timeout=5, check=False)
         return {'rc': process.returncode, 'out': process.stdout.replace(directory, '[WORK]'),
-                'err': process.stderr.replace(directory, '[WORK]'), 'trace': (work / 'trace').read_text().replace(directory, '[WORK]'),
+                'err': without_bash52_noise(process.stderr).replace(directory, '[WORK]'), 'trace': (work / 'trace').read_text().replace(directory, '[WORK]'),
                 'state': (work / 'state').read_text()}
 
 
