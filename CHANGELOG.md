@@ -16,7 +16,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
-## 2026-11-17 — keep copied Windows module closures readable
+## 2026-11-17 — preserve readable module closures and resume completed media builds
+
+- Add explicit `media-merge` selection after completed media branches, checking
+  all three reused parents before the normal merge, without replaying branch
+  builds or changing the default pipeline.
+- Keep compiler-cache and ROCm stale-parent checks armed for that selection.
+  Functional fixtures cover partial fan-in, failed parents and ordinary builds;
+  executable mutations prove the new checks without claiming image or device
+  acceptance.
 
 - End shared media, TVM-private, merge and ROCm module-copy stages with a
   readable source view, preserving narrow closures and product image parents.

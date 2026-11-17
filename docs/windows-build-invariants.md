@@ -31,6 +31,13 @@ top level before that use, even when a dot-sourced builder initializes the same
 variable. `ScriptAssetRoot.Parity.Tests.ps1` checks local definitions and canonical
 source form; it does not prove successful source builds or compiler-cache hits.
 
+An explicit `media-merge` selection reuses all three completed branch images.
+Keep their publish gates before the merge, its disk and retry policy, and the
+compiler-cache preflight. ROCm closure checks must treat this selection as media
+so it cannot inherit stale MIGraphX/Llama/Torch parents. A partial branch list
+refuses even a merge-only request. Ordinary `media` retains the full fan-out;
+reused source/digest provenance and complete acceptance remain separate evidence.
+
 ## Contents
 
 **Shell and PowerShell discipline**

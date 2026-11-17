@@ -242,7 +242,7 @@ $BuildArg = @('X=1')
     }
 
     It 'refuses every post-merge stage when the merge is skipped (stale media, backlog #39)' {
-        Assert-Match "\`$downstream = @\('migraphx', 'llama', 'torch', 'final'\)" $src 'fail-closed list'
+        Assert-Match "\`$downstream = @\('media-merge', 'migraphx', 'llama', 'torch', 'final'\)" $src 'fail-closed list'
     }
 
     It 'keeps the rocm final tag and the lane''s own torch as the final base' {
@@ -272,5 +272,170 @@ $BuildArg = @('X=1')
         Assert-Equal 40 (Get-StageDiskFloorGb -Label 'Dockerfile.rocm-migraphx:built') 'the sdk rule is anchored'
         Assert-Equal 60 (Get-StageDiskFloorGb -Label 'Dockerfile.nvidia') 'nvidia sdk unchanged'
         Assert-Equal 40 (Get-StageDiskFloorGb -Label 'bk-cpu-alias') 'cpu alias unchanged'
+    }
+}
+
+# These fakes exercise driver selection and failure propagation, not image contents or device inference.
+Describe 'explicit media-merge continuation' {
+    $mediaPrelude = @'
+$Stages = $State.Stages
+$MediaBranches = $State.Branches
+$ConcurrentAux = $false
+$MediaMemoryGb = 64
+$Variant = $State.Variant
+$isNvidia = $Variant -eq 'nvidia'
+$NoRocmSpikes = $false
+$versions = @{}
+$archArgs = @{ WINDOWS_TARGET_ARCH = $State.Arch }
+$repoRoot = 'fixture-root'
+$script:MergeRequiredBranches = @('media-core', 'media-litert', 'media-tvm')
+function Get-MediaBranchVersionArg { param($Branch, $VersionTable) return @{ FIXTURE_BRANCH = $Branch } }
+function Get-Ver { param($Key) return "version-$Key" }
+function Get-MediaMergeVersionArg { param($VersionTable) return @{ GSTREAMER_VERSION = 'gst-pin' } }
+function Get-BkRocmStageArg {
+    param($Variant, $Stage, $NoRocmSpikes, $VersionTable)
+    if ($Variant -eq 'rocm') { return @{ FIXTURE_VARIANT = $Variant } }
+    return @{}
+}
+function Get-BkLitertTyVersion { param($RepoRoot) return 'ty-pin' }
+function Get-BkToolPinArg {
+    param($RepoRoot, [string[]]$Name)
+    $picked = @{}
+    foreach ($key in $Name) { $picked[$key] = "pin-$key" }
+    return $picked
+}
+function Get-BkTag { param($Name) return "fixture/$Name" }
+function Invoke-BkPublishGate {
+    param($Image)
+    $State.Gates.Add($Image)
+    $State.Trace.Add("gate:$Image")
+    if ($Image -eq $State.FailGate) { throw 'branch publish gate refused' }
+}
+function Invoke-BkStage {
+    param($Dockerfile, $Target, $Tag, $BuildArgs, [int]$MaxAttempts = 3)
+    $State.Trace.Add("solve:$Dockerfile")
+    $State.Solves.Add([pscustomobject]@{ Dockerfile=$Dockerfile; Target=$Target; Tag=$Tag; BuildArgs=$BuildArgs; MaxAttempts=$MaxAttempts })
+}
+'@
+
+    function New-DriverMediaFixture {
+        param([string[]]$Stages, [string[]]$Branches = @('media-core', 'media-litert', 'media-tvm'),
+            [string]$Variant = '', [string]$Arch = 'amd64')
+        return [pscustomobject]@{
+            Stages=$Stages; Branches=$Branches; Variant=$Variant; Arch=$Arch; FailGate=''
+            Gates=[Collections.Generic.List[string]]::new(); Trace=[Collections.Generic.List[string]]::new()
+            Solves=[Collections.Generic.List[object]]::new()
+        }
+    }
+
+    function Invoke-DriverMediaFixture {
+        param($State, [string]$Find = '', [AllowEmptyString()][string]$Replace = '')
+        Invoke-WithFunctionModule -ScriptPath 'windows/Build-Buildkit.ps1' `
+            -FunctionName @('Get-BkRequiredStages', 'Invoke-BkMediaBranches', 'Invoke-BkMediaMergeStage', 'Invoke-BkMediaStages') `
+            -Prelude $mediaPrelude -FixtureState $State -Find $Find -Replace $Replace -Body {
+                param($State)
+                Invoke-MutBkMediaStages
+            }
+    }
+
+    It 'offers media-merge explicitly without adding it to the default stage list' {
+        $ast = Get-TestScriptAst -ScriptPath (Join-Path (Get-RepoRoot) 'windows/Build-Buildkit.ps1')
+        $parameter = @($ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Stages' })
+        Assert-Equal 1 $parameter.Count
+        $validation = @($parameter[0].Attributes | Where-Object { $_.TypeName.Name -eq 'ValidateSet' })
+        Assert-Equal 1 $validation.Count
+        Assert-True (@($validation[0].PositionalArguments | ForEach-Object Value) -contains 'media-merge')
+        Assert-False ($parameter[0].DefaultValue.Extent.Text -match "'media-merge'")
+        Assert-TestAstCommand -Command @(Get-TestAstCommands -Ast $ast -Name 'Assert-SccacheEndpoint') `
+            -Text 'Assert-SccacheEndpoint -Stages (Get-BkRequiredStages -StageList $Stages) -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache' -Unconditional
+        Assert-TestAstCommand -Command @(Get-TestAstCommands -Ast $ast -Name 'Invoke-BkMediaStages') -Text 'Invoke-BkMediaStages' -Unconditional
+    }
+
+    It 'keeps all seven ordinary media solves and one merge when media is selected' {
+        foreach ($selection in @(@{ Stages=@('media') }, @{ Stages=@('media', 'media-merge') })) {
+            $state = New-DriverMediaFixture -Stages $selection.Stages
+            Invoke-DriverMediaFixture -State $state
+            Assert-Equal 8 $state.Solves.Count
+            Assert-Equal 0 $state.Gates.Count 'freshly built branches need no extra parent probes'
+            Assert-Equal 'media-core-built-onnx,media-core-built-ffmpeg,media-core-built-opencv,media-core-built-hailo,media-core-built,media-litert-built,media-tvm-built,built' `
+                (($state.Solves | ForEach-Object Target) -join ',')
+        }
+    }
+
+    It 'reuses three gated branches and forwards architecture and merge pins' {
+        foreach ($case in @(@{ V=''; A='amd64' }, @{ V='nvidia'; A='amd64' }, @{ V='rocm'; A='amd64' }, @{ V=''; A='arm64' }, @{ V='nvidia'; A='arm64' })) {
+            $state = New-DriverMediaFixture -Stages @('media-merge', 'final') -Variant $case.V -Arch $case.A
+            Invoke-DriverMediaFixture -State $state
+            Assert-Equal 1 $state.Solves.Count 'completed branches are not rebuilt'
+            Assert-Equal 'fixture/windows-media-core,fixture/windows-media-litert,fixture/windows-media-tvm' ($state.Gates -join ',')
+            Assert-Equal 'gate:fixture/windows-media-core,gate:fixture/windows-media-litert,gate:fixture/windows-media-tvm,solve:windows/Dockerfile.media-merge-builder' ($state.Trace -join ',')
+            $solve = $state.Solves[0]
+            Assert-Equal 'windows/Dockerfile.media-merge-builder' $solve.Dockerfile
+            Assert-Equal 'built' $solve.Target
+            Assert-Equal 5 $solve.MaxAttempts
+            Assert-Equal $case.A $solve.BuildArgs.WINDOWS_TARGET_ARCH
+            Assert-Equal 'gst-pin' $solve.BuildArgs.GSTREAMER_VERSION
+            Assert-Equal 'pin-LIBVPX_MESON_SHA256' $solve.BuildArgs.LIBVPX_MESON_SHA256
+            Assert-Equal 'fixture/windows-toolchain' $solve.BuildArgs.BASE_IMAGE
+            Assert-Equal 'fixture/windows-media-core' $solve.BuildArgs.CORE_IMAGE
+            Assert-Equal 'fixture/windows-media-litert' $solve.BuildArgs.LITERT_IMAGE
+            Assert-Equal 'fixture/windows-media-tvm' $solve.BuildArgs.TVM_IMAGE
+        }
+    }
+
+    It 'refuses an incomplete fan-in even when media-merge is the only requested stage' {
+        $state = New-DriverMediaFixture -Stages @('media-merge') -Branches @('media-core', 'media-litert')
+        Assert-Throws { Invoke-DriverMediaFixture -State $state } -MessagePattern 'REFUSING.*media-merge'
+        Assert-Equal 0 $state.Solves.Count
+        Assert-Equal 0 $state.Gates.Count
+    }
+
+    It 'propagates every reused-branch gate failure before starting the merge' {
+        foreach ($branch in 'media-core', 'media-litert', 'media-tvm') {
+            $state = New-DriverMediaFixture -Stages @('media-merge', 'final')
+            $state.FailGate = "fixture/windows-$branch"
+            Assert-Throws { Invoke-DriverMediaFixture -State $state } -MessagePattern 'branch publish gate refused'
+            Assert-Equal 0 $state.Solves.Count
+        }
+    }
+
+    It 'leaves unrelated stage requests inert in the media dispatcher' {
+        $state = New-DriverMediaFixture -Stages @('torch', 'final')
+        Invoke-DriverMediaFixture -State $state
+        Assert-Equal 0 $state.Solves.Count
+        Assert-Equal 0 $state.Gates.Count
+    }
+
+    It 'requires the media compiler cache for the explicit merge without changing caller selections' {
+        Invoke-WithFunctionModule -ScriptPath 'windows/Build-Buildkit.ps1' -FunctionName 'Get-BkRequiredStages' -Body {
+            $selection = @('base', 'media-merge', 'final')
+            Assert-Equal 'base,media,final' ((Get-MutBkRequiredStages -StageList $selection) -join ',')
+            Assert-Equal 'base,media-merge,final' ($selection -join ',')
+            Assert-Equal 'media' ((Get-MutBkRequiredStages -StageList @('media')) -join ',')
+        }
+        Invoke-WithFunctionModule -ScriptPath 'windows/Build-Buildkit.ps1' -FunctionName 'Get-BkRequiredStages' `
+            -Find "'^media-merge$'" -Replace "'^unmatched-stage$'" -Body {
+                Assert-Equal 'media' ((Get-MutBkRequiredStages -StageList @('media')) -join ',')
+                Assert-Equal 'media-merge' ((Get-MutBkRequiredStages -StageList @('media-merge')) -join ',')
+            }
+    }
+
+    It 'detects live selector, rebuild, parent-gate and incomplete-fan-in mutants' {
+        $mutants = @(
+            @{ Find=" -or `$Stages -contains 'media-merge'"; Replace=''; Solves=0; Gates=0 },
+            @{ Find="if (`$Stages -contains 'media') { Invoke-BkMediaBranches }"; Replace="if (`$Stages -contains 'media' -or `$Stages -contains 'media-merge') { Invoke-BkMediaBranches }"; Solves=8; Gates=3 },
+            @{ Find="if (`$Stages -notcontains 'media') {"; Replace='if ($false) {'; Solves=1; Gates=0 },
+            @{ Find="@('media-merge', 'migraphx', 'llama', 'torch', 'final')"; Replace="@('migraphx', 'llama', 'torch', 'final')"; Solves=0; Gates=0; Branches=@('media-core', 'media-litert') }
+        )
+        foreach ($mutant in $mutants) {
+            $control = New-DriverMediaFixture -Stages @('media')
+            Invoke-DriverMediaFixture -State $control -Find $mutant.Find -Replace $mutant.Replace
+            Assert-Equal 8 $control.Solves.Count 'the edited function still executes the healthy ordinary build'
+            $branches = if ($mutant.ContainsKey('Branches')) { $mutant.Branches } else { @('media-core', 'media-litert', 'media-tvm') }
+            $state = New-DriverMediaFixture -Stages @('media-merge') -Branches $branches
+            Invoke-DriverMediaFixture -State $state -Find $mutant.Find -Replace $mutant.Replace
+            Assert-Equal $mutant.Solves $state.Solves.Count 'the mutant visibly breaks the guarded explicit-merge behavior'
+            Assert-Equal $mutant.Gates $state.Gates.Count
+        }
     }
 }

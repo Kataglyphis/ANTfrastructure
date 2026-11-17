@@ -768,6 +768,14 @@ Runtime and OpenCV CUDA kernel five times, the biggest lever on GPU build time.
 
 ## Build Workflow
 
+Windows can resume with `-Stages @('media-merge','torch','final')` after all three
+media branches complete. Reuse requires matching image-producing inputs and
+digest-bound branch evidence; publish-gate success alone is not that proof.
+Keep all three reused-parent publish gates, the merge disk/retry gates, compiler
+cache requirement and ROCm post-media closure. An explicit merge refuses a branch
+subset even without downstream stages; ordinary `media` still builds every branch.
+See [the merge boundary](docs/windows-build-lanes.md#resume-from-completed-media-branches).
+
 ```
 build-cross-chain.sh → base → compiler → sdk → media → android → runtime → manifest
 CROSS_VARIANT=nvidia|rocm       → (shared sdk) → gpu → media → android → runtime → manifest

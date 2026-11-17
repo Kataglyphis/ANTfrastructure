@@ -47,6 +47,18 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
   cache-mount counts. Existing-host success and a cleanup exit zero are not this
   acceptance. See [current scope and new-host procedure](docs/windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts).
 
+## Windows resume after completed media branches
+
+- [ ] Verify the explicit `media-merge` boundary in a complete source-bound
+  producer and retain its full ancestry and smoke receipts. At `859eb3b4`, the
+  third CPU request completed all seven media exports, including TVM/IREE, then
+  stopped before merge at 30.7 GiB against its unchanged 45-GiB floor. Replaying
+  the whole fan-out would consume the recovered space again. Source now offers
+  a separate merge selection with all reused-parent, cache and ROCm closure
+  gates. Functional fixtures and live mutants do not complete producer,
+  hardware, hosted CI or publication acceptance. Preserve all earlier raw1
+  outcomes and keep CON228 open.
+
 ## Windows copied-module bind mounts
 
 - [ ] Verify the module source-view correction in complete Windows lanes and
