@@ -293,6 +293,8 @@ class GenaiThreads(unittest.TestCase):
         spec.loader.exec_module(tool)
         self.assertEqual([tool.family_threads(n) for n in (1, 2, 4, 8, 16)], [1, 1, 3, 7, 8])
         self.assertEqual(tool.thread_count("auto"), tool.family_threads())
+        self.assertEqual([tool.text_threads(n) for n in (1, 4, 8, 16, 32)], [1, 1, 3, 4, 4])
+        self.assertEqual(tool.thread_count("text"), tool.text_threads())
         self.assertEqual(tool.thread_count("3"), 3)
         for bad in ("0", "many"):
             with self.assertRaises(argparse.ArgumentTypeError):

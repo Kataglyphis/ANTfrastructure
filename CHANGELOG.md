@@ -35,6 +35,9 @@
   pushes OxidANT without `--no-verify`, through `pi-ci --`. A real failure, or a clone without the setting,
   stops the push as before. `test-consumer-hooks.sh` covers the four cases;
   `docs/adopting-in-a-new-project.md` § The git hooks, by reference says how.
+- Proved on 2026-11-17: OxidANT 7a61e8a, pinned to f99f95a6, went from the Raspberry Pi without `--no-verify`;
+  the host run failed on `prerequisite missing: node` and the run through `pi-ci --` passed. CON277 leaves the
+  backlog.
 
 ## 2026-11-17 — cargo-mutants in the amd64 image at its pin (CON238, item 1)
 

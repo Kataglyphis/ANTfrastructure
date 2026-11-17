@@ -535,6 +535,22 @@ decodes on one thread unless `--describe-threads` says otherwise (owner decision
 Pi 5 the detector took 238 ms alone, 1157 ms beside a seven-thread description and 570 ms beside a
 one-thread one, and SmolLM2-135M decoded faster on one thread (104 against 34 tokens per second).
 
+### The text thread rule
+
+A **GenAI decoder** takes **half the detector's pool, at least 1 and at most 4** intra-op threads when
+nothing sets a count, and a model whose `genai_config.json` names its own keeps it (CON218, owner decision
+2026-11-17). Decoding is memory-bound: on a Pi 5 with all 4 CPUs, beside AccelerANTgine's DEIM detector
+(417 ms alone, two runs), SmolLM2-135M on 1, 2, 3 and 4 threads made the detector take 568-600, 714-747,
+778-781 and 689-698 ms, and a 200-token reply alone took 2.7, 3.1-3.4, 3.2-3.3 and 3.3-3.4 s. The
+detector's rule (three on a Pi 5) would have slowed both. Where a detector runs beside it, the consumer
+sets one thread.
+
+| Consumer | Where |
+| --- | --- |
+| AccelerANTgine | `text_intra_op_threads()` through `OgaConfigOverlay` in `TextGenerator::initialize` |
+| OxidANT | `kataglyphis_core::config::text_threads` in `GenaiGenerator` without a count; ObservANT's `llm_threads` 1 |
+| OrchestrANT | `text_threads()` in `GenaiEngine` without `threads`; `yolo-monitor --describe` keeps 1 |
+
 ## The consumer repositories
 
 These changes sit in the consumers' working trees. Their gitlinks move only

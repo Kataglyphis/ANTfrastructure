@@ -707,7 +707,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       a 48-token reply is quickest on one or two. Left: OrchestrANT's, AccelerANTgine's and OxidANT's
       `perf-host.sh` pass `--threads auto` at their next hub pin; whether a shipped text default follows the
       detector's rule or a text rule of its own is the owner's call on these numbers.
-      **Owner decision 2026-11-17:** a shipped text default follows the detector's rule (CON240): the CPUs of the affinity mask, capped; no separate text rule.
+      **Owner decision 2026-11-17, revised the same day on a Pi 5 measurement:** a shipped text default takes half the
+      detector's pool, 1 to 4, and one thread beside a running detector ([`onnxruntime-single-source.md` § The text
+      thread rule](docs/onnxruntime-single-source.md#the-text-thread-rule)). In source: AccelerANTgine 41468fb,
+      OxidANT and OrchestrANT with their next push. Left: `genai-model-threads.py` learns `--threads text` and the
+      three `perf-host.sh` pass it, so a perf baseline records the shipped text default.
 
 - [ ] **CON219 — ORT reads a null scale pointer in 4-bit `MatMulNBits` on riscv64 RVV** [M, ★★★].
       Found 2026-11-02 with OxidANT's SmolLM2-135M contract test under QEMU, image index `7d4d4129`: a fault in
@@ -2214,19 +2218,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only); the pin stays on 9.1.0.
 
 ## Open — hub tooling and the dev host
-
-- [ ] **CON277 — a dev host without node cannot pass OxidANT's pre-push suites** [S, ★]. Found 2026-11-16 on a
-      Raspberry Pi 5 dev host, where nothing may be installed: OxidANT's `test-webgpu-demo-browser.sh` needs node,
-      and `t_skip_unless` lets only Git Bash skip a missing prerequisite, so the hook stops every push there although
-      the whole `pre-push-checks.sh` is green in the CI image (which has node 26). Each push then needs the owner's
-      `--no-verify`. Next: the pre-push hook runs a consumer's script suites in the family image when the host lacks
-      a prerequisite the image has, or `t_skip_unless` reads a host's declared gaps. Done when a push from a host
-      without node runs the suites in the image and stops only on a real failure.
-      **Owner decision 2026-11-17:** the pre-push hook runs a consumer's script suites in the family image when the host lacks a prerequisite the image has; no standing `--no-verify`.
-      **In source 2026-11-17:** the shared pre-push hook re-runs `pre-push-checks.sh` through
-      `git config kataglyphis.imageRunner` when the host run failed on `prerequisite missing:`
-      (`test-consumer-hooks.sh`, four cases). Left: OxidANT's hub pin carries it, and a push from the Pi with
-      `kataglyphis.imageRunner "pi-ci --"` passes without `--no-verify`.
 
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
