@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-# NOT covered: mounts outside C:\temp\scripts, and stages FROM another stage than base (graded against base's files only).
+# Stub checks grade only base-stage C:\temp\scripts paths; source-view structure cannot prove mounted-file reads.
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -DisableNameChecking
 
@@ -57,5 +57,22 @@ Describe 'BuildKit bind-mount targets' {
         Assert-Equal 'stub: C:\temp\scripts\modules\B.psm1' (@(Get-MountStubViolation -BaseText $fixtureBase -Dockerfiles @{ stub = $stub }) -join "`n") 'a copy in another stage does not count'
         $copied = "FROM y`nCOPY windows\scripts C:\temp\scripts`nRUN --mount=type=bind,source=m/B.psm1,target=C:\temp\scripts\modules\B.psm1 x"
         Assert-Equal 0 @(Get-MountStubViolation -BaseText $fixtureBase -Dockerfiles @{ copied = $copied }).Count 'a directory copy covers the files below it'
+    }
+}
+
+Describe 'BuildKit copied-module source views' {
+    It 'gives every copied module closure a final readable view layer' {
+        $checked = 0
+        foreach ($name in @('Dockerfile.media-builder', 'Dockerfile.media-merge-builder', 'Dockerfile.rocm-migraphx', 'Dockerfile.rocm-llama')) {
+            $docker = Get-TestDockerfileStagesFromPath -Path (Join-Path (Get-RepoRoot) ('windows/' + $name)) `
+                -JoinContinuations -IgnoreComments -TrimLines -StrictFromHeader
+            foreach ($stage in $docker.Stages) {
+                if (-not @($stage.Lines | Where-Object { $_ -match '^COPY .*bkmods' }).Count) { continue }
+                Assert-Equal 1 @($stage.Lines | Where-Object { $_ -ceq 'RUN cmd /c exit 0' }).Count "$name/$($stage.Name) needs its own readable bind-mount view"
+                Assert-Equal 'RUN cmd /c exit 0' $stage.Lines[-1] 'every module COPY must precede the view layer'
+                $checked++
+            }
+        }
+        Assert-Equal 5 $checked 'shared, TVM-private, merge and both ROCm module closures must be checked'
     }
 }

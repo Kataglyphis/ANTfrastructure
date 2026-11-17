@@ -25,6 +25,8 @@
   separate from structural checks and module-read probes.
 - Invoke the existing LiteRT mutation runner directly on Windows; its report
   directory is created by the shared runner, without a POSIX shell prefix.
+- Keep module-view mutations in the existing portable mount harness so Linux
+  shards prove them without Pester; retain the separate full module-closure suite.
 
 ## 2026-11-16 — include the PyTorch adapter in Windows patch drift checks
 

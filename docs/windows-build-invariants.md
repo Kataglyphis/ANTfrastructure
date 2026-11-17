@@ -859,6 +859,9 @@ An empty source-view layer made the same module bytes readable; the kernel
 cause and a causal link to pruning remain unproven. The structural suite checks
 all five module stages and the final instruction order; only an engine probe
 and subsequent real builds establish mounted-file readability and image acceptance.
+The portable [mount harness](../windows/scripts/tests/BuildKit.MountStub.Tests.ps1)
+executes the view mutations on Linux and Windows; the Pester module-closure
+suite remains part of the complete Windows run.
 
 ### A whole-directory `modules` mount puts EVERY module in the cache key
 

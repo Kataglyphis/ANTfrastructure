@@ -1330,6 +1330,8 @@ suite; `test-mutation-pester-targets.sh` refuses a recipe that names a
 Pester-style one.
 The cleanup unit-boundary recipes use `Stevedore.StorageUnits.Tests.ps1` through
 `Invoke-HarnessSuite.ps1`; existing Pester reclaim controls remain in the full Windows run.
+Copied-module source views use the portable `BuildKit.MountStub.Tests.ps1` fixture;
+`BuildKit.ModuleClosure.Tests.ps1` retains its separate Pester closure checks.
 
 `CrossBundle.PackageCheck.Tests.ps1` proves package callback output and failure contracts
 under a cold harness on both hosts. Its install fixture is shared with the Windows-only
