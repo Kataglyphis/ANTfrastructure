@@ -21,6 +21,8 @@
 - Add explicit `media-merge` selection after completed media branches, checking
   all three reused parents before the normal merge, without replaying branch
   builds or changing the default pipeline.
+- Keep reused-parent failure and live-mutation case execution in bounded test
+  helpers; preserve all cases and the strict complexity limits.
 - Keep compiler-cache and ROCm stale-parent checks armed for that selection.
   Functional fixtures cover partial fan-in, failed parents and ordinary builds;
   executable mutations prove the new checks without claiming image or device

@@ -390,13 +390,17 @@ function Invoke-BkStage {
         Assert-Equal 0 $state.Gates.Count
     }
 
-    It 'propagates every reused-branch gate failure before starting the merge' {
+    function Assert-DriverMediaPublishFailureCases {
         foreach ($branch in 'media-core', 'media-litert', 'media-tvm') {
             $state = New-DriverMediaFixture -Stages @('media-merge', 'final')
             $state.FailGate = "fixture/windows-$branch"
             Assert-Throws { Invoke-DriverMediaFixture -State $state } -MessagePattern 'branch publish gate refused'
             Assert-Equal 0 $state.Solves.Count
         }
+    }
+
+    It 'propagates every reused-branch gate failure before starting the merge' {
+        Assert-DriverMediaPublishFailureCases
     }
 
     It 'leaves unrelated stage requests inert in the media dispatcher' {
@@ -420,7 +424,7 @@ function Invoke-BkStage {
             }
     }
 
-    It 'detects live selector, rebuild, parent-gate and incomplete-fan-in mutants' {
+    function Assert-DriverMediaMutantCases {
         $mutants = @(
             @{ Find=" -or `$Stages -contains 'media-merge'"; Replace=''; Solves=0; Gates=0 },
             @{ Find="if (`$Stages -contains 'media') { Invoke-BkMediaBranches }"; Replace="if (`$Stages -contains 'media' -or `$Stages -contains 'media-merge') { Invoke-BkMediaBranches }"; Solves=8; Gates=3 },
@@ -437,5 +441,9 @@ function Invoke-BkStage {
             Assert-Equal $mutant.Solves $state.Solves.Count 'the mutant visibly breaks the guarded explicit-merge behavior'
             Assert-Equal $mutant.Gates $state.Gates.Count
         }
+    }
+
+    It 'detects live selector, rebuild, parent-gate and incomplete-fan-in mutants' {
+        Assert-DriverMediaMutantCases
     }
 }
