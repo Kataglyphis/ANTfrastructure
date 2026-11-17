@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Stub checks grade only base-stage C:\temp\scripts paths; source-view structure cannot prove mounted-file reads.
+# Stub checks grade only base-stage C:\temp\scripts paths; view structure proves neither mounted reads nor compiled architecture.
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -DisableNameChecking
 
@@ -68,6 +68,9 @@ Describe 'BuildKit copied-module source views' {
                 -JoinContinuations -IgnoreComments -TrimLines -StrictFromHeader
             foreach ($stage in $docker.Stages) {
                 if (-not @($stage.Lines | Where-Object { $_ -match '^COPY .*bkmods' }).Count) { continue }
+                if ($stage.From -match '^\$\{') {
+                    Assert-Equal 1 @($stage.Lines | Where-Object { $_ -match '^ARG\s+WINDOWS_TARGET_ARCH(?:=|$)' }).Count "$name/$($stage.Name) must redeclare the target architecture before its view RUN"
+                }
                 Assert-Equal 1 @($stage.Lines | Where-Object { $_ -ceq 'RUN cmd /c exit 0' }).Count "$name/$($stage.Name) needs its own readable bind-mount view"
                 Assert-Equal 'RUN cmd /c exit 0' $stage.Lines[-1] 'every module COPY must precede the view layer'
                 $checked++

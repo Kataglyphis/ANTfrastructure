@@ -30,6 +30,7 @@ RUN pwsh -NoProfile -ExecutionPolicy Bypass -File C:\Copy-CudaRuntime.ps1
 
 # The merge-only leaf modules live here; keeping them out of media buildmods prevents every media compile from re-running.
 FROM ${BASE_IMAGE} AS buildmods
+ARG WINDOWS_TARGET_ARCH=amd64
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `

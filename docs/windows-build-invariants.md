@@ -848,7 +848,10 @@ empty mount lists cleanly and exits 0, so a bare listing proves nothing.
 End every stage that copies a narrow module closure into `C:\bkmods` with
 `RUN cmd /c exit 0`, after its last `COPY`. This includes shared media,
 TVM-private, merge, MIGraphX and llama module stages. Their consumers bind
-the view; product stages retain their existing parents, so these intermediate
+the view. An external-image module stage still redeclares
+`ARG WINDOWS_TARGET_ARCH=amd64` before its view `RUN`; the TVM-private stage
+inherits that scope from the shared module stage. Product stages retain their
+existing parents, so these intermediate
 layers do not enter delivered image ancestry. Do not widen a closure or replace
 the workaround with `--no-cache`, a compiler-cache reset or a daemon restart.
 

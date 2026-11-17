@@ -39239,5 +39239,37 @@
   "replace": "'Dockerfile.rocm-migraphx'",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.MountStub.Tests.ps1 -ResultFile logs/code-quality/module-view-mutation.json",
   "why": "Dropping a copied ROCm closure from the scan must fail the complete five-stage accounting."
+ },
+ {
+  "id": "lib.windows-module-view-arch-shared",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "FROM ${BASE_IMAGE} AS buildmods\nARG WINDOWS_TARGET_ARCH=amd64\nCOPY ",
+  "replace": "FROM ${BASE_IMAGE} AS buildmods\nCOPY ",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.MountStub.Tests.ps1 -ResultFile logs/code-quality/module-view-mutation.json",
+  "why": "An external shared module view now RUNs and must keep the target architecture argument in its own scope."
+ },
+ {
+  "id": "lib.windows-module-view-arch-merge",
+  "target": "windows/Dockerfile.media-merge-builder",
+  "find": "FROM ${BASE_IMAGE} AS buildmods\nARG WINDOWS_TARGET_ARCH=amd64\nCOPY ",
+  "replace": "FROM ${BASE_IMAGE} AS buildmods\nCOPY ",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.MountStub.Tests.ps1 -ResultFile logs/code-quality/module-view-mutation.json",
+  "why": "An external merge module view now RUNs and must keep the target architecture argument in its own scope."
+ },
+ {
+  "id": "lib.windows-module-view-arch-migraphx",
+  "target": "windows/Dockerfile.rocm-migraphx",
+  "find": "FROM ${BASE_IMAGE} AS migraphxmods\nARG WINDOWS_TARGET_ARCH=amd64\nCOPY ",
+  "replace": "FROM ${BASE_IMAGE} AS migraphxmods\nCOPY ",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.MountStub.Tests.ps1 -ResultFile logs/code-quality/module-view-mutation.json",
+  "why": "An external migraphx module view now RUNs and must keep the target architecture argument in its own scope."
+ },
+ {
+  "id": "lib.windows-module-view-arch-llama",
+  "target": "windows/Dockerfile.rocm-llama",
+  "find": "FROM ${BASE_IMAGE} AS llamamods\nARG WINDOWS_TARGET_ARCH=amd64\nCOPY ",
+  "replace": "FROM ${BASE_IMAGE} AS llamamods\nCOPY ",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.MountStub.Tests.ps1 -ResultFile logs/code-quality/module-view-mutation.json",
+  "why": "An external llama module view now RUNs and must keep the target architecture argument in its own scope."
  }
 ]

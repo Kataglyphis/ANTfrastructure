@@ -27,6 +27,8 @@
   directory is created by the shared runner, without a POSIX shell prefix.
 - Keep module-view mutations in the existing portable mount harness so Linux
   shards prove them without Pester; retain the separate full module-closure suite.
+- Redeclare the target-architecture argument in all four external module-view
+  stages and prove each declaration with a portable mutation.
 
 ## 2026-11-16 — include the PyTorch adapter in Windows patch drift checks
 

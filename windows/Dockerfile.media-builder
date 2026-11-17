@@ -37,6 +37,7 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 
 # The shared module closure; mount it with source=/bkmods (see docs/windows-build-invariants.md § In `RUN --mount=...,from=<stage>` the SOURCE path is Unix-style).
 FROM ${BASE_IMAGE} AS buildmods
+ARG WINDOWS_TARGET_ARCH=amd64
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
