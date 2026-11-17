@@ -2605,6 +2605,8 @@ Source-build and container-image wrappers keep their distinct version-prefix rul
 `Get-CmakeBuildArgs` exports the common `cmake --build` argv, with optional
 `-Target` before configuration and the established explicit or unlimited
 parallel form. The caller still chooses the target and handles the build verdict.
+When that package step throws, `Write-CPackGeneratorLog` puts the tail of every
+`_CPack_Packages` log into the build log, since CPack itself only names the file.
 Meson native and cross files share binary rendering. IREE and LiteRT share ordered
 per-file ARM feature selection and application while keeping different minimum
 architectures and source predicates. PE and COFF checks share machine names and layout parsing

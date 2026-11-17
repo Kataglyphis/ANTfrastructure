@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-17 — `Write-CPackGeneratorLog` prints what a failed package step's generator said
+
+- CPack reports a failed NSIS or WiX run only as "Problem running NSIS command" and points at a log inside the
+  build tree, which a container lane never uploads. `WindowsCMake.Common`'s `Write-CPackGeneratorLog -BuildPath`
+  writes the tail of every `*.log` under `_CPack_Packages` into the build log; a consumer calls it when its
+  `--target package` step throws.
+
 ## 2026-11-17 — the NAS backup retries its mount, a failed run reaches the phone, AIO backs up again
 
 - AIO's `daily_backup_time` on srv-1 was gone from 2026-10-27, so Nextcloud had no new archive for three weeks

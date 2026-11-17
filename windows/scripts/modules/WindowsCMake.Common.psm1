@@ -236,6 +236,22 @@ function Get-CmakeBuildArgs {
   return $buildArgs
 }
 
+function Write-CPackGeneratorLog {
+  param($Context, [string]$BuildPath, [int]$TailLines = 80)
+  # CPack reports only "Problem running NSIS command"; the generator's own log under _CPack_Packages names the cause.
+  $packages = Join-Path $BuildPath '_CPack_Packages'
+  if (-not (Test-Path -LiteralPath $packages)) {
+    Write-BuildLog -Context $Context -Message "No CPack generator logs: $packages does not exist"
+    return
+  }
+  $logs = @(Get-ChildItem -LiteralPath $packages -Recurse -Depth 3 -File -Filter '*.log' | Sort-Object FullName)
+  if ($logs.Count -eq 0) { Write-BuildLog -Context $Context -Message "No CPack generator logs under $packages" }
+  foreach ($log in $logs) {
+    Write-BuildLog -Context $Context -Message "===== CPack generator log (last $TailLines lines): $($log.FullName) ====="
+    Write-BuildLogMessages -Context $Context -Messages @(Get-Content -LiteralPath $log.FullName -Tail $TailLines)
+  }
+}
+
 function Write-CmakeBuildDiagnostics {
   param($Context, [int]$CpuCount, [switch]$DisableSccache)
   Write-BuildLog -Context $Context -Message "DEBUG: ========== NINJA INFO =========="
@@ -506,4 +522,4 @@ function Update-CTestMetadataPaths {
     }
 }
 
-Export-ModuleMember -Function Get-CMakeShareDir, Update-CTestMetadataPaths, Get-CompileCommandsDatabase, Remove-BuildRootSafe, Get-CmakeConfigureArgs, Get-CmakeBuildArgs, Invoke-CmakeConfigureAndBuild, Test-ClangClThreadSanitizerSupport
+Export-ModuleMember -Function Get-CMakeShareDir, Update-CTestMetadataPaths, Get-CompileCommandsDatabase, Remove-BuildRootSafe, Get-CmakeConfigureArgs, Get-CmakeBuildArgs, Write-CPackGeneratorLog, Invoke-CmakeConfigureAndBuild, Test-ClangClThreadSanitizerSupport
