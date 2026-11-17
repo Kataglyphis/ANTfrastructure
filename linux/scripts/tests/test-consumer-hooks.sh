@@ -288,6 +288,59 @@ _section_extension() {
   t_assert_eq "${tip}" "$(_tip "${d}")" "the remote did not move"
 }
 
+# <dir>: an extension that lacks a prerequisite on the host and passes where IN_IMAGE is set, unless IMAGE_RC says no.
+_extension_needing_the_image() {
+  cat > "$1/scripts/linux/pre-push-checks.sh" <<'EXTENSION'
+if [ -z "${IN_IMAGE+set}" ]; then
+  echo "  FAIL [test-browser.sh] prerequisite missing: node" >&2
+  exit 1
+fi
+exit "${IMAGE_RC:-0}"
+EXTENSION
+  git -C "$1" add scripts/linux/pre-push-checks.sh
+}
+
+_section_image_runner() {
+  local d runner
+  runner="${_work}/image-runner"
+  cat > "${runner}" <<RUNNER
+#!/usr/bin/env bash
+printf 'runner %s\n' "\$*" >> "\${HOOK_TEST_ARGV}"
+[ "\$1" = -- ] || exit 9
+IN_IMAGE=1 bash -c "\$2"
+RUNNER
+  chmod +x "${runner}"
+
+  t_case "CON277: without an image runner a missing prerequisite stops the push"
+  d="$(_consumer)"
+  _extension_needing_the_image "${d}"
+  _push "${d}" 1 README.md "needs node"
+  t_assert_contains "${_out}" "pre-push-checks.sh FAILED (exit 1), the push is stopped"
+
+  t_case "CON277: with an image runner the suites run again in the image, and a green run there lets the push through"
+  git -C "${d}" config kataglyphis.imageRunner "${runner} --"
+  _push "${d}" 0 README.md "needs node again"
+  t_assert_contains "${_out}" "again in the image through '${runner} --'"
+  t_assert_grep "${HOOK_TEST_ARGV}" "^runner -- bash scripts/linux/pre-push-checks.sh$"
+
+  t_case "CON277: a failure in the image still stops the push"
+  export IMAGE_RC=4
+  _push "${d}" 1 README.md "broken in the image"
+  unset IMAGE_RC
+  t_assert_contains "${_out}" "pre-push-checks.sh FAILED (exit 4), the push is stopped"
+
+  t_case "CON277: a real failure on the host is not re-run in the image"
+  : > "${HOOK_TEST_ARGV}"
+  cat > "${d}/scripts/linux/pre-push-checks.sh" <<'EXTENSION'
+echo "a suite failed" >&2
+exit 5
+EXTENSION
+  git -C "${d}" add scripts/linux/pre-push-checks.sh
+  _push "${d}" 1 README.md "really broken"
+  t_assert_contains "${_out}" "pre-push-checks.sh FAILED (exit 5), the push is stopped"
+  t_assert_no_grep "${HOOK_TEST_ARGV}" "^runner "
+}
+
 _section_handover() {
   local d hook
 
@@ -359,5 +412,5 @@ _section_notice() {
 }
 
 _hub_copy "${_work}/hub"
-t_sections _section_commit _section_push _section_extension _section_handover _section_notice -- "$@"
+t_sections _section_commit _section_push _section_extension _section_image_runner _section_handover _section_notice -- "$@"
 t_summary

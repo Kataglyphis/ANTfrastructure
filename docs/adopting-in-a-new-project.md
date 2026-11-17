@@ -741,6 +741,12 @@ checks before a push beyond lint, for example the script suites its CI lint lane
   unset, so a `git` call in a test fixture acts on the fixture and not on the repository.
 - It reads the working tree, as the gates do. The hook sets no time limit.
 - The file needs no executable bit. CI does not call it: let the CI step it mirrors call the same file.
+- **A host without a tool the image has** (CON277): when the run fails and its output says
+  `prerequisite missing:` (the harness's `t_skip_unless` on Linux), and the clone sets
+  `git config kataglyphis.imageRunner "<command> --"`, the hook runs `bash scripts/linux/pre-push-checks.sh`
+  once more through that command, and that run decides. A real failure, or a clone without the setting,
+  stops the push as before. On a Raspberry Pi dev host with no node, the runner is its CI-image wrapper,
+  for example `pi-ci --` (not `pi-heavy`, whose lock the push already holds).
 
 **Bypass.** `git commit --no-verify` and `git push --no-verify` skip the hook. Run
 `scripts/linux/run-lint-gates.sh` by hand before the push then.

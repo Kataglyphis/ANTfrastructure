@@ -27,6 +27,15 @@
   `0.19.0+965c019.pr2809`, which carries it, and `Test-SccacheModuleSafe` already admits it; the cache-bypass
   advice now applies only to an older sccache.
 
+## 2026-11-17 — a host without a tool the image has runs the push suites in the image (CON277)
+
+- The shared pre-push hook tees `scripts/linux/pre-push-checks.sh`'s output. When the run fails on
+  `prerequisite missing:` and the clone sets `git config kataglyphis.imageRunner "<command> --"`, it runs the
+  suites once more through that command, and that run decides (owner decision): a Raspberry Pi without node
+  pushes OxidANT without `--no-verify`, through `pi-ci --`. A real failure, or a clone without the setting,
+  stops the push as before. `test-consumer-hooks.sh` covers the four cases;
+  `docs/adopting-in-a-new-project.md` § The git hooks, by reference says how.
+
 ## 2026-11-17 — cargo-mutants in the amd64 image at its pin (CON238, item 1)
 
 - `versions.env` pins `CARGO_MUTANTS_VERSION=27.1.0`, the version OxidANT's mutation scores were taken with, and

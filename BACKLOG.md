@@ -2223,6 +2223,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       a prerequisite the image has, or `t_skip_unless` reads a host's declared gaps. Done when a push from a host
       without node runs the suites in the image and stops only on a real failure.
       **Owner decision 2026-11-17:** the pre-push hook runs a consumer's script suites in the family image when the host lacks a prerequisite the image has; no standing `--no-verify`.
+      **In source 2026-11-17:** the shared pre-push hook re-runs `pre-push-checks.sh` through
+      `git config kataglyphis.imageRunner` when the host run failed on `prerequisite missing:`
+      (`test-consumer-hooks.sh`, four cases). Left: OxidANT's hub pin carries it, and a push from the Pi with
+      `kataglyphis.imageRunner "pi-ci --"` passes without `--no-verify`.
 
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
