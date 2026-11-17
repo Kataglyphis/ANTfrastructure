@@ -153,8 +153,8 @@ The rule that follows: **reuse ONE container**, recreating it only when the
 image ID changes; stream sources in and executables/logs out, never the
 intermediate build tree. Transport choice, the Dev Drive filter setup, and the
 four traps that cost measurable time (bind mount slower behind a filesystem
-filter, sccache unsafe on clang-cl C++20/23 modules until mozilla/sccache#2876
-ships, a named volume unusable as a CMake build dir, deep paths aborting tar
+filter, sccache unsafe on clang-cl C++20/23 modules before 0.19.0
+(mozilla/sccache#2876), a named volume unusable as a CMake build dir, deep paths aborting tar
 transfers) are all in that page.
 
 ## Maximum resource envelope (verified 2026-07-12)

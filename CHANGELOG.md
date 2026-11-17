@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-17 — the sccache module docs name the image's fixed build
+
+- `windows-container-build-performance.md` § *sccache on a C++23 modules build* and `windows-build-resources.md`
+  still called sccache 0.18.0 "the image's" and #2876 "not in the image". Both images ship the hub's
+  `0.19.0+965c019.pr2809`, which carries it, and `Test-SccacheModuleSafe` already admits it; the cache-bypass
+  advice now applies only to an older sccache.
+
 ## 2026-11-17 — cargo-mutants in the amd64 image at its pin (CON238, item 1)
 
 - `versions.env` pins `CARGO_MUTANTS_VERSION=27.1.0`, the version OxidANT's mutation scores were taken with, and
