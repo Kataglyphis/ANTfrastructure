@@ -39,7 +39,7 @@ _consumer_contract_symptom() {
     [ort-crate-env]='an ort-sys build (OxidANT'"'"'s onnxruntime feature) statically links pyke'"'"'s ORT 1.28.0 from pyke'"'"'s CDN instead of the chain ORT, and ort load-dynamic opens whichever libonnxruntime.so the loader finds first'
     [chrome]='flutter doctor reports "Cannot find Chrome executable at google-chrome" and "flutter test --platform chrome" has no browser, so the web lane tests nothing in one'
     [android-emulator]='an Android lane has no device to install on: adb reports "no devices/emulators found" and every on-device test is skipped'
-    [cargo-qa-tools]='every OxidANT security and coverage step cargo-installs cargo-audit, cargo-deny and cargo-tarpaulin from crates.io first, minutes of compiles per run'
+    [cargo-qa-tools]='every OxidANT security and coverage step cargo-installs cargo-audit, cargo-deny and cargo-tarpaulin from crates.io first, minutes of compiles per run, and its weekly rust-mutants.yml runs nothing'
     [free-threaded-python]='every X.Yt leg has uv download a free-threaded CPython first, its patch version unpinned'
     [lint-tools]='OrchestrANT'"'"'s coding bench reports "[shellcheck SKIPPED: not on PATH]" and "[hadolint SKIPPED: not on PATH]" on every row, so no bash or Dockerfile answer is linted'
     [uv-cache-seed]='the riscv64 Python lane'"'"'s uv sync of the test extra builds numpy, matplotlib, contourpy, pillow, line-profiler, psutil and pyyaml under QEMU: 108 min of a 6 h job'
@@ -49,15 +49,18 @@ _consumer_contract_symptom() {
 }
 
 _consumer_versioned_verdict() {
-  local row="$1" probe="$2" arch="$3" line _sc _hl
+  local row="$1" probe="$2" arch="$3" line _sc _hl _cm
   case "${row}" in
         chrome)        line="$(_consumer_chrome_verdict "${row}" "${probe}" "$(_rt_versions_env_pin CHROME_FOR_TESTING_VERSION)")" ;;
         android-emulator)
                        line="$(_consumer_emulator_verdict "${row}" "${probe}" "$(_rt_versions_env_pin ANDROID_EMULATOR_VERSION)" \
                                  "android-$(_rt_versions_env_pin ANDROID_EMULATOR_API);google_apis;x86_64;r$(_rt_versions_env_pin ANDROID_EMULATOR_SYSIMG_REVISION)")" ;;
         cargo-qa-tools)
+                       # cargo-mutants publishes an x86_64 binary only, so an arm64 image must report none.
+                       _cm="$(_rt_versions_env_pin CARGO_MUTANTS_VERSION)"
+                       [ "${arch}" = amd64 ] || _cm=''
                        line="$(_consumer_cargo_qa_verdict "${row}" "${probe}" \
-                                 "cargo-audit=$(_rt_versions_env_pin CARGO_AUDIT_VERSION) cargo-deny=$(_rt_versions_env_pin CARGO_DENY_VERSION) cargo-tarpaulin=$(_rt_versions_env_pin CARGO_TARPAULIN_VERSION)")" ;;
+                                 "cargo-audit=$(_rt_versions_env_pin CARGO_AUDIT_VERSION) cargo-deny=$(_rt_versions_env_pin CARGO_DENY_VERSION) cargo-tarpaulin=$(_rt_versions_env_pin CARGO_TARPAULIN_VERSION) cargo-mutants=${_cm}")" ;;
         free-threaded-python)
                        line="$(_consumer_free_threaded_verdict "${row}" "${probe}" "$(_rt_versions_env_pin PYTHON_VERSION)")" ;;
         lint-tools)    _sc="$(_rt_tool_pin SHELLCHECK_VERSION)"; _hl="$(_rt_tool_pin HADOLINT_VERSION)"
@@ -260,7 +263,7 @@ _consumer_ort_env_verdict() {
   fi
 }
 
-# CON65's three tools at their pins: docs/consumer-image-contract.md#the-cargo-qa-tools
+# CON65's three tools and CON238's cargo-mutants at their pins: docs/consumer-image-contract.md#the-cargo-qa-tools
 _consumer_cargo_qa_verdict() {
   local row="$1" p="$2" pins="$3" have
   case "$(_consumer_contract_fact "${p}" FACT cargo-qa-tools)" in

@@ -165,6 +165,11 @@ def cargo_qa_pins(tool: str, v: str) -> dict[str, str]:
             ("CARGO_TARPAULIN_LINUX_X86_64_SHA256", "cargo-tarpaulin-x86_64-unknown-linux-musl.tar.gz"),
             ("CARGO_TARPAULIN_LINUX_AARCH64_SHA256", "cargo-tarpaulin-aarch64-unknown-linux-musl.tar.gz"),
         ])
+    if tool == "cargo-mutants":
+        # Its one Linux build is x86_64 glibc.
+        return bv._asset_pins("sourcefrog/cargo-mutants", f"v{v}", [
+            ("CARGO_MUTANTS_LINUX_X86_64_SHA256", "cargo-mutants-x86_64-unknown-linux-gnu.tar.gz"),
+        ])
     raise ValueError(tool)
 
 
@@ -182,6 +187,11 @@ def spec_cargo_deny(cur: str) -> SpecResult:
 def spec_cargo_tarpaulin(cur: str) -> SpecResult:
     v = bv.gh_latest("xd009642/tarpaulin")
     return v, (bv.cargo_qa_pins("cargo-tarpaulin", v) if v != cur and bv.WRITE_MODE else {})
+
+
+def spec_cargo_mutants(cur: str) -> SpecResult:
+    v = bv.gh_latest("sourcefrog/cargo-mutants").lstrip("v")
+    return v, (bv.cargo_qa_pins("cargo-mutants", v) if v != cur and bv.WRITE_MODE else {})
 
 
 def web_lane_pins(tool: str, v: str) -> dict[str, str]:

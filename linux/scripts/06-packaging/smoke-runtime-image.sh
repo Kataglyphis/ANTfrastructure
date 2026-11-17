@@ -552,7 +552,7 @@ PROBE
 _consumer_test_runtimes_probe() {
   cat <<'PROBE'
 _qa=""
-for _t in cargo-audit cargo-deny cargo-tarpaulin; do
+for _t in cargo-audit cargo-deny cargo-tarpaulin cargo-mutants; do
   _qa="${_qa} ${_t}=$("${_t}" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 done
 case "${_qa}" in

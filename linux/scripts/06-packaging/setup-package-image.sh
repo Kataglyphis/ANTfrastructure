@@ -479,6 +479,15 @@ install_cargo_qa_tools() {
         install_web_lane_prebuilt "${name}" "${version}" \
             || { echo "ERROR: ${name} ${version} did not install from its pinned release binary" >&2; return 1; }
     done
+    # cargo-mutants publishes an x86_64 Linux binary only, and OxidANT's weekly job that runs it is amd64 (CON238).
+    if [ "$(uname -m)" != x86_64 ]; then
+        echo "NOTE: no upstream cargo-mutants binary for $(uname -m); not shipping it"
+        return 0
+    fi
+    version="$(_versions_env_value CARGO_MUTANTS_VERSION)"
+    [ -n "${version}" ] || { echo "ERROR: no cargo-mutants version in versions.env" >&2; return 1; }
+    install_web_lane_prebuilt cargo-mutants "${version}" \
+        || { echo "ERROR: cargo-mutants ${version} did not install from its pinned release binary" >&2; return 1; }
 }
 
 # The free-threaded twin of PYTHON_VERSION for the X.Yt legs (CON66). See docs/consumer-image-contract.md § The free-threaded Python
@@ -535,6 +544,10 @@ _web_lane_asset_url() {
         cargo-tarpaulin)
             printf 'https://github.com/xd009642/tarpaulin/releases/download/%s/cargo-tarpaulin-%s.tar.gz' \
                 "${version}" "${target}" ;;
+        cargo-mutants)
+            # Its one Linux build is glibc, not musl.
+            printf 'https://github.com/sourcefrog/cargo-mutants/releases/download/v%s/cargo-mutants-%s.tar.gz' \
+                "${version}" "${target/-musl/-gnu}" ;;
     esac
 }
 
@@ -553,6 +566,7 @@ _web_lane_asset_sha() {
         cargo-deny:aarch64)                  key=CARGO_DENY_LINUX_AARCH64_SHA256 ;;
         cargo-tarpaulin:x86_64)              key=CARGO_TARPAULIN_LINUX_X86_64_SHA256 ;;
         cargo-tarpaulin:aarch64)             key=CARGO_TARPAULIN_LINUX_AARCH64_SHA256 ;;
+        cargo-mutants:x86_64)                key=CARGO_MUTANTS_LINUX_X86_64_SHA256 ;;
         *) return 0 ;;
     esac
     _versions_env_value "${key}"

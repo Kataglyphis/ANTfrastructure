@@ -617,9 +617,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       of 2026-11-12. Source work at any time; both ship with the next planned chain. Next in line (owner, 2026-11-16):
       OxidANT's weekly `rust-mutants.yml` (`scripts/linux/run-mutants.sh`) warns and runs nothing until `:latest`
       carries the tool.
-      1. `:latest` has no `cargo-mutants`, and neither `versions.env` nor `tool-pins.env` pins one. OxidANT's
-         `docs/testing.md` installs it by hand, no workflow there runs it, and nothing re-checks its mutation
-         scores of 2026-10-15. A pinned binary lets a scheduled job run without an ad-hoc install.
+      1. In source since 2026-11-17: `CARGO_MUTANTS_VERSION=27.1.0` with its x86_64 SHA256, installed by
+         `install_cargo_qa_tools` on amd64 (upstream has no aarch64 Linux build), and the `cargo-qa-tools`
+         contract row expects it on amd64 and its absence on arm64. Left: a chain that publishes it.
       2. The `:winarm64` wheel store's pinned pytest stack has no pytest-timeout
          ([`windows-cross-builds.md` § A consumer's test runner, pinned](docs/windows-cross-builds.md#a-consumers-test-runner-pinned-con67-2026-10-06)).
          OrchestrANT's arm64 tests install their runner offline from that store

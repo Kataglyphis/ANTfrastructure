@@ -285,6 +285,7 @@ download_verified_file() {
     *cargo-audit*) _b=cargo-audit; mkdir -p "${_d}/pkg/inner" ;;
     *cargo-deny*)  _b=cargo-deny; mkdir -p "${_d}/pkg/inner" ;;
     *tarpaulin*)   _b=cargo-tarpaulin; mkdir -p "${_d}/pkg" ;;
+    *cargo-mutants*) _b=cargo-mutants; mkdir -p "${_d}/pkg" ;;
     *)             _b=flutter_rust_bridge_codegen; mkdir -p "${_d}/pkg" ;;
   esac
   _p="$(find "${_d}/pkg" -type d | tail -1)"
@@ -442,6 +443,8 @@ CARGO_DENY_LINUX_X86_64_SHA256=d1
 CARGO_DENY_LINUX_AARCH64_SHA256=d2
 CARGO_TARPAULIN_LINUX_X86_64_SHA256=t1
 CARGO_TARPAULIN_LINUX_AARCH64_SHA256=t2
+CARGO_MUTANTS_VERSION=27.1.0
+CARGO_MUTANTS_LINUX_X86_64_SHA256=m1
 VE
   (
     set -uo pipefail
@@ -453,7 +456,7 @@ VE
     for kv in "$@"; do export "${kv?}"; done
     install_cargo_qa_tools
     printf 'EXIT %s\n' "$?"
-    for kv in cargo-audit cargo-deny cargo-tarpaulin; do [ -x "${CARGO_HOME}/bin/${kv}" ] && printf 'LANDED %s\n' "${kv}"; done
+    for kv in cargo-audit cargo-deny cargo-tarpaulin cargo-mutants; do [ -x "${CARGO_HOME}/bin/${kv}" ] && printf 'LANDED %s\n' "${kv}"; done
   ) 2>&1
   rm -rf "${home}"
 }
@@ -466,12 +469,18 @@ t_assert_contains "${_out}" "DL https://github.com/xd009642/tarpaulin/releases/d
 for _b in cargo-audit cargo-deny cargo-tarpaulin; do t_assert_contains "${_out}" "LANDED ${_b}"; done
 t_assert_contains "${_out}" "EXIT 0"
 
+t_case "CON238: x86_64 adds cargo-mutants from its pinned glibc release binary"
+t_assert_contains "${_out}" "DL https://github.com/sourcefrog/cargo-mutants/releases/download/v27.1.0/cargo-mutants-x86_64-unknown-linux-gnu.tar.gz m1"
+t_assert_contains "${_out}" "LANDED cargo-mutants"
+
 t_case "CON65: aarch64 reads its own pins, and cargo-audit's aarch64 build is the glibc one"
 _out="$( FAKE_MACHINE=aarch64 _qa_run )"
 t_assert_contains "${_out}" "cargo-audit-aarch64-unknown-linux-gnu-v0.22.2.tgz a2" "upstream publishes no aarch64 musl cargo-audit"
 t_assert_contains "${_out}" "cargo-deny-0.20.2-aarch64-unknown-linux-musl.tar.gz d2"
 t_assert_contains "${_out}" "cargo-tarpaulin-aarch64-unknown-linux-musl.tar.gz t2"
 t_assert_contains "${_out}" "EXIT 0"
+t_assert_contains "${_out}" "NOTE: no upstream cargo-mutants binary for aarch64; not shipping it"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c 'LANDED cargo-mutants' || true)" "aarch64 ships no cargo-mutants"
 
 t_case "CON65: riscv64 has no upstream binary and ships none, without a QEMU source build"
 _out="$( FAKE_MACHINE=riscv64 _qa_run )"

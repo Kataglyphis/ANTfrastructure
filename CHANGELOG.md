@@ -15,6 +15,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-17 — cargo-mutants in the amd64 image at its pin (CON238, item 1)
+
+- `versions.env` pins `CARGO_MUTANTS_VERSION=27.1.0`, the version OxidANT's mutation scores were taken with, and
+  `CARGO_MUTANTS_LINUX_X86_64_SHA256` for upstream's one Linux binary (x86_64, glibc). `install_cargo_qa_tools`
+  installs it on amd64 and notes its absence elsewhere; the smoke probe asks its version, and the `cargo-qa-tools`
+  row expects `cargo-mutants=27.1.0` on amd64 and none on arm64. `bump_versions.py` tracks the pin. OxidANT's
+  weekly `rust-mutants.yml` runs once a chain publishes it. Tests: the installer suite (amd64 lands it, aarch64
+  does not) and the contract cases (both arches, both wrong ways).
+
 ## 2026-11-17 — `build-docs.yml` takes the publish job's limit (`publish-timeout-minutes`)
 
 - The publish job's `timeout-minutes` comes from `publish-timeout-minutes` (default 30, unchanged). An upload the
