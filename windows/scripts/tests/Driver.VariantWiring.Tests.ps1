@@ -306,8 +306,9 @@ function Get-BkToolPinArg {
 }
 function Get-BkTag { param($Name) return "fixture/$Name" }
 function Invoke-BkPublishGate {
-    param($Image)
+    param($Image, [string]$Label = 'publish-gate')
     $State.Gates.Add($Image)
+    $State.GateLabels.Add($Label)
     $State.Trace.Add("gate:$Image")
     if ($Image -eq $State.FailGate) { throw 'branch publish gate refused' }
 }
@@ -324,6 +325,7 @@ function Invoke-BkStage {
         return [pscustomobject]@{
             Stages=$Stages; Branches=$Branches; Variant=$Variant; Arch=$Arch; FailGate=''
             Gates=[Collections.Generic.List[string]]::new(); Trace=[Collections.Generic.List[string]]::new()
+            GateLabels=[Collections.Generic.List[string]]::new()
             Solves=[Collections.Generic.List[object]]::new()
         }
     }
@@ -362,11 +364,22 @@ function Invoke-BkStage {
         }
     }
 
+    function Assert-DriverMediaParentGateLabels {
+        param([string[]]$Labels, [scriptblock]$DiskFloor = { param($Label) Get-StageDiskFloorGb -Label $Label })
+        Assert-Equal 'publish-gate:parent-core,publish-gate:parent-litert,publish-gate:parent-tvm' ($Labels -join ',') 'canonical parent gate log labels'
+        Assert-Equal 3 @($Labels | Select-Object -Unique).Count 'each reused parent keeps its own timing and log receipt'
+        Assert-False ($Labels -contains 'publish-gate') 'the final publish gate retains a separate receipt'
+        foreach ($label in $Labels) {
+            Assert-Equal (& $DiskFloor 'publish-gate') (& $DiskFloor $label) 'parent gate headroom matches ordinary publication'
+        }
+    }
+
     It 'reuses three gated branches and forwards architecture and merge pins' {
         foreach ($case in @(@{ V=''; A='amd64' }, @{ V='nvidia'; A='amd64' }, @{ V='rocm'; A='amd64' }, @{ V=''; A='arm64' }, @{ V='nvidia'; A='arm64' })) {
             $state = New-DriverMediaFixture -Stages @('media-merge', 'final') -Variant $case.V -Arch $case.A
             Invoke-DriverMediaFixture -State $state
             Assert-Equal 1 $state.Solves.Count 'completed branches are not rebuilt'
+            Assert-DriverMediaParentGateLabels -Labels $state.GateLabels
             Assert-Equal 'fixture/windows-media-core,fixture/windows-media-litert,fixture/windows-media-tvm' ($state.Gates -join ',')
             Assert-Equal 'gate:fixture/windows-media-core,gate:fixture/windows-media-litert,gate:fixture/windows-media-tvm,solve:windows/Dockerfile.media-merge-builder' ($state.Trace -join ',')
             $solve = $state.Solves[0]
@@ -381,6 +394,32 @@ function Invoke-BkStage {
             Assert-Equal 'fixture/windows-media-litert' $solve.BuildArgs.LITERT_IMAGE
             Assert-Equal 'fixture/windows-media-tvm' $solve.BuildArgs.TVM_IMAGE
         }
+    }
+
+    It 'detects a live parent-label collision after a healthy ordinary build' {
+        $edit = @{ Find='-Label $parentLabel'; Replace="-Label 'publish-gate'" }
+        $control = New-DriverMediaFixture -Stages @('media')
+        Invoke-DriverMediaFixture -State $control @edit
+        Assert-Equal 8 $control.Solves.Count 'the mutant still executes a healthy ordinary build'
+        Assert-Equal 0 $control.GateLabels.Count
+        $state = New-DriverMediaFixture -Stages @('media-merge')
+        Invoke-DriverMediaFixture -State $state @edit
+        Assert-Equal 1 $state.Solves.Count
+        Assert-Equal 3 $state.Gates.Count
+        Assert-Throws { Assert-DriverMediaParentGateLabels -Labels $state.GateLabels } -MessagePattern 'canonical parent gate log labels'
+    }
+
+    It 'detects a live disk-policy mutant that recategorizes a parent probe' {
+        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsBuildDriver.Common.psm1' -FunctionName 'Get-StageDiskFloorGb' `
+            -Find "'media-core|media-builder'" -Replace "'media-core|media-builder|parent-core'" -Body {
+                $state = New-DriverMediaFixture -Stages @('media-merge')
+                Invoke-DriverMediaFixture -State $state
+                Assert-DriverMediaParentGateLabels -Labels $state.GateLabels
+                Assert-Equal (Get-StageDiskFloorGb -Label 'publish-gate') (Get-MutStageDiskFloorGb -Label 'publish-gate') 'healthy ordinary policy still executes'
+                Assert-Throws {
+                    Assert-DriverMediaParentGateLabels -Labels $state.GateLabels -DiskFloor { param($Label) Get-MutStageDiskFloorGb -Label $Label }
+                } -MessagePattern 'parent gate headroom matches ordinary publication'
+            }
     }
 
     It 'refuses an incomplete fan-in even when media-merge is the only requested stage' {

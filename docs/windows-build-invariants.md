@@ -37,6 +37,10 @@ compiler-cache preflight. ROCm closure checks must treat this selection as media
 so it cannot inherit stale MIGraphX/Llama/Torch parents. A partial branch list
 refuses even a merge-only request. Ordinary `media` retains the full fan-out;
 reused source/digest provenance and complete acceptance remain separate evidence.
+Preserve a unique label for every reused-parent gate; sharing the final gate's
+label truncates its earlier stage logs and replaces timing entries. Parent
+probes retain the ordinary publication disk floor; label changes must not
+reclassify those probes as compilation.
 
 ## Contents
 

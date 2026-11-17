@@ -21,6 +21,11 @@
 - Add explicit `media-merge` selection after completed media branches, checking
   all three reused parents before the normal merge, without replaying branch
   builds or changing the default pipeline.
+- Give every reused media-parent publish check a distinct phase/log label;
+  retain all three receipts alongside final publication. The regression
+  fails on the real collision, and a live mutation restores that failure.
+  Parent labels retain the ordinary publish-probe disk floor; the real
+  misclassification and a live resource-policy mutation are checked too.
 - Keep reused-parent failure and live-mutation case execution in bounded test
   helpers; preserve all cases and the strict complexity limits.
 - Keep compiler-cache and ROCm stale-parent checks armed for that selection.

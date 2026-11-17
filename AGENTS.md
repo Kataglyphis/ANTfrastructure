@@ -774,6 +774,9 @@ digest-bound branch evidence; publish-gate success alone is not that proof.
 Keep all three reused-parent publish gates, the merge disk/retry gates, compiler
 cache requirement and ROCm post-media closure. An explicit merge refuses a branch
 subset even without downstream stages; ordinary `media` still builds every branch.
+Each reused-parent gate needs its own phase/log label, distinct from final publication,
+so none of its receipts or timing rows can overwrite another. Retain ordinary
+publish-gate headroom for these parent probes.
 See [the merge boundary](docs/windows-build-lanes.md#resume-from-completed-media-branches).
 
 ```

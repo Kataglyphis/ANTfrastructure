@@ -1063,7 +1063,8 @@ function Invoke-BkMediaMergeStage {
     if ($runMerge) {
         if ($Stages -notcontains 'media') {
             foreach ($branch in $script:MergeRequiredBranches) {
-                Invoke-BkPublishGate -Image (Get-BkTag "windows-$branch")
+                $parentLabel = 'publish-gate:' + $branch.Replace('media-', 'parent-')
+                Invoke-BkPublishGate -Image (Get-BkTag "windows-$branch") -Label $parentLabel
             }
         }
         # Every branch ships a tree, possibly an empty marker one, so the unconditional COPY --from lines hold.

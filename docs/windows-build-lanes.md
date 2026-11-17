@@ -324,7 +324,10 @@ and matching image-producing input evidence. Resume the default amd64 lane with:
 & .\windows\Build-Buildkit.ps1 -Stages @('media-merge','torch','final')
 ```
 
-`media-merge` probes all three reused parents with the existing publish gate,
+`media-merge` probes all three reused parents with the existing publish gate.
+Their `publish-gate:parent-<component>` phase labels keep three independent
+logs and timing rows, separate from the final image's `publish-gate` receipt.
+These names retain ordinary publish-probe headroom. The driver
 then runs the unchanged `built` merge target with its disk gate and five-attempt
 policy. It does not run the seven branch solves. A `MediaBranches` subset refuses
 the explicit merge, including when no downstream stage was requested. Selecting

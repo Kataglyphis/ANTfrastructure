@@ -55,10 +55,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
   stopped before merge at 30.7 GiB against its unchanged 45-GiB floor. Replaying
   the whole fan-out would consume the recovered space again. Source now offers
   a separate merge selection with all reused-parent, cache and ROCm closure
-  gates. Full Windows execution passed all 3,101 tests but found a test-script
-  complexity regression; bounded case helpers preserve those same cases.
-  Full qualification of the correction remains required. Functional fixtures
-  and live mutants do not complete producer,
+  gates. The bounded case helpers passed full Windows qualification at
+  `da7255e9` (353 suites/3,101 tests). Distinct parent-gate phase labels now
+  preserve all three receipts and the final gate separately; the real old
+  collision and a live rollback mutation are covered. Parent probes retain
+  ordinary publication headroom, with real and mutated policy checks. Full qualification
+  of this correction remains required. Functional fixtures and live mutants
+  do not complete producer,
   hardware, hosted CI or publication acceptance. Preserve all earlier raw1
   outcomes and keep CON228 open.
 
