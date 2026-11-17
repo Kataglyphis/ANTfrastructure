@@ -202,6 +202,8 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       4. Not covered: clang's default, Rust, and Windows (CON265).
 
       Done when `check_amd64_isa` passes on a published amd64 image and both measurements are recorded.
+      **Owner 2026-11-17:** not yet. First the "before" numbers on the published `:latest` on an idle host; the chain waits for his go after them.
+
 - [ ] **CON265 — Windows x64: the source builds that get no CPU flag** [M, ★]. Read 2026-11-12, source only:
       the amd64 `SimdFlags` of `WindowsTargetArch.Common.psm1` (AVX2, FMA, SSE4.2) reach ONNX Runtime,
       OpenCV and LiteRT only; the scripts give FFmpeg, GStreamer, LLVM, CPython, IREE, TVM and the Rust
@@ -209,6 +211,8 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       string byte for byte, and ORT's ninja patch strips `/arch:`, so a raise is spelled
       `/clang:-march=x86-64-v3`. Done when the owner decides whether Windows follows CON264, and a raise
       is measured.
+      **Owner decision 2026-11-17:** Windows follows CON264 (`/clang:-march=x86-64-v3` for every source build), prepared in source and built with CON264's chain only on his go.
+
 - [ ] **CON266 — language models on the Intel GPU and NPU** [M, ★★]. Owner request 2026-11-12. Nothing was
       read for it: after CON260, choose between OpenVINO GenAI and ONNX Runtime GenAI over the OpenVINO
       provider, and size the models against the device's memory. Done when one model answers from the
@@ -703,6 +707,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       a 48-token reply is quickest on one or two. Left: OrchestrANT's, AccelerANTgine's and OxidANT's
       `perf-host.sh` pass `--threads auto` at their next hub pin; whether a shipped text default follows the
       detector's rule or a text rule of its own is the owner's call on these numbers.
+      **Owner decision 2026-11-17:** a shipped text default follows the detector's rule (CON240): the CPUs of the affinity mask, capped; no separate text rule.
+
 - [ ] **CON219 — ORT reads a null scale pointer in 4-bit `MatMulNBits` on riscv64 RVV** [M, ★★★].
       Found 2026-11-02 with OxidANT's SmolLM2-135M contract test under QEMU, image index `7d4d4129`: a fault in
       `libonnxruntime.so.1.31.0` at `0x150150c` on `flw fa5, 0x0(s10)`, `s10=0x1f80`. In ORT v1.31.0's
@@ -759,6 +765,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       minutes because the three cold media stages finished together; the 2 h gain of 2026-10-27 needs unequal
       stages, and the per-lane disk guard has not run under pressure yet. **Owner decision 2026-11-07: stays
       opt-in** until a pipeline run has reclaimed under real disk pressure; then decide again.
+      **Owner decision 2026-11-17:** it becomes the default after one more full chain shows the disk guards hold; until then it stays opt-in.
+
 - [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★]. In source (CHANGELOG 2026-11-03,
       `_disk_guard_release_stale_records`), tested with stubs only. Done when the next chain resumed after a stop
       logs `left by a stopped chain: restarting buildkitd` and reclaims without a hand restart.
@@ -1891,7 +1899,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       The 2026-10-27 amd64 child's history carries 17 `kataglyphis.step` labels (package and torch);
       left: `layer-audit.py` on `:latest` and the `CACHED` check.
 
-- [b] **CON239 — mingw and the `x86_64-pc-windows-gnu` target in `:latest`, for a Windows type check on a push** [S, ★].
+- [ ] **CON239 — mingw and the `x86_64-pc-windows-gnu` target in `:latest`, for a Windows type check on a push** [S, ★].
       Blocked on the owner: `gcc-mingw-w64-x86-64` was declined on 2026-11-03, as about 600 MB in every image
       for one lint step ([`image-decisions.md` § Deliberate — not gaps](docs/image-decisions.md#deliberate--not-gaps)).
       New since then, from the audit of 2026-11-12: OxidANT's `scripts/linux/clippy-windows.sh` is no
@@ -1901,6 +1909,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       step itself is a type check on the GNU target, not proof of the MSVC lane, and costs about 5 minutes
       a package. If the answer changes: the package and the Rust target in the package stage, a smoke line
       for each, and one `clippy-windows` step in OxidANT with its minutes measured.
+      **Owner decision 2026-11-17: take it.** mingw (`gcc-mingw-w64-x86-64`) and the `x86_64-pc-windows-gnu` Rust target go into `:latest` amd64, and OxidANT's push type-checks that target (about 5 min a package). Update `docs/image-decisions.md` § Deliberate — not gaps in the same change.
 
 - [ ] **CON275 — GCC 16's `_mm_loadl_epi64` fails UBSan's alignment check** [S, ★]. Found 2026-11-15 by
       AccelerANTgine's Linux x64 GCC Debug lane (run 43707801504): UBSan reported "load of misaligned address ... for
@@ -2213,6 +2222,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `--no-verify`. Next: the pre-push hook runs a consumer's script suites in the family image when the host lacks
       a prerequisite the image has, or `t_skip_unless` reads a host's declared gaps. Done when a push from a host
       without node runs the suites in the image and stops only on a real failure.
+      **Owner decision 2026-11-17:** the pre-push hook runs a consumer's script suites in the family image when the host lacks a prerequisite the image has; no standing `--no-verify`.
 
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
