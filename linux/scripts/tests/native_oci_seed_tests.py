@@ -147,6 +147,102 @@ class SeedTests(unittest.TestCase):
         self.save_proof()
         self.assertEqual(len(self.seed()['linked_layers']),25)
 
+    def test_default_stage_parents_use_the_verified_native_byte_protocol(self) -> None:
+        for stage, ancestor in [('Media', 'SDK'), ('Android', 'Media')]:
+            with self.subTest(stage=stage):
+                self.proof['status'] = f'passed-native-default-amd64-{stage}-OCI-and-{ancestor}-ancestry-only'
+                self.save_proof()
+                self.child = self.work / f'default {stage} child'
+                self.assertEqual(len(self.seed()['linked_layers']),25)
+
+    def legacy_receipt(self) -> tuple[Path, dict[str, Any]]:
+        self.assertEqual(self.export().returncode,0)
+        path = SEED['receipt_path'](self.child)
+        record = json.loads(path.read_text())
+        record['schema_version'] = 1
+        for row in record['linked_layers']:
+            row['identity'] = SEED['identity'](self.parent / row['relative_path'])
+        path.write_text(json.dumps(record))
+        return path, record
+
+    def test_later_sibling_and_descendant_links_preserve_v2_replay(self) -> None:
+        self.assertEqual(self.export().returncode,0)
+        record = json.loads(SEED['receipt_path'](self.child).read_text())
+        self.assertEqual(record['schema_version'],2)
+        self.assertNotIn('st_ctime_ns',record['linked_layers'][0]['identity'])
+        sibling = self.work / 'second child'
+        sibling.mkdir()
+        SEED['seed_layers'](self.proof_path,sibling)
+        self.assertEqual(SEED['verify_seed'](self.proof_path,self.child)[1],record)
+        child_layout = OCI['native_layout'](self.child)
+        descendant_proof = dict(self.proof,status='passed-qualified-native-SDK-OCI-and-compiler-ancestry',
+                                context=str(self.child),manifest=child_layout[0],config=child_layout[1]['config']['digest'],
+                                layers=len(child_layout[1]['layers']),index_sha256=SEED['sha'](self.child / 'index.json'))
+        proof_path = self.work / 'child proof.json'
+        proof_path.write_text(json.dumps(descendant_proof))
+        descendant = self.work / 'grandchild'
+        descendant.mkdir()
+        SEED['seed_layers'](proof_path,descendant)
+        self.assertEqual(SEED['verify_seed'](self.proof_path,self.child)[1],record)
+
+    def test_legacy_receipts_retain_their_strict_ctime_policy(self) -> None:
+        path,record = self.legacy_receipt()
+        self.assertEqual(SEED['verify_seed'](self.proof_path,self.child)[1],record)
+        original = path.read_bytes()
+        row = record['linked_layers'][0]
+        os.link(self.parent / row['relative_path'],self.work / 'later legacy link')
+        with self.assertRaises(AssertionError):
+            SEED['verify_seed'](self.proof_path,self.child)
+        self.assertEqual(path.read_bytes(),original)
+
+    def test_invalid_schema_cannot_reuse_matching_legacy_identities(self) -> None:
+        path,record = self.legacy_receipt()
+        for version in [0,3,True,'2']:
+            with self.subTest(version=version):
+                record['schema_version'] = version
+                path.write_text(json.dumps(record))
+                with self.assertRaises(AssertionError):
+                    SEED['verify_seed'](self.proof_path,self.child)
+
+    def test_same_size_content_change_cannot_hide_behind_restored_mtime(self) -> None:
+        self.assertEqual(self.export().returncode,0)
+        row = json.loads(SEED['receipt_path'](self.child).read_text())['linked_layers'][0]
+        path = self.parent / row['relative_path']
+        original = path.stat()
+        data = path.read_bytes()
+        path.write_bytes(bytes([data[0] ^ 1]) + data[1:])
+        os.utime(path,ns=(original.st_atime_ns,original.st_mtime_ns))
+        with self.assertRaises(AssertionError):
+            SEED['verify_seed'](self.proof_path,self.child)
+
+    def test_identical_replacement_inodes_refuse_for_both_link_ends(self) -> None:
+        self.assertEqual(self.export().returncode,0)
+        row = json.loads(SEED['receipt_path'](self.child).read_text())['linked_layers'][0]
+        parent,child = [root / row['relative_path'] for root in [self.parent,self.child]]
+        for path,other in [(child,parent),(parent,child)]:
+            with self.subTest(path=path):
+                path.unlink()
+                shutil.copy2(other,path)
+                with self.assertRaises(AssertionError):
+                    SEED['verify_seed'](self.proof_path,self.child)
+                path.unlink()
+                os.link(other,path)
+                SEED['verify_seed'](self.proof_path,self.child)
+
+    def test_v2_recorded_identity_requires_every_stable_field(self) -> None:
+        self.assertEqual(self.export().returncode,0)
+        path = SEED['receipt_path'](self.child)
+        original = json.loads(path.read_text())
+        fields = ['st_dev','st_ino','st_size','st_mode','st_uid','st_gid','st_mtime_ns']
+        self.assertEqual(set(original['linked_layers'][0]['identity']),set(fields))
+        for field in fields:
+            with self.subTest(field=field):
+                record = copy.deepcopy(original)
+                del record['linked_layers'][0]['identity'][field]
+                path.write_text(json.dumps(record))
+                with self.assertRaises(AssertionError):
+                    SEED['verify_seed'](self.proof_path,self.child)
+
     def test_identity_refuses_directories_and_symlinks(self) -> None:
         source = self.parent / 'blobs/sha256' / self.parent_layout[1]['layers'][0]['digest'].split(':')[1]
         alias = self.work / 'blob alias'

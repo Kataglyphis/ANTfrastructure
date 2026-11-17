@@ -48224,7 +48224,7 @@
  {
   "id": "compiler-llvm-tools.oci-parent-reuse-parent-status",
   "target": "linux/scripts/local-proof/native_oci_seed.py",
-  "find": "assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS, ANDROID_STATUS}, 'Verified native OCI parent required'",
+  "find": "assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS, ANDROID_STATUS, DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS}, 'Verified native OCI parent required'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
   "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
@@ -48304,7 +48304,7 @@
  {
   "id": "compiler-llvm-tools.oci-parent-reuse-receipt-schema",
   "target": "linux/scripts/local-proof/native_oci_seed.py",
-  "find": "    assert record['schema_version'] == 1 and record['status'] == 'seeded-verified-parent-layer-links-only', 'Unexpected OCI seed receipt'\n",
+  "find": "    assert type(record['schema_version']) is int and record['schema_version'] in {1,2} and record['status'] == 'seeded-verified-parent-layer-links-only', 'Unexpected OCI seed receipt'\n",
   "replace": "    pass\n",
   "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
   "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
@@ -48352,7 +48352,7 @@
  {
   "id": "compiler-llvm-tools.oci-parent-reuse-receipt-inodes",
   "target": "linux/scripts/local-proof/native_oci_seed.py",
-  "find": "        assert identity(source) == row['identity'] and identity(destination) == row['identity'], 'Shared OCI layer identity or parent metadata changed'\n",
+  "find": "        assert identity(source,stable=stable) == row['identity'] and identity(destination,stable=stable) == row['identity'], 'Shared OCI layer identity or parent metadata changed'\n",
   "replace": "        pass\n",
   "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
   "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
@@ -50856,8 +50856,8 @@
  {
   "id": "compiler-llvm-tools.media-handoff-native-media-parent",
   "target": "linux/scripts/local-proof/native_oci_seed.py",
-  "find": ", MEDIA_STATUS, ANDROID_STATUS}",
-  "replace": ", ANDROID_STATUS}",
+  "find": ", MEDIA_STATUS, ANDROID_STATUS, DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS}",
+  "replace": ", ANDROID_STATUS, DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS}",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
  },
@@ -51072,8 +51072,8 @@
  {
   "id": "compiler-llvm-tools.android-handoff-native-parent-status",
   "target": "linux/scripts/local-proof/native_oci_seed.py",
-  "find": ", MEDIA_STATUS, ANDROID_STATUS}",
-  "replace": ", MEDIA_STATUS}",
+  "find": ", MEDIA_STATUS, ANDROID_STATUS, DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS}",
+  "replace": ", MEDIA_STATUS, DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS}",
   "test": "bash linux/scripts/tests/test-android-handoff.sh",
   "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
  },
@@ -54884,5 +54884,85 @@
   "replace": "        pass\n",
   "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k direct_failure_audit",
   "why": "Failure preservation requires actual direct assertion evidence before the mutator/preflight stages; a retained failure never accepts source."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-replay-schema2-writer",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "result = {'schema_version':2,",
+  "replace": "result = {'schema_version':1,",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "New receipts must use the stable schema while legacy readers retain their policy."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-replay-schema-exact-type",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "type(record['schema_version']) is int and ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "A boolean must not impersonate a legacy schema with matching full identities."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-replay-stable-schema2",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "stable = record['schema_version'] == 2",
+  "replace": "stable = False",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Sibling and descendant links must preserve a new receipt without dropping stable identity checks."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-replay-strict-schema1",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "stable = record['schema_version'] == 2",
+  "replace": "stable = True",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Legacy receipts retain exact ctime and cannot be silently reinterpreted as schema 2."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-replay-ctime-exclusion",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": " if not stable or name != 'st_ctime_ns'",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Only schema 2 excludes ctime so ordinary future links cannot invalidate its stable identity."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-replay-source-identity",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "identity(source,stable=stable) == row['identity'] and identity(destination,stable=stable) == row['identity']",
+  "replace": "identity(destination,stable=stable) == row['identity']",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "A same-byte replacement of the parent inode must still refuse."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-replay-child-identity",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "identity(source,stable=stable) == row['identity'] and identity(destination,stable=stable) == row['identity']",
+  "replace": "identity(source,stable=stable) == row['identity']",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "A same-byte replacement of the child inode must still refuse."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-replay-default-media-parent",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": ", DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS}",
+  "replace": ", DEFAULT_ANDROID_STATUS}",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "The default native Media parent uses its own verified byte status rather than a fabricated ROCm status."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-replay-default-android-parent",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": ", DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS}",
+  "replace": ", DEFAULT_MEDIA_STATUS}",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "The default native Android parent uses its own verified byte status rather than a fabricated ROCm status."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-replay-recorded-inode",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "for name in STAT_FIELDS if not stable or name != 'st_ctime_ns'",
+  "replace": "for name in STAT_FIELDS if name != 'st_ino' and (not stable or name != 'st_ctime_ns')",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "New receipts must retain every stable identity field, including the original inode."
  }
 ]

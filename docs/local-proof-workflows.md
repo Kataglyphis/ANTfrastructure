@@ -561,9 +561,19 @@ and extractor raw statuses, including under conditional callers and ordinary err
 returns the rightmost pipeline failure. Seeded exports write `<context>.transport.json` and
 `<context>.parent-links.json`. The sealer requires both statuses to be zero, the exact worker
 hash manifest, every recorded unique digest/path, source/child device/inode and post-link
-mode/owner/mtime/ctime identity, and independent child index/layout files. Creating the links
-itself changes link metadata; no other writer/linker may change it before that export is sealed.
-Source file hashes and logical output paths remain unchanged.
+size/mode/owner/mtime identity, and independent child index/layout files. New schema-2 link
+receipts exclude ctime because creating another sibling or descendant link advances that
+timestamp on the same unchanged inode. Every parent blob is still rehashed before replay;
+equal-byte replacement inodes and changed stable metadata still fail. Schema-1 receipts retain
+their original ctime requirement, including refusal after a later link advances it. Historical
+receipts are never rewritten or silently upgraded. These checks prove current bytes and file
+identities, not the absence of every past write. Source hashes and logical paths stay unchanged.
+
+The byte protocol also accepts sealed native default-amd64 Media and Android parents through
+their explicit `passed-native-default-amd64-Media-OCI-and-SDK-ancestry-only` and
+`passed-native-default-amd64-Android-OCI-and-Media-ancestry-only` statuses. This requires the
+same manifest/config/index, every blob hash, layer count and stopped-export checks; it does
+not make the private ROCm launch profiles accept a default build or prove source/GPU acceptance.
 
 Only layers are shared. Parent receipt and source paths remain explicit, and every final child
 blob and ancestor descriptor/diffID is still verified. These local checks do not authenticate a

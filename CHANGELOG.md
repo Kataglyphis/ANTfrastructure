@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-17 — preserve OCI link receipts across later child exports
+
+- New schema-2 parent-link receipts retain mandatory blob hashes, exact source/child inodes, size, mode, ownership and mtime while allowing ctime to advance when another child links the same bytes. Schema-1 receipts keep their original strict ctime policy and are never rewritten.
+- Default amd64 Media and Android parents use explicit byte-proof statuses with the same stopped-export and full native OCI checks. This does not expand the private ROCm launch profiles or establish image/GPU acceptance.
+- Real synthetic archives and links cover sibling/descendant replay, legacy refusal, malformed schema values, content changes with restored mtime, identical-byte inode replacements and every stable identity field.
+
 ## 2026-11-17 — select complete compiler image checks explicitly
 
 - Current compiler inputs with `source_proofs` require `image_qualification_profile=compiler-cross-cpu` for image qualification and native OCI handoff. Both shell modes, all six wrappers and the original CPU/backend/loader checks remain mandatory; historical launcher profiles retain their behavior.

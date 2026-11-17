@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 MEDIA_STATUS = 'passed-native-ROCm-Media-OCI-and-GPU-ancestry-only'
 ANDROID_STATUS = 'passed-native-ROCm-Android-OCI-and-Media-ancestry-only'
+DEFAULT_MEDIA_STATUS = 'passed-native-default-amd64-Media-OCI-and-SDK-ancestry-only'
+DEFAULT_ANDROID_STATUS = 'passed-native-default-amd64-Android-OCI-and-Media-ancestry-only'
 
 STAT_FIELDS = ('st_dev', 'st_ino', 'st_size', 'st_mode', 'st_uid', 'st_gid', 'st_mtime_ns', 'st_ctime_ns')
 
@@ -34,7 +36,7 @@ def plain_file(path: Path) -> None:
 def parent_layout(proof_path: Path) -> tuple[Json, Path, NativeLayout]:
     plain_file(proof_path)
     proof = json.loads(proof_path.read_text())
-    assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS, ANDROID_STATUS}, 'Verified native OCI parent required'
+    assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS, ANDROID_STATUS, DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS}, 'Verified native OCI parent required'
     assert proof['all_native_blob_sizes_and_sha256_verified'] is True, 'Parent blob verification is required'
     assert proof['stopped']['ActiveState'] == 'inactive' and proof['stopped']['MainPID'] == '0', 'Parent export must be sealed'
     context = plain_directory(Path(proof['context']))
@@ -49,10 +51,10 @@ def parent_layout(proof_path: Path) -> tuple[Json, Path, NativeLayout]:
     return proof, context, layout
 
 
-def identity(path: Path) -> Json:
+def identity(path: Path, *, stable: bool = False) -> Json:
     value = path.lstat()
     assert stat.S_ISREG(value.st_mode), 'Only regular layer files may be shared'
-    return {name: getattr(value, name) for name in STAT_FIELDS}
+    return {name: getattr(value, name) for name in STAT_FIELDS if not stable or name != 'st_ctime_ns'}
 
 
 def unique_layers(layout: NativeLayout) -> list[Json]:
@@ -77,8 +79,8 @@ def seed_layers(proof_path: Path, context: Path) -> Json:
         destination = context / source.relative_to(parent)
         os.link(source, destination, follow_symlinks=False)
         descriptor_path(context, layer)
-        records.append({'digest':layer['digest'], 'relative_path':str(destination.relative_to(context)), 'identity':identity(destination)})
-    result = {'schema_version':1, 'status':'seeded-verified-parent-layer-links-only', 'parent_proof':str(proof_path.resolve()),
+        records.append({'digest':layer['digest'], 'relative_path':str(destination.relative_to(context)), 'identity':identity(destination,stable=True)})
+    result = {'schema_version':2, 'status':'seeded-verified-parent-layer-links-only', 'parent_proof':str(proof_path.resolve()),
               'parent_proof_sha256':sha(proof_path), 'parent_context':str(parent), 'child_context':str(context),
               'parent_manifest':layout[0], 'parent_index_sha256':proof['index_sha256'], 'linked_layers':records,
               'shared_unique_layer_bytes':sum(row['identity']['st_size'] for row in records), 'scope':__doc__}
@@ -95,7 +97,8 @@ def verify_seed(proof_path: Path, context: Path) -> tuple[NativeLayout, Json]:
     receipt = receipt_path(context)
     plain_file(receipt)
     record = json.loads(receipt.read_text())
-    assert record['schema_version'] == 1 and record['status'] == 'seeded-verified-parent-layer-links-only', 'Unexpected OCI seed receipt'
+    assert type(record['schema_version']) is int and record['schema_version'] in {1,2} and record['status'] == 'seeded-verified-parent-layer-links-only', 'Unexpected OCI seed receipt'
+    stable = record['schema_version'] == 2
     assert record['parent_proof'] == str(proof_path.resolve()) and record['parent_proof_sha256'] == sha(proof_path), 'OCI seed parent proof differs'
     assert record['parent_context'] == str(parent) and record['child_context'] == str(context), 'OCI seed context binding differs'
     assert record['parent_manifest'] == layout[0] and record['parent_index_sha256'] == proof['index_sha256'], 'OCI seed parent identity differs'
@@ -105,7 +108,7 @@ def verify_seed(proof_path: Path, context: Path) -> tuple[NativeLayout, Json]:
         source = parent / 'blobs/sha256' / layer['digest'].split(':',1)[1]
         destination = context / source.relative_to(parent)
         assert row['relative_path'] == str(destination.relative_to(context)), 'OCI seed layer path differs'
-        assert identity(source) == row['identity'] and identity(destination) == row['identity'], 'Shared OCI layer identity or parent metadata changed'
+        assert identity(source,stable=stable) == row['identity'] and identity(destination,stable=stable) == row['identity'], 'Shared OCI layer identity or parent metadata changed'
     assert record['shared_unique_layer_bytes'] == sum(layer['size'] for layer in layers), 'OCI shared-byte accounting differs'
     for name in ['index.json', 'oci-layout']:
         plain_file(context / name)
