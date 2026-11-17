@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-18 — a workspace Cargo license is staged under its file name alone
+
+- `stage-cargo-licenses.py` copied a `workspace` policy text to `<name@version>/workspace/<its repo path>`.
+  OxidANT's `profiling` texts sit at `packaging/licenses/cargo/aclysma-profiling-8271551172eb/`, which put
+  BeschleunigerBallett's NSIS source path at 268 characters and stopped makensis on Windows. The text now lands
+  at `<name@version>/workspace/<file name>`; two workspace texts of one package with the same name fail.
+
 ## 2026-11-17 — `Write-CPackGeneratorLog` prints what a failed package step's generator said
 
 - CPack reports a failed NSIS or WiX run only as "Problem running NSIS command" and points at a log inside the

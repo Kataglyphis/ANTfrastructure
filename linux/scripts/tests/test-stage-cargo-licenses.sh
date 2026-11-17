@@ -58,6 +58,10 @@ bad = json.loads(json.dumps(metadata)); bad["resolve"]["nodes"][0]["deps"][0]["d
 bad = json.loads(json.dumps(metadata)); bad["workspace_root"] = str(work); save("wrong-workspace.json", bad)
 bad = json.loads(json.dumps(metadata)); bad["packages"][1]["license_file"] = str(workspace / "LICENSE"); save("outside-license.json", bad)
 bad = json.loads(json.dumps(metadata)); bad["packages"][1]["manifest_path"] = str(crate / "missing.toml"); save("missing-manifest.json", bad)
+deep = workspace / "packaging" / "licenses" / "cargo" / "vendor-1234"; deep.mkdir(parents=True); (deep / "LICENSE-MIT").write_bytes(b"vendored license\n")
+nested = json.loads(json.dumps(policy)); nested["packages"]["app@1.0.0"]["files"].append({"root": "workspace", "path": "packaging/licenses/cargo/vendor-1234/LICENSE-MIT", "sha256": sha(deep / "LICENSE-MIT"), "provenance": "vendor commit 1234"}); save("nested-workspace.json", nested)
+(workspace / "packaging" / "LICENSE").write_bytes(b"workspace license\n")
+bad = json.loads(json.dumps(policy)); bad["packages"]["app@1.0.0"]["files"].append({"root": "workspace", "path": "packaging/LICENSE", "sha256": sha(workspace / "LICENSE"), "provenance": "same name"}); save("workspace-name-clash.json", bad)
 notice = work / "registry" / "notice-only"; notice.mkdir(); (notice / "Cargo.toml").write_text("[package]\n"); (notice / "NOTICE").write_text("notice only\n")
 bad = json.loads(json.dumps(metadata)); bad["packages"][1].update({"manifest_path": str(notice / "Cargo.toml"), "license_file": None, "license": "MIT"}); save("notice-only.json", bad)
 PY
@@ -85,8 +89,13 @@ assert m["packages"][0]["files"][0]["provenance"] == "workspace commit abc"
 assert len(m["packages"][1]["files"]) == 2
 PY
 
+t_case 'a nested workspace text is staged under its name alone, keeping Windows install paths short'
+t_assert_rc 0 run_collector metadata.json nested-workspace.json nested
+t_assert_ok cmp "$work/workspace/packaging/licenses/cargo/vendor-1234/LICENSE-MIT" "$work/nested/app@1.0.0/workspace/LICENSE-MIT"
+t_assert_fails test -e "$work/nested/app@1.0.0/workspace/packaging"
+
 t_case 'missing, altered and unproven sources fail before publishing any output'
-for policy in wrong-sha.json no-and-policy.json unreviewed-and.json no-workspace-policy.json traversal.json windows-traversal.json windows-drive.json windows-unc.json no-provenance.json duplicate.json; do
+for policy in wrong-sha.json no-and-policy.json unreviewed-and.json no-workspace-policy.json traversal.json windows-traversal.json windows-drive.json windows-unc.json no-provenance.json duplicate.json workspace-name-clash.json; do
   t_assert_fails run_collector metadata.json "$policy" "out-${policy}"
   t_assert_fails test -e "$work/out-${policy}"
 done
