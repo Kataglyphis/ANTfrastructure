@@ -29,6 +29,10 @@
   shards prove them without Pester; retain the separate full module-closure suite.
 - Redeclare the target-architecture argument in all four external module-view
   stages and prove each declaration with a portable mutation.
+- Parse ROCm module closures and compiling-stage pin defaults through shared
+  Dockerfile stage readers, retaining missing-module and missing-pin failures.
+  Shared structural fixtures run on Linux and Windows; native DLL tests stay
+  in the complete Windows suites.
 
 ## 2026-11-16 — include the PyTorch adapter in Windows patch drift checks
 

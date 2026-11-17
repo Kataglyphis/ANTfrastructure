@@ -132,6 +132,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser; parse errors must fail before inspecting declarations. Copy `WindowsAst.Common.psm1` beside any copied harness module tree.
    Every static Windows patch keeps its actual upstream mapping and source pin in the patch-drift gate; torchvision's host adapter targets PyTorch's `cpp_extension.py`.
    Share unconditional and source-order wiring checks through `Assert-TestAstCommand -Unconditional` and `Assert-TestAstOrder`.
+   ROCm pin defaults come from the compiling stage; shared module-closure checks tolerate intervening ARGs and retain portable mutation coverage.
    Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies.
    Windows diagnostic and host scripts carry their shared module companions; keep required failures fatal and advisory failures visible.
    NVIDIA cuDNN smoke resolves exact main SDK files through the shared recursive finder and fails on missing inputs; preserve native host-API execution and cross-target link/PE checks.

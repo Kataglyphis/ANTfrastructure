@@ -864,7 +864,11 @@ all five module stages and the final instruction order; only an engine probe
 and subsequent real builds establish mounted-file readability and image acceptance.
 The portable [mount harness](../windows/scripts/tests/BuildKit.MountStub.Tests.ps1)
 executes the view mutations on Linux and Windows; the Pester module-closure
-suite remains part of the complete Windows run.
+suite remains part of the complete Windows run. ROCm structure checks read
+module COPYs from their named source stage and pin defaults from the compiling
+stage; arguments or comments between FROM and COPY do not end a closure.
+The portable `Rocm.Structure.Tests.ps1` and full Windows ROCm suites call the
+same structural helpers; real Windows DLL tests remain in the full suites.
 
 ### A whole-directory `modules` mount puts EVERY module in the cache key
 

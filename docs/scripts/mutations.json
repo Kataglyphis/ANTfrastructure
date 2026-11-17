@@ -39271,5 +39271,37 @@
   "replace": "FROM ${BASE_IMAGE} AS llamamods\nCOPY ",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.MountStub.Tests.ps1 -ResultFile logs/code-quality/module-view-mutation.json",
   "why": "An external llama module view now RUNs and must keep the target architecture argument in its own scope."
+ },
+ {
+  "id": "lib.rocm-structure-pin-stage",
+  "target": "windows/scripts/tests/WindowsHarness.DockerFixtures.psm1",
+  "find": "Get-TestDockerfileStageLines -Path $Path -Stage $Stage |",
+  "replace": "Get-TestDockerfileStageLines -Path $Path -Stage migraphxmods |",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Rocm.Structure.Tests.ps1 -ResultFile logs/code-quality/rocm-structure-mutation.json",
+  "why": "A source view does not supply the compiling stage pin defaults."
+ },
+ {
+  "id": "lib.rocm-structure-pin-whole-file",
+  "target": "windows/scripts/tests/WindowsHarness.DockerFixtures.psm1",
+  "find": "Get-TestDockerfileStageLines -Path $Path -Stage $Stage |",
+  "replace": "(Get-TestDockerfileStagesFromPath -Path $Path -JoinContinuations -IgnoreComments -TrimLines -StrictFromHeader).Stages.Lines |",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Rocm.Structure.Tests.ps1 -ResultFile logs/code-quality/rocm-structure-mutation.json",
+  "why": "Scanning every stage mixes view configuration with compiling-stage pins and can hide a missing pin."
+ },
+ {
+  "id": "lib.rocm-structure-llama-required-module",
+  "target": "windows/Dockerfile.rocm-llama",
+  "find": "     windows\\scripts\\modules\\WindowsTargetArch.Common.psm1 `\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Rocm.Structure.Tests.ps1 -ResultFile logs/code-quality/rocm-structure-mutation.json",
+  "why": "The parsed closure must still reject a genuinely missing required module after an ARG precedes COPY."
+ },
+ {
+  "id": "lib.rocm-structure-llama-stage",
+  "target": "windows/Dockerfile.rocm-llama",
+  "find": "FROM ${BASE_IMAGE} AS llamamods",
+  "replace": "FROM ${BASE_IMAGE} AS missing-llamamods",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Rocm.Structure.Tests.ps1 -ResultFile logs/code-quality/rocm-structure-mutation.json",
+  "why": "A missing named source stage must fail before inspecting its module declarations."
  }
 ]
