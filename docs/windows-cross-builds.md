@@ -267,7 +267,8 @@ floor raised 4→8. The floor rule this hardens: **a floor only earns its keep i
 broken state would trip it** — the old pattern's 5 matches now fail an 8-floor loudly. Verified:
 11 TUs tagged, all five previously failing TUs compiled, full media-core green on both lanes.
 
-Note the asymmetry in the baseline flags: amd64 enables a broad SSE/AVX2 set globally, arm64
+Note the asymmetry in the baseline flags: amd64 enables `x86-64-v3` globally
+([`amd64-x86-64-v3-baseline.md` § Windows x64](amd64-x86-64-v3-baseline.md#windows-x64)), arm64
 enables **nothing** globally. AArch64 already mandates NEON, and its optional features
 (dotprod/i8mm/SVE) fault on hardware that lacks them — the same class of failure as AVX-512.
 Optional AArch64 features belong only on dispatched kernels.

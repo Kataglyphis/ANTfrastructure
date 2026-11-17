@@ -52,6 +52,22 @@
   `0.19.0+965c019.pr2809`, which carries it, and `Test-SccacheModuleSafe` already admits it; the cache-bypass
   advice now applies only to an older sccache.
 
+## 2026-11-17 — Windows x64 source builds take the x86-64-v3 floor (CON265, in source)
+
+- amd64's `SimdFlags` is `/clang:-march=x86-64-v3` instead of eight `-m` flags, and a new `RustFlags` carries
+  `-C target-cpu=x86-64-v3` (owner decision 2026-11-17: Windows follows CON264). `Invoke-CmakeConfigure` passes
+  the floor as `CMAKE_C/CXX_FLAGS_INIT` to every clang-cl configure (`Get-SourceCmakeIsaArgs`); ORT, OpenCV,
+  GenAI, TVM, LLVM, GStreamer, gst-plugins-rs, FFmpeg (`/arch:AVX2` on its MSVC path) and its codecs, CPython,
+  LiteRT and LiteRT-LM carry it. arm64 gets nothing. Nothing is built with it until the owner's
+  go; `docs/amd64-x86-64-v3-baseline.md` § Windows x64 says where it lands and what it leaves out.
+
+## 2026-11-18 — the pre-commit mutation sample runs in the image on a host without pwsh (CON279)
+
+- The hook's sampled `verify_mutations.py` run is teed; when it fails because the host lacks the `pwsh` or
+  `bash` a mutant is parsed with, and `git config kataglyphis.imageRunner` names a runner, the same sample runs
+  once more through it and that run decides, as pre-push does since CON277. `test-precommit-hook.sh` covers
+  the runner's pass and fail, a clone without it and a real survivor.
+
 ## 2026-11-17 — the raw-pin test passes on a host with bash 5.2 (CON278)
 
 - `raw_pin_reader_tests.py` drops bash 5.2's `pop_var_context: head of shell_variables not a function context`

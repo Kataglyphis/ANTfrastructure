@@ -49,9 +49,9 @@ function Get-LitertWheelBazelArg {
     $py = "$root/py/python/python.exe"
     return @('-c', 'opt', '--config=windows') + $ToolchainFlag + @(
         # upstream's own Windows flags (ci/build_pip_package_with_bazel_windows.ps1), protobuf_allow_msvc inert under clang-cl
-        '--copt=-DLITERT_DISABLE_OPENCL_SUPPORT=1', '--copt=-mavx2', '--copt=-mfma', '--copt=-mf16c',
+        '--copt=-DLITERT_DISABLE_OPENCL_SUPPORT=1', '--copt=/clang:-march=x86-64-v3',
         '--define=protobuf_allow_msvc=true', '--copt=/Iexternal\com_google_protobuf\src', '--host_copt=/Iexternal\com_google_protobuf\src',
-        # snappy takes _bzhi_u32 whenever _MSC_VER is set, and clang-cl wants the feature; the AVX2 floor above implies BMI2 (P12).
+        # snappy takes _bzhi_u32 whenever _MSC_VER is set, and clang-cl wants the feature; the x86-64-v3 floor above implies BMI2 (P12).
         '--per_file_copt=external/snappy/.*@-mbmi2', '--host_per_file_copt=external/snappy/.*@-mbmi2',
         # LiteRT's .bazelrc asks for PDBs; lld-link honours the last /DEBUG, and disk is the binding constraint.
         '--linkopt=/DEBUG:NONE', '--host_linkopt=/DEBUG:NONE',

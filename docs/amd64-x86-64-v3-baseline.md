@@ -41,8 +41,28 @@ compiler default over a `CFLAGS` export are the riscv64 ones:
   `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-cpu=x86-64-v3"`; the target-scoped
   name keeps the flag away from a `wasm32` build.
 - **TVM** generates for the CPU its target string names: `llvm -mcpu=x86-64-v3`.
-- **Windows x64** already builds ONNX Runtime, OpenCV and LiteRT at AVX2
-  ([`windows-cross-builds.md`](windows-cross-builds.md)); its other source builds are a backlog item.
+- **Windows x64's ROCm lane** (PyTorch, llama.cpp HIP, MIGraphX) and a consumer's own cargo build, such as
+  OxidANT's MSIX package: they keep their defaults.
+
+## Windows x64
+
+Windows follows (owner, 2026-11-17, CON265). `SimdFlags` in `WindowsTargetArch.Common.psm1` is
+`/clang:-march=x86-64-v3` for amd64 and `RustFlags` is `-C target-cpu=x86-64-v3`; arm64 has neither.
+One `-march`, not a list of `-m` flags, because ORT's ninja patch strips `/arch:` and the level also brings
+BMI1/2, LZCNT, MOVBE and F16C. Where it lands:
+
+- Every clang-cl CMake configure through `Invoke-CmakeConfigure` gets it as `CMAKE_C/CXX_FLAGS_INIT`
+  (`Get-SourceCmakeIsaArgs`). A build that sets its own `CMAKE_<LANG>_FLAGS` names it there: ONNX Runtime,
+  OpenCV, GenAI and TVM. LLVM, which calls cmake itself, passes the `_INIT` pair.
+- GStreamer's meson `c_args`/`cpp_args`, FFmpeg's `--extra-cflags` (`/arch:AVX2` on the `FFMPEG_TOOLCHAIN=msvc`
+  path, where cl.exe has no `-march`), the codecs' meson `CFLAGS`, CPython's `Directory.Build.props` (x64 only),
+  LiteRT's and LiteRT-LM's Bazel `--copt` and LiteRT-LM's clang++ `CXXFLAGS`.
+- gst-plugins-rs gets `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS`, target-scoped so upstream's cargo
+  config keeps its own rustflags.
+- nvcc's MSVC host compiler and MLAS's ml64 assembly get nothing; AVX-512 and AMX stay on MLAS's
+  dispatched kernels.
+
+No Windows image is built with it yet; it is built with CON264's chain on the owner's go.
 
 ## The gates
 

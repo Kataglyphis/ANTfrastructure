@@ -138,6 +138,9 @@ $cmakeArgs = @(
     '-DCMAKE_BUILD_TYPE=Release',
     "-DCMAKE_C_COMPILER=$bootstrapClangCl",
     "-DCMAKE_CXX_COMPILER=$bootstrapClangCl",
+    # A host tool, so always the amd64 floor (CON265); this cmake call bypasses Invoke-CmakeConfigure.
+    "-DCMAKE_C_FLAGS_INIT=$(Get-WindowsTargetSimdFlags -Arch amd64)",
+    "-DCMAKE_CXX_FLAGS_INIT=$(Get-WindowsTargetSimdFlags -Arch amd64)",
     # Only a clang-tidy from this tree reads this clang's BMIs, which record its (empty) repository string.
     '-DLLVM_ENABLE_PROJECTS=clang;lld;clang-tools-extra',
     '-DCLANG_ENABLE_CLANGD=OFF',

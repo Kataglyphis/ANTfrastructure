@@ -1374,6 +1374,12 @@ stops the commit. `tests/test-precommit-hook.sh` commits for real with `-a`, wit
 and plain; recipes `pre-commit.commit-a-reads-its-own-index` and
 `pre-commit.unreadable-index-stops`.
 
+**A host without a parser** (CON279). A mutant is parsed before its suite runs, so a host with no `pwsh`
+(a Raspberry Pi dev host) failed every PowerShell sample with `pwsh is not on PATH, so ...`. When the gate's
+output says `is not on PATH, so` and the clone sets `git config kataglyphis.imageRunner "<command> --"`, the
+hook runs the same `--only` sample once more through that command, and that run decides; a surviving mutant
+or a clone without the setting stops the commit as before. It is the pre-push hook's CON277 rule.
+
 **Cost.** Even staged-only, the mass is lopsided: the totals above spread over a
 handful of suites, and on 2026-09-04 `test-code-complexity.sh` alone owned more
 than a fifth of the manifest. Each entry costs one full run of its suite — 0.5 s for a cheap one,

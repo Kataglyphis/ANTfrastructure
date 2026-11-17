@@ -825,7 +825,7 @@ gone. Hash-pinning these restores is an open follow-up.
 
 #### OpenCV 5.x
 
-Global SIMD flags: AVX2, SSSE3, SSE4.1/4.2 (amd64 only; empty on arm64 by design). CUDA
+Global SIMD flags: `/clang:-march=x86-64-v3` (amd64 only; empty on arm64 by design; CON265). CUDA
 auto-detected. Custom `CMAKE_AR` path fix. ONNX Runtime: the chain's on every lane, through a
 nested-header shim with `HAVE_ONNXRUNTIME` pre-set, so there is no configure-time download, and
 G-API's ONNX DirectML EP is compiled in. `Get-OpencvOrtConfigureFinding` gates both after configure

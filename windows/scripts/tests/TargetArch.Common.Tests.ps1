@@ -172,10 +172,11 @@ Describe 'Per-arch fact mapping' {
 
 Describe 'SIMD flag sets' {
 
-    It 'amd64 baseline flags are byte-identical to the historical string' {
-        # Regression guard: the pre-module literal from WindowsSourceBuild.Common.
-        $expected = '/clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-mssse3 /clang:-msse3 /clang:-msse4.1 /clang:-msse4.2 /clang:-mpopcnt'
-        Assert-True ((Get-WindowsTargetSimdFlags -Arch 'amd64') -ceq $expected) 'amd64 SIMD flags drifted'
+    It 'amd64 baseline is x86-64-v3 in clang-cl and rustc spelling (CON265)' {
+        # One -march, never a list: x86-64-v3 also brings BMI1/2, LZCNT, MOVBE and F16C, and ORT's patch strips /arch:.
+        Assert-True ((Get-WindowsTargetSimdFlags -Arch 'amd64') -ceq '/clang:-march=x86-64-v3') 'amd64 SIMD flags drifted'
+        Assert-True ((Get-WindowsTargetRustFlags -Arch 'amd64') -ceq '-C target-cpu=x86-64-v3') 'amd64 Rust flags drifted'
+        Assert-Equal '' (Get-WindowsTargetRustFlags -Arch 'arm64')
     }
 
     It 'amd64 kernel flags are byte-identical to the historical string' {

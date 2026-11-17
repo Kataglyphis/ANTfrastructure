@@ -262,6 +262,9 @@ $genaiPythonArgs = if ($genaiPythonOn) { @('-DBUILD_WHEEL=ON') } else {
 }
 # The triple rides in this CMAKE_CXX_FLAGS: defining it on the command line bypasses Get-CMakeCrossArgs' *_INIT.
 $genaiTargetFlag = if ($genaiCross) { " --target=$(Get-ClangTargetTriple -Arch $genaiTargetArch)" } else { '' }
+# This explicit CMAKE_CXX_FLAGS replaces Invoke-CmakeConfigure's *_INIT floor, so it names the floor itself (CON265).
+$genaiIsaFlag = "$(Get-WindowsTargetSimdFlags -Arch $genaiTargetArch)"
+if ($genaiIsaFlag) { $genaiTargetFlag += " $genaiIsaFlag" }
 # Python link inputs name the target build: LIBPATH for shared targets, $env:LIB for the MODULE target.
 $genaiPyLinkArgs = if ($genaiPythonOn) { @("-DCMAKE_SHARED_LINKER_FLAGS:STRING=/LIBPATH:$($tpy.LibDir)") } else { @() }
 if ($genaiCross -and $genaiPythonOn) {

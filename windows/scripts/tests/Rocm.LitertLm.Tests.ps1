@@ -5,7 +5,7 @@ Import-Module (Join-Path $PSScriptRoot 'WindowsMedia.WiringFixture.psm1') -Disab
 
 $script:LlmBazel = 'windows\scripts\build\Build-LitertLmBazel.ps1'
 $script:LlmCheck = 'windows\scripts\build\rocm-checks\LiteRtLm.ps1'
-$script:PreRocmCmd = 'build //runtime/engine:litert_lm_main --config=windows --repo_env=ANDROID_NDK_VERSION='
+$script:PreRocmCmd = 'build //runtime/engine:litert_lm_main --config=windows --repo_env=ANDROID_NDK_VERSION= --copt=/clang:-march=x86-64-v3'
 
 Describe 'Build-LitertLmBazel: the bazel command per lane' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:LlmBazel -FunctionName 'Get-LitertLmBazelArg')
@@ -18,7 +18,7 @@ Describe 'Build-LitertLmBazel: the bazel command per lane' {
 
     It 'rocm adds only the DXC dlls target, whatever the casing' {
         foreach ($t in 'rocm', 'ROCm') {
-            Assert-Equal 'build //runtime/engine:litert_lm_main @directx_shader_compiler//:dxc_dlls --config=windows --repo_env=ANDROID_NDK_VERSION=' `
+            Assert-Equal 'build //runtime/engine:litert_lm_main @directx_shader_compiler//:dxc_dlls --config=windows --repo_env=ANDROID_NDK_VERSION= --copt=/clang:-march=x86-64-v3' `
                 ((Get-LitertLmBazelArg -GpuType $t) -join ' ') "GPU_TYPE='$t'"
         }
     }

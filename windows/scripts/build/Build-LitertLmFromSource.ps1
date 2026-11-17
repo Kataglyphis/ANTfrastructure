@@ -138,7 +138,7 @@ $env:CXXFLAGS_x86_64_pc_windows_msvc = (@($env:CXXFLAGS_x86_64_pc_windows_msvc, 
 Write-Host "Set CXXFLAGS_x86_64_pc_windows_msvc for the cxx/cc bridge: $($env:CXXFLAGS_x86_64_pc_windows_msvc)"
 
 # Every sub-build seeds from $ENV{CXXFLAGS}; -fdelayed-template-parsing is deprecated past C++20, so check it on an LLVM bump.
-$env:CXXFLAGS = (@($env:CXXFLAGS, (Get-WarningNoiseSuppressionFlags), '-fdelayed-template-parsing', '-Wno-delayed-template-parsing-in-cxx20', '-isystem C:/temp/winshims', '-DNOMINMAX', '-DNOGDI', '-include unistd.h', '-D_USE_MATH_DEFINES') | Where-Object { $_ }) -join ' '
+$env:CXXFLAGS = (@($env:CXXFLAGS, (Get-WarningNoiseSuppressionFlags), '-fdelayed-template-parsing', '-Wno-delayed-template-parsing-in-cxx20', '-isystem C:/temp/winshims', '-DNOMINMAX', '-DNOGDI', '-include unistd.h', '-D_USE_MATH_DEFINES', '-march=x86-64-v3') | Where-Object { $_ }) -join ' '
 Write-Host "Set CXXFLAGS (delayed template parsing + dlfcn/unistd/alloca shim + NOMINMAX/NOGDI + force-include unistd.h) for CMake sub-builds: $env:CXXFLAGS"
 
 # Deletes -fPIC and gemmlowp's cl.exe flags from clang's command line; only `x` edits, as `+` also hits the .rc compiler.

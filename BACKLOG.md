@@ -212,6 +212,12 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       `/clang:-march=x86-64-v3`. Done when the owner decides whether Windows follows CON264, and a raise
       is measured.
       **Owner decision 2026-11-17:** Windows follows CON264 (`/clang:-march=x86-64-v3` for every source build), prepared in source and built with CON264's chain only on his go.
+      **In source 2026-11-17:** `SimdFlags` amd64 is `/clang:-march=x86-64-v3`, `RustFlags` `-C target-cpu=x86-64-v3`;
+      `Invoke-CmakeConfigure` passes it as `_FLAGS_INIT` to every clang-cl configure, and ORT, OpenCV, GenAI, TVM,
+      LLVM, GStreamer, gst-plugins-rs, FFmpeg and its codecs, CPython, LiteRT and LiteRT-LM name
+      it ([`amd64-x86-64-v3-baseline.md` § Windows x64](docs/amd64-x86-64-v3-baseline.md#windows-x64)). Not
+      covered: the ROCm lane (PyTorch, llama.cpp HIP, MIGraphX) and OxidANT's MSIX cargo build. Left: build and
+      measure with CON264's chain on the owner's go.
 
 - [ ] **CON266 — language models on the Intel GPU and NPU** [M, ★★]. Owner request 2026-11-12. Nothing was
       read for it: after CON260, choose between OpenVINO GenAI and ONNX Runtime GenAI over the OpenVINO

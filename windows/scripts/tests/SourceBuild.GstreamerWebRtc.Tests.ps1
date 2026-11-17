@@ -112,7 +112,8 @@ Describe 'Get-GstRustCargoPlan' {
         Assert-Match '--jobs 8$' $joined
         Assert-False ($joined -match '--target ') 'a native build names no target triple'
         Assert-Equal 'C:\p\lib\pkgconfig' $plan.Env['PKG_CONFIG_PATH']
-        Assert-Equal 1 $plan.Env.Count 'amd64 needs no cross environment'
+        Assert-Equal '-C target-cpu=x86-64-v3' $plan.Env['CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS'] 'amd64 compiles at the x86-64-v3 floor (CON265)'
+        Assert-Equal 2 $plan.Env.Count 'amd64 needs no cross environment'
         Assert-Equal 'C:\t\release\gstrswebrtc.dll,C:\t\release\gstrsrtp.dll' (@($plan.Dlls | ForEach-Object { $_.Path }) -join ',')
     }
 
