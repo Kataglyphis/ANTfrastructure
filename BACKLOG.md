@@ -1914,6 +1914,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       a package. If the answer changes: the package and the Rust target in the package stage, a smoke line
       for each, and one `clippy-windows` step in OxidANT with its minutes measured.
       **Owner decision 2026-11-17: take it.** mingw (`gcc-mingw-w64-x86-64`) and the `x86_64-pc-windows-gnu` Rust target go into `:latest` amd64, and OxidANT's push type-checks that target (about 5 min a package). Update `docs/image-decisions.md` § Deliberate — not gaps in the same change.
+      **In source 2026-11-17:** `select_dev_packages` asks for `gcc-mingw-w64-x86-64` by name on amd64, and
+      `install-rust.sh` adds `x86_64-pc-windows-gnu` there; `docs/image-decisions.md` says so. Left: a chain that
+      publishes it, then OxidANT's push runs `clippy-windows.sh` without installing (its uid-1001 container has no
+      apt) and a smoke row asserts both on amd64.
 
 - [ ] **CON275 — GCC 16's `_mm_loadl_epi64` fails UBSan's alignment check** [S, ★]. Found 2026-11-15 by
       AccelerANTgine's Linux x64 GCC Debug lane (run 43707801504): UBSan reported "load of misaligned address ... for
@@ -2218,6 +2222,15 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only); the pin stays on 9.1.0.
 
 ## Open — hub tooling and the dev host
+
+- [ ] **CON278 — the pre-commit hook's mutation sample fails on a host with bash 5.2** [S, ★]. Found 2026-11-17 on a
+      Raspberry Pi 5 dev host (Debian's bash 5.2.37; the image has 5.3.9): `test-raw-pin-reader.sh` fails 12 of 3081
+      assertions there with `pop_var_context: head of shell_variables not a function context` on stderr, unchanged
+      code included, so the recipes `lib.raw-pin-rust-key-binding`, `-required-export` and `-import-status` read as
+      vacuous and stop any commit that touches `install-rust.sh`. In the image the test and the three recipes pass.
+      Next: as CON277 does for push suites, the pre-commit hook re-runs a recipe whose baseline fails only on the host
+      in the family image when one is configured, or the test tolerates the bash 5.2 message. Done when such a
+      commit passes on that host without `--no-verify`.
 
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
