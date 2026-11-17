@@ -15,6 +15,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-17 — the NAS backup retries its mount, a failed run reaches the phone, AIO backs up again
+
+- AIO's `daily_backup_time` on srv-1 was gone from 2026-10-27, so Nextcloud had no new archive for three weeks
+  and every Saturday run failed its age check; nobody saw it, because the sensor only showed on the dashboard.
+  The file is back at `02:00` UTC, and `linux/ansible/README.md` § *Backups to the NAS* says how to check it.
+- `playbooks/backup.yml` retries the NAS mount up to 5 times, 30 s apart (`backup_nas_mount_retries`,
+  `backup_nas_mount_delay`): a NAS waking its disks closed the one try of 2026-11-14 (`mount error(112)`).
+  A share that still does not mount ends the run with a `BACKUP: FAILED the NAS share at: <step>` note.
+- `packages/ansible_backup.yaml` pushes to the phone when a run ends failed or the sensor stays on for
+  15 minutes, and clears the notice when a run is `ok` again.
+
 ## 2026-11-17 — the docs lock moves soupsieve 3.0.4 to 4.1.1 (GHSA, Dependabot alert 10)
 
 - Soup Sieve before 4.0.0 takes polynomial time in the descendant combinator. `uv lock --upgrade-package soupsieve`

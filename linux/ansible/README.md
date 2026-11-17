@@ -227,13 +227,46 @@ srv-1 as root for the update.
   is older than 72 h, or its NAS copy's sha256 differs.
 - **Secrets.** A path is missing, or what `age` wrote is not an age file.
 - **The target.** The NAS credentials file is not root's with mode 0600, or the target is not a
-  CIFS mount, so a failed mount never fills the Pi's own disk.
+  CIFS mount, so a failed mount never fills the Pi's own disk. The mount is retried up to 5 times,
+  30 s apart (`backup_nas_mount_retries`, `backup_nas_mount_delay`): a NAS that is waking its disks
+  answers the first SMB request late and may close the connection (`mount error(112): Host is
+  down`, seen 2026-11-14, when one try was all there was). A share that still does not mount
+  ends the run with `BACKUP: FAILED the NAS share at: <step>; nothing was copied`.
+
+**A failed run reaches the phone.** `packages/ansible_backup.yaml` in the Home Assistant
+configuration sends a push and a persistent notification when a run ends and *Ansible backup
+needs a look* is on, and when that sensor has been on for 15 minutes (a missed run, or a restart
+while the last run is failed). The notice is cleared when a run is `ok` again. Before
+2026-11-17 the sensor only showed on the dashboard, and three failed Saturdays went unseen.
 
 **`aio-lockfile` is AIO's off switch.** While it exists, AIO's `backupscript.sh` skips every
 daily backup ("Not continuing because aio-lockfile exists"), as AIO's own sync recipe intends.
 The run writes `ansible-backup <stamp> <hub>` into it and removes it in an `always:`. A run that
 was killed leaves it behind; the next run takes it over, reports it and removes it. A lockfile
 without that marker belongs to someone else and stops the copy.
+
+**AIO's daily backup has its own switch, and the copy only sees it a week later.** AIO backs up
+at the time in `daily_backup_time`, a file in the mastercontainer's volume
+(`/var/lib/docker/volumes/nextcloud_aio_mastercontainer/_data/data/` on srv-1): line 1 is the
+time in UTC, an empty line 2 means automatic updates are on. Without the file AIO's `cron.sh`
+never starts a backup; *Delete backup time* in the AIO interface removes it. It was gone from
+2026-10-27 to 2026-11-17, so Nextcloud had no new archive for three weeks and every Saturday run
+failed with `the newest archive is N h old; AIO stopped backing up`. It is `02:00` now: at
+`04:00` UTC the backup ran into Sunday's update of srv-1 in winter. To check it and to put it
+back (the watcher in the mastercontainer restarts `cron.sh` within seconds):
+
+```bash
+ssh -F ssh_config root@<srv-1> 'cat /var/lib/docker/volumes/nextcloud_aio_mastercontainer/_data/data/daily_backup_time'
+ssh -F ssh_config root@<srv-1> 'docker exec -u www-data nextcloud-aio-mastercontainer \
+  sh -c "printf \"02:00\n\n\" > /mnt/docker-aio-config/data/daily_backup_time"'
+```
+
+A backup right now, by AIO's own script (Nextcloud is down while Borg runs, a few minutes):
+
+```bash
+ssh -F ssh_config root@<srv-1> 'docker exec --env DAILY_BACKUP=1 --env START_CONTAINERS=1 \
+  nextcloud-aio-mastercontainer /daily-backup.sh'
+```
 
 **The NAS copy of the repo is for restoring only.** Borg's FAQ: two repos with one id must never
 both be written, because that is data loss and AES counter reuse. Never point a running AIO at
@@ -276,7 +309,8 @@ was taken over. That user cannot delete a snapshot.
    over WireGuard; later runs move only new Borg segments.
 
 The host_vars keys: `backup_nas_share`, `backup_nas_credentials`, `backup_nas_mount_opts` (extra
-CIFS options, e.g. `seal`), `backup_age_recipients`, `backup_homeassistant` and
+CIFS options, e.g. `seal`), `backup_nas_mount_retries` and `backup_nas_mount_delay` (5 retries,
+30 s apart), `backup_age_recipients`, `backup_homeassistant` and
 `backup_homeassistant_dir`, `backup_secret_paths`, `backup_nextcloud_aio_repo` and
 `backup_nextcloud_aio_archives_list`, `backup_max_age_hours`, `backup_homeassistant_keep`,
 `backup_secrets_keep`. The template is `host_vars/pi-2.yml.example`.

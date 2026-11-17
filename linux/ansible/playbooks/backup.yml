@@ -68,12 +68,22 @@
                 opts: "credentials={{ backup_credentials }},uid={{ lookup('pipe', 'id -u') }},gid={{ lookup('pipe', 'id -g') }},\
                   file_mode=0600,dir_mode=0700,closetimeo=0{{ (',' + backup_nas_mount_opts) if backup_nas_mount_opts is defined else '' }}"
                 state: ephemeral
+              register: backup_mount
+              # A NAS that is waking its disks closes the first connection.
+              retries: "{{ backup_nas_mount_retries | default(5) }}"
+              delay: "{{ backup_nas_mount_delay | default(30) }}"
+              until: backup_mount is succeeded
 
             - name: The target is the NAS share, never the Pi's own disk
               ansible.builtin.command: findmnt --noheadings --output FSTYPE --mountpoint {{ backup_target }}
               register: backup_fstype
               changed_when: false
               failed_when: backup_fstype.rc != 0 or backup_fstype.stdout | trim != 'cifs'
+
+          rescue:
+            - name: Name the step that kept the share from mounting
+              ansible.builtin.fail:
+                msg: "BACKUP: FAILED the NAS share at: {{ ansible_failed_task.name }}; nothing was copied"
 
         - name: Find the target directory
           ansible.builtin.stat:

@@ -167,14 +167,14 @@ the notes the playbook printed; its 10 slowest steps; the last 10 runs; and the 
 | File | What |
 | --- | --- |
 | `config/packages/ansible_update.yaml` | `sensor.ansible_update`: a `command_line` sensor that reads `/config/ansible/status.json` every 5 min; its state is `ok` or `failed`, everything else is an attribute. `binary_sensor.ansible_update_needs_a_look`: on after a failed run, before the first one, or when none ran for 8 days |
-| `config/packages/ansible_backup.yaml` | `sensor.ansible_backup`, the same for the weekly backup to the NAS, from `/config/ansible/backup-status.json`, and `binary_sensor.ansible_backup_needs_a_look` |
+| `config/packages/ansible_backup.yaml` | `sensor.ansible_backup`, the same for the weekly backup to the NAS, from `/config/ansible/backup-status.json`, `binary_sensor.ansible_backup_needs_a_look`, and the two automations that push it to the phone and clear the notice ([Backups to the NAS](../ansible/README.md#backups-to-the-nas)) |
 | `config/dashboards/ansible.yaml` | the page itself, a YAML dashboard registered under `lovelace: dashboards: ansible-update` in `configuration.yaml`; its **Backup** view shows what the last backup copied, its runs and its log |
 | `config/ansible/status.json`, `backup-status.json` | the data, written by `linux/ansible/scripts/run-update.sh` after each run; gitignored, since it names hosts |
 
 `configuration.yaml` loads every file in `config/packages/` (`homeassistant: packages:
 !include_dir_named packages`), so a feature like this one is one file, not edits all over
 `configuration.yaml`. `binary_sensor.ansible_update_needs_a_look` is there to be used in an
-automation, such as a phone notification; none is set up.
+automation, such as a phone notification; none is set up for the update. The backup has one.
 
 ## Backups
 
