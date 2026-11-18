@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-18 — refresh derived quality documentation
+
+- Run the canonical doc-number updater after the package and loader mutation additions. Preserve the computed totals, family counts and census values; repeat the previously invalid doc-number and registry baselines and their existing mutation recipes.
+
 ## 2026-11-18 — repair full-preflight documentation and recipe namespaces
 
 - Keep the loader-origin pointer in the existing GPU bundle bullet, restoring the README's unchanged 100-line limit.

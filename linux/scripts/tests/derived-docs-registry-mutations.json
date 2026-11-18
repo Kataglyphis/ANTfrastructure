@@ -1,0 +1,298 @@
+[
+  {
+    "id": "gate-registry.new-unproven",
+    "target": "linux/scripts/quality_allow.py",
+    "find": "    if new:\n        rc = 1",
+    "replace": "    if new:\n        rc = 0",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a NEW unproven slug must fail, not just be listed (two-way rule, NEW half)"
+  },
+  {
+    "id": "gate-registry.stale-frozen",
+    "target": "linux/scripts/quality_allow.py",
+    "find": "    if stale:\n        rc = 1",
+    "replace": "    if stale:\n        rc = 0",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a frozen slug that gained a proof must fail as STALE so the list only ratchets down"
+  },
+  {
+    "id": "gate-registry.registry-stale",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    if current != text:\n        rc = 1",
+    "replace": "    if current != text:\n        rc = 0",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a stale docs/code-quality-gates.md must fail the gate, not just print"
+  },
+  {
+    "id": "gate-registry.basename-is-the-contract",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "        suite_names = [t for t, txt in tests.items() if mentions(needle, txt)]",
+    "replace": "        suite_names = []",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a suite naming the script basename (or the inline function) is the test-proof; without the scan every slug is unproven"
+  },
+  {
+    "id": "gate-registry.basename-boundary",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "NEEDLE = r\"(?<![\\w.-])%s\\b\"",
+    "replace": "NEEDLE = r\"%s\"",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "the needle is a bounded word, not a substring: a suite naming not-delta.sh must not prove delta.sh"
+  },
+  {
+    "id": "gate-registry.inline-needle",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "        return rel, (start, count), word",
+    "replace": "        return rel, (start, count), os.path.basename(rel)",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "an inline gate is keyed by its function name; keying it by the host file lets any suite that says preflight.sh prove it"
+  },
+  {
+    "id": "gate-registry.script-tie-break",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "        pick = [s for s in sites if s[0] == preflight_rel] or \\\n               [s for s in sites if s[0] in cmd] or sorted(sites)",
+    "replace": "        pick = sorted(sites)",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a shell function defined in several files resolves to preflight.sh, else to the file the run_check command names -- not to whichever sorts first"
+  },
+  {
+    "id": "gate-registry.imported-module-mutations",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    return [rel] + imported_modules(rel, text)",
+    "replace": "    return [rel]",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a mutation on an imported sibling module can prove the importer, so the import scan must feed the attribution"
+  },
+  {
+    "id": "gate-registry.fallback-dropped",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "if \"MISSING\" not in e[3]]",
+    "replace": "if \"MISSING\" in e[3]]",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "the [ -f ] MISSING fallback line must never be taken for the real gate"
+  },
+  {
+    "id": "gate-registry.inline-extent",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    if extent is None:\n        return text",
+    "replace": "    if True:\n        return text",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "an inline gate's allow/import scan is confined to its function body, not the whole preflight.sh"
+  },
+  {
+    "id": "gate-registry.hook-tier",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    if slug in fast:\n        return \"hook+CI\"",
+    "replace": "    if False:\n        return \"hook+CI\"",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "the hook tier column is read from the pre-commit _FAST_SLUGS string, continuation lines included"
+  },
+  {
+    "id": "gate-registry.by-construction",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    if row[\"slug\"] in BY_CONSTRUCTION:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "script-tests and mutations ARE the proof machinery; they must read 'by construction', never UNPROVEN"
+  },
+  {
+    "id": "gate-registry.mutation-id-prefix",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    return [e[\"id\"] for e in entries if id_slug(e) == slug\n            and (e[\"target\"] in files or calls_the_gate(e, script, files, tests))]",
+    "replace": "    return [e[\"id\"] for e in entries\n            if (e[\"target\"] in files or calls_the_gate(e, script, files, tests))]",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "Without the id-prefix key every gate sharing a file (an imported sibling module above all) inherits its neighbours' mutations, the circular credit that gave code-size 7 foreign proofs."
+  },
+  {
+    "id": "gate-registry.mutation-target-scope",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "id_slug(e) == slug\n            and (e[\"target\"] in files or calls_the_gate(e, script, files, tests))]",
+    "replace": "id_slug(e) == slug]",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "The id prefix alone is a claim; the target is the evidence. Without it a typo'd prefix would prove a gate whose code the mutation never touches."
+  },
+  {
+    "id": "gate-registry.off-convention-loud",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    if target in files:\n        return f\"prefix names no preflight slug, and {target} is {holds}\"",
+    "replace": "    if False:\n        return \"prefix names no preflight slug, and %s is %s\" % (target, holds)",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "an id pinning a gate's own file under a non-slug prefix must be renamed to that gate, not filed away as a descriptive family where the gate loses the proof"
+  },
+  {
+    "id": "gate-registry.hook-scoped-tier",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "                        (\"scoped\", \"hook (scoped)+CI\")):",
+    "replace": "                        ):",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "_FAST_SLUGS is not the whole hook: four gates run through their own blocks and read CI-only without this, understating what a commit already checks."
+  },
+  {
+    "id": "gate-registry.wrong-prefix-loud",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "        return f\"{slug} does not own {target} -- {holds}\"",
+    "replace": "        return None",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a prefix naming a real slug is a claim of ownership; unchecked, a typo'd or copied prefix silently stops proving anything"
+  },
+  {
+    "id": "gate-registry.hook-whole-tree-tier",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "                        (\"relevant\", \"hook (whole tree, when relevant)+CI\"),",
+    "replace": "                        (\"relevant\", \"hook (scoped)+CI\"),",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a conditionally-run WHOLE-TREE gate must not read as scoped to the staged files"
+  },
+  {
+    "id": "gate-registry.hook-block-staged-list",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "            return \"scoped\" if CHANGED in body or mentions(var, body) else \"relevant\"",
+    "replace": "            return \"scoped\" if CHANGED in body else \"relevant\"",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a block that expands its guard variable into the gate command IS scoped to the staged files"
+  },
+  {
+    "id": "gate-registry.hook-block-changed",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "            return \"scoped\" if CHANGED in body or mentions(var, body) else \"relevant\"",
+    "replace": "            return \"scoped\" if mentions(var, body) else \"relevant\"",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "--changed is the staged list under another name, so the block that passes it is scoped"
+  },
+  {
+    "id": "gate-registry.id-rule-not-gate-scoped",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "        if target in owners[slug] or e[\"id\"] in credited.get(slug, ()):\n            return None",
+    "replace": "        if target in owners[slug] or e[\"id\"] in credited.get(slug, ()) or target not in files:\n            return None",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "the rule must judge the id, not the target: scoping it to registered gate files is exactly how a slug prefix over an ordinary build script passed silently"
+  },
+  {
+    "id": "gate-registry.family-must-be-declared",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    rc = check_keys(families, frozen_families,",
+    "replace": "    rc = check_keys({k: v for k, v in families.items() if k in frozen_families}, frozen_families,",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "an undeclared prefix is how an invented or misspelled namespace enters; declaring it is what makes the descriptive half of the convention checkable at all"
+  },
+  {
+    "id": "gate-registry.family-not-a-slug-freeze",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    rc = check_keys(unproven, frozen - frozen_ids - frozen_families,",
+    "replace": "    rc = check_keys(unproven, frozen - frozen_ids,",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "family declarations share a file with the unproven-slug ratchet; mixed in, every declaration reads as a STALE slug freeze and the census miscounts the debt"
+  },
+  {
+    "id": "doc-numbers.manifest-total-stale",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "return {\"total\": len(entries), \"distinct\": len({e[\"test\"] for e in entries}),",
+    "replace": "return {\"total\": len(entries) + 1, \"distinct\": len({e[\"test\"] for e in entries}),",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the page's entry total is COMPARED against the manifest, not merely present: a derivation off by one must fail the suite"
+  },
+  {
+    "id": "doc-numbers.distinct-commands-stale",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "\"distinct\": len({e[\"test\"] for e in entries}),",
+    "replace": "\"distinct\": len({e[\"test\"] for e in entries}) - 1,",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the distinct-command count is compared too, so a wrong derivation must fail rather than pass unnoticed"
+  },
+  {
+    "id": "doc-numbers.family-count-stale",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "        fam[key] = fam.get(key, 0) + 1",
+    "replace": "        fam[key] = fam.get(key, 0) + 2",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "every per-family count in the page is compared against the ids carrying that prefix"
+  },
+  {
+    "id": "doc-numbers.total-re-quoted",
+    "target": "docs/cross-build-verification.md",
+    "find": "CI still run every entry.",
+    "replace": "CI still run all 180 entries.",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the manifest total has one owner; a second page re-quoting it is exactly how the last three waves went stale"
+  },
+  {
+    "id": "doc-numbers.fast-slug-count-stale",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "    return len([s for s in body.split(\",\") if s]), first, last",
+    "replace": "    return len([s for s in body.split(\",\") if s]) + 1, first, last",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the hook's fast-slug count is derived from _FAST_SLUGS and compared, so a wrong derivation must fail"
+  },
+  {
+    "id": "doc-numbers.fast-slug-span-stale",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "    while lines[last - 1].rstrip().endswith(\"\\\\\"):",
+    "replace": "    while False:",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the quoted _FAST_SLUGS span must follow the list's real continuation lines, not stop at its first"
+  },
+  {
+    "id": "doc-numbers.family-binds-nearest",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "([^()\\n\\d]{0,60}?)",
+    "replace": "([^()\\n]{0,60}?)",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the count must be the LAST number before the marker, or --update overwrites a correct unrelated number on the same line"
+  },
+  {
+    "id": "gate-registry.shell-out-ownership",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    return [rel] + imported_modules(rel, text) + shelled_out(rel, text)",
+    "replace": "    return [rel] + imported_modules(rel, text)",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a .sh gate imports nothing, so without the shell-out its helper -- extract_embedded_python.py under python-lint -- belongs to no row and its mutation is credited to nobody"
+  },
+  {
+    "id": "gate-registry.call-site-credit",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "            and (e[\"target\"] in files or calls_the_gate(e, script, files, tests))]",
+    "replace": "            and e[\"target\"] in files]",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a mutation that pins the gate's CALL SITE in a shared orchestrator or a git hook proves that gate; crediting only by target froze four such ids as off-convention"
+  },
+  {
+    "id": "gate-registry.call-site-needs-the-name",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    return os.path.isfile(path) and mentions(script, _read(path))",
+    "replace": "    return os.path.isfile(path)",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "without the name check any file at all counts as a call site, and a gate collects proofs from mutations that never touch it"
+  },
+  {
+    "id": "gate-registry.hooks-are-all-of-them",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    paths = [os.path.join(HOOK_DIR, fn) for fn in sorted(os.listdir(HOOK_DIR))]",
+    "replace": "    paths = [os.path.join(HOOK_DIR, \"pre-commit\")]",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "reading a single hook path reports every gate a second versioned hook runs as CI-only -- a false statement in a generated file"
+  },
+  {
+    "id": "gate-registry.hook-top-level-tier",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    for scope, tier in ((\"whole\", \"hook (whole tree)+CI\"),",
+    "replace": "    for scope, tier in ((\"whole\", \"hook (scoped)+CI\"),",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a gate a hook runs unconditionally at top level is not scoped to anything; calling it scoped tells the reader the push only checked what it changed"
+  },
+  {
+    "id": "doc-numbers.census-count-stale",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "    return dict(zip(CENSUS_KEYS, (int(g) for g in hit.groups())))",
+    "replace": "    return dict(zip(CENSUS_KEYS, (int(g) + 1 for g in hit.groups())))",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the census figures on the page are COMPARED against the gate's own --census, so a wrong derivation must fail rather than pass"
+  },
+  {
+    "id": "doc-numbers.census-keys-in-order",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "CENSUS_KEYS = (\"considered\", \"isolated\", \"masked\", \"unlinked\")",
+    "replace": "CENSUS_KEYS = (\"considered\", \"masked\", \"isolated\", \"unlinked\")",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "each quoted number binds to its own tier; swapping the isolated and masked counts must not read as correct"
+  }
+]
