@@ -5,6 +5,14 @@ SPDX-License-Identifier: MIT
 
 # Shared script libraries (`linux/scripts/lib/`)
 
+`shared/python/verify_ort_loader_trace.py` owns ORT/plugin loader parsing for Linux
+bundle and AppImage evidence. Its public `verify_loader_traces` API retains caller
+layout rules and optional live symlink resolution. Profile mode requires the sibling
+`verify_ort_profile.py` and binds the selected trace to the provider-checked process;
+see [loader evidence](consumer-image-contract.md#onnx-runtime-loader-evidence) for
+arguments, the copied closure and the limits of path/process evidence. The shared
+profile suites carry `shared/python/tests/ort_profile_fixture.py` with their tests.
+
 Sourceable, **project-agnostic** cores. Nothing about a specific project is
 hard-coded in any of them. The contract is always the same:
 

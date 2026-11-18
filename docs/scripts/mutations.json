@@ -55316,5 +55316,101 @@
   "replace": "  :",
   "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
   "why": "Packaged provenance must match the original image bytes."
+ },
+ {
+  "id": "packaging.ort-loader-profile-binding",
+  "target": "shared/python/verify_ort_loader_trace.py",
+  "find": "pid, digest = profile_identity(args.profile, args.device, args.min_runs) if args.profile else (None, None)",
+  "replace": "pid, digest = None, None",
+  "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+  "why": "Trace paths alone cannot replace the canonical provider/run verdict and inference process binding."
+ },
+ {
+  "id": "packaging.ort-loader-matching-trace-file",
+  "target": "shared/python/verify_ort_loader_trace.py",
+  "find": "traces = [Path(f\"{prefix}.{pid}\")] if pid is not None else sorted(prefix.parent.glob(prefix.name + \".*\"))",
+  "replace": "traces = sorted(prefix.parent.glob(prefix.name + \".*\"))",
+  "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+  "why": "A different trace filename cannot supply the profiled process origins."
+ },
+ {
+  "id": "packaging.ort-loader-trace-process",
+  "target": "shared/python/verify_ort_loader_trace.py",
+  "find": "if expected_pid is not None and not re.fullmatch(rf\"\\s*{expected_pid}:\\s*\", prefix):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+  "why": "Every init record must name the actual profiled process."
+ },
+ {
+  "id": "packaging.ort-loader-canonical-path",
+  "target": "shared/python/verify_ort_loader_trace.py",
+  "find": "path = normalized_path(value, absolute=True)",
+  "replace": "path = PurePosixPath(value)",
+  "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+  "why": "Normalization must reject traversal and repeated or dot separators instead of hiding them."
+ },
+ {
+  "id": "packaging.ort-loader-package-directory",
+  "target": "shared/python/verify_ort_loader_trace.py",
+  "find": "if not directory.fullmatch(str(path.parent)):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+  "why": "A foreign core or plugin cannot satisfy package origin checks."
+ },
+ {
+  "id": "packaging.ort-loader-required-libraries",
+  "target": "shared/python/verify_ort_loader_trace.py",
+  "find": "if any(not paths for paths in found.values()):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+  "why": "Both the ORT core and every requested plugin need real loader records."
+ },
+ {
+  "id": "packaging.ort-loader-core-soname",
+  "target": "shared/python/verify_ort_loader_trace.py",
+  "find": "if not CORE_NAME.fullmatch(name):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+  "why": "A malformed ORT soname is not the selected runtime core."
+ },
+ {
+  "id": "packaging.ort-loader-linked-trace",
+  "target": "shared/python/verify_ort_loader_trace.py",
+  "find": "if trace.is_symlink() or not trace.is_file():",
+  "replace": "if not trace.is_file():",
+  "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+  "why": "Linked trace inputs cannot masquerade as retained regular evidence."
+ },
+ {
+  "id": "packaging.ort-loader-resolved-root",
+  "target": "shared/python/verify_ort_loader_trace.py",
+  "find": "if not Path(value).resolve(strict=True).is_relative_to(real_root.resolve(strict=True)):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+  "why": "Optional live resolution must reject a library symlink escaping the bundle."
+ },
+ {
+  "id": "packaging.ort-loader-appimage-nonce",
+  "target": "shared/python/verify_ort_loader_trace.py",
+  "find": "/appimage_extracted_[0-9a-f]{32}/",
+  "replace": "/appimage_extracted_[0-9a-f]+/",
+  "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+  "why": "AppImage origins retain the exact extraction directory shape."
+ },
+ {
+  "id": "packaging.ort-loader-profile-status",
+  "target": "shared/python/verify_ort_loader_trace.py",
+  "find": "stdout=sys.stderr, check=True, timeout=60,",
+  "replace": "stdout=sys.stderr, check=False, timeout=60,",
+  "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+  "why": "The canonical provider/run failure must abort origin acceptance."
+ },
+ {
+  "id": "packaging.ort-loader-profile-byte-binding",
+  "target": "shared/python/verify_ort_loader_trace.py",
+  "find": "hashlib.sha256(payload).hexdigest()",
+  "replace": "\"0\" * 64",
+  "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+  "why": "The output must bind the exact profile bytes sent to the canonical verifier."
  }
 ]

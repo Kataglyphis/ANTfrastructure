@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-18 — share profiled ORT loader-origin checks
+
+- Add a shared parser and CLI for bundle and AppImage loader paths. Profile mode validates the original profile bytes with the canonical provider/run verifier, then requires the matching PID trace and every requested plugin beside ORT.
+- Refuse foreign origins, lexical escapes, missing evidence and mismatched PIDs. Optional live resolution rejects symlink escapes; trace-only callers retain an explicitly weaker origin check.
+- Synthetic controls and mutations cover these refusals. Loader paths do not prove file hashes, one ORT session, clean-host inference or complete licence closure.
+
 ## 2026-11-18 — retain original AMD plugin package provenance
 
 - Extend shared AMD package staging and verification with an optional provenance path outside the exact license tree. Original image bytes, regular files, package containment and fresh stage targets are required; existing three-argument callers retain their behavior.

@@ -8,6 +8,9 @@
   <h4>The build images, CI actions, reusable workflows and quality gates every Kataglyphis repository builds on.</h4>
 </div>
 
+[ORT loader-origin checks](docs/consumer-image-contract.md#onnx-runtime-loader-evidence)
+bind package library paths to the profiled inference process and retain the provider/run checks.
+
 [![Linux x64](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/linux-x64.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/linux-x64.yml)
 [![Windows x64](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/windows-x64.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/windows-x64.yml)
 [![Windows arm64](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/windows-arm64.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/windows-arm64.yml)

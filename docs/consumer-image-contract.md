@@ -1067,6 +1067,37 @@ name and root. The in-tree `TensorrtExecutionProvider` left the GPU prefix and t
 2026-11-08; under TensorRT ≥ 11.4 the FP16/INT8/BF16 options are ignored. The Python app bundles
 do not carry it: it is an image-root module a consumer registers by path.
 
+## ONNX Runtime loader evidence
+
+`shared/python/verify_ort_loader_trace.py` checks glibc `LD_DEBUG=libs` output from
+the actual package launch. Its profile mode preserves the profile bytes in a private
+temporary file, requires the canonical `verify_ort_profile.py` provider verdict and
+two complete sequential runs by default, then selects exactly `TRACE_PREFIX.PID`.
+Every init record in that trace must carry the profile's process ID. Every selected
+ORT or plugin path must belong to the caller's expected package directory.
+
+```sh
+python3 -I shared/python/verify_ort_loader_trace.py \
+  --trace-prefix evidence/loader --runtime-root /absolute/bundle/lib \
+  --profile evidence/migraphx-profile.json --device migraphx-plugin \
+  --plugin libmigraphx-ep.so
+```
+
+For AppImages, supply the extraction parent as `--runtime-root` and the relative
+payload directory, such as `--appimage-subdir usr/lib/oxidant/lib`. The extraction
+directory must be `appimage_extracted_` followed by exactly 32 lowercase hex digits.
+Traversal, noncanonical paths, missing libraries and linked trace files fail.
+When the files still exist, `--resolve-root /absolute/bundle/lib` also rejects a
+loaded library whose symlink resolves outside that root.
+
+Copy `verify_ort_profile.py` beside the new CLI when using profile mode. The Python
+API `verify_loader_traces` also accepts a caller-owned directory regex for archived
+evidence layouts. Calls without a profile aggregate traces and make no inference
+claim. Even a profile-bound success proves paths and process association: it does
+not authenticate the traces, compare library bytes, establish a single ORT session,
+prove a clean host or close the source/licence inventory. Preserve finished-package
+byte proofs and the original profile/trace evidence separately.
+
 ## AMD's plugin MIGraphX EP
 
 `:latest-rocm` ships AMD's plugin MIGraphX execution provider, its only MIGraphX EP since 2026-11-08, and names it:
