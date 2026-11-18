@@ -99,7 +99,7 @@ function meson {
             $mutationModule = @{ ScriptPath = 'windows\scripts\build\Build-FfmpegCodecs.ps1'; FunctionName = @('Invoke-CodecMeson'); FixtureState = $mutationState; Prelude = $script:MesonEnvironmentPrelude }
             Invoke-WithEnv @{ CC = $null; CXX = '' } {
                 Invoke-TestFunctionMutations -ModuleArguments $mutationModule `
-                    -Find 'Invoke-WithProcessEnvironment -Environment @{ CC = $cc; CXX = $cc } -ScriptBlock {' -Replace '& {' `
+                    -Find 'Invoke-WithProcessEnvironment -Environment @{ CC = $cc; CXX = $cc; CFLAGS = $isa; CXXFLAGS = $isa } -ScriptBlock {' -Replace '& {' `
                     -Expected 'expected \[clang-cl\] but got' -Body $exercise
             }
         }
