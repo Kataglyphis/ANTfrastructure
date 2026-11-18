@@ -487,6 +487,9 @@ function Get-FfmpegConfigurePlan {
         $ffUseLauncher = [bool]($ffSccache -and (Test-SccacheRemoteConfigured) -and $env:FFMPEG_SCCACHE -ne '0')
         Write-Host "FFmpeg toolchain: clang-cl + lld-link (overriding the msvc preset's cc/ld; make-time sccache launcher: $ffUseLauncher)"
         $confFlags += '--toolchain=msvc', "--cc=clang-cl$ffCcTargetFlag", '--ld=lld-link'
+        # The amd64 floor (CON265); empty on arm64.
+        $ffIsa = Get-WindowsTargetSimdFlags -Arch $ffTargetArch
+        if ($ffIsa) { $confFlags += "--extra-cflags=$ffIsa" }
         # Unset, makedef runs the first llvm-nm bash finds, and a DLL can end up exporting nothing.
         $ffLlvmNm = Get-FfmpegLlvmNm (Get-Command clang-cl.exe -ErrorAction Stop).Source
         $env:LLVM_NM = ConvertTo-MsysPath $ffLlvmNm
@@ -494,6 +497,8 @@ function Get-FfmpegConfigurePlan {
     } else {
         Write-Host 'FFmpeg toolchain: msvc (cl.exe + link.exe)'
         $confFlags += '--toolchain=msvc'
+        # cl.exe has no -march: /arch:AVX2 is the nearest it gets to the x86-64-v3 floor (CON265).
+        if ($ffTargetArch -eq 'amd64') { $confFlags += '--extra-cflags=/arch:AVX2' }
     }
     $confFlags += @(Get-FfmpegCrossConfigArgs -ffCross $ffCross -ffTargetArch $ffTargetArch -ffCcTargetFlag $ffCcTargetFlag)
 

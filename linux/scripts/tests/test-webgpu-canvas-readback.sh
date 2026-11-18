@@ -14,7 +14,7 @@ t_skip_unless "node with a global WebSocket (22 and later)" node -e 'process.exi
 # A 3x2 frame with rows padded to 256 bytes, as copyTextureToBuffer lays it out: red red green / blue blue blue.
 cat > "${_tmp}/fakes.js" <<'EOF'
 const assert = require('node:assert');
-const { install, verdict } = require(process.argv[2]);
+const { install, verdict, WEBGPU_FLAGS } = require(process.argv[2]);
 const scenario = process.argv[3];
 const W = 3, H = 2, ROW = 256;
 const bytes = new Uint8Array(ROW * H);
@@ -67,6 +67,9 @@ const frame = async (format) => {
     assert.equal(verdict({ colours: 3 }, 2), null);
     assert.match(verdict({ colours: 1 }, 2), /^1 colour\(s\), fewer than 2: the canvas shows no scene$/);
     assert.equal(verdict({ error: 'no WebGPU frame in 10 s' }, 2), 'no WebGPU frame in 10 s');
+  } else if (scenario === 'flags') {
+    assert.deepEqual([...WEBGPU_FLAGS], ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=swiftshader', '--use-webgpu-adapter=swiftshader']);
+    assert.ok(Object.isFrozen(WEBGPU_FLAGS), 'one consumer cannot change another\'s flags');
   }
   console.log(`ok ${scenario}`);
 })().catch((e) => { console.log(`FAIL ${scenario}: ${e.message}`); process.exit(1); });
@@ -84,6 +87,9 @@ t_assert_contains "$(t_out node "${_tmp}/fakes.js" "${TOOL}" no-webgpu)" "ok no-
 
 t_case "the verdict: one colour is a cleared canvas, an error is its own reason"
 t_assert_contains "$(t_out node "${_tmp}/fakes.js" "${TOOL}" verdict)" "ok verdict"
+
+t_case "the SwiftShader WebGPU flags are exported, frozen, for a consumer's own launch()"
+t_assert_contains "$(t_out node "${_tmp}/fakes.js" "${TOOL}" flags)" "ok flags"
 
 t_case "a page that never draws a WebGPU frame fails in Chrome; bad arguments are usage errors"
 t_needs "Chrome (CHROME_EXECUTABLE, chrome, google-chrome or chromium)" node -e "process.exit(require('${SCRIPTS}/check-docs-sidebars.js').findChrome() ? 0 : 1)"

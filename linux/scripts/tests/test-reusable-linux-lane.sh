@@ -88,6 +88,12 @@ t_assert_contains "$(grep -F 'Run Python tests|' "${EXTRA}")" \
   '-e PYTHON_COVERAGE_MIN=${{ inputs.coverage-min }}' \
   "a declared input with no test-step forwarding cannot raise the coverage floor"
 
+t_case "the extra coverage trees reach each test leg and default to none"
+t_assert_eq "string|false|" "$(_input_meta coverage-extra)"
+t_assert_contains "$(grep -F 'Run Python tests|' "${EXTRA}")" \
+  '-e PYTHON_COVERAGE_EXTRA=${{ inputs.coverage-extra }}' \
+  "a declared input with no test-step forwarding measures no extra tree"
+
 t_case "host GPU runtime is an explicit packaging-only opt-in"
 t_assert_eq "boolean|false|false" "$(_input_meta host-gpu-runtime)"
 t_assert_eq "string|false|" "$(_input_meta gpu-artifact-label)"

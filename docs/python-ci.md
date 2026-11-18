@@ -508,7 +508,10 @@ Cobertura XML with `verify-test-reports.py`. The gate requires at least one pass
 measured, covered lines in the named package. Missing or malformed reports, an all-skipped run,
 or zero package coverage fail the leg. Skipped cases are allowed when another test passed.
 `coverage-min` on `python-ci-linux.yml` sets a per-leg percentage floor; its default `0` still
-requires covered package lines. An experimental leg reports a failed check as a warning. Run the
+requires covered package lines. `coverage-extra` (`PYTHON_COVERAGE_EXTRA`, comma-separated `DIR=MIN`) measures each
+source tree beside the package, such as a `benchmarks/` directory, with its own report
+(`coverage-<leg>-<dir>.xml`) and floor; the package's report then leaves those trees out, so neither number hides
+the other. Keep a tree's own tests out with `[tool.coverage.run] omit` in `pyproject.toml`. An experimental leg reports a failed check as a warning. Run the
 same script in a separate CI job with `python3 verify-test-reports.py --junit <file> --coverage
 <file> --min-coverage 70`. The gate checks report integrity and a line percentage; it does not
 judge whether test assertions are useful or which package paths should count. Its fixture suite

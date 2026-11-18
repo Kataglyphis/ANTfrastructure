@@ -92,6 +92,8 @@ Describe 'WindowsVulkanValidation.Common' {
       $default = Get-VulkanLayerSettingsDefaultPath
       Test-Path $default | Should -Be $true
       (Get-Content $default -Raw) | Should -Match 'khronos_validation\.validate_sync\s*=\s*true'
+      (Get-Content $default -Raw) | Should -Match 'syncval_load_op_after_store_op_validation\s*=\s*true'
+      (Get-Content $default -Raw) | Should -Match 'syncval_shader_accesses_heuristic\s*=\s*true'
     }
 
     It 'stages the settings file next to the executable and removes it again' {

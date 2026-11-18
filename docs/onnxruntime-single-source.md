@@ -535,6 +535,22 @@ decodes on one thread unless `--describe-threads` says otherwise (owner decision
 Pi 5 the detector took 238 ms alone, 1157 ms beside a seven-thread description and 570 ms beside a
 one-thread one, and SmolLM2-135M decoded faster on one thread (104 against 34 tokens per second).
 
+### The text thread rule
+
+A **GenAI decoder** takes **half the detector's pool, at least 1 and at most 4** intra-op threads when
+nothing sets a count, and a model whose `genai_config.json` names its own keeps it (CON218, owner decision
+2026-11-17). Decoding is memory-bound: on a Pi 5 with all 4 CPUs, beside AccelerANTgine's DEIM detector
+(417 ms alone, two runs), SmolLM2-135M on 1, 2, 3 and 4 threads made the detector take 568-600, 714-747,
+778-781 and 689-698 ms, and a 200-token reply alone took 2.7, 3.1-3.4, 3.2-3.3 and 3.3-3.4 s. The
+detector's rule (three on a Pi 5) would have slowed both. Where a detector runs beside it, the consumer
+sets one thread.
+
+| Consumer | Where |
+| --- | --- |
+| AccelerANTgine | `text_intra_op_threads()` through `OgaConfigOverlay` in `TextGenerator::initialize` |
+| OxidANT | `kataglyphis_core::config::text_threads` in `GenaiGenerator` without a count; ObservANT's `llm_threads` 1 |
+| OrchestrANT | `text_threads()` in `GenaiEngine` without `threads`; `yolo-monitor --describe` keeps 1 |
+
 ## The consumer repositories
 
 These changes sit in the consumers' working trees. Their gitlinks move only
@@ -625,3 +641,49 @@ the first run is still the real test. The likeliest first reds, all fail-closed:
 | `ERROR: chain ORT: ...` | a consumer's `uv sync` | [`python-ci.md` § Trap 3](python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi) |
 | `FAIL fix11: ...` | preflight `critical-fixes` | G4 found a re-armed download or a lost wiring row |
 | `<id> is an ONNX Runtime package and is refused` | `Install-OptionalNuGetPackage` | the NuGet facility is chain-only |
+
+## WebGPU static-plugin proof covers every linker product
+
+Pinned ORT v1.31.1 links its internal session/provider libraries, including the
+linked-in WebGPU provider, into the Python extension as well as the native core
+([the pinned Python target](https://github.com/microsoft/onnxruntime/blob/v1.31.1/cmake/onnxruntime_python.cmake)).
+A hash or successful load of `libonnxruntime.so` alone therefore cannot establish
+the mode of the Python GIL or free-threaded extension. Bind configured mode to the
+actual native core and each Python extension, then prove factory registration
+through the environment that owns that product. Provider advertisement alone is
+not adapter availability or inference. Linux configured gates are implemented;
+the corresponding runtime/product proofs remain open under CON233.
+
+Native build prefixes now preserve `ort-webgpu-build.json` with separate native,
+GIL and FT product hashes taken against each phase's checked configuration.
+The FT receipt refuses changed GIL products or another source/mode. Wheel repair
+now retains those original hashes and adds checked `wheel_delivery` mappings to
+final Python hashes. A successful precheck binds source/mode, manifest and
+wheelhouse; follow requires unchanged allocated code/data and normalized dynamic
+symbol identity against the real loader mappings. Foreign code, changed symbol
+names and section-only copies fail. Typed dynamic metadata changes remain outside
+this fingerprint's loader-safety scope; the census and runtime checks remain
+required. These source/fixture proofs do not complete actual factory registration
+or the image matrix. A receipt's presence alone is no runtime PASS.
+The Python runtime gate now checks the imported extension against one complete
+delivery, then unregisters the factory and requires the exact ORT missing-library
+negative control in its isolated process. Disabled mode requires absence twice;
+FT checks require its own extension and keep the GIL disabled throughout. The
+GIL image smoke and installed FT store call the same preserved gate. Stub-binding
+regressions do not prove real ORT registration or replace the pending native-core
+and image-matrix proofs. The native runtime phase now checks every selected
+prefix's exact core and invokes its target-native C API executable. That probe
+rejects the legacy compiled WebGPU provider, requires the CPU baseline, creates
+the owning environment and checks registration plus the exact missing-key
+negative control. The producer compiles it with the core's configured compiler,
+flags and absolute header through shared cache/CMake helpers. API, build,
+installation and resource-cleanup failures remain fatal. Executable fake-ABI
+fixtures and an official-header compile do not prove actual target ORT factories.
+
+
+Pinned Python `get_available_providers()` also enumerates environment devices
+([the pinned binding](https://github.com/microsoft/onnxruntime/blob/v1.31.1/onnxruntime/python/onnxruntime_pybind_module.cc)).
+It cannot distinguish a missing static factory from a registered factory with no
+usable adapter. Its unregistration API initializes `GetEnv()` without requiring
+that enumeration. Both legacy internal WebGPU and the static plugin register the
+same name; unregistration alone still needs the configured product binding above.

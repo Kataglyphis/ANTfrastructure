@@ -780,6 +780,26 @@ package is used.
 `linux/scripts/tests/test-linker-select.sh` pins it with stub drivers and a stubbed
 download.
 
+## `rust-toolchain.sh` — the wasm32 std and a locked wasm-bindgen
+
+Both helpers return 1 with a warning instead of exiting: whether wasm is required is the
+caller's call.
+
+- `ensure_wasm32_target` adds `wasm32-unknown-unknown` through rustup, or, on a distro Rust
+  without rustup, checks that the target's std is installed.
+- `ensure_wasm_bindgen <Cargo.lock>` makes PATH's `wasm-bindgen` the version the lock pins:
+  wasm-bindgen-cli refuses a module built by any other wasm-bindgen. It reads the version
+  with `wasm_bindgen_lock_version` (exact crate name, CRLF lockfiles too), installs nothing
+  when PATH already runs it, else runs `cargo install --locked wasm-bindgen-cli --version
+  <v>` and returns cargo's status when that fails. After an install it asks PATH again:
+  cargo writes to `${CARGO_HOME:-~/.cargo}/bin`, which the family image's PATH leaves out,
+  so a caller there puts that directory first. A missing lock, or one without
+  wasm-bindgen, returns 1 before cargo runs.
+
+BeschleunigerBallett's `docs-build-web.sh` and OxidANT's `webgpu-demo-browser.sh` each
+carried a copy (2026-11-16). `linux/scripts/tests/test-lib-wasm-tools.sh` pins both with
+stubbed `rustup`, `rustc`, `cargo` and `wasm-bindgen`.
+
 ## `riscv64-cross.sh` — cross-build for riscv64, test under QEMU
 
 `riscv64_cross_env` turns the amd64 image into a riscv64 cross environment over a

@@ -34,7 +34,7 @@ compiler_cache_launcher() { printf 'launcher\n' >> "$work/calls"; printf '%s' sc
 fixture_cc() {
   local arg
   for arg in "$@"; do
-    case "$arg" in /tmp/*/probe.c) arg=SOURCE ;; /tmp/*/probe) arg=OUTPUT ;; esac
+    case "$arg" in */probe.c) arg=SOURCE ;; */probe) arg=OUTPUT ;; esac
     printf '<%s>' "$arg" >> "$work/calls"
   done
   printf '\n' >> "$work/calls"
@@ -42,6 +42,10 @@ fixture_cc() {
   printf 'suppressed compiler error\n' >&2
   return "$failure"
 }
+if [ "$consumer" = argv ]; then
+  fixture_cc "$flag" -o "$available" >/dev/null 2>&1
+  exit $?
+fi
 CC=fixture_cc
 if [ "$flag" = unset ]; then unset USE_LLD USE_CCACHE; else USE_LLD="$flag"; USE_CCACHE="$flag"; fi
 CMAKE_C_COMPILER_LAUNCHER="$preconfigured"
@@ -101,6 +105,11 @@ _tool_toggle_case() {
   t_assert_eq '' "$(cat "$WORK/err")"
   t_record_fixture_receipt "$RECEIPT" "$consumer" "$flag" "$available" "$context" "$strict" "$preconfigured" "$failure" "$actual_rc" "$(cat "$WORK/out")" "$(cat "$WORK/calls")" "$(cat "$WORK/err")"
 }
+
+t_case "the compiler spy normalizes probe paths under an arbitrary temporary root"
+: > "$WORK/calls"
+t_assert_ok bash "$WORK/worker.sh" "$TESTS_DIR/test-harness.sh" "$TESTS_DIR/shell-context-fixture.sh" "$UTILS" "$FFMPEG" "$WORK/ort-functions.sh" "$WORK" argv '/arbitrary scratch root/probe.c' '/arbitrary scratch root/probe' direct relaxed '' 0
+t_assert_eq '<SOURCE><-o><OUTPUT>' "$(cat "$WORK/calls")"
 
 for consumer in ffmpeg ort; do
   for flag in unset '' 0 false FALSE False no NO off OFF true 1 yes on No Off falsee; do

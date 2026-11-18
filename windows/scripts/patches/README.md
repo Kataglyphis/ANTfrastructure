@@ -117,3 +117,13 @@ source pin in `Get-PatchRefs`, or the check reports FAIL for it. Local accountin
 check every current static patch's mapping, source-pin selection and explicit override
 precedence before any clone; they do not prove upstream application. CI runs the real check as the `patch-drift` job of
 `.github/workflows/windows-x64.yml`, on every change under `windows/` or to `versions.env`.
+
+ONNX first tries the configured Microsoft release, then the full original commit from the
+reviewed ROCm mirror only after clone failure. Both transports require the configured commit
+and `VERSION_NUMBER` before a clone enters the cache; a successful but wrong primary identity
+fails immediately. Sparse checkout, Git apply and GNU patch dry runs remain mandatory.
+If a clone still cannot be obtained, a confirmed HTTP 404 is reported as `NOT CHECKED` to
+distinguish unavailability from a reachable clone failure. Both statuses leave this required
+gate red: the diagnostic is not patch-application evidence. CON280 remains open for maintained
+private mirrors. Local fixtures cover identity, fallback and verdict accounting; the real
+upstream check supplies separate network and patch-application evidence.

@@ -39,6 +39,7 @@ done
 
 _FNS="${_FNS}
 $(t_fn_src "${TESTS_DIR}/../01-core/cmake-cache-linker.sh" append_cmake_compiler_cache_pin)
+$(t_fn_src "${TESTS_DIR}/../01-core/cmake-cache-linker.sh" cmake_assert_configured_entries)
 $(t_fn_src "${TESTS_DIR}/../01-core/cmake-cache-linker.sh" cmake_assert_compiler_cache_pin)"
 
 # The real table, not a fixture: a lost row silently stops a component being cross-built.
@@ -587,6 +588,7 @@ t_assert_contains "${_swapped}" "after=/cross/aarch64-linux-gnu/pkgconfig" \
 
 t_case "a Vulkan component configures with the pinned launcher, and a replaced one stops the build"
 _pin_src="$(t_fn_src "${TESTS_DIR}/../01-core/cmake-cache-linker.sh" append_cmake_compiler_cache_pin)
+$(t_fn_src "${TESTS_DIR}/../01-core/cmake-cache-linker.sh" cmake_assert_configured_entries)
 $(t_fn_src "${TESTS_DIR}/../01-core/cmake-cache-linker.sh" cmake_assert_compiler_cache_pin)
 $(sed -n '/^_vulkan_native_host_link_args() {/,/^}/p' "${VULKAN_SH}")
 $(sed -n '/^_cross_build_sdk_component() {/,/^}/p' "${VULKAN_SH}")"

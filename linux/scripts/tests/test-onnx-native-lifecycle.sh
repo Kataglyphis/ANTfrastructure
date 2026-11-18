@@ -6,23 +6,27 @@ source "${TESTS_DIR}/test-harness.sh"
 ORT="${TESTS_DIR}/../03-media/build/onnxruntime/build"
 COMMON="${1:-${ORT}/lib/common.sh}"
 CPU="${2:-${ORT}/30-build-native.sh}"
+GPU="${3:-${ORT}/30-build-native-nvidia.sh}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 for helper in run_onnx_native_build collect_onnx_native_wheels; do
   if grep -Eq "^${helper}\(\)" "${COMMON}"; then eval "$(t_fn_src "${COMMON}" "${helper}")"; fi
 done
-backend=cpu
-script="${CPU}"
+for backend in cpu gpu; do
+script="${CPU}"; if [ "${backend}" = gpu ]; then script="${GPU}"; fi
 python3 - "${script}" "${WORK}/${backend}.sh" <<'PY'
 import sys
 from pathlib import Path
 
 text = Path(sys.argv[1]).read_text()
 starts = ['# Execute build (with retry', 'if ! "${BUILD_SH}"', 'run_onnx_native_build ']
+if 'run_onnx_native_build ' not in text:
+    starts.append('"${BUILD_SH}" "${BUILD_ARGS[@]}"')
 start = min(text.index(marker) for marker in starts if marker in text)
 end = text.index('copy_onnx_headers_to_output ', start)
 Path(sys.argv[2]).write_text(text[start:end] + '\necho tail-complete\n')
 PY
+done
 t_emit_optional_functions run_onnx_native_build collect_onnx_native_wheels > "${WORK}/runner.sh"
 cat >> "${WORK}/runner.sh" <<'RUNNER'
 WORK="$1"; backend="$2"; cross="$3"; build_rc="$4"; wheels="$5"; collect_rc="$6"
@@ -55,9 +59,13 @@ collect_wheels_from_tree() {
 maybe_build_source_wheel() { printf 'fallback <%s> <%s> <%s> <%s>\n' "$@" >> "${WORK}/calls"; }
 # The pin gate has its own suite, test-cmake-compiler-cache-pin.sh.
 cmake_assert_compiler_cache_pin() { return 0; }
+assert_onnx_webgpu_static_plugin() { printf 'webgpu <%s>\n' "$1" >> "${WORK}/calls"; return "${NATIVE_WEBGPU_GATE_RC:-0}"; }
 # shellcheck source=/dev/null
 source "${WORK}/${backend}.sh"
 RUNNER
+_assert_no_wheel_collection() {
+  t_assert_rc 1 grep -Eq '^collect|^fallback' "${WORK}/calls"
+}
 run_tail() {
   local status=0
   rm -rf "${WORK}/output"; mkdir -p "${WORK}/output/wheels"
@@ -66,9 +74,9 @@ run_tail() {
     > "${WORK}/output.txt" 2>&1 || status=$?
   printf '%s' "${status}"
 }
-backend=cpu
+for backend in cpu gpu; do
 build_tree="${WORK}/CPU build"; wheel_label='ONNX Runtime wheel'; source_label='ONNX Runtime'
-{
+if [ "${backend}" = gpu ]; then build_tree="${WORK}/GPU build"; wheel_label='GPU wheel'; fi
   for cross in native cross; do
     for result in success failure; do
       t_case "${backend} ${cross}: ${result} build"
@@ -76,13 +84,14 @@ build_tree="${WORK}/CPU build"; wheel_label='ONNX Runtime wheel'; source_label='
       status="$(run_tail "${backend}" "${cross}" "${build_rc}" absent)"
       calls="$(cat "${WORK}/calls")"
       expected=0; [ "${result}" != failure ] || expected=1
+      if [ "${backend}:${result}" = gpu:failure ]; then expected=7; fi
       t_assert_eq "${expected}" "${status}"
       attempts=1; if [ "${backend}:${result}" = cpu:failure ]; then attempts=3; fi
       t_assert_eq "${attempts}" "$(grep -Ec '^build <first option> <--second>$' "${WORK}/calls")" 'arguments and retry count'
       if [ "${backend}" = cpu ]; then t_assert_contains "${calls}" 'retry <3> <10> <ONNX Runtime CPU build> <_ort_build_attempt>'; fi
       if [ "${result}" = failure ]; then
-        t_assert_rc 1 grep -Eq '^collect|^fallback' "${WORK}/calls"
-        if [ "${cross}" = cross ]; then
+        _assert_no_wheel_collection
+        if [ "${backend}:${cross}" = cpu:cross ]; then
           t_assert_contains "${calls}" "diagnostics <--build> <${build_tree}/RelWithDebInfo> <--config> <RelWithDebInfo> <--parallel> <1> <--verbose>"
           t_assert_contains "$(cat "${WORK}/output.txt")" 'rerunning single-threaded verbose build for diagnostics'
         else
@@ -90,7 +99,7 @@ build_tree="${WORK}/CPU build"; wheel_label='ONNX Runtime wheel'; source_label='
         fi
       else
         t_assert_contains "${calls}" "collect <${build_tree}> <${WORK}/output> <${wheel_label}>"
-        if [ "${cross}" = native ]; then
+        if [ "${backend}:${cross}" = cpu:native ]; then
           t_assert_contains "${calls}" "fallback <${WORK}/source tree> <${WORK}/output> </fixture/python path> <${source_label}>"
         else
           t_assert_rc 1 grep -Eq '^fallback' "${WORK}/calls"
@@ -105,5 +114,9 @@ build_tree="${WORK}/CPU build"; wheel_label='ONNX Runtime wheel'; source_label='
   t_case "${backend}: wheel collection failure remains fatal"
   t_assert_eq 17 "$(run_tail "${backend}" native 0 absent 17)"
   t_assert_rc 1 grep -Eq '^fallback' "${WORK}/calls"
-}
+t_case "${backend}: a configured WebGPU mismatch stops native output collection"
+t_assert_eq 1 "$(NATIVE_WEBGPU_GATE_RC=17 run_tail "${backend}" native 0 present)"
+t_assert_contains "$(cat "${WORK}/calls")" "webgpu <${build_tree}/RelWithDebInfo>"
+_assert_no_wheel_collection
+done
 t_summary

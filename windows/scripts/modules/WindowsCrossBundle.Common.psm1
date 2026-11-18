@@ -170,6 +170,7 @@ function New-PortableBundle {
 
     $null = New-Item -ItemType Directory -Force -Path $packages
     $cpack = @(Get-ChildItem -LiteralPath $BuildDir -File | Where-Object { $_.Extension -in '.msi', '.zip' })
+    # A check's own output (a verifier's stdout) must not join this function's result.
     foreach ($installer in $cpack) { & $PackageCheck $installer.FullName $redist | Out-Host }
     $installers = $cpack + @($cpack | ForEach-Object { Join-Path $BuildDir "$($_.BaseName).exe" } | Select-Object -Unique |
             Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Get-Item)

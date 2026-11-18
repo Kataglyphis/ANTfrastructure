@@ -112,7 +112,7 @@ run_optional_flavor_pass() {
   shift
   info ">>> ${label}"
   rm -rf "${BUILD_DIR}"
-  if "$@"; then
+  if "$@" && assert_onnx_webgpu_static_plugin "${BUILD_DIR}/${WASM_CONFIG}" ON OFF; then
     return 0
   fi
   if [ "${ORT_WEB_REQUIRED:-0}" = "1" ]; then
@@ -120,6 +120,20 @@ run_optional_flavor_pass() {
   fi
   warn "${label} failed — shipping onnxruntime-web WITHOUT this flavor (50-build-js.sh will trim its JS bundles)"
   return 1
+}
+
+# Both flavors share the plugin ABI and reduced operators; only JSPI drops the common exception flag.
+run_webgpu_flavor_pass() {
+  local _wgp_label="$1" _wgp_flavor="$2"
+  local -n _wgp_base_args="$3"
+  shift 3
+  if run_optional_flavor_pass "${_wgp_label}" \
+      "${BUILD_SH}" "${_wgp_base_args[@]}" --enable_wasm_simd --enable_wasm_threads \
+      --use_webgpu static_plugin --use_webnn "$@" --target onnxruntime_webassembly \
+      "${REDUCED_SIZE_ARGS[@]}"; then
+    collect_wasm_artifacts "ort-wasm-simd-threaded.${_wgp_flavor}.*"
+  fi
+  return 0
 }
 
 collect_wasm_artifacts() {
@@ -147,19 +161,8 @@ collect_wasm_artifacts "ort-wasm-simd-threaded.jsep.*" "ort-wasm-simd-threaded.w
 
 # ORT's CMake names the WebGPU outputs .asyncify/.jspi itself; the ort.webgpu*/ort.jspi* bundles load them.
 if [ "${ORT_WASM_WEBGPU_FLAVORS}" = "true" ]; then
-  if run_optional_flavor_pass "Pass 3: WebGPU (asyncify)" \
-      "${BUILD_SH}" "${COMMON_ARGS[@]}" --enable_wasm_simd --enable_wasm_threads \
-      --use_webgpu --use_webnn --target onnxruntime_webassembly \
-      "${REDUCED_SIZE_ARGS[@]}"; then
-    collect_wasm_artifacts "ort-wasm-simd-threaded.asyncify.*"
-  fi
-
-  if run_optional_flavor_pass "Pass 4: WebGPU (JSPI)" \
-      "${BUILD_SH}" "${JSPI_COMMON_ARGS[@]}" --enable_wasm_simd --enable_wasm_threads \
-      --use_webgpu --use_webnn --enable_wasm_jspi --target onnxruntime_webassembly \
-      "${REDUCED_SIZE_ARGS[@]}"; then
-    collect_wasm_artifacts "ort-wasm-simd-threaded.jspi.*"
-  fi
+  run_webgpu_flavor_pass "Pass 3: WebGPU (asyncify)" asyncify COMMON_ARGS
+  run_webgpu_flavor_pass "Pass 4: WebGPU (JSPI)" jspi JSPI_COMMON_ARGS --enable_wasm_jspi
 else
   info "Skipping WebGPU wasm flavor passes (ORT_WASM_WEBGPU_FLAVORS=${ORT_WASM_WEBGPU_FLAVORS})"
 fi

@@ -23,6 +23,7 @@ set -uo pipefail
 printf 'FTS ENV %s\n' "${PYTHON_WHEELS_FREE_THREADED:-<unset>}"
 store=/opt/wheels-free-threaded
 helper=/opt/scripts/toolchain/python/free-threaded-wheel.py
+source /opt/scripts/03-media/free-threaded-wheels.sh || exit $?
 [ -d "${store}" ] || { echo "FTS NOSTORE"; echo "FTS DONE"; exit 0; }
 if [ -f "${store}/free-threaded-store.txt" ]; then sed 's/^/FTS RECORD /' "${store}/free-threaded-store.txt"; else echo "FTS NORECORD"; fi
 ls -1 /opt/venv/lib/python3*/site-packages 2>/dev/null | sed -n 's/^\(.*\)-[^-]*\.dist-info$/FTS GIL \1/p'
@@ -41,6 +42,14 @@ for w in "${store}"/*.whl; do
     printf 'FTS PROVED %s %s\n' "${n%%-*}" "$(printf '%s' "${out}" | tr '\n' ' ')"
   else
     printf 'FTS UNPROVED %s %s\n' "${n%%-*}" "$(printf '%s' "${out}" | tr '\n' ' ')"
+  fi
+  if [ "$(ft_wheel_row "${n%%-*}" | cut -d'|' -f1)" = onnxruntime ]; then
+    if out="$(cd / && "${work}/venv/bin/python" -I /opt/scripts/03-media/final/ort_webgpu_runtime.py \
+      --phase free-threaded --source-ref "${WEBGPU_EXPECT_REF:?missing ORT source pin}" 2>&1)"; then
+      printf 'FTS WEBGPU %s %s\n' "${n%%-*}" "$(printf '%s' "${out}" | tr '\n' ' ')"
+    else
+      printf 'FTS WEBGPU-FAIL %s %s\n' "${n%%-*}" "$(printf '%s' "${out}" | tr '\n' ' ')"
+    fi
   fi
 done
 rm -rf "${work}"
@@ -102,6 +111,7 @@ _ft_store_verdict_native() {
     case "${w}" in *-cp3[0-9]*-cp3[0-9]*t-*.whl) ;; *) echo "BAD ${w} is not a cp3XY-cp3XYt wheel" ;; esac
     _ft_store_wants "${probe}" "${w%%-*}" || echo "BAD ${w} is no twin the table allows here (verdict $(ft_wheel_verdict "${w%%-*}"))"
     fam_have+="$(ft_wheel_row "${w%%-*}" | cut -d'|' -f1)"$'\n'
+    _ft_store_webgpu_verdict "${probe}" "${w%%-*}"
     if printf '%s\n' "${probe}" | grep -q -e "^FTS PROVED ${w%%-*} "; then
       echo "OK ${w}: $(printf '%s\n' "${probe}" | sed -n "s/^FTS PROVED ${w%%-*} //p" | head -n 1)"
     else
@@ -117,12 +127,24 @@ _ft_store_verdict_native() {
   fi
 }
 
+# ORT's generic module import proof does not prove its statically registered factory.
+_ft_store_webgpu_verdict() {
+  local probe="$1" distribution="$2" rows
+  [ "$(ft_wheel_row "${distribution}" | cut -d'|' -f1)" = onnxruntime ] || return 0
+  rows="$(printf '%s\n' "${probe}" | grep -F -e "FTS WEBGPU ${distribution} " || true)"
+  if [[ "${rows}" == "FTS WEBGPU ${distribution} WEBGPU-FACTORY OK: "* ]] && [[ "${rows}" != *$'\n'* ]]; then
+    echo "OK ${distribution}: free-threaded WebGPU factory and negative control proved"
+  else
+    echo "BAD ${distribution}: no unique successful free-threaded WebGPU factory proof"
+  fi
+}
+
 # <image> <arch>: runs the probe in the shipped image and turns each verdict line into pass or fail.
 check_free_threaded_wheels() {
   # shellcheck disable=SC2034  # _rt_run reads image_tag by dynamic scope
   local image_tag="$1" target_arch="$2" probe
   echo "--- Free-threaded wheels: the free-threaded store on the free-threaded python (${target_arch}) ---"
-  probe="$(_rt_run bash -lc "$(ft_store_probe_script)" 2>/dev/null)" || true
+  probe="$(_rt_run -e "WEBGPU_EXPECT_REF=$(_rt_versions_env_pin ONNXRUNTIME_VERSION)" bash -lc "$(ft_store_probe_script)" 2>/dev/null)" || true
   smoke_verdict_lines FT-STORE "${target_arch}" < <(ft_store_verdict "${probe}")
   echo ""
 }

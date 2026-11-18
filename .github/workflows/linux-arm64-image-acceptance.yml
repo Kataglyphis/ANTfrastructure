@@ -1,0 +1,73 @@
+name: Linux arm64 · image consumer acceptance
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled]
+    paths:
+      - .github/workflows/linux-arm64-image-acceptance.yml
+      - linux/scripts/image-acceptance-ci.py
+      - shared/config/native-image-proof.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-image-proof-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event.pull_request.head.repo.full_name == github.repository
+          && contains(github.event.pull_request.labels.*.name, 'native-image-proof'))
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 360
+    env:
+      LC_ALL: C
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Validate the frozen proof and native host
+        id: proof
+        run: >-
+          python3 linux/scripts/image-acceptance-ci.py describe
+          --proof shared/config/native-image-proof.json
+          --github-output "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/prepare-linux-ci-host
+        with:
+          image: ${{ steps.proof.outputs.image }}
+          checkout: 'false'
+          free-disk-space: 'true'
+
+      - name: Check out the exact acceptance tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.proof.outputs.hub_revision }}
+          path: acceptance-hub
+          submodules: false
+          persist-credentials: false
+
+      - name: Run every frozen consumer without changing its command or timeout
+        run: >-
+          python3 linux/scripts/image-acceptance-ci.py run
+          --proof shared/config/native-image-proof.json
+          --hub acceptance-hub
+          --output "$RUNNER_TEMP/image-acceptance"
+          --engine docker
+
+      - name: Preserve receipts, plans, host metadata and actual consumer logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-image-proof-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/image-acceptance/*.json
+            ${{ runner.temp }}/image-acceptance/consumers/*.log
+          if-no-files-found: error

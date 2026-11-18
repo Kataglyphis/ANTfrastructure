@@ -407,7 +407,7 @@ $(_extract _consumer_free_threaded_verdict)"
 # _cc_tr <probe> <arch> <row>
 _cc_tr() {
   CC_PROBE="$1" CHROME_FOR_TESTING_VERSION=154.0.8037.92 ANDROID_EMULATOR_VERSION=37.2.12 ANDROID_EMULATOR_API=35 \
-    ANDROID_EMULATOR_SYSIMG_REVISION=9 CARGO_AUDIT_VERSION=0.22.2 CARGO_DENY_VERSION=0.20.2 CARGO_TARPAULIN_VERSION=0.37.2 PYTHON_VERSION=3.14.7 bash -c '
+    ANDROID_EMULATOR_SYSIMG_REVISION=9 CARGO_AUDIT_VERSION=0.22.2 CARGO_DENY_VERSION=0.20.2 CARGO_TARPAULIN_VERSION=0.37.2 CARGO_MUTANTS_VERSION=27.1.0 PYTHON_VERSION=3.14.7 bash -c '
     '"${_CC_TR_PARTS}"'
     _CONSUMER_CONTRACT_ROWS="$2"
     _consumer_contract_verdicts "$1" "${CC_PROBE}"' _ "$2" "$3" 2>&1
@@ -469,13 +469,19 @@ for _a in arm64 riscv64; do
 done
 
 _CC_QA='FACT cargo-qa-tools yes
-FACT cargo-qa-tools-versions cargo-audit=0.22.2 cargo-deny=0.20.2 cargo-tarpaulin=0.37.2'
+FACT cargo-qa-tools-versions cargo-audit=0.22.2 cargo-deny=0.20.2 cargo-tarpaulin=0.37.2 cargo-mutants='
+_CC_QA_AMD64='FACT cargo-qa-tools yes
+FACT cargo-qa-tools-versions cargo-audit=0.22.2 cargo-deny=0.20.2 cargo-tarpaulin=0.37.2 cargo-mutants=27.1.0'
 
-t_case "CON65: the three cargo QA tools at their pins hold the row on amd64 and arm64"
-for _a in amd64 arm64; do
-  t_assert_contains "$(_cc_tr "${_CC_QA}" "${_a}" cargo-qa-tools)" \
-    "OK cargo-qa-tools cargo-audit=0.22.2 cargo-deny=0.20.2 cargo-tarpaulin=0.37.2" "${_a}"
-done
+t_case "CON65/CON238: the cargo QA tools at their pins hold the row, cargo-mutants on amd64 only"
+t_assert_contains "$(_cc_tr "${_CC_QA_AMD64}" amd64 cargo-qa-tools)" \
+  "OK cargo-qa-tools cargo-audit=0.22.2 cargo-deny=0.20.2 cargo-tarpaulin=0.37.2 cargo-mutants=27.1.0"
+t_assert_contains "$(_cc_tr "${_CC_QA}" arm64 cargo-qa-tools)" \
+  "OK cargo-qa-tools cargo-audit=0.22.2 cargo-deny=0.20.2 cargo-tarpaulin=0.37.2 cargo-mutants="
+
+t_case "CON238: an amd64 image without cargo-mutants, or an arm64 one with it, is BAD"
+t_assert_contains "$(_cc_tr "${_CC_QA}" amd64 cargo-qa-tools)" "BAD cargo-qa-tools the image has"
+t_assert_contains "$(_cc_tr "${_CC_QA_AMD64}" arm64 cargo-qa-tools)" "BAD cargo-qa-tools the image has"
 
 t_case "CON65: a tool off its pin or missing is BAD, and no fact proves nothing (mutation)"
 _qa_bad() { _cc_tr "$(_cc_edit "${_CC_QA}" "$1")" arm64 cargo-qa-tools; }

@@ -82,7 +82,7 @@ t_assert_contains "$(TENSORRT_VERSION=11.4.0.106 trtep_verify_library "${_so}" 2
 t_assert_contains "$(TENSORRT_VERSION='' trtep_verify_library "${_so}" 2>&1)" "does not link libnvinfer.so.N" "a bare verify call without TENSORRT_VERSION accepts any major"
 
 t_case "outside an nvidia build with TensorRT the build step only leaves the empty output tree the media merge COPYs"
-t_assert_eq "Skipping the TensorRT plugin EP (ENABLE_NVIDIA=false, ENABLE_TENSORRT=true)" "$(TRTEP_OUTPUT_DIR="${_T}/placeholder" ENABLE_NVIDIA=false trtep_build 2>&1)"
+t_assert_eq "Skipping the TensorRT plugin EP (ENABLE_NVIDIA=false, ENABLE_TENSORRT=true)" "$(unset ENABLE_TENSORRT; TRTEP_OUTPUT_DIR="${_T}/placeholder" ENABLE_NVIDIA=false trtep_build 2>&1)"
 t_assert_eq "Skipping the TensorRT plugin EP (ENABLE_NVIDIA=true, ENABLE_TENSORRT=false)" "$(TRTEP_OUTPUT_DIR="${_T}/placeholder" ENABLE_NVIDIA=true ENABLE_TENSORRT=false trtep_build 2>&1)" "a Jetson image (CUDA without TensorRT) builds none"
 t_assert_ok test -d "${_T}/placeholder"
 t_assert_eq "" "$(ls -A "${_T}/placeholder")" "nothing is built"

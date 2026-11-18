@@ -247,12 +247,22 @@ plugin_ep_build_env() {
   command -v download_verified_file >/dev/null 2>&1 || source "${PLUGIN_EP_CORE}/downloads.sh"
 }
 
+# Nodes and cached registries must release their actual owners before the shared runtime exits.
+mgxep_apply_source_patch() {
+  local source_patch
+  for source_patch in 001-node-compute-info-lifetime.patch 002-kernel-registry-lifetime.patch; do
+    bash "${PLUGIN_EP_CORE}/apply-patch.sh" "${SCRIPT_DIR}/patches/${source_patch}" \
+      "${MGXEP_SRC}" "MIGraphX ownership ${source_patch}" || return
+  done
+}
+
 # The pinned source and every seed into the work tree; sets MGXEP_COMMIT, MGXEP_SHA, MGXEP_SRC and the MGXEP_DEFINES the configure takes.
 mgxep_sources() {
   local work="${MGXEP_WORK_DIR}" seeded declared
   MGXEP_COMMIT="$(mgxep_pin ORT_AMDGPU_EP_COMMIT)"; MGXEP_SHA="$(plugin_ep_sha_pin ORT_AMDGPU_EP_SOURCE_SHA256)"
   [[ "${MGXEP_COMMIT}" =~ ^[0-9a-f]{40}$ ]] || err "ORT_AMDGPU_EP_COMMIT=${MGXEP_COMMIT} is not a 40-hex commit"
   MGXEP_SRC="$(plugin_ep_source onnxruntime-ep-amdgpu "$(mgxep_source_url "${MGXEP_COMMIT}")" ORT_AMDGPU_EP_SOURCE_SHA256 "${work}")"
+  mgxep_apply_source_patch || return
   declared="${work}/declared.txt"; seeded="${work}/seeded.txt"
   mgxep_declared_urls "${MGXEP_SRC}/src/CMakeLists.txt" > "${declared}"
   MGXEP_DEFINES=()

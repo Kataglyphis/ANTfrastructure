@@ -30,6 +30,10 @@ Native Git may report `C:/...` for a fixture Bash created under `/tmp/...`.
 
 ## Preserved local proof workflows
 
+Compiler-tool fixtures normalize generated source/output basenames, independently of the temporary root.
+`test-compiler-tool-toggles.sh` keeps a synthetic path-with-spaces control outside `/tmp`; its mutation
+restores the old hard-coded prefix and must fail. This tests the argument recorder, not real cache hits.
+
 Regular operational drivers live under `linux/scripts/` and are versioned with their tests.
 Reuse these tools instead of reconstructing a scratch script on each session. Keep each run's
 inputs and evidence under ignored `logs/`; choose a new directory for a new attempt.
@@ -1093,7 +1097,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4976 entries** over **674 distinct test commands**; both digits are
+manifest holds **5230 entries** over **689 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1405,6 +1409,12 @@ starts, so only that one `git diff --cached` gets the path. A list that cannot b
 stops the commit. `tests/test-precommit-hook.sh` commits for real with `-a`, with a path
 and plain; recipes `pre-commit.commit-a-reads-its-own-index` and
 `pre-commit.unreadable-index-stops`.
+
+**A host without a parser** (CON279). A mutant is parsed before its suite runs, so a host with no `pwsh`
+(a Raspberry Pi dev host) failed every PowerShell sample with `pwsh is not on PATH, so ...`. When the gate's
+output says `is not on PATH, so` and the clone sets `git config kataglyphis.imageRunner "<command> --"`, the
+hook runs the same `--only` sample once more through that command, and that run decides; a surviving mutant
+or a clone without the setting stops the commit as before. It is the pre-push hook's CON277 rule.
 
 **Cost.** Even staged-only, the mass is lopsided: the totals above spread over a
 handful of suites, and on 2026-09-04 `test-code-complexity.sh` alone owned more
@@ -3303,7 +3313,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 1058 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1074 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -3314,7 +3324,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **410** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **423** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **0** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.

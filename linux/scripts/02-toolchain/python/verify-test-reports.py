@@ -42,6 +42,7 @@ def main() -> int:
     parser.add_argument("--junit", required=True, type=Path)
     parser.add_argument("--coverage", required=True, type=Path)
     parser.add_argument("--min-coverage", default="0", help="minimum covered line percent, 0-100")
+    parser.add_argument("--label", default="package", help="what the coverage report measures, for the verdict line")
     args = parser.parse_args()
     try:
         floor = Decimal(args.min_coverage)
@@ -54,7 +55,7 @@ def main() -> int:
     except (OSError, ET.ParseError, ValueError, KeyError, InvalidOperation) as exc:
         print(f"test report check failed: {exc}", file=sys.stderr)
         return 1
-    print(f"test report check: {passed} passed; package coverage {percent:.2f}% (minimum {floor}%)")
+    print(f"test report check: {passed} passed; {args.label} coverage {percent:.2f}% (minimum {floor}%)")
     return 0
 
 

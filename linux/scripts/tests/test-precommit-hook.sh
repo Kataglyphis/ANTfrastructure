@@ -69,6 +69,7 @@ cat > "${_work}/bin/git" <<'STUB'
 case "$*" in
   *"rev-parse --show-toplevel"*) printf '%s\n' "${HOOK_TEST_ROOT}" ;;
   *"--cached --name-only"*) cat "${HOOK_TEST_STAGED}" ;;
+  *"config --get kataglyphis.imageRunner"*) printf '%s\n' "${HOOK_TEST_RUNNER:-}" ;;
 esac
 STUB
 chmod +x "${_work}/bin/git"
@@ -173,6 +174,33 @@ t_assert_contains "${_out}" "rc=0" "the rig itself must be able to pass, or the 
 t_case "a surviving mutation aborts the commit, it does not just print"
 t_assert_fails _run_hook 3 "${_work}/both.txt" 1
 t_assert_contains "$(_run_hook 3 "${_work}/both.txt" 1)" "a recorded mutation SURVIVED"
+
+# CON279: a host without pwsh proves the sample in the image when the clone names a runner.
+cat > "${_work}/bin/fake-runner" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "${HOOK_TEST_RUNNER_ARGV}"
+exit "${HOOK_TEST_RUNNER_RC:-0}"
+STUB
+chmod +x "${_work}/bin/fake-runner"
+_RUNNER_ARGV="${_work}/runner-argv.txt"
+_run_hook_runner() {  # $1 = runner setting, $2 = gate's message, $3 = runner rc
+  rm -f "${_RUNNER_ARGV}"
+  HOOK_TEST_RUNNER="$1" HOOK_TEST_GATE_SAY="$2" HOOK_TEST_RUNNER_RC="${3:-0}" \
+    HOOK_TEST_RUNNER_ARGV="${_RUNNER_ARGV}" _run_hook 3 "${_work}/both.txt" 1
+}
+_no_pwsh="FAIL: pwsh is not on PATH, so PowerShell mutants cannot be checked to parse"
+
+t_case "CON279: no pwsh here and a runner set: the sample runs in the image, and that run decides"
+_out="$(_run_hook_runner "fake-runner --" "${_no_pwsh}" 0)"
+t_assert_contains "${_out}" "pre-commit: OK"
+t_assert_contains "$(cat "${_RUNNER_ARGV}")" "-- python3 docs/scripts/verify_mutations.py --only"
+t_assert_eq "3" "$(grep -o -e '--only' "${_RUNNER_ARGV}" | grep -c .)" "the image proves the same sample"
+t_assert_fails _run_hook_runner "fake-runner --" "${_no_pwsh}" 1
+
+t_case "CON279: no runner set, or a real survivor: the commit stops and the image is not asked"
+t_assert_fails _run_hook_runner "" "${_no_pwsh}" 0
+t_assert_fails _run_hook_runner "fake-runner --" "SURVIVED: lib.example" 0
+t_assert_fails test -e "${_RUNNER_ARGV}"
 
 t_case "a CRLF-printing python (Windows) still yields bare ids, in the plan and at the gate"
 cat > "${_work}/crlf-python" <<'STUB'

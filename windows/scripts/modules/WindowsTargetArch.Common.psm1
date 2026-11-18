@@ -73,8 +73,9 @@ $script:TargetArchTable = @{
         QnnLibDir = 'x86_64-windows-msvc'
         # Package file names, wix build -arch, AppxManifest ProcessorArchitecture and VC\Redist\MSVC\<ver>\<this>.
         PackageArch = 'x64'
-        # Optional SIMD features stay on dispatched kernels, never global CXX flags.
-        SimdFlags = '/clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-mssse3 /clang:-msse3 /clang:-msse4.1 /clang:-msse4.2 /clang:-mpopcnt'
+        # The family's amd64 floor (CON264/CON265): AVX2, FMA, BMI1/2, LZCNT, MOVBE, F16C. AVX-512/AMX stay on dispatched kernels.
+        SimdFlags = '/clang:-march=x86-64-v3'
+        RustFlags = '-C target-cpu=x86-64-v3'
         KernelSimdFlags = '/clang:-mavx512f /clang:-mavx512cd /clang:-mavx512bw /clang:-mavx512dq /clang:-mavx512vl /clang:-mavx512vnni /clang:-mavx512bf16 /clang:-mavx512fp16 /clang:-mavxvnni /clang:-mamx-int8 /clang:-mamx-tile /clang:-mamx-bf16'
         MlasKernelTuPattern = 'qgemm_kernel_amx|intrinsics[\\/]avx512|_avx512[a-z0-9_]*\.cpp'
         MlasKernelTuMinimum = 8
@@ -106,6 +107,7 @@ $script:TargetArchTable = @{
         PackageArch = 'arm64'
         # Optional SIMD features stay on dispatched kernels, never global CXX flags.
         SimdFlags = ''
+        RustFlags = ''
         KernelSimdFlags = '/clang:-march=armv8.2-a+dotprod+i8mm+bf16+fp16'
         MlasKernelTuPattern = '_fp16|_kernel_neon|qgemm_kernel_(udot|sdot|smmla|ummla)'
         MlasKernelTuMinimum = 12
@@ -628,6 +630,19 @@ function Get-WindowsTargetSimdFlags {
 
 <#
 .SYNOPSIS
+    rustc flags for the target's ISA floor, for RUSTFLAGS; may be empty.
+.DESCRIPTION
+    amd64 gets `-C target-cpu=x86-64-v3`, the level its C and C++ builds take (docs/amd64-x86-64-v3-baseline.md).
+.PARAMETER Arch
+    Target arch; resolved via Get-WindowsTargetArch.
+#>
+function Get-WindowsTargetRustFlags {
+    param([string]$Arch = '')
+    return (Get-WindowsTargetArchInfo -Arch $Arch).RustFlags
+}
+
+<#
+.SYNOPSIS
     Per-TU SIMD flags for runtime-dispatched MLAS kernels; never global CXX flags.
 .DESCRIPTION
     See docs/windows-build-invariants.md § AVX-512/AMX flags never go in global CXX flags.
@@ -711,6 +726,7 @@ function Resolve-BuildMachineMsvcTool {
 
 Export-ModuleMember -Function @(
     'Get-SupportedWindowsTargetArches',
+    'Get-WindowsTargetRustFlags',
     'Get-WindowsTargetArch',
     'Get-WindowsTargetArchInfo',
     'Get-WindowsHostArch',

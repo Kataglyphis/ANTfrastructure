@@ -197,6 +197,9 @@ are available offline; copies must carry `cargo_license_tree.py` beside it. Invo
 `sha256` and `provenance`; an SPDX `AND` expression also needs an explicitly
 reviewed matching `reviewed_expression`. Missing, empty, symlinked or
 hash-mismatched sources fail, and a notice alone cannot stand in for a license.
+A `package` text keeps its path under `<name@version>/package/`; a `workspace` text
+lands as `<name@version>/workspace/<file name>`, so two workspace texts of one
+package need distinct names (a Windows installer path must stay under 260 characters).
 The optional `--graph-scope tree-normal-build` runs live `cargo tree` for the
 specified root and target and includes normal and build edges; pass exactly the
 same feature flags as the build. Every selected name and version must resolve to

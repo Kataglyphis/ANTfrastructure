@@ -310,6 +310,10 @@ function Get-GstRustCargoPlan {
     # No RUSTC_WRAPPER: 99 % Rust hits saved nothing, the plugin cdylibs are the step (docs/windows-builds.md § gst-plugins-rs on Windows).
     $cargoEnv = [ordered]@{ PKG_CONFIG_PATH = $PkgConfigDir }
     $outDir = Join-Path $TargetDir 'release'
+    # The target's ISA floor (CON265): amd64 compiles for x86-64-v3, arm64 adds nothing.
+    $rustFlags = Get-WindowsTargetRustFlags -Arch $gstArch
+    # Target-scoped, not RUSTFLAGS, which would replace any rustflags upstream's cargo config sets.
+    if ($rustFlags) { $cargoEnv["CARGO_TARGET_$((Get-RustTargetTriple -Arch $gstArch).ToUpperInvariant() -replace '-', '_')_RUSTFLAGS"] = $rustFlags }
     if (Test-WindowsCrossTarget -Arch $gstArch) {
         $triple = Get-RustTargetTriple -Arch $gstArch
         $cargoArgs += @('--target', $triple)

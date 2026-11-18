@@ -6,8 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { findChrome, launch, serve, sleep } = require('./check-docs-sidebars.js');
 
-// No GPU in the image: SwiftShader's Vulkan backs the WebGPU adapter.
-const WEBGPU_FLAGS = ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=swiftshader', '--use-webgpu-adapter=swiftshader'];
+// No GPU in the image: SwiftShader's Vulkan backs the WebGPU adapter. Exported, frozen, for consumers' own launch().
+const WEBGPU_FLAGS = Object.freeze(['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=swiftshader', '--use-webgpu-adapter=swiftshader']);
 const FRAME_TIMEOUT_MS = 10000;
 
 function fail(message, code = 2) {
@@ -134,4 +134,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => fail(e.stack || String(e)));
-else module.exports = { install, verdict };
+else module.exports = { install, verdict, WEBGPU_FLAGS };

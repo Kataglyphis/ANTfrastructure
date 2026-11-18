@@ -40,6 +40,16 @@ uv_run() {
       fi
     fi
   fi
+  # coverage xml: the package alone (--omit) covers 5 of 10 lines, an extra tree (--include) 9; pytest's whole report 7.
+  if [ "$1" = coverage ]; then
+    local arg prev="" out="" covered=5
+    for arg in "$@"; do
+      case "$arg" in --include=*) covered=9 ;; esac
+      [ "$prev" != -o ] || out="$arg"
+      prev="$arg"
+    done
+    printf '<coverage lines-valid="10" lines-covered="%s"/>\n' "$covered" > "$out"
+  fi
   ! { [ "$1" = pytest ] && [ -n "${FAIL_TEST_LEG:-}" ] && [ "${FAIL_TEST_LEG}" = "${_LEG:-}" ]; }
 }
 uv_sync_project() { echo "sync ${_LEG:-} extras=${UV_SYNC_EXTRAS:-}" >> "${REC}"; [ -z "${FAIL_SYNC_LEG:-}" ] || [ "${FAIL_SYNC_LEG}" != "${_LEG:-}" ]; }
@@ -76,6 +86,31 @@ t_case "a consumer's coverage floor is checked on every stable leg"
 PYTHON_COVERAGE_MIN=70 t_assert_ok _driver ci_tests
 PYTHON_COVERAGE_MIN=71 t_assert_fails _driver ci_tests
 t_assert_contains "$(cat "${_work}/out")" "below the 71% floor"
+
+t_case "an extra source tree is measured beside the package and gated on its own"
+mkdir -p "${WS}/tools/sub"
+PYTHON_COVERAGE_MIN=50 PYTHON_COVERAGE_EXTRA=tools=90,tools/sub=85 t_assert_ok _driver ci_tests
+t_assert_contains "$(cat "${REC}")" "--cov=pkg --cov-report=term-missing"
+t_assert_contains "$(cat "${REC}")" "--cov=${WS}/tools --cov=${WS}/tools/sub"
+t_assert_contains "$(cat "${REC}")" "run coverage xml --omit=${WS}/tools/*,${WS}/tools/sub/* -o ${WS}/logs/test-results/coverage-${IMAGE_PY}.xml"
+t_assert_contains "$(cat "${REC}")" "run coverage xml --include=${WS}/tools/sub/* -o ${WS}/logs/test-results/coverage-${IMAGE_PY}-tools-sub.xml"
+t_assert_contains "$(cat "${_work}/out")" "package coverage 50.00% (minimum 50%)"
+t_assert_contains "$(cat "${_work}/out")" "tools coverage 90.00% (minimum 90%)"
+
+t_case "the package floor reads the package alone, not the report that holds the extra tree"
+# pytest's whole report says 70 %, which would pass; the package alone is 50 %.
+PYTHON_COVERAGE_MIN=60 PYTHON_COVERAGE_EXTRA=tools=90 t_assert_fails _driver ci_tests
+t_assert_contains "$(cat "${_work}/out")" "50.00% is below the 60% floor"
+
+t_case "an extra tree under its own floor fails the leg"
+PYTHON_COVERAGE_EXTRA=tools=91 t_assert_fails _driver ci_tests
+t_assert_contains "$(cat "${_work}/out")" "coverage-${IMAGE_PY}-tools.xml: 90.00% is below the 91% floor"
+
+t_case "a malformed extra or one outside the workspace stops before any leg"
+for spec in tools ../tools=50 /etc=50 missing=50 'tools=*'; do
+  PYTHON_COVERAGE_EXTRA="${spec}" t_assert_fails _driver ci_tests
+  t_assert_eq "" "$(_legs)" "no leg after PYTHON_COVERAGE_EXTRA=${spec}"
+done
 
 t_case "the default test log and raw coverage stay under logs"
 env -u CI_TESTS_LOG_FILE -u PY_VERSIONS -u EXPERIMENTAL_PYTHON_VERSIONS \

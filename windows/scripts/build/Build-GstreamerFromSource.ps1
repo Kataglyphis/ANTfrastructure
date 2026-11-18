@@ -840,6 +840,8 @@ function Get-GstMesonSetupArgs {
     param([string]$resolvedBuildDir, [string]$gstSrcDir, [string]$resolvedInstallDir, [string]$gstCrossArg, [string]$linkArgElems, [object[]]$requiredPlugins, $gpuEnv, [string[]]$mesonCrossArgs, [string[]]$MesonSetupArgs)
 # amd64 keeps the literal '-FIio.h' so its configure command line is byte-identical.
     $ioFI = if ($script:GstCross) { '-FIgst-io-shim.h' } else { '-FIio.h' }
+    # The amd64 floor (CON265); empty on arm64.
+    $gstIsaArg = Get-WindowsTargetSimdFlags -Arch $script:GstTargetArch
     $setupArgs = @(
         'setup', '--vsenv',
         $resolvedBuildDir, $gstSrcDir,
@@ -864,8 +866,8 @@ function Get-GstMesonSetupArgs {
         '-Drtsp_server=enabled',
         '-Dtools=enabled',
         # tflite's has_header probe uses the C compiler for C++ sources; -Wno-undef: graphene tests __GNUC__ under -Werror; -fcommon: see docs/windows-builds.md § libffi's type exports.
-        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg $ioFI -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types -Wno-undef -fcommon$(if ($gstCrossArg) { " $gstCrossArg" })",
-        "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg $ioFI -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types$(if ($gstCrossArg) { " $gstCrossArg" })",
+        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg $ioFI -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types -Wno-undef -fcommon$(if ($gstCrossArg) { " $gstCrossArg" })$(if ($gstIsaArg) { " $gstIsaArg" })",
+        "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg $ioFI -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types$(if ($gstCrossArg) { " $gstCrossArg" })$(if ($gstIsaArg) { " $gstIsaArg" })",
         # mediafoundation (mfvideosrc) is what the Rust capture path uses; it needs the GUID libs above.
         '-Dgst-plugins-bad:mediafoundation=enabled',
         # wasapi v1 needs Core Audio GUIDs no SDK import lib carries; wasapi2 is built by default.

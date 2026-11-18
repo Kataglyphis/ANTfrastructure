@@ -70,6 +70,7 @@ commit changes only docs. The hub's own caller is `.github/workflows/docs.yml`.
 | `htaccess` | `true` | Add the hub's `.htaccess` and 404 page; `false` for a site that ships its own |
 | `publish` | `true` | `false` builds and checks only, and needs no secrets |
 | `publish-on-dispatch` | `false` | Also publish a `workflow_dispatch` run on `develop` or `main` |
+| `publish-timeout-minutes` | `30` | The publish job's limit. An upload it cuts off saves no sync state, so a file too large to finish in time is retried from scratch on every run: BeschleunigerBallett's 61 MB demo scene at about 74 kB/s never landed under 30 |
 | `server-dir` | `''` | Remote directory; empty is the FTP login directory, every family site's docroot |
 | `submodules` | `recursive` | `actions/checkout` submodules. Pass a value as an expression (`${{ 'true' }}`): actionlint reads a bare `'true'` as a bool |
 | `container-args` | `''` | Extra `docker run` arguments for the build, verbatim: never untrusted text |
@@ -240,7 +241,10 @@ node linux/scripts/webgpu-canvas-readback.js <URL | page.html> [--min-colours N]
 ```
 
 - Chrome runs WebGPU on SwiftShader (`--enable-unsafe-webgpu --enable-features=Vulkan
-  --use-angle=swiftshader --use-webgpu-adapter=swiftshader`): the image has no GPU.
+  --use-angle=swiftshader --use-webgpu-adapter=swiftshader`): the image has no GPU. A consumer
+  driving its own page takes them from `require('webgpu-canvas-readback.js').WEBGPU_FLAGS`
+  (frozen) for `check-docs-sidebars.js`'s `launch(chrome, WEBGPU_FLAGS)`, with `install` for
+  the read-back.
 - An init script (`Page.addScriptToEvaluateOnNewDocument`) adds `COPY_SRC` to the canvas's
   `configure()` usage and keeps the texture `getCurrentTexture()` hands out. After `--wait-ms`
   (3000) it copies the next frame out after that frame's last `submit()`
@@ -255,7 +259,7 @@ the proof of run 39440853860, 3124 from this tool at `--wait-ms 8000`, both `128
 its plain screenshot was white.
 
 Suite `linux/scripts/tests/test-webgpu-canvas-readback.sh` (the read-back against fakes of the
-WebGPU API, a page with no frame in Chrome); the `docs-site.webgpu-readback-*` mutations prove it.
+WebGPU API, the exported flags, a page with no frame in Chrome); the `docs-site.webgpu-readback-*` mutations prove it.
 
 ## The site's .htaccess
 

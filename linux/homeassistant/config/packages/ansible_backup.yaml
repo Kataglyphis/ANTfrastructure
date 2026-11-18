@@ -30,3 +30,74 @@ template:
           {% set finished = state_attr('sensor.ansible_backup', 'finished') %}
           {{ states('sensor.ansible_backup') != 'ok' or finished is none
              or (now() - as_datetime(finished)).days >= 8 }}
+
+automation:
+  - id: ansible_backup_needs_a_look_notification
+    alias: Ansible backup needs a look (phone)
+    mode: single
+    max_exceeded: silent
+    triggers:
+      # Every run that ends, so a second failed week in a row is told as well.
+      - trigger: state
+        entity_id: sensor.ansible_backup
+        attribute: finished
+      # The wait skips the minutes after a restart, before the status file is read.
+      - trigger: state
+        entity_id: binary_sensor.ansible_backup_needs_a_look
+        to: "on"
+        for: "00:15:00"
+    conditions:
+      - condition: state
+        entity_id: binary_sensor.ansible_backup_needs_a_look
+        state: "on"
+      # A restart reads the old status file again, which is no new run.
+      - condition: template
+        value_template: >-
+          {{ trigger.entity_id != 'sensor.ansible_backup'
+             or (trigger.from_state is not none
+                 and trigger.from_state.state not in ['unknown', 'unavailable']) }}
+    actions:
+      - variables:
+          notes: "{{ state_attr('sensor.ansible_backup', 'notes') or [] }}"
+          bad: >-
+            {{ notes | select('search', 'FAILED| not |busy') | map('replace', 'BACKUP: ', '') | list }}
+          text: >-
+            Last run: {{ states('sensor.ansible_backup') }},
+            {{ (state_attr('sensor.ansible_backup', 'finished') or 'never')[:16] | replace('T', ' ') }}.
+            {{ bad | join('; ') if bad else 'See the Ansible dashboard, tab Backup.' }}
+      - action: persistent_notification.create
+        data:
+          notification_id: ansible_backup
+          title: The NAS backup needs a look
+          message: "{{ text }}"
+      # The minimal companion app gets pushes only while connected, so a later try reaches it.
+      - repeat:
+          count: 3
+          sequence:
+            - action: notify.mobile_app_le2123
+              continue_on_error: true
+              data:
+                title: ❌ The NAS backup needs a look
+                message: "{{ text }}"
+                data:
+                  tag: ansible-backup
+                  alert_once: true
+            - delay: "00:10:00"
+
+  - id: ansible_backup_ok_again
+    alias: Ansible backup is fine again (clear the notice)
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.ansible_backup_needs_a_look
+        from: "on"
+        to: "off"
+    actions:
+      - action: persistent_notification.dismiss
+        data:
+          notification_id: ansible_backup
+      - action: notify.mobile_app_le2123
+        continue_on_error: true
+        data:
+          message: clear_notification
+          data:
+            tag: ansible-backup

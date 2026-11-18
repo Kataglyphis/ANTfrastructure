@@ -146,11 +146,8 @@ $cmakeExtra = @(
     '-DTFLITE_ENABLE_MMAP=OFF'
     '-DTFLITE_ENABLE_NNAPI=OFF'
 )
-# The image's AVX2+FMA baseline via *_FLAGS_INIT, which keep the platform's /GR /EHsc that CMAKE_*_FLAGS would replace.
-if (-not (Test-WindowsCrossTarget)) {
-    $litertSimd = Get-WindowsTargetSimdFlags
-    $cmakeExtra += @("-DCMAKE_C_FLAGS_INIT=$litertSimd", "-DCMAKE_CXX_FLAGS_INIT=$litertSimd")
-}
+# The amd64 floor arrives as *_FLAGS_INIT from Invoke-CmakeConfigure, which keeps the platform's /GR /EHsc.
+
 # No QNN flags: LiteRT's Qualcomm support lives in the litert/ tree, not this tflite/ one; QAIRT below serves ORT.
 $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
 

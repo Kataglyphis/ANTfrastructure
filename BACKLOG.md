@@ -328,6 +328,8 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       4. Not covered: clang's default, Rust, and Windows (CON265).
 
       Done when `check_amd64_isa` passes on a published amd64 image and both measurements are recorded.
+      **Owner 2026-11-17:** not yet. First the "before" numbers on the published `:latest` on an idle host; the chain waits for his go after them.
+
 - [ ] **CON265 — Windows x64: the source builds that get no CPU flag** [M, ★]. Read 2026-11-12, source only:
       the amd64 `SimdFlags` of `WindowsTargetArch.Common.psm1` (AVX2, FMA, SSE4.2) reach ONNX Runtime,
       OpenCV and LiteRT only; the scripts give FFmpeg, GStreamer, LLVM, CPython, IREE, TVM and the Rust
@@ -335,6 +337,16 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       string byte for byte, and ORT's ninja patch strips `/arch:`, so a raise is spelled
       `/clang:-march=x86-64-v3`. Done when the owner decides whether Windows follows CON264, and a raise
       is measured.
+      **Owner decision 2026-11-17:** Windows follows CON264 (`/clang:-march=x86-64-v3` for every source build), prepared in source and built with CON264's chain only on his go.
+      **In source 2026-11-17:** `SimdFlags` amd64 is `/clang:-march=x86-64-v3`, `RustFlags` `-C target-cpu=x86-64-v3`;
+      `Invoke-CmakeConfigure` passes it as `_FLAGS_INIT` to every clang-cl configure, and ORT, OpenCV, GenAI, TVM,
+      LLVM, GStreamer, gst-plugins-rs, FFmpeg and its codecs, CPython, LiteRT and LiteRT-LM name
+      it ([`amd64-x86-64-v3-baseline.md` § Windows x64](docs/amd64-x86-64-v3-baseline.md#windows-x64)). Not
+      covered: the ROCm lane (PyTorch, llama.cpp HIP, MIGraphX) and OxidANT's MSIX cargo build. Left: build and
+      measure with CON264's chain on the owner's go.
+      **Owner 2026-11-18:** he records the "before" numbers on the 5950X at the next lab session, with the new lab
+      baselines, and then gives the go.
+
 - [ ] **CON266 — language models on the Intel GPU and NPU** [M, ★★]. Owner request 2026-11-12. Nothing was
       read for it: after CON260, choose between OpenVINO GenAI and ONNX Runtime GenAI over the OpenVINO
       provider, and size the models against the device's memory. Done when one model answers from the
@@ -743,6 +755,25 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 ## Open — Linux image (all arches)
 
+- [ ] **CON238 — two test tools the images lack: cargo-mutants and pytest-timeout** [S, ★★]. Found by the audit
+      of 2026-11-12. Source work at any time; both ship with the next planned chain. Next in line (owner, 2026-11-16):
+      OxidANT's weekly `rust-mutants.yml` (`scripts/linux/run-mutants.sh`) warns and runs nothing until `:latest`
+      carries the tool.
+      1. In source since 2026-11-17: `CARGO_MUTANTS_VERSION=27.1.0` with its x86_64 SHA256, installed by
+         `install_cargo_qa_tools` on amd64 (upstream has no aarch64 Linux build), and the `cargo-qa-tools`
+         contract row expects it on amd64 and its absence on arm64. Left: a chain that publishes it.
+      2. The `:winarm64` wheel store's pinned pytest stack has no pytest-timeout
+         ([`windows-cross-builds.md` § A consumer's test runner, pinned](docs/windows-cross-builds.md#a-consumers-test-runner-pinned-con67-2026-10-06)).
+         OrchestrANT's arm64 tests install their runner offline from that store
+         (`scripts/windows/Stage-Arm64Tests.ps1`), so a pytest timeout setting would fail on the device.
+         In source since 2026-11-18: `PYTEST_WINDOWS_ARM64_PYTEST_TIMEOUT_*` pins pytest-timeout 2.4.0 (OrchestrANT's
+         lock, PyPI's SHA256), `Copy-Arm64TorchWheels.ps1` stores it and `Test-Arm64Bundle.ps1` installs and
+         imports it offline once the store carries it (a store published before says so and passes). Left: a
+         `:winarm64` publish that carries it.
+
+      Done when the Linux smoke asserts `cargo mutants --version` at its pin on a published `:latest`, and
+      `Test-Arm64Bundle.ps1` installs pytest-timeout offline from the store.
+
 - [b] **CON224 — run the GPU packages on the cards no hosted runner has** [M, ★★★]. Owner decision: the
       owner runs these, and no release to `main` until they pass. Blocked on that hardware. Hosted CI builds
       all nine GPU workflows but tests on the CPU only. Windows AMD passed on 2026-11-03/04 on an RX 9070 XT
@@ -818,6 +849,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       a 48-token reply is quickest on one or two. Left: OrchestrANT's, AccelerANTgine's and OxidANT's
       `perf-host.sh` pass `--threads auto` at their next hub pin; whether a shipped text default follows the
       detector's rule or a text rule of its own is the owner's call on these numbers.
+      **Owner decision 2026-11-17, revised the same day on a Pi 5 measurement:** a shipped text default takes half the
+      detector's pool, 1 to 4, and one thread beside a running detector ([`onnxruntime-single-source.md` § The text
+      thread rule](docs/onnxruntime-single-source.md#the-text-thread-rule)). In source: AccelerANTgine 41468fb,
+      OxidANT and OrchestrANT with their next push. Left: `genai-model-threads.py` learns `--threads text` and the
+      three `perf-host.sh` pass it, so a perf baseline records the shipped text default.
+
 - [ ] **CON219 — ORT reads a null scale pointer in 4-bit `MatMulNBits` on riscv64 RVV** [M, ★★★].
       Found 2026-11-02 with OxidANT's SmolLM2-135M contract test under QEMU, image index `7d4d4129`: a fault in
       `libonnxruntime.so.1.31.0` at `0x150150c` on `flw fa5, 0x0(s10)`, `s10=0x1f80`. In ORT v1.31.0's
@@ -874,6 +911,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       minutes because the three cold media stages finished together; the 2 h gain of 2026-10-27 needs unequal
       stages, and the per-lane disk guard has not run under pressure yet. **Owner decision 2026-11-07: stays
       opt-in** until a pipeline run has reclaimed under real disk pressure; then decide again.
+      **Owner decision 2026-11-17:** it becomes the default after one more full chain shows the disk guards hold; until then it stays opt-in.
+
 - [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★]. In source (CHANGELOG 2026-11-03,
       `_disk_guard_release_stale_records`), tested with stubs only. Done when the next chain resumed after a stop
       logs `left by a stopped chain: restarting buildkitd` and reclaims without a hand restart.
@@ -1387,7 +1426,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `register_execution_provider_library`), OmniAccelerANT (Dart over the native bridge), all under the name
       `MIGraphX` (owner, 2026-11-12), which `verify_ort_profile.py --device migraphx` requires since that day; in
       work in the consumers since then, and what that day left open on the hub side is CON256; each change passes CON224 item 1's parity run with the plugin's
-      operators in the profile. **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
+      operators in the profile. **Linux step 2 progress 2026-11-10:** shared Python/native helpers are in source.
+      The standalone SDK rebuild with [node and registry ownership fixes](docs/linux-accelerator-images.md#node-compute-info-ownership)
+      passes G2 and ASan/LSan on CPU plus two real plugin GPU tiny-model sessions. Full consumer builds,
+      finished packages and their detector parity/operator profiles remain open; this is not image promotion.
+      **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
       `30-build-native-amd.sh`, `--use_migraphx`, the `onnxruntime-migraphx` wheel and the two MIGraphX patches are
       gone; the rocm variant has no ORT GPU build, the plugin builds over the CPU prefix, the wrapper's app venv
       takes the CPU `onnxruntime` wheel, and the runtime smoke fails an image with `libonnxruntime_providers_migraphx.so`.
@@ -1518,28 +1561,61 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([accelerator page](docs/linux-accelerator-images.md#the-cuda-plugin-ep),
       [contract](docs/consumer-image-contract.md#nvidias-plugin-tensorrt-ep)). **Open on Linux:** the WebGPU EP as
       `onnxruntime_WEBGPU_STATIC_PLUGIN` (re-keys every CPU ORT build, so every media stage on three arches: its own
-      chain), the nvidia proof chain, and detector parity on `TensorRTPluginExecutionProvider` on a card.
+      chain), and detector parity on `TensorRTPluginExecutionProvider` on a card.
+      **Source preparation 2026-11-10:** native CPU/NVIDIA and their free-threaded wheels select the pinned
+      `--use_webgpu static_plugin` mode with external Dawn and require the actual configured flags. Asyncify
+      and JSPI select the same plugin ABI with Emscripten's integrated Dawn, check their configured modes
+      and use shared artifact cache epoch `-wgpu3`. These are source/fixture gates; actual builds and runtime
+      registration for native and Python linker products, all affected default/ROCm/NVIDIA media stages
+      and new acceptance are still open. Native/GIL and FT build boundaries now preserve separate
+      configured-mode/product hashes in `ort-webgpu-build.json`; canonical wheel repair adds checked delivery
+      mappings while preserving compiled code/data and dynamic symbol identity. These are source/fixture
+      proofs. A preserved Python gate now checks the imported GIL/FT extension against a completed delivery
+      and probes factory unregistration with its precise negative control; the image smoke and actual FT-store
+      interpreter invoke it. The native C API probe is now compiled per CPU/NVIDIA prefix with the core's
+      configured target compiler and shared cache helpers; its runtime phase checks each core directly,
+      rejects legacy WebGPU and retains registration/negative/cleanup controls. Fixtures use stub Python
+      bindings and a fake C ABI; actual native/Python factory registration in the image matrix and image
+      delivery remain open. Both enabled WASM flavors need real artifact proof. Before that
+      media rebuild, preserve the
+      OpenCV FindCUDA cache repair: its bounded SBSA replay records twelve forced-repeat hits and no misses;
+      the complete stage, non-x86 Torch wrapper policy and consumer Rust cache wiring remain follow-ups
+      ([cache scope](docs/build-cache-tiers.md#nvcc--hipcc)).
       Windows is this hub's Windows session. DirectML has no plugin and stays. The evidence, with links to every
       plugin: the 2026-11-08 deep research.
-      **Linux proof 2026-11-09:** Sequence37 passed NVIDIA amd64 media/android in run
-      `20261108-180128-c3904567` (media manifest
-      `sha256:486a9558b93caedc465460cc2d50ed9d103e6058ed2a4b7c2d37775575b490a3`).
-      ARM64 run `20261109-002505-d3b3c0b7` then failed QNN configure on GitHub HTTP 504 for the
-      fork's pinned protoc archive after CUDA compilation. The bounded configure retry has 100 fixture
-      assertions and eight mutations. Recovery `20261109-102131-e69f48d7` from fully proved `bf4c7d47`
-      passed ordinary disk/ancestry gates, both CUDA Python modes and QNN's module/export/HTP checks,
-      then failed TensorRT's nvcc host-compiler check; actual unit exit 1 was 2026-11-09T17:02:20Z.
-      Target CXX must be selected before CUDAHOSTCXX; the old real compiler control fails and the
-      fixed one compiles AArch64. A complete isolated TensorRT build over the target CPU core now
-      passes exports, original licences, G2 and target-loader resolution under QEMU. Native ldd's
-      failed ARM inspection had incorrectly passed, so closure checks now preserve that failure.
-      Linux also patches both separated CUDA standard options; a private NVCC repeat records
-      12 cache hits, zero cache errors and one uncached internal compilation. The TensorRT repeat
-      records 329 hits (317 C/C++, 12 CUDA), zero misses/errors and one uncached internal step.
-      Raw controls remain under `logs/test-results/plugin-proof-nvidia-arm64-media-1/`.
-      Full new-source preflight/CI, corrected ARM64 media/android recovery, both NVIDIA runtime
-      wrappers and their six-consumer receipts on one final index remain open, as does GPU inference.
-      These isolated controls do not prove a rebuilt media image, final wrapper or remote cache.
+      **Original handoff:** `rebuild-sequence-37` passed amd64 media/android, then exited 1 on
+      arm64 at 2026-11-09T08:04:35Z; the repaired recovery below supersedes that failed run.
+      **Linux proof 2026-11-10 (hub `9f4e6bd2`):** the complete isolated preflight and all
+      required exact-source CI passed; source and cleanup evidence is retained in
+      `logs/test-results/plugin-proof-nvidia-arm64-media-2/source-proof.json`.
+      Corrected ARM64 media/android recovery `20261109-194812-1056be49` completed both
+      stages with actual publication at 2026-11-10T01:16:07Z. Both CUDA Python modes,
+      QNN's module/export/HTP checks and the TensorRT plugin checks passed; the compiled
+      free-threaded module also loaded under QEMU with the GIL disabled.
+      Both local runtime wrappers, shipped-content gates and runtime-image smokes passed
+      in `20261110-013045-b0a6f8cb`. The accepted index, now `:latest-nvidia`, is
+      `sha256:d2df9e170fadc7f2abbc22e004b615a7f8a4f41ee9c810c4f06ad7229ecace70`;
+      its remote wrappers are amd64
+      `sha256:3b9cf1c6a211d5b6b9e317da4081e3510b963fd1fb94cd33326716b307b73268`
+      and arm64 `sha256:33b92fa2e4e1f926fbdbd09e446ed4449f51b41376daf9ad2cf815c036565af7`.
+      All six amd64 consumers passed in `logs/image-acceptance/20261110-013045-b0a6f8cb/receipt.json`;
+      log/lock hashes, checked cleanup and exact remote children were independently verified.
+      The unchanged ARM check compiled its first consumer, then failed GoogleTest discovery
+      at 05:58Z with LeakSanitizer's fatal QEMU error; no consumer tests ran. Its failed receipt
+      is `logs/image-acceptance/20261110-013045-b0a6f8cb-arm64/receipt.json`.
+      **Native ARM proof:** [run 42781812889, attempt 1](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/42781812889/job/129713397881) passed all six consumers
+      on `ubuntu-26.04-arm` using the same immutable image, producer hub and complete original plan.
+      The preserved original receipt is
+      `logs/image-acceptance/20261110-013045-b0a6f8cb-arm64-native-42781812889-1/receipt.json`
+      (SHA-256 `273d04ddb2ad00c0aeada936a969682cb85c14dcaaa002be5b520a08b6469359`). Artifact 13747964666
+      matches `sha256:065c3aee5798015d690ff29cbe69215515a585c0af45ca690484bf90dc6ecf1d`; source snapshots, log/lock hashes,
+      all twelve checked cleanup records and the final empty remote engine query were audited.
+      Actual logs prove 215 C++ tests with no skips, 875 Rust tests with none ignored/filtered,
+      all three Flutter consumers and the WebDavClient contract. Canonical promotion and
+      independent public readback at 2026-11-10T09:09:51Z preserve amd64 and arm64.
+      The failed QEMU receipt remains diagnostic evidence; [diagnosis](docs/failure-modes.md#arm64-ctest-discovery-ends-with-leaksanitizer-has-encountered-a-fatal-error).
+      No physical GPU inference is established. The earlier failures and compiler/cache
+      regression controls remain in CHANGELOG and `logs/test-results/plugin-proof-nvidia-arm64-media-1/`.
       **Windows, owner 2026-11-08 ("Windows sofort komplett"): steps 2 and 4 landed in source together.** CUDA is the
       plugin build, the in-tree TensorRT EP is gone, and `Build-OrtTensorRtEpFromSource.ps1` builds the TensorRT plugin
       with SHA256-pinned seeds ([windows-cross-builds.md](docs/windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps)).
@@ -1973,20 +2049,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       The 2026-10-27 amd64 child's history carries 17 `kataglyphis.step` labels (package and torch);
       left: `layer-audit.py` on `:latest` and the `CACHED` check.
 
-- [ ] **CON238 — two test tools the images lack: cargo-mutants and pytest-timeout** [S, ★]. Found by the audit
-      of 2026-11-12. Source work at any time; both ship with the next planned chain.
-      1. `:latest` has no `cargo-mutants`, and neither `versions.env` nor `tool-pins.env` pins one. OxidANT's
-         `docs/testing.md` installs it by hand, no workflow there runs it, and nothing re-checks its mutation
-         scores of 2026-10-15. A pinned binary lets a scheduled job run without an ad-hoc install.
-      2. The `:winarm64` wheel store's pinned pytest stack has no pytest-timeout
-         ([`windows-cross-builds.md` § A consumer's test runner, pinned](docs/windows-cross-builds.md#a-consumers-test-runner-pinned-con67-2026-10-06)).
-         OrchestrANT's arm64 tests install their runner offline from that store
-         (`scripts/windows/Stage-Arm64Tests.ps1`), so a pytest timeout setting would fail on the device.
-
-      Done when the Linux smoke asserts `cargo mutants --version` at its pin on a published `:latest`, and
-      `Test-Arm64Bundle.ps1` installs pytest-timeout offline from the store.
-
-- [b] **CON239 — mingw and the `x86_64-pc-windows-gnu` target in `:latest`, for a Windows type check on a push** [S, ★].
+- [ ] **CON239 — mingw and the `x86_64-pc-windows-gnu` target in `:latest`, for a Windows type check on a push** [S, ★].
       Blocked on the owner: `gcc-mingw-w64-x86-64` was declined on 2026-11-03, as about 600 MB in every image
       for one lint step ([`image-decisions.md` § Deliberate — not gaps](docs/image-decisions.md#deliberate--not-gaps)).
       New since then, from the audit of 2026-11-12: OxidANT's `scripts/linux/clippy-windows.sh` is no
@@ -1996,6 +2059,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       step itself is a type check on the GNU target, not proof of the MSVC lane, and costs about 5 minutes
       a package. If the answer changes: the package and the Rust target in the package stage, a smoke line
       for each, and one `clippy-windows` step in OxidANT with its minutes measured.
+      **Owner decision 2026-11-17: take it.** mingw (`gcc-mingw-w64-x86-64`) and the `x86_64-pc-windows-gnu` Rust target go into `:latest` amd64, and OxidANT's push type-checks that target (about 5 min a package). Update `docs/image-decisions.md` § Deliberate — not gaps in the same change.
+      **In source 2026-11-17:** `select_dev_packages` asks for `gcc-mingw-w64-x86-64` by name on amd64, and
+      `install-rust.sh` adds `x86_64-pc-windows-gnu` there; `docs/image-decisions.md` says so. Left: a chain that
+      publishes it, then OxidANT's push runs `clippy-windows.sh` without installing (its uid-1001 container has no
+      apt) and a smoke row asserts both on amd64.
 
 - [ ] **CON275 — GCC 16's `_mm_loadl_epi64` fails UBSan's alignment check** [S, ★]. Found 2026-11-15 by
       AccelerANTgine's Linux x64 GCC Debug lane (run 43707801504): UBSan reported "load of misaligned address ... for
@@ -2301,6 +2369,21 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 ## Open — hub tooling and the dev host
 
+- [ ] **CON280 — github.com/microsoft/onnxruntime answers 404** [S, ★★]. Since about 2026-11-17 22:20Z the
+      repository, its API and its release assets are gone, with `onnxruntime-genai` and other Microsoft ONNX repos;
+      third-party reports only, no statement from Microsoft or GitHub; pip and NuGet still serve the packages. Seen in
+      the Windows lane's `patch-drift` job (`Test-PatchesApplyClean.ps1`, every ORT patch `FAIL (clone)`, on e48e46a1
+      and f529753c). Every source build that clones `https://github.com/microsoft/onnxruntime(-genai).git` fails the
+      same way until it returns: the cross chain, the Windows media stages. No local checkout of v1.31.1 exists on the
+      Pi dev host.
+      **Owner decisions 2026-11-18:** (1) once the repos are back, the family keeps private mirrors of the pinned ORT
+      and GenAI tags under Kataglyphis, which source builds try first; (2) until then `Test-PatchesApplyClean.ps1`
+      reports a patch whose upstream answers 404 as `NOT CHECKED`; the incoming warning-only verdict is retained
+      here as history, but required acceptance now fails when this evidence remains missing after exact-commit
+      fallback. The original ORT and GenAI commit/version identities are verified through reviewed ROCm and
+      CodeLinaro transports respectively; maintained private mirrors and independent final-source CI remain open.
+      Done when the mirrors exist and the builds read them.
+
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
       Left separately, before a release: the installer's licence wording for the end-user terms.
@@ -2587,10 +2670,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       2. `linux/scripts/02-toolchain/rust/cargo_test.sh` runs `cargo test --all --verbose` and writes no
          result file, so OxidANT's test counts and durations are recorded nowhere. Write per-test JUnit from
          the output, for every Rust consumer, with no new tool in the image.
-      3. `linux/scripts/02-toolchain/python/ci_tests.sh` takes one `--cov="$PACKAGE_NAME"` and one floor
-         (`PYTHON_COVERAGE_MIN`), so OrchestrANT's `benchmarks/`, about 15,000 lines of graders, has no
-         coverage number. Let `verify-test-reports.py` print a percentage per source; the floor stays on
-         the package.
+      3. Done 2026-11-16: `ci_tests.sh` measures each `PYTHON_COVERAGE_EXTRA` tree (`coverage-extra` on
+         `python-ci-linux.yml`, `DIR=MIN`) with its own report and floor, and the package's report leaves
+         them out. OrchestrANT's `benchmarks/` measured 91.0 % (4,202 of 4,616 statements), the package
+         alone 71.0 % on the test extra.
 
       Done when `test-lib-ctest-run.sh`, `test-cargo-wrapper.sh` and `test-verify-test-reports.sh` cover the
       new behaviour with a mutation recipe each, OxidANT's quality report records Rust test counts, and

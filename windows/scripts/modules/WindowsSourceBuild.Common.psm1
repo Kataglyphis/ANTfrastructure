@@ -317,6 +317,15 @@ function Get-SourceCmakeTargetArgs {
     return $cmakeArgs
 }
 
+function Get-SourceCmakeIsaArgs {
+    # The ISA floor as _FLAGS_INIT, for clang-cl only (`/clang:` is its spelling); a caller's own CMAKE_<LANG>_FLAGS replaces it.
+    param([string]$TargetArch, [string]$CCompiler = 'clang-cl', [string]$CxxCompiler = 'clang-cl')
+    $flags = Get-WindowsTargetSimdFlags -Arch $TargetArch
+    if ([string]::IsNullOrWhiteSpace($flags)) { return @() }
+    if ((Split-Path -Leaf $CCompiler) -notmatch '^clang-cl(\.exe)?$' -or (Split-Path -Leaf $CxxCompiler) -notmatch '^clang-cl(\.exe)?$') { return @() }
+    return @("-DCMAKE_C_FLAGS_INIT=$flags", "-DCMAKE_CXX_FLAGS_INIT=$flags")
+}
+
 function Invoke-CmakeConfigure {
     param(
         [Parameter(Mandatory)]
@@ -353,6 +362,7 @@ function Invoke-CmakeConfigure {
         -CxxCompiler $CxxCompiler -Linker $Linker -Archiver $Archiver)
     $cmakeArgs += @(Get-SourceCmakeLauncherArgs)
     $cmakeArgs += @(Get-SourceCmakeTargetArgs -TargetArch $TargetArch -AllowRocmPrefix:$AllowRocmPrefix)
+    $cmakeArgs += @(Get-SourceCmakeIsaArgs -TargetArch $TargetArch -CCompiler $CCompiler -CxxCompiler $CxxCompiler)
     if ($ExtraArgs.Count -gt 0) { $cmakeArgs += $ExtraArgs }
 
     Write-Host "CMake configure: $($cmakeArgs -join ' ')"
@@ -2940,6 +2950,7 @@ Export-ModuleMember -Function @(
     'Assert-OrtSourceIdentity',
     'Reset-SourceBuildDirectory',
     'Invoke-CmakeConfigure',
+    'Get-SourceCmakeIsaArgs',
     'Invoke-CmakeConfigureLogged',
     'Get-SourceBuildSccache',
     'Get-CMakeRocmIsolationArgs',
@@ -3107,6 +3118,7 @@ Export-ModuleMember -Function @(
     'Get-LibMachineArg',
     'Get-WindowsTargetSimdFlags',
     'Get-WindowsTargetKernelSimdFlags',
+    'Get-WindowsTargetRustFlags',
     'Get-MlasKernelTuPattern',
     'Get-MlasKernelTuMinimum',
     'Get-CMakeCrossArgs',

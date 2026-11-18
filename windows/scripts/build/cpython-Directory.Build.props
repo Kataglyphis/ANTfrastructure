@@ -9,4 +9,10 @@
   <PropertyGroup>
     <PlatformToolset>ClangCL</PlatformToolset>
   </PropertyGroup>
+  <!-- The amd64 floor (CON265), x64 only: Build-TargetCpython builds ARM64 with this same file. -->
+  <ItemDefinitionGroup Condition="'$(Platform)' == 'x64'">
+    <ClCompile>
+      <AdditionalOptions>/clang:-march=x86-64-v3 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+  </ItemDefinitionGroup>
 </Project>

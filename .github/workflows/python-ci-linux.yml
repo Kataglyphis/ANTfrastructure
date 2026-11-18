@@ -49,6 +49,14 @@ on:
         required: false
         type: string
         default: '0'
+      coverage-extra:
+        description: >-
+          Comma-separated DIR=MIN pairs: each source tree beside the package (a
+          benchmarks/ directory) is measured with its own report and floor, and the
+          package's floor reads the package alone. Empty measures the package only.
+        required: false
+        type: string
+        default: ''
       free-threaded-extras:
         description: >-
           Comma-separated extras a free-threaded leg (X.Yt) syncs instead of
@@ -350,6 +358,7 @@ jobs:
             --platform ${{ matrix.platform }}
             -e PYTEST_PATHS=${{ inputs.test-paths }}
             -e PYTHON_COVERAGE_MIN=${{ inputs.coverage-min }}
+            -e PYTHON_COVERAGE_EXTRA=${{ inputs.coverage-extra }}
             -e FREE_THREADED_SYNC_EXTRAS=${{ inputs.free-threaded-extras }}
             -e SYNC_EXTRAS=${{ inputs.test-extras }}
             ${{ matrix.arch == 'riscv64' && inputs.package-emulated && '-e UV_CACHE_DIR=/workspace/.uv-cache' || '' }}

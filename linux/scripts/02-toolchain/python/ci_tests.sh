@@ -17,6 +17,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   echo "  test reports are written to 'logs/test-results'"
   echo "  \$PYTEST_PATHS (comma list) narrows pytest; empty runs the project's configured testpaths"
   echo "  \$PYTHON_COVERAGE_MIN requires that percentage of covered package lines; zero still requires measured code"
+  echo "  \$PYTHON_COVERAGE_EXTRA (comma list of DIR=MIN) measures each further source tree with its own floor"
   echo "  \$FREE_THREADED_SYNC_EXTRAS (comma list) makes a free-threaded leg sync only those extras and gate"
   echo "  \$SYNC_EXTRAS (comma list) makes every leg sync only those extras and gate"
   echo "  A bench/ directory runs as 'pytest bench/', and its failure fails the leg"
@@ -48,6 +49,17 @@ PYTHON_COVERAGE_MIN="${PYTHON_COVERAGE_MIN:-0}"
 FREE_THREADED_SYNC_EXTRAS="${FREE_THREADED_SYNC_EXTRAS:-}"
 # Set, every leg syncs only these extras (a riscv64 row cannot build the full extra set under QEMU).
 SYNC_EXTRAS="${SYNC_EXTRAS:-}"
+# A tree beside the package (a consumer's benchmarks/) gets its own report and floor, so neither number hides the other.
+coverage_extra=()
+IFS=, read -r -a _extra_specs <<< "${PYTHON_COVERAGE_EXTRA:-}"
+for spec in "${_extra_specs[@]}"; do
+  [ -n "$spec" ] || continue
+  if [[ ! "$spec" =~ ^[A-Za-z0-9_][A-Za-z0-9_./-]*=[0-9]+(\.[0-9]+)?$ || "$spec" == *..* ]]; then
+    die "PYTHON_COVERAGE_EXTRA: '$spec' is not DIR=MIN with DIR inside the workspace"
+  fi
+  [ -d "$WORKSPACE_ROOT/${spec%%=*}" ] || die "PYTHON_COVERAGE_EXTRA: $WORKSPACE_ROOT/${spec%%=*} is no directory"
+  coverage_extra+=("$spec")
+done
 
 TEST_RESULTS_DIR="$WORKSPACE_ROOT/logs/test-results"
 LOG_FILE="${CI_TESTS_LOG_FILE:-$TEST_RESULTS_DIR/ci_tests-$(timestamp).log}"
@@ -71,6 +83,25 @@ uv_cache_seed_restore
 TEST_EXIT=0
 
 read -r -a test_paths <<< "${PYTEST_PATHS//,/ }"
+
+# With extra trees the package's report leaves them out, so its floor and the docs page read the package alone.
+package_coverage_report() {
+  [ "${#coverage_extra[@]}" -gt 0 ] || return 0
+  local spec omit=()
+  for spec in "${coverage_extra[@]}"; do omit+=("$WORKSPACE_ROOT/${spec%%=*}/*"); done
+  uv_run coverage xml --omit="$(IFS=,; printf '%s' "${omit[*]}")" -o "$TEST_RESULTS_DIR/coverage-$1.xml"
+}
+
+extra_coverage_checks() {
+  local spec dir report
+  for spec in "${coverage_extra[@]}"; do
+    dir="${spec%%=*}"
+    report="$TEST_RESULTS_DIR/coverage-$1-${dir//\//-}.xml"
+    uv_run coverage xml --include="$WORKSPACE_ROOT/$dir/*" -o "$report" || return 1
+    python3 -I "$SCRIPT_DIR/verify-test-reports.py" --junit "$TEST_RESULTS_DIR/report-$1.xml" \
+      --coverage "$report" --min-coverage "${spec#*=}" --label "$dir" || return 1
+  done
+}
 
 for V in $PY_VERSIONS; do
   # A free-threaded leg with its own extras is a real leg; its sync can no longer fail on GIL-only wheels.
@@ -131,16 +162,23 @@ for V in $PY_VERSIONS; do
     --md-report-verbose=1
     --md-report-output "$TEST_RESULTS_DIR/pytest-report-${V}.md"
   )
+  for spec in "${coverage_extra[@]}"; do pytest_args+=(--cov="$WORKSPACE_ROOT/${spec%%=*}"); done
 
   # A previous leg run cannot certify a new pytest invocation that wrote no report.
-  rm -f "$TEST_RESULTS_DIR/report-${V}.xml" "$TEST_RESULTS_DIR/coverage-${V}.xml"
+  rm -f "$TEST_RESULTS_DIR/report-${V}.xml" "$TEST_RESULTS_DIR/coverage-${V}.xml" "$TEST_RESULTS_DIR/coverage-${V}"-*.xml
   test_status=0
   uv_run pytest "${pytest_args[@]}" || test_status=$?
+  if [ "$test_status" -eq 0 ]; then
+    package_coverage_report "$V" || test_status=$?
+  fi
   if [ "$test_status" -eq 0 ]; then
     python3 -I "$SCRIPT_DIR/verify-test-reports.py" \
       --junit "$TEST_RESULTS_DIR/report-${V}.xml" \
       --coverage "$TEST_RESULTS_DIR/coverage-${V}.xml" \
       --min-coverage "$PYTHON_COVERAGE_MIN" || test_status=$?
+  fi
+  if [ "$test_status" -eq 0 ]; then
+    extra_coverage_checks "$V" || test_status=$?
   fi
   if [ "$test_status" -ne 0 ]; then
     if [ "$experimental" -eq 1 ]; then

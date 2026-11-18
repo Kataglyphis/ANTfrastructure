@@ -41,8 +41,20 @@ bash "${_gates[@]}" </dev/null || {
 _extra=scripts/linux/pre-push-checks.sh
 if [ -f "${_extra}" ]; then
   echo "pre-push: ${_extra}"
-  _rc=0
-  bash "${_extra}" </dev/null || _rc=$?
+  _log="$(mktemp)"
+  set +e
+  bash "${_extra}" </dev/null 2>&1 | tee "${_log}"
+  _rc="${PIPESTATUS[0]}"
+  set -e
+  # A host without a tool the image has runs the suites there instead (CON277): git config kataglyphis.imageRunner.
+  _runner="$(git config --get kataglyphis.imageRunner || true)"
+  if [ "${_rc}" -ne 0 ] && [ -n "${_runner}" ] && grep -q "prerequisite missing:" "${_log}"; then
+    echo "pre-push: this host lacks a prerequisite; ${_extra} again in the image through '${_runner}'"
+    _rc=0
+    # shellcheck disable=SC2086 # the runner is a command line of its own, split on purpose
+    ${_runner} "bash ${_extra}" </dev/null || _rc=$?
+  fi
+  rm -f "${_log}"
   if [ "${_rc}" -ne 0 ]; then
     echo "pre-push: ${_extra} FAILED (exit ${_rc}), the push is stopped" >&2
     exit 1

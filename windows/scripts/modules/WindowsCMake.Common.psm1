@@ -236,6 +236,24 @@ function Get-CmakeBuildArgs {
   return $buildArgs
 }
 
+function Get-CPackGeneratorLogMessages {
+  param([string]$BuildPath, [int]$TailLines)
+  # CPack's summary omits the generator failure; retain each log's path and bounded tail.
+  $packages = Join-Path $BuildPath '_CPack_Packages'
+  if (-not (Test-Path -LiteralPath $packages)) { return "No CPack generator logs: $packages does not exist" }
+  $logs = @(Get-ChildItem -LiteralPath $packages -Recurse -Depth 3 -File -Filter '*.log' | Sort-Object FullName)
+  if ($logs.Count -eq 0) { return "No CPack generator logs under $packages" }
+  foreach ($log in $logs) {
+    "===== CPack generator log (last $TailLines lines): $($log.FullName) ====="
+    Get-Content -LiteralPath $log.FullName -Tail $TailLines
+  }
+}
+
+function Write-CPackGeneratorLog {
+  param($Context, [string]$BuildPath, [int]$TailLines = 80)
+  Write-BuildLogMessages -Context $Context -Messages @(Get-CPackGeneratorLogMessages -BuildPath $BuildPath -TailLines $TailLines)
+}
+
 function Write-CmakeBuildDiagnostics {
   param($Context, [int]$CpuCount, [switch]$DisableSccache)
   Write-BuildLog -Context $Context -Message "DEBUG: ========== NINJA INFO =========="
@@ -506,4 +524,4 @@ function Update-CTestMetadataPaths {
     }
 }
 
-Export-ModuleMember -Function Get-CMakeShareDir, Update-CTestMetadataPaths, Get-CompileCommandsDatabase, Remove-BuildRootSafe, Get-CmakeConfigureArgs, Get-CmakeBuildArgs, Invoke-CmakeConfigureAndBuild, Test-ClangClThreadSanitizerSupport
+Export-ModuleMember -Function Get-CMakeShareDir, Update-CTestMetadataPaths, Get-CompileCommandsDatabase, Remove-BuildRootSafe, Get-CmakeConfigureArgs, Get-CmakeBuildArgs, Write-CPackGeneratorLog, Invoke-CmakeConfigureAndBuild, Test-ClangClThreadSanitizerSupport

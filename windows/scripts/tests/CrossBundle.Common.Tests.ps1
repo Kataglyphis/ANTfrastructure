@@ -137,6 +137,11 @@ Describe 'New-PortableBundle' {
             $r = @(New-PortableBundle @bundleArgs -Runner $chatty)
             Assert-Equal 1 $r.Count 'a passed runner''s output does not join the result either'
             Assert-Equal "$dir\dist\packages" $r[0].Packages
+            $null = New-Item -ItemType File -Force -Path "$dir\build\app.msi"
+            $verbose = { param($Path, $RedistText) "verify-package-license: $Path ok" }
+            $r = @(New-PortableBundle @bundleArgs -Runner $chatty -PackageCheck $verbose)
+            Assert-Equal 1 $r.Count 'a package check''s output, a verifier''s stdout, does not join the result'
+            Assert-Equal "$dir\dist\bundle" $r[0].Bundle
         }
     }
 

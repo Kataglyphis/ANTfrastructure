@@ -8,7 +8,7 @@ Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.GitFixtures.psm1') -Error
 Import-Module (Join-Path $PSScriptRoot 'WindowsOrt.SourceFixture.psm1') -ErrorAction Stop
 
 $source = 'windows/scripts/tests/Test-PatchesApplyClean.ps1'
-. (Get-ScriptFunctionDefinition -ScriptPath $source -FunctionName Get-PatchRefs, Get-PatchRepoMap, Get-PatchTargetPaths, Get-PatchCheckout, Get-OrtPatchCheckout, Get-PatchClone, Get-PatchApplyStatus, Get-StaticPatchResult, Resolve-GnuPatchExe)
+. (Get-ScriptFunctionDefinition -ScriptPath $source -FunctionName Get-PatchRefs, Get-PatchRepoMap, Get-PatchTargetPaths, Get-PatchCheckout, Get-OrtPatchCheckout, Get-PatchClone, Get-PatchApplyStatus, Get-StaticPatchResult, Resolve-GnuPatchExe, Test-UpstreamGone, Get-PatchDriftExitCode)
 
 function Invoke-OrtPatchFixtureClone {
     param($Fixture)
@@ -26,6 +26,7 @@ function Invoke-OrtPatchFixture {
 }
 
 Describe 'Patch drift gate accounting' {
+    function Test-UpstreamGone { param([string]$Url) return $false }
 
     function Invoke-WithPatchGit {
         param([int]$Code, [Parameter(Mandatory)][scriptblock]$Body)
@@ -106,7 +107,19 @@ Describe 'Patch drift gate accounting' {
                 }
             } },
         @{ Name = 'refuses a successful primary tag that names a different commit'; Files = @{}; Change = @{ 'next.txt' = 'next' }; MissingPrimary = $false; Pattern = 'FAIL.*source commit mismatch'; Exercise = $identityExercise },
-        @{ Name = 'refuses a matching commit with a different declared release version'; Files = @{}; Change = @{ VERSION_NUMBER = '1.29.0' }; MissingPrimary = $true; Pattern = 'FAIL.*source version mismatch'; Exercise = $identityExercise }
+        @{ Name = 'refuses a matching commit with a different declared release version'; Files = @{}; Change = @{ VERSION_NUMBER = '1.29.0' }; MissingPrimary = $true; Pattern = 'FAIL.*source version mismatch'; Exercise = $identityExercise },
+        @{ Name = 'distinguishes unavailable upstreams from reachable clone failures (CON280)'; Files = @{ 'mapped/one.patch' = "--- a/file`n+++ b/file`n" }; Exercise = {
+                param($root)
+                function Test-UpstreamGone { param([string]$Url) return $Url -eq 'https://example.invalid/gone.git' }
+                Invoke-WithPatchGit -Code 128 -Body { param($state)
+                    $gone = Get-StaticPatchResult -Patch (Get-Item -LiteralPath (Join-Path $root 'mapped/one.patch')) `
+                        -RepoMap @{ mapped = @{ Url = 'https://example.invalid/gone.git'; Ref = 'v1' } } -Clones @{} -WorkDir $root -PatchExe 'unused'
+                    Assert-Equal 'NOT CHECKED (upstream answers 404)' $gone.Status
+                    $there = Get-StaticPatchResult -Patch (Get-Item -LiteralPath (Join-Path $root 'mapped/one.patch')) `
+                        -RepoMap @{ mapped = @{ Url = 'https://example.invalid/there.git'; Ref = 'v1' } } -Clones @{} -WorkDir $root -PatchExe 'unused'
+                    Assert-Equal 'FAIL (clone)' $there.Status 'a reachable upstream that refuses the clone still fails'
+                }
+            } }
     )
     foreach ($case in $fileCases) {
         It $case.Name {
@@ -115,6 +128,14 @@ Describe 'Patch drift gate accounting' {
                 & $case.Exercise $root $case
             }
         }
+    }
+
+    It 'the verdict rejects failed and unchecked patches (CON280)' {
+        $row = { param($status) [pscustomobject]@{ Patch = 'p.patch'; Repo = 'onnxruntime'; Ref = 'v1'; Status = $status } }
+        Assert-Equal 1 (Get-PatchDriftExitCode -Results @((& $row 'OK'), (& $row 'NOT CHECKED (upstream answers 404)'))) 'unavailable upstream leaves required evidence missing'
+        Assert-Equal 1 (Get-PatchDriftExitCode -Results @((& $row 'NOT CHECKED (upstream answers 404)'), (& $row 'FAIL (clone)'))) 'a FAIL still fails'
+        Assert-Equal 1 (Get-PatchDriftExitCode -Results @((& $row 'FAIL (clone)'))) 'a reachable clone failure fails independently'
+        Assert-Equal 0 (Get-PatchDriftExitCode -Results @((& $row 'OK'), (& $row 'SKIP (no +++ b/ headers)'))) 'clean'
     }
 
     It 'reports a sparse checkout that returned success but omitted its target' {

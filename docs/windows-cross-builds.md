@@ -268,7 +268,8 @@ floor raised 4→8. The floor rule this hardens: **a floor only earns its keep i
 broken state would trip it** — the old pattern's 5 matches now fail an 8-floor loudly. Verified:
 11 TUs tagged, all five previously failing TUs compiled, full media-core green on both lanes.
 
-Note the asymmetry in the baseline flags: amd64 enables a broad SSE/AVX2 set globally, arm64
+Note the asymmetry in the baseline flags: amd64 enables `x86-64-v3` globally
+([`amd64-x86-64-v3-baseline.md` § Windows x64](amd64-x86-64-v3-baseline.md#windows-x64)), arm64
 enables **nothing** globally. AArch64 already mandates NEON, and its optional features
 (dotprod/i8mm/SVE) fault on hardware that lacks them — the same class of failure as AVX-512.
 Optional AArch64 features belong only on dispatched kernels.
@@ -619,6 +620,12 @@ a cold harness on Linux and Windows. It shares the install fixture with the Wind
 `CrossBundle.Common.Tests.ps1`, whose CMake/batch cases remain in full Windows discovery.
 The package licence suites validate real archive contents separately.
 
+When a package generator fails, `Write-CPackGeneratorLog` in `WindowsCMake.Common`
+collects each `*.log` below `_CPack_Packages`, in path order, and sends its heading
+and selected tail through the existing `Write-BuildLogMessages` logger. Missing and
+empty generator directories have distinct diagnostics. Local tests check selection,
+order and tails; they do not run NSIS, WiX or a native compiler.
+
 **x64 packages carry the same closure** (owner decision 2026-09-25). A clean x64 PC lacks the
 media stack and may lack the VC++ runtime too. A CMake consumer whose packages come from CPack
 fills the closure into a directory it names at configure time as
@@ -957,7 +964,7 @@ lane's replacement for `Install-StagedPythonWheel`/`Test-PythonImport`, which st
 
 The wheel store also carries the pinned cpXY pytest stack a consumer runs its suite with on the
 device. That is pytest 9.1.1, pytest-cov 7.1.0, pytest-benchmark 5.2.3, pytest-html 4.2.0,
-pytest-md 0.2.0, pytest-md-report 0.8.0 and requests 2.34.2, with their dependency closure:
+pytest-md 0.2.0, pytest-md-report 0.8.0, pytest-timeout 2.4.0 (CON238) and requests 2.34.2, with their dependency closure:
 the versions OrchestrANT's lock runs on x64. Before, OrchestrANT's `Stage-Arm64Tests.ps1`
 fetched them from PyPI at cross-build time, unpinned.
 

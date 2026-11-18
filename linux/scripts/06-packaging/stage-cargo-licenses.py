@@ -252,7 +252,9 @@ def collect_sources(
         files: list[dict[str, Any]] = []
         destinations: set[str] = set()
         for kind, relative, path, provenance, expected_digest in sources:
-            destination = f"{kind}/{Path(relative).as_posix()}"
+            # A workspace text keeps only its name: its repo path made NSIS's Windows path exceed 260 characters.
+            name = Path(relative).name if kind == "workspace" else Path(relative).as_posix()
+            destination = f"{kind}/{name}"
             if destination in destinations:
                 if expected_digest:
                     raise ValueError(

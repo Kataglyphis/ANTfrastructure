@@ -384,6 +384,8 @@ _oft_run() {
     info() { :; }; err() { echo "ERR $*" >> "${OFT_LOG}"; exit 1; }
     host_python_bin() { echo /opt/python/.venv/bin/python; }
     retag_directory_wheels() { echo "RETAG $*" >> "${OFT_LOG}"; }
+    assert_onnx_webgpu_static_plugin() { printf "WEBGPU-GATE <%s>\n" "$1" >> "${OFT_LOG}"; return "${OFT_GATE_RC:-0}"; }
+    record_onnx_webgpu_build_products() { printf "BUILD-PROOF <%s> <%s> <%s> <%s>\n" "$@" >> "${OFT_LOG}"; return "${OFT_PROOF_RC:-0}"; }
     eval "${FN}"
     _ONNX_LIB_DIR="${ROOT}/a/b/c/lib" ORT_SRC_DIR="${ROOT}/ort"
     b="$1" o="$2"; shift 2; GIL_ARGS=("$@")
@@ -393,7 +395,7 @@ _oft_run() {
 _ftpy="${_oft}/tmp/onnxruntime-ft-venv/bin/python"
 _nv=(--build_dir /ort/build_native_gpu --config Release --build_shared_lib --skip_tests --build_wheel --use_cuda --cuda_home /usr/local/cuda
   --cudnn_home /usr --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75;86;87;89;120" --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON --no_telemetry)
-_wg=(--build_dir /ort/build_native --config Release --build_shared_lib --skip_tests --use_webgpu --use_external_dawn
+_wg=(--build_dir /ort/build_native --config Release --build_shared_lib --skip_tests --use_webgpu static_plugin --use_external_dawn
   --cmake_extra_defines "CMAKE_CXX_FLAGS=-Wno-error=invalid-constexpr -Wno-invalid-constexpr" --no_telemetry --build_wheel)
 for _fl in nv wg; do
   declare -n _ga="_${_fl}"
@@ -406,17 +408,30 @@ for _fl in nv wg; do
   t_assert_contains "${_out}" "ENV ${_ftpy} ${_ftpy} ${_ftpy} ${_ftpy%/python}"
   t_assert_contains "${_out}" "START onnxruntime ${_oft}/tmp/onnxruntime-ft-venv"
   t_assert_contains "${_out}" "STORE ${_b}/Release/dist /out/gpu/wheels-free-threaded"
+  t_assert_contains "${_out}" "BUILD-PROOF <${_b}/Release> </out/gpu> <free-threaded> <GIL_ARGS>"
   t_assert_fails test -e "${_ftpy%/bin/python}"
   unset -n _ga
 done
+t_case "the free-threaded pass cannot store a wheel after a failed configured-cache verdict"
+_out="$(OFT_GATE_RC=17 _oft_run /ort/build_native_gpu /out/gpu "${_nv[@]}")"
+t_assert_contains "${_out}" 'WEBGPU-GATE </ort/build_native_gpu/Release>'
+t_assert_contains "${_out}" 'ERR ONNX Runtime: the free-threaded pass over /ort/build_native_gpu failed'
+t_assert_eq "" "$(grep '^STORE\|^RETAG' <<<"${_out}" || true)"
 _out="$(OFT_RC=1 _oft_run /ort/build_native_gpu /out/gpu "${_nv[@]}")"
 t_assert_contains "${_out}" "ERR ONNX Runtime: the free-threaded pass over /ort/build_native_gpu failed"
 t_assert_eq "" "$(grep '^STORE' <<<"${_out}" || true)" "a failed pass stores nothing"
+t_assert_eq "" "$(grep '^WEBGPU-GATE' <<<"${_out}" || true)" "a failed build must not be replaced by a successful cache verdict"
 _out="$(_oft_run /ort/build_native /out/gpu "${_wg[@]:0:${#_wg[@]}-1}")"
 t_assert_eq "RC=0" "${_out}" "a cross build without --build_wheel has no GIL wheel to twin, and runs no pass"
 
+t_case "the free-threaded pass cannot succeed when its bound-product proof fails"
+_out="$(OFT_PROOF_RC=19 _oft_run /ort/build_native_gpu /out/gpu "${_nv[@]}")"
+t_assert_contains "${_out}" 'BUILD-PROOF </ort/build_native_gpu/Release> </out/gpu> <free-threaded> <GIL_ARGS>'
+t_assert_contains "${_out}" 'ERR ONNX Runtime: the free-threaded WebGPU build proof failed'
+t_assert_contains "${_out}" 'RC=1'
+
 t_case "wiring: the GIL store is verified before the twins are touched, and only it is installed"
-_line() { grep -n -e "$1" "${MEDIA}" | cut -d: -f1 | head -n 1; }
+_line() { grep -n -e "$1" "${SCRIPTS}/03-media/runtime/finalize-media.sh" | cut -d: -f1 | head -n 1; }
 t_assert_ok test "$(_line 'runtime/verify-wheels.sh &&')" -lt "$(_line 'runtime/repair-wheels.sh --free-threaded &&')"
 t_assert_ok test "$(_line 'runtime/repair-wheels.sh --free-threaded &&')" -lt "$(_line 'runtime/verify-wheels.sh --free-threaded &&')"
 t_assert_ok test "$(_line 'runtime/verify-wheels.sh --free-threaded &&')" -lt "$(_line 'runtime/free-threaded-store.sh &&')"

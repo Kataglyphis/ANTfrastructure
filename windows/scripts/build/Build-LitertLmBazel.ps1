@@ -51,7 +51,8 @@ function Get-LitertLmBazelArg {
     param([string]$GpuType)
     $targets = @('//runtime/engine:litert_lm_main')
     if ($GpuType -eq 'rocm') { $targets += '@directx_shader_compiler//:dxc_dlls' }
-    return @('build') + $targets + @('--config=windows', '--repo_env=ANDROID_NDK_VERSION=')
+    # x64 only (bazel's windows-x86_64 build); the amd64 floor (CON265).
+    return @('build') + $targets + @('--config=windows', '--repo_env=ANDROID_NDK_VERSION=', '--copt=/clang:-march=x86-64-v3')
 }
 
 function Assert-LitertLmDxcPin {

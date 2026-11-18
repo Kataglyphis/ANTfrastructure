@@ -3,6 +3,7 @@
 > **Older entries** are archived, newest archive first:
 > [`2026-11-07 … 2026-11-12`](docs/changelog-archive-2026-11-12.md) ·
 > [`2026-11-05 … 2026-11-06`](docs/changelog-archive-2026-11-06.md) ·
+> [`2026-11-05`](docs/changelog-archive-2026-11-05.md) ·
 > [`2026-10-23 … 2026-11-04`](docs/changelog-archive-2026-11-04.md) ·
 > [`2026-10-20 … 2026-10-22`](docs/changelog-archive-2026-10-22.md) ·
 > [`2026-10-19`](docs/changelog-archive-2026-10-19.md) ·
@@ -15,6 +16,14 @@
 > [`2026-08-14 … 2026-08-28`](docs/changelog-archive-2026-08-28.md) ·
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
+
+## 2026-11-18 — preserve strict patch evidence and shared package diagnostics during integration
+
+- Merge both source-identity protections and upstream-availability diagnostics; required patch acceptance
+  rejects unchecked sources after the original-commit fallback. Preserve all existing mutation recipes.
+- Route CPack generator messages through the canonical batch logger and share parameterized file fixtures;
+  no duplication allowances or gate thresholds are increased. Regression fixtures cover sorted tails,
+  unrelated files, and missing versus empty directories; upstream application and real packaging remain separate.
 
 ## 2026-11-18 — retain ONNX source identity when the primary repository is unavailable
 
@@ -136,6 +145,141 @@
 - Publish the full stage ledger and primary typed CUDA counters; preserve reused
   layers, direct compilers and unexplained counters as distinct coverage limits.
 - Keep final-source CI, device acceptance and later product lanes separate.
+## 2026-11-18 — a workspace Cargo license is staged under its file name alone
+
+- `stage-cargo-licenses.py` copied a `workspace` policy text to `<name@version>/workspace/<its repo path>`.
+  OxidANT's `profiling` texts sit at `packaging/licenses/cargo/aclysma-profiling-8271551172eb/`, which put
+  BeschleunigerBallett's NSIS source path at 268 characters and stopped makensis on Windows. The text now lands
+  at `<name@version>/workspace/<file name>`; two workspace texts of one package with the same name fail.
+
+## 2026-11-17 — `Write-CPackGeneratorLog` prints what a failed package step's generator said
+
+- CPack reports a failed NSIS or WiX run only as "Problem running NSIS command" and points at a log inside the
+  build tree, which a container lane never uploads. `WindowsCMake.Common`'s `Write-CPackGeneratorLog -BuildPath`
+  writes the tail of every `*.log` under `_CPack_Packages` into the build log; a consumer calls it when its
+  `--target package` step throws.
+
+## 2026-11-17 — the NAS backup retries its mount, a failed run reaches the phone, AIO backs up again
+
+- AIO's `daily_backup_time` on srv-1 was gone from 2026-10-27, so Nextcloud had no new archive for three weeks
+  and every Saturday run failed its age check; nobody saw it, because the sensor only showed on the dashboard.
+  The file is back at `02:00` UTC, and `linux/ansible/README.md` § *Backups to the NAS* says how to check it.
+- `playbooks/backup.yml` retries the NAS mount up to 5 times, 30 s apart (`backup_nas_mount_retries`,
+  `backup_nas_mount_delay`): a NAS waking its disks closed the one try of 2026-11-14 (`mount error(112)`).
+  A share that still does not mount ends the run with a `BACKUP: FAILED the NAS share at: <step>` note.
+- `packages/ansible_backup.yaml` pushes to the phone when a run ends failed or the sensor stays on for
+  15 minutes, and clears the notice when a run is `ok` again.
+
+## 2026-11-17 — the docs lock moves soupsieve 3.0.4 to 4.1.1 (GHSA, Dependabot alert 10)
+
+- Soup Sieve before 4.0.0 takes polynomial time in the descendant combinator. `uv lock --upgrade-package soupsieve`
+  in `docs/` moves it alone; the site builds with it.
+
+## 2026-11-17 — the sccache module docs name the image's fixed build
+
+- `windows-container-build-performance.md` § *sccache on a C++23 modules build* and `windows-build-resources.md`
+  still called sccache 0.18.0 "the image's" and #2876 "not in the image". Both images ship the hub's
+  `0.19.0+965c019.pr2809`, which carries it, and `Test-SccacheModuleSafe` already admits it; the cache-bypass
+  advice now applies only to an older sccache.
+
+## 2026-11-17 — Windows x64 source builds take the x86-64-v3 floor (CON265, in source)
+
+- amd64's `SimdFlags` is `/clang:-march=x86-64-v3` instead of eight `-m` flags, and a new `RustFlags` carries
+  `-C target-cpu=x86-64-v3` (owner decision 2026-11-17: Windows follows CON264). `Invoke-CmakeConfigure` passes
+  the floor as `CMAKE_C/CXX_FLAGS_INIT` to every clang-cl configure (`Get-SourceCmakeIsaArgs`); ORT, OpenCV,
+  GenAI, TVM, LLVM, GStreamer, gst-plugins-rs, FFmpeg (`/arch:AVX2` on its MSVC path) and its codecs, CPython,
+  LiteRT and LiteRT-LM carry it. arm64 gets nothing. Nothing is built with it until the owner's
+  go; `docs/amd64-x86-64-v3-baseline.md` § Windows x64 says where it lands and what it leaves out.
+
+## 2026-11-18 — pytest-timeout in the arm64 wheel store (CON238, step 2, in source)
+
+- The `:winarm64` wheel store's pinned pytest stack gains pytest-timeout 2.4.0 (`PYTEST_WINDOWS_ARM64_PYTEST_TIMEOUT_*`,
+  the version OrchestrANT's lock runs on x64, PyPI's SHA256). `Copy-Arm64TorchWheels.ps1` stores it and
+  `Test-Arm64Bundle.ps1` installs and imports it offline, so a consumer's pytest timeout works on the device. A
+  `:winarm64` publish carries it.
+
+## 2026-11-18 — the patch-drift gate tells a vanished upstream from a drifted patch (CON280)
+
+- `Test-PatchesApplyClean.ps1`: when a clone fails and the upstream page answers 404, the patch is `NOT CHECKED
+  (upstream answers 404)`. The original warning-only change distinguished availability from drift; required
+  acceptance now fails if exact-commit recovery still leaves any patch unchecked. A reachable upstream
+  that refuses the clone, and every patch that does not apply, still fail. Since 2026-11-17 22:20Z
+  `github.com/microsoft/onnxruntime` answers 404, which turned every hub commit's Windows lane red (owner decision
+  2026-11-18). `Patches.ApplyClean.Tests.ps1` covers both cases.
+
+## 2026-11-18 — the pre-commit mutation sample runs in the image on a host without pwsh (CON279)
+
+- The hook's sampled `verify_mutations.py` run is teed; when it fails because the host lacks the `pwsh` or
+  `bash` a mutant is parsed with, and `git config kataglyphis.imageRunner` names a runner, the same sample runs
+  once more through it and that run decides, as pre-push does since CON277. `test-precommit-hook.sh` covers
+  the runner's pass and fail, a clone without it and a real survivor.
+
+## 2026-11-17 — the raw-pin test passes on a host with bash 5.2 (CON278)
+
+- `raw_pin_reader_tests.py` drops bash 5.2's `pop_var_context: head of shell_variables not a function context`
+  line from the stderr it compares: 5.2 prints it when errexit unwinds a file sourced inside a function, 5.3 does
+  not. On a Debian dev host the test failed 12 of 3081 assertions with unchanged code, so the commit and push hooks'
+  `lib.raw-pin-rust-*` recipes read as vacuous and stopped every change to `install-rust.sh`.
+
+## 2026-11-17 — mingw and the windows-gnu Rust target in the amd64 image (CON239, in source)
+
+- The package stage asks for `gcc-mingw-w64-x86-64` by name on amd64, and `install-rust.sh` adds the
+  `x86_64-pc-windows-gnu` target there (owner decision 2026-11-17, reversing 2026-11-03): OxidANT's push will
+  type-check Windows on the GNU target, whose `ring` needs mingw's C. About 600 MB on amd64; arm64 and riscv64
+  carry neither, which `test-setup-package-image.sh` holds. `docs/image-decisions.md` records it. A chain
+  publishes it.
+
+## 2026-11-17 — a host without a tool the image has runs the push suites in the image (CON277)
+
+- The shared pre-push hook tees `scripts/linux/pre-push-checks.sh`'s output. When the run fails on
+  `prerequisite missing:` and the clone sets `git config kataglyphis.imageRunner "<command> --"`, it runs the
+  suites once more through that command, and that run decides (owner decision): a Raspberry Pi without node
+  pushes OxidANT without `--no-verify`, through `pi-ci --`. A real failure, or a clone without the setting,
+  stops the push as before. `test-consumer-hooks.sh` covers the four cases;
+  `docs/adopting-in-a-new-project.md` § The git hooks, by reference says how.
+- Proved on 2026-11-17: OxidANT 7a61e8a, pinned to f99f95a6, went from the Raspberry Pi without `--no-verify`;
+  the host run failed on `prerequisite missing: node` and the run through `pi-ci --` passed. CON277 leaves the
+  backlog.
+
+## 2026-11-17 — cargo-mutants in the amd64 image at its pin (CON238, item 1)
+
+- `versions.env` pins `CARGO_MUTANTS_VERSION=27.1.0`, the version OxidANT's mutation scores were taken with, and
+  `CARGO_MUTANTS_LINUX_X86_64_SHA256` for upstream's one Linux binary (x86_64, glibc). `install_cargo_qa_tools`
+  installs it on amd64 and notes its absence elsewhere; the smoke probe asks its version, and the `cargo-qa-tools`
+  row expects `cargo-mutants=27.1.0` on amd64 and none on arm64. `bump_versions.py` tracks the pin. OxidANT's
+  weekly `rust-mutants.yml` runs once a chain publishes it. Tests: the installer suite (amd64 lands it, aarch64
+  does not) and the contract cases (both arches, both wrong ways).
+
+## 2026-11-17 — `build-docs.yml` takes the publish job's limit (`publish-timeout-minutes`)
+
+- The publish job's `timeout-minutes` comes from `publish-timeout-minutes` (default 30, unchanged). An upload the
+  limit cuts off saves no sync state, so every later run uploads the same file again: BeschleunigerBallett's site
+  has not published since 2026-11-15, when its WebGPU demo gained a 61 MB scene that the server takes at about
+  74 kB/s (runs 43956352416, 43987817445 stopped on it at 30 min).
+
+## 2026-11-16 — a source tree beside a Python package gets its own coverage floor (CON250, third part)
+
+- `ci_tests.sh` reads `PYTHON_COVERAGE_EXTRA` (`coverage-extra` on `python-ci-linux.yml`, comma-separated `DIR=MIN`):
+  each tree is measured beside the package (`--cov=<workspace>/<dir>`), written to `coverage-<leg>-<dir>.xml` with
+  `coverage xml --include` and gated by `verify-test-reports.py --label <dir>`; the package's
+  `coverage-<leg>.xml` is rewritten with `--omit` of those trees, so its floor and the docs page read the package
+  alone. A malformed pair, `..`, an absolute path or a missing directory stops the driver before any leg. On
+  OrchestrANT in the image: `benchmarks/` 91.03 %, the package alone 71.01 %, both together 77.62 %, which would
+  have let either fall unseen. Tests in `test-python-ci-defaults.sh`, `test-verify-test-reports.sh` and
+  `test-reusable-linux-lane.sh`; mutation recipes `python.lane-coverage-extra-forwarded`,
+  `python.package-floor-reads-the-package` and `python.extra-tree-floor-checked`, and
+  `python.ci-tests-report-check-executed` names the first of the two verifier calls.
+## 2026-11-16 — `ensure_wasm_bindgen` pins wasm-bindgen-cli to a Cargo.lock; the WebGPU flags are exported
+
+- `lib/rust-toolchain.sh` gains `ensure_wasm_bindgen <Cargo.lock>` and `wasm_bindgen_lock_version <Cargo.lock>`:
+  PATH's `wasm-bindgen` must be the lock's version, else `cargo install --locked wasm-bindgen-cli --version <v>`, then
+  PATH is asked again, since cargo's bin directory is off the image's PATH. 1 on a missing lock or none naming
+  wasm-bindgen, cargo's status on a failed install. BeschleunigerBallett's `docs-build-web.sh` and OxidANT's
+  `webgpu-demo-browser.sh` each carried a copy (`docs/shared-script-libraries.md` § `rust-toolchain.sh`).
+  `test-lib-wasm-tools.sh` stubs cargo and wasm-bindgen; six new `lib.wasm-bindgen-*` recipes.
+- `webgpu-canvas-readback.js` exports its SwiftShader `WEBGPU_FLAGS`, frozen, beside `install` and `verdict`;
+  OxidANT's demo check had copied them while they were private (`docs/docs-sites.md` § Proving a WebGPU page). Two
+  new `docs-site.webgpu-readback-*` recipes.
 
 ## 2026-11-15 — the in-image mutation lane reaps (CON274 done)
 

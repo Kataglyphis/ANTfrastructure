@@ -141,7 +141,10 @@ function Get-PatchCheckout {
     param([hashtable]$Spec, [string]$Clone)
     $refArgs = @(if ($Spec.Ref -match '^[0-9a-f]{40}$') { "--revision=$($Spec.Ref)" } else { '--branch', $Spec.Ref })
     & git clone --config core.autocrlf=false --depth 1 @refArgs --filter=blob:none --sparse $Spec.Url $Clone 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { return [pscustomobject]@{ Path = ''; Error = 'FAIL (clone)' } }
+    if ($LASTEXITCODE -ne 0) {
+        $failure = if (Test-UpstreamGone -Url $Spec.Url) { 'NOT CHECKED (upstream answers 404)' } else { 'FAIL (clone)' }
+        return [pscustomobject]@{ Path = ''; Error = $failure }
+    }
     return [pscustomobject]@{ Path = $Clone; Error = '' }
 }
 
@@ -161,6 +164,16 @@ function Get-OrtPatchCheckout {
         Assert-OrtSourceIdentity -SourceDir $Clone -Version $version -ExpectedCommit $Spec.ExpectedCommit
         return $result
     } catch { return [pscustomobject]@{ Path = ''; Error = "FAIL (verified ONNX clone: $($_.Exception.Message))" } }
+}
+
+# A clone that failed because the upstream repository answers 404 (CON280: microsoft/onnxruntime since 2026-11-17).
+function Test-UpstreamGone {
+    param([string]$Url)
+    try { $null = Invoke-WebRequest -Uri ($Url -replace '\.git$', '') -Method Head -MaximumRedirection 5 -ErrorAction Stop; return $false }
+    catch {
+        $response = $_.Exception.PSObject.Properties['Response']
+        return [bool]($response -and $response.Value -and [int]$response.Value.StatusCode -eq 404)
+    }
 }
 
 function Get-PatchClone {
@@ -214,6 +227,23 @@ function Get-StaticPatchResult {
     return [pscustomobject]@{ Patch = $Patch.Name; Repo = $repoKey; Ref = $spec.Ref; Status = $status }
 }
 
+# Missing patch evidence must keep the required gate red, including an unavailable upstream.
+function Get-PatchDriftExitCode {
+    param([object[]]$Results)
+    $byKind = $Results | Group-Object { ($_.Status -split ' ')[0] } -AsHashTable
+    if ($byKind -and $byKind.ContainsKey('NOT')) {
+        $repos = @($byKind['NOT'] | ForEach-Object Repo | Sort-Object -Unique) -join ', '
+        Write-Host "::error::$(@($byKind['NOT']).Count) patch(es) not checked: their upstream answers 404 ($repos); BACKLOG CON280"
+        return 1
+    }
+    if ($byKind -and $byKind.ContainsKey('FAIL')) {
+        Write-Host "$(@($byKind['FAIL']).Count) patch(es) FAILED to apply -- regenerate them against the new pinned upstream." -ForegroundColor Red
+        return 1
+    }
+    Write-Host "All mapped patches apply cleanly." -ForegroundColor Green
+    return 0
+}
+
 $patchExe = Resolve-GnuPatchExe
 
 # @(): a -PatchRoot holding one patch yields a scalar, and StrictMode refuses .Count on it.
@@ -235,10 +265,5 @@ finally {
 
 Write-Host ''
 $results | Format-Table -AutoSize | Out-String | Write-Host
-$failed = @($results | Where-Object { $_.Status -like 'FAIL*' })
-if ($failed.Count -gt 0) {
-    Write-Host "$($failed.Count) patch(es) FAILED to apply -- regenerate them against the new pinned upstream." -ForegroundColor Red
-    exit 1
-}
-Write-Host "All mapped patches apply cleanly." -ForegroundColor Green
+exit (Get-PatchDriftExitCode -Results $results)
 

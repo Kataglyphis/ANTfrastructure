@@ -177,8 +177,8 @@ function New-TvmFfiCrossWheel {
     # The Cython module exists only with tvm-ffi as root; the wheel ships the tvm_ffi.dll core.pyd linked against.
     $ffiPyArgs = @(
         "-DCMAKE_BUILD_TYPE=$BuildType"
-        # An explicit CMAKE_CXX_FLAGS replaces CMake's MSVC init flags, /EHsc included.
-        "-DCMAKE_CXX_FLAGS:STRING=/EHsc -Wno-unknown-attributes $(Get-WarningNoiseSuppressionFlags)"
+        # An explicit CMAKE_CXX_FLAGS replaces CMake's MSVC init flags, /EHsc and the ISA floor (CON265) included.
+        "-DCMAKE_CXX_FLAGS:STRING=/EHsc -Wno-unknown-attributes $(Get-WarningNoiseSuppressionFlags) $(Get-WindowsTargetSimdFlags)".TrimEnd()
         '-DTVM_FFI_BUILD_PYTHON_MODULE=ON'
         '-DTVM_FFI_BUILD_TESTS=OFF'
     ) + @(Get-PythonCMakeHintArgs -Python $Python -Prefix 'Python' -ForwardSlash) + @(Get-LlvmArchiverCmakeArg)
@@ -451,7 +451,7 @@ function Get-TvmConfigureArgs {
     $cmakeExtra = @(
         "-DCMAKE_BUILD_TYPE=$BuildType"
         # :STRING= without embedded quotes, which would leak into the flag; Measure-BuildWarnings.ps1 counts the suppressions.
-        "-DCMAKE_CXX_FLAGS:STRING=-Wno-unknown-attributes $(Get-WarningNoiseSuppressionFlags)"
+        "-DCMAKE_CXX_FLAGS:STRING=-Wno-unknown-attributes $(Get-WarningNoiseSuppressionFlags) $(Get-WindowsTargetSimdFlags)".TrimEnd()
         '-DUSE_OPENCL=OFF'
         '-DUSE_MICRO=OFF'
         "-DUSE_CUDA=$useCuda"

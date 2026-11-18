@@ -80,6 +80,7 @@ function Get-Arm64WheelStack {
             PYTEST_MD          = $false
             PYTEST_MD_REPORT   = $false
             PYTEST_METADATA    = $false
+            PYTEST_TIMEOUT     = $false
             PYTHON_DATEUTIL    = $false
             PYTZ               = $false
             PY_CPUINFO         = $false

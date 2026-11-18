@@ -268,21 +268,22 @@ in `:winamd64`. This section used to say sccache "caches nothing" here and is
 "harmless to leave wired up". The first claim was wrong. The second was the
 dangerous one:
 
-- **The released sccache (0.18.0, the image's) with clang-cl** caches the
-  importers and every non-module unit (Ballett, debug + release, warm: 1170 of
-  1474 requests hit, 470 MB stored). It refuses the interface units, because it
-  reads `-x c++-module` as a second input ("multiple input files"). And it
-  hashes an importer **without** the BMIs it imports: after an interface edit a
-  warm cache hands back the old object. Reproduced on both projects (Ballett's
-  test ran the old constant, AccelerANTgine's exe printed the old version). In
-  a reused container whose cache stays warm across edits, empty `SCCACHE_DIR`
-  after an interface change, or configure through
-  `Invoke-CmakeConfigureAndBuild -DisableSccache`, which since
-  2026-09-29 also overrides a preset's `COMPILER_CACHE`.
-- **With mozilla/sccache#2876** (clang-cl's module flags), interface units
-  cache with their BMI and importers hash every BMI they import, so an
-  interface edit misses exactly its importers. Ballett's warm clean-tree
-  rebuild fell from 409.7 s to 187.1 s. Not in the image until that PR ships.
+- **sccache 0.18.0 and older with clang-cl** cache the importers and every
+  non-module unit (Ballett, debug + release, warm: 1170 of 1474 requests hit,
+  470 MB stored). They refuse the interface units, because they read
+  `-x c++-module` as a second input ("multiple input files"). And they hash an
+  importer **without** the BMIs it imports: after an interface edit a warm cache
+  hands back the old object. Reproduced on both projects (Ballett's test ran the
+  old constant, AccelerANTgine's exe printed the old version).
+- **mozilla/sccache#2876** (clang-cl's module flags, in v0.19.0) caches interface
+  units with their BMI and hashes every BMI an importer imports, so an interface
+  edit misses exactly its importers. Ballett's warm clean-tree rebuild fell from
+  409.7 s to 187.1 s. Both images ship the hub's build, which carries it
+  (`0.19.0+965c019.pr2809`, [`shared/upstream/sccache/`](../shared/upstream/sccache/README.md)),
+  and `-RequireModuleSafeSccache` keeps an older sccache out of a module build
+  ([`build-cache-tiers.md`](build-cache-tiers.md)). With an older one, empty
+  `SCCACHE_DIR` after an interface change, or configure through
+  `Invoke-CmakeConfigureAndBuild -DisableSccache`.
 - **On Linux**, clang's CMake module maps already cache correctly with the
   released sccache ([`build-cache-tiers.md` § Keeping the compiler cache across CI runs](build-cache-tiers.md#keeping-the-compiler-cache-across-ci-runs)).
   GCC's `-fmodules-ts` units are cached by neither sccache nor ccache.

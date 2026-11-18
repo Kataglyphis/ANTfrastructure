@@ -636,6 +636,7 @@ on 2026-10-05 (CON55), so each consumer links one list instead of keeping its ow
 | One `Build.Configurations` row of a `Build-Windows.config.psd1`, its `BuildDirEnv` / `PresetEnv` overrides applied | `Get-BuildConfigurationRow` | same file | a `Get-BuildConfiguration` per build script |
 | Build logging and steps | `New-BuildContext`, `Invoke-BuildStep`, `Invoke-BuildExternal`, `Write-BuildLog*` | [`WindowsBuild.Common.psm1`](../windows/scripts/modules/WindowsBuild.Common.psm1) | ad-hoc `Write-Host` wrappers |
 | `cmake --build` argument order, target, configuration and parallel flags | `Get-CmakeBuildArgs` | [`WindowsCMake.Common.psm1`](../windows/scripts/modules/WindowsCMake.Common.psm1) | another local package-build argument array |
+| What NSIS or WiX said when a `--target package` step failed (the tail of each `_CPack_Packages` log) | `Write-CPackGeneratorLog` | same file | a package step that ends at CPack's "Problem running NSIS command" |
 | `CI_COMPILER_CACHE` into container-local directories and back, and whether this sccache may keep a clang-cl module build's cache | `Restore-CiCompilerCache`, `Save-CiCompilerCache`, `Test-SccacheModuleSafe` | same file, [`build-cache-tiers.md`](build-cache-tiers.md) | a robocopy `/MOVE` pair in the build script |
 | A Python repo's Windows CI build: pytest legs, gating static analysis, packaging | `Invoke-PythonCiBuild.ps1` and a `scripts\windows\python-ci.psd1` | [`python-ci.md` § The Windows build driver](python-ci.md#the-windows-build-driver) | a `Build-Windows.ps1` with its own `Write-Log*`, `Invoke-Step` and uv shims |
 | Tool guards, workspace paths, a hub pin from `versions.env` | `Assert-Command`, `Resolve-WorkspacePath`, `Get-ANTfrastructurePin` | [`WindowsScripts.Shared.psm1`](../windows/scripts/modules/WindowsScripts.Shared.psm1) | a second implementation, or a `versions.env` regex |
@@ -741,6 +742,12 @@ checks before a push beyond lint, for example the script suites its CI lint lane
   unset, so a `git` call in a test fixture acts on the fixture and not on the repository.
 - It reads the working tree, as the gates do. The hook sets no time limit.
 - The file needs no executable bit. CI does not call it: let the CI step it mirrors call the same file.
+- **A host without a tool the image has** (CON277): when the run fails and its output says
+  `prerequisite missing:` (the harness's `t_skip_unless` on Linux), and the clone sets
+  `git config kataglyphis.imageRunner "<command> --"`, the hook runs `bash scripts/linux/pre-push-checks.sh`
+  once more through that command, and that run decides. A real failure, or a clone without the setting,
+  stops the push as before. On a Raspberry Pi dev host with no node, the runner is its CI-image wrapper,
+  for example `pi-ci --` (not `pi-heavy`, whose lock the push already holds).
 
 **Bypass.** `git commit --no-verify` and `git push --no-verify` skip the hook. Run
 `scripts/linux/run-lint-gates.sh` by hand before the push then.

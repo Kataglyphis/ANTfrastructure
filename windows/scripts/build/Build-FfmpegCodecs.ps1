@@ -80,7 +80,9 @@ function Invoke-CodecMeson([string]$Name, [string]$SourceDir, [string[]]$Options
     $buildDir = Join-Path $WorkDir "$Name-build"
     # The same launcher rule as GStreamer's meson build: sccache only with a remote backend.
     $cc = if ((Test-SccacheRemoteConfigured) -and (Get-Command sccache.exe -ErrorAction SilentlyContinue)) { 'sccache clang-cl' } else { 'clang-cl' }
-    Invoke-WithProcessEnvironment -Environment @{ CC = $cc; CXX = $cc } -ScriptBlock {
+    # meson reads CFLAGS/CXXFLAGS for the native compiler: the amd64 floor (CON265); this script exits on a cross lane.
+    $isa = Get-WindowsTargetSimdFlags -Arch amd64
+    Invoke-WithProcessEnvironment -Environment @{ CC = $cc; CXX = $cc; CFLAGS = $isa; CXXFLAGS = $isa } -ScriptBlock {
         $setup = @('setup', $buildDir, $SourceDir, "--prefix=$Prefix", '--libdir=lib',
             '--buildtype=release', '-Db_ndebug=true', '--default-library=static',
             # FFmpeg's DLLs link the static CRT, so meson's /MD default leaves __imp_ refs configure cannot resolve.
