@@ -308,7 +308,7 @@ _pf_calls="$(_gate_calls "${REPO}/linux/scripts/preflight.sh")"
 _hook_calls="$(_gate_calls "${REPO}/linux/host-config/git-hooks/pre-commit")"
 t_assert_contains "${_pf_calls}" "run_check mutations" \
   "preflight must run the mutation gate as the 'mutations' slug"
-t_assert_eq "1" "$(_count "${_hook_calls}" -E -e 'verify_mutations\.py "\$\{_only\[@\]\}" \|\|')" \
+t_assert_eq "1" "$(_count "${_hook_calls}" -E -e 'verify_mutations\.py "\$\{_only\[@\]\}" 2>&1 \| tee')" \
   "the pre-commit hook must gate the commit on the staged-file selection of this gate"
 t_assert_eq "0" "$(_count "${_pf_calls}" -e '--in-place')" \
   "preflight must not opt out of isolation: it points the gate at the tree buildkit reads as a build context"

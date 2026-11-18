@@ -2698,16 +2698,16 @@
  {
   "id": "mutations.hook-callsite-isolated",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "    ${_PY} docs/scripts/verify_mutations.py \"${_only[@]}\" || {",
-  "replace": "    ${_PY} docs/scripts/verify_mutations.py --in-place \"${_only[@]}\" || {",
+  "find": "    ${_PY} docs/scripts/verify_mutations.py \"${_only[@]}\" 2>&1 | tee \"${_mlog}\"",
+  "replace": "    ${_PY} docs/scripts/verify_mutations.py --in-place \"${_only[@]}\" 2>&1 | tee \"${_mlog}\"",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "the hook runs on the live working tree; --in-place there mutates files a concurrent build is snapshotting"
  },
  {
   "id": "mutations.hook-runs-the-gate",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "    ${_PY} docs/scripts/verify_mutations.py \"${_only[@]}\" || {",
-  "replace": "    true || {",
+  "find": "    ${_PY} docs/scripts/verify_mutations.py \"${_only[@]}\" 2>&1 | tee \"${_mlog}\"",
+  "replace": "    true 2>&1 | tee \"${_mlog}\"",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "the commit decision must depend on the staged-file run of the gate, not on a stand-in"
  },
