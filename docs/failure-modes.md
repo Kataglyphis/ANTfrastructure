@@ -22,6 +22,16 @@ Two neighbours, so you land on the right page:
 > the triage index: enough to recognise the failure and act, with a link when
 > the full history matters.
 
+## Windows GenAI clone reports repository not found after three attempts
+
+The full NVIDIA run at `bd6bb3b2` exported ONNX, FFmpeg, OpenCV and Hailo,
+then failed the `microsoft/onnxruntime-genai` clone before configuration.
+Do not substitute a binary package or silently update GenAI. The Windows
+builder retains the original release commit and checks its `VERSION_INFO`;
+only a failed primary clone permits the exact commit from CodeLinaro.
+See [the source transport contract](windows-builds.md#genai-source-recovery-without-a-version-change).
+Transport recovery does not establish final-source producer or GPU acceptance.
+
 ## cuDNN link/run skips despite installed SDK files
 
 The NVIDIA smoke at `adea396e` printed three unset-variable errors for

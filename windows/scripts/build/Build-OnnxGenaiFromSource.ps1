@@ -241,7 +241,8 @@ Install-CpythonPipPin -Python $py -Name requests, setuptools, wheel -Option '--n
 
 Initialize-ToolchainPythonEnvironment | Out-Null
 
-Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime-genai.git' -Tag "v$OnnxGenAiVersion" -SourceDir $SourceDir -Recursive | Out-Null
+Invoke-OrtSourceClone -SourceDir $SourceDir -Version $OnnxGenAiVersion -ExpectedCommit $env:ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT `
+    -RepoUrl 'https://github.com/microsoft/onnxruntime-genai.git' -FallbackRepoUrl 'https://github.com/CodeLinaro/onnxruntime-genai.git' -VersionFile 'VERSION_INFO' | Out-Null
 
 Set-Location $SourceDir
 

@@ -211,10 +211,11 @@ function Assert-OrtSourcePin {
 }
 
 function Assert-OrtSourceIdentity {
-    param([string]$SourceDir, [string]$Version, [string]$ExpectedCommit)
+    param([string]$SourceDir, [string]$Version, [string]$ExpectedCommit,
+        [ValidateSet('VERSION_NUMBER', 'VERSION_INFO')][string]$VersionFile = 'VERSION_NUMBER')
     $actual = @(& git -C $SourceDir rev-parse --verify HEAD 2>&1)
     if ($LASTEXITCODE -ne 0 -or $actual.Count -ne 1 -or $actual[0] -cne $ExpectedCommit) { throw "ONNX source commit mismatch: expected $ExpectedCommit, got $($actual -join ' ')." }
-    $actualVersion = (Get-Content -LiteralPath (Join-Path $SourceDir 'VERSION_NUMBER') -Raw -ErrorAction Stop).Trim()
+    $actualVersion = (Get-Content -LiteralPath (Join-Path $SourceDir $VersionFile) -Raw -ErrorAction Stop).Trim()
     if ($actualVersion -cne $Version) { throw "ONNX source version mismatch: expected $Version, got $actualVersion." }
 }
 
@@ -225,6 +226,7 @@ function Invoke-OrtSourceClone {
         [Parameter(Mandatory)][AllowEmptyString()][string]$ExpectedCommit,
         [string]$RepoUrl = 'https://github.com/microsoft/onnxruntime.git',
         [string]$FallbackRepoUrl = 'https://github.com/ROCm/onnxruntime.git',
+        [ValidateSet('VERSION_NUMBER', 'VERSION_INFO')][string]$VersionFile = 'VERSION_NUMBER',
         [int]$MaxAttempts = 3, [int]$InitialDelaySeconds = 10
     )
     Assert-OrtSourcePin -Version $Version -ExpectedCommit $ExpectedCommit
@@ -239,7 +241,7 @@ function Invoke-OrtSourceClone {
             throw "Pinned ONNX fallback failed (exit $($fallback.ExitCode)): $(($fallback.Output | Select-Object -Last 10) -join [Environment]::NewLine)"
         }
     }
-    Assert-OrtSourceIdentity -SourceDir $SourceDir -Version $Version -ExpectedCommit $ExpectedCommit
+    Assert-OrtSourceIdentity -SourceDir $SourceDir -Version $Version -ExpectedCommit $ExpectedCommit -VersionFile $VersionFile
     return $true
 }
 

@@ -6,6 +6,7 @@
 
 
 BeforeAll {
+    Import-Module (Join-Path $PSScriptRoot 'WindowsOrt.SourceFixture.psm1') -ErrorAction Stop
     $script:dfPath = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'Dockerfile.media-builder'
     $script:stages = Get-TestDockerfileStageFacts -Path $script:dfPath
     # The TensorRT plugin EP and its four seeds, built in the ORT RUN.
@@ -27,7 +28,7 @@ BeforeAll {
                                       'DAV1D_VERSION', 'DAV1D_SHA256', 'X264_MESON_BRANCH', 'X264_MESON_COMMIT',
                                       'X265_VERSION', 'X265_SHA256')
         'media-core-built-opencv' = @('OPENCV_SOURCE_VERSION', 'OPENCV_VERSION')
-        'media-core-built'        = @('ONNXRUNTIME_GENAI_VERSION')
+        'media-core-built'        = @(Get-OrtSourceFixtureRelease | Where-Object Stage -EQ 'media-core-built' | ForEach-Object { $_.VersionKey; $_.Pin })
     }
     # Cross-component on purpose: every stage mounting windows/qnn-sdk extracts the zip and needs the pin.
     $script:sharedCoreKeys = @('QNN_SDK_ZIP_SHA256', 'QNN_SDK_VERSION')
@@ -129,7 +130,7 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
     It 'covers the driver''s whole media-core version-arg set with the per-stage union (no drift)' {
         # A forwarded key no stage declares is silently dropped, so the union is checked against the driver's own map.
         $table = @{}
-        foreach ($k in @('ONNXRUNTIME_VERSION', 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_VERSION',
+        foreach ($k in @('ONNXRUNTIME_VERSION', 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT', 'ONNXRUNTIME_GENAI_VERSION', 'ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT', 'OPENCV_VERSION',
                          'FFMPEG_VERSION', 'PYAV_VERSION', 'PY_CYTHON_VERSION', 'QNN_SDK_ZIP_SHA256', 'QNN_SDK_VERSION', 'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', 'ORT_QNN_EP_CORE_COMMIT',
                          'NV_CODEC_HEADERS_REF', 'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',
                          'DAV1D_VERSION', 'DAV1D_SHA256', 'X264_MESON_BRANCH', 'X264_MESON_COMMIT', 'X265_VERSION', 'X265_SHA256',

@@ -39715,9 +39715,113 @@
  {
   "id": "windows-lane.ort-patch-fixture-payload-path",
   "target": "windows/scripts/tests/WindowsOrt.SourceFixture.psm1",
-  "find": "-PayloadPath $fixturePayloadPath\n",
-  "replace": "-PayloadPath 'payload.txt'\n",
+  "find": "-PayloadPath $fixturePayloadPath -VersionFile $fixtureVersionFile -Version $fixtureRelease\n",
+  "replace": "-PayloadPath 'payload.txt' -VersionFile $fixtureVersionFile -Version $fixtureRelease\n",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1",
   "why": "The shared release fixture retains the requested nested payload path so sparse and patch checks exercise the real target."
+ },
+ {
+  "id": "windows-lane.genai-source-version-file-forwarded",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "Assert-OrtSourceIdentity -SourceDir $SourceDir -Version $Version -ExpectedCommit $ExpectedCommit -VersionFile $VersionFile",
+  "replace": "Assert-OrtSourceIdentity -SourceDir $SourceDir -Version $Version -ExpectedCommit $ExpectedCommit",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "GenAI must pass its selected VERSION_INFO through the common identity check."
+ },
+ {
+  "id": "windows-lane.genai-source-version-file-read",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "(Join-Path $SourceDir $VersionFile)",
+  "replace": "(Join-Path $SourceDir 'VERSION_NUMBER')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "A GenAI checkout has VERSION_INFO rather than the core VERSION_NUMBER."
+ },
+ {
+  "id": "windows-lane.genai-source-selector-before-write",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "[ValidateSet('VERSION_NUMBER', 'VERSION_INFO')][string]$VersionFile = 'VERSION_NUMBER',",
+  "replace": "[string]$VersionFile = 'VERSION_NUMBER',",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "An invalid clone selector must refuse before any destination reset."
+ },
+ {
+  "id": "windows-lane.genai-source-direct-selector",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "[ValidateSet('VERSION_NUMBER', 'VERSION_INFO')][string]$VersionFile = 'VERSION_NUMBER')",
+  "replace": "[string]$VersionFile = 'VERSION_NUMBER')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "The direct source identity API must not accept an arbitrary matching payload as a release version file."
+ },
+ {
+  "id": "windows-lane.genai-source-unconditional",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "Invoke-OrtSourceClone -SourceDir $SourceDir -Version $OnnxGenAiVersion -ExpectedCommit $env:ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT `\n    -RepoUrl 'https://github.com/microsoft/onnxruntime-genai.git' -FallbackRepoUrl 'https://github.com/CodeLinaro/onnxruntime-genai.git' -VersionFile 'VERSION_INFO' | Out-Null",
+  "replace": "if ($false) {\nInvoke-OrtSourceClone -SourceDir $SourceDir -Version $OnnxGenAiVersion -ExpectedCommit $env:ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT `\n    -RepoUrl 'https://github.com/microsoft/onnxruntime-genai.git' -FallbackRepoUrl 'https://github.com/CodeLinaro/onnxruntime-genai.git' -VersionFile 'VERSION_INFO' | Out-Null\n}",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "The pinned clone must execute unconditionally before patches and configure."
+ },
+ {
+  "id": "windows-lane.genai-source-mirror-owner",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "https://github.com/CodeLinaro/onnxruntime-genai.git",
+  "replace": "https://github.com/microsoft/onnxruntime-genai.git",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "Recovery must use the reviewed reachable fork rather than repeat the unavailable primary transport."
+ },
+ {
+  "id": "windows-lane.genai-source-version-info",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "-VersionFile 'VERSION_INFO'",
+  "replace": "-VersionFile 'VERSION_NUMBER'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "The GenAI builder must select its own version file explicitly."
+ },
+ {
+  "id": "windows-lane.genai-source-stage-arg",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "ARG ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "The compiling GenAI stage must declare the exact forwarded source commit."
+ },
+ {
+  "id": "windows-lane.genai-source-stage-env",
+  "target": "windows/Dockerfile.media-builder",
+  "find": " `\n    ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT=\"${ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT}\"",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "The exact declared commit must reach the GenAI builder process."
+ },
+ {
+  "id": "windows-lane.genai-source-branch-forwarding",
+  "target": "windows/scripts/modules/WindowsBuildDriver.Common.psm1",
+  "find": "'ONNXRUNTIME_GENAI_VERSION', 'ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT', 'OPENCV_VERSION'",
+  "replace": "'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_VERSION'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "The compiling branch must forward the configured exact GenAI pin."
+ },
+ {
+  "id": "windows-lane.genai-source-merge-exclusion",
+  "target": "windows/scripts/modules/WindowsBuildDriver.Common.psm1",
+  "find": "'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT', 'ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT',",
+  "replace": "'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT',",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "The source-only pin must not pollute the merge cache key."
+ },
+ {
+  "id": "windows-lane.genai-source-fixture-all-releases",
+  "target": "windows/scripts/tests/WindowsOrt.SourceFixture.psm1",
+  "find": "foreach ($release in Get-OrtSourceFixtureRelease)",
+  "replace": "foreach ($release in @(Get-OrtSourceFixtureRelease | Select-Object -First 1))",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "Shared source fixtures must execute the supplied callback for both the core and GenAI release."
+ },
+ {
+  "id": "windows-lane.genai-source-fixture-version-file",
+  "target": "windows/scripts/tests/WindowsOrt.SourceFixture.psm1",
+  "find": "Invoke-OrtSourceFixture -VersionFile $release.VersionFile -Version $release.Version",
+  "replace": "Invoke-OrtSourceFixture -Version $release.Version",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "A shared release fixture must retain the selected GenAI VERSION_INFO rather than silently create a core-shaped checkout."
  }
 ]

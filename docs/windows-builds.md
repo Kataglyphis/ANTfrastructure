@@ -3002,3 +3002,22 @@ the fork's development branch. It proves no current upstream-ref reachability,
 compiler success, GPU inference or final-image acceptance.
 
 
+
+### GenAI source recovery without a version change
+
+The Windows GenAI builder uses the same identity-pinned clone helper, with
+`VERSION_INFO` instead of the core's `VERSION_NUMBER`. Its original Microsoft
+tag remains first. Only a failed clone permits fetching the exact
+`ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT` from `CodeLinaro/onnxruntime-genai`;
+the full commit and version must match before source patches or configuration.
+The compile-only pin belongs to the GenAI stage and never enters the merge.
+
+Version 0.19.0 retains original commit
+`d01b2441a72d4e3223415b9b08474c6e65fbc028`, recorded by the
+[Microsoft NuGet release](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntimeGenAI/0.19.0).
+A real shallow fetch and `git fsck --full` verified tree
+`62d4f05814fd59e95bdeb57c1cefa0446c0ab9f3` and `VERSION_INFO=0.19.0`.
+No fork branch, substitute runtime binary or newer release is selected.
+Source transport, full final-source builds, CUDA-repeat hits, hosted CI and
+physical device acceptance remain separate requirements.
+

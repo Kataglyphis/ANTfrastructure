@@ -95,7 +95,7 @@ function Get-MediaCoreVersionArg {
     # Every pin a media-core script reads: a missing key silently falls back to the base image's baked value.
     param([Parameter(Mandatory)][hashtable]$VersionTable)
     $keys = @(
-        'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_VERSION', 'FFMPEG_VERSION', 'PYAV_VERSION',
+        'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT', 'ONNXRUNTIME_GENAI_VERSION', 'ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT', 'OPENCV_VERSION', 'FFMPEG_VERSION', 'PYAV_VERSION',
         # PyAV's Cython; media-tvm installs the same one, as the fan-in refuses two versions.
         'PY_CYTHON_VERSION',
         # The QAIRT Community zip Resolve-QnnSdk fetches (or the staged zip must match); both keys travel together.
@@ -181,7 +181,7 @@ function Get-MediaMergeVersionArg {
     param([Parameter(Mandatory)][hashtable]$VersionTable)
     # No merge ARG exists for these; forwarding them only warns and pollutes the merge stage's cache key.
     $branchOnly = @(
-        'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES', 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT',
+        'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES', 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT', 'ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT',
         'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',   # media-core: FFmpeg AMF headers
         'DAV1D_VERSION', 'DAV1D_SHA256', 'X264_MESON_BRANCH', 'X264_MESON_COMMIT',
         'X265_VERSION', 'X265_SHA256',        # media-core: FFmpeg's static software codecs

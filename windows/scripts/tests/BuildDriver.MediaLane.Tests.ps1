@@ -23,10 +23,14 @@ $script:WbtTrtEpPins = @{
     ORT_TENSORRT_EP_FLATBUFFERS_VERSION = 'trtfb-50'; ORT_TENSORRT_EP_FLATBUFFERS_SHA256 = 'trtfbsha-51'
 }
 
+$script:WbtSourcePins = @{
+    ONNXRUNTIME_WINDOWS_SOURCE_COMMIT = 'ort-commit-52'
+    ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT = 'genai-commit-53'
+}
+
 function New-WbtFakeMediaVersionTable {
     $table = @{
         ONNXRUNTIME_VERSION       = 'ort-1'
-        ONNXRUNTIME_WINDOWS_SOURCE_COMMIT = 'ort-commit-52'
         ONNXRUNTIME_GENAI_VERSION = 'genai-2'
         OPENCV_VERSION            = 'cv-3'
         FFMPEG_VERSION            = 'ff-4'
@@ -60,7 +64,7 @@ function New-WbtFakeMediaVersionTable {
         # The one Cython both branches install into the host CPython (CON80).
         PY_CYTHON_VERSION                   = 'cy-26'
     }
-    return $table + $script:WbtCodecPins + $script:WbtBazelToolPins + $script:WbtTrtEpPins
+    return $table + $script:WbtCodecPins + $script:WbtBazelToolPins + $script:WbtTrtEpPins + $script:WbtSourcePins
 }
 
 Describe 'Get-MediaBranchVersionArg' {
@@ -71,7 +75,6 @@ Describe 'Get-MediaBranchVersionArg' {
         $cases = @(
             @{ Branch = 'media-core'; Expected = @{
                     ONNXRUNTIME_VERSION       = 'ort-1'
-        ONNXRUNTIME_WINDOWS_SOURCE_COMMIT = 'ort-commit-52'
                     ONNXRUNTIME_GENAI_VERSION = 'genai-2'
                     OPENCV_SOURCE_VERSION     = 'cv-3'
                     OPENCV_VERSION            = 'cv-3'
@@ -116,7 +119,7 @@ Describe 'Get-MediaBranchVersionArg' {
             }
         )
         # media-core also forwards FFmpeg's codec pins, from the one table the fixture merges too.
-        $cases[0].Expected += $script:WbtCodecPins + $script:WbtTrtEpPins
+        $cases[0].Expected += $script:WbtCodecPins + $script:WbtTrtEpPins + $script:WbtSourcePins
         $cases[1].Expected += $script:WbtBazelToolPins
         foreach ($case in $cases) {
             $actual = Get-MediaBranchVersionArg -Branch $case.Branch -VersionTable $table

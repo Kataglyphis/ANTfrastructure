@@ -8,26 +8,28 @@ foreach ($fixtureImport in 'TestHarness.psm1', 'WindowsHarness.GitFixtures.psm1'
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules/WindowsSourceBuild.Common.psm1') -ErrorAction Stop
 
 function New-OrtSourceFixture {
-    param([string]$Directory, [string]$ActualVersion, [string]$Payload = 'pinned payload', [switch]$SingleCommit, [string]$PayloadPath = 'payload.txt')
+    param([string]$Directory, [string]$ActualVersion, [string]$Payload = 'pinned payload', [switch]$SingleCommit, [string]$PayloadPath = 'payload.txt',
+        [string]$VersionFile = 'VERSION_NUMBER', [string]$Version = '1.31.1')
     $repo = New-TestGitRepository -Path (Join-Path $Directory 'origin with spaces')
-    if (-not $SingleCommit) { Add-TestGitCommit -Path $repo -Files @{ VERSION_NUMBER = $ActualVersion; $PayloadPath = 'first' } }
-    $commit = Add-TestGitCommit -Path $repo -Files @{ VERSION_NUMBER = $ActualVersion; $PayloadPath = $Payload } -Message 'release' -PassThru
-    $null = Invoke-TestGitCommand -Path $repo -ArgumentList @('tag', 'v1.31.1')
+    if (-not $SingleCommit) { Add-TestGitCommit -Path $repo -Files @{ $VersionFile = $ActualVersion; $PayloadPath = 'first' } }
+    $commit = Add-TestGitCommit -Path $repo -Files @{ $VersionFile = $ActualVersion; $PayloadPath = $Payload } -Message 'release' -PassThru
+    $null = Invoke-TestGitCommand -Path $repo -ArgumentList @('tag', "v$Version")
     return [pscustomobject]@{
         Directory = $Directory; Repo = $repo; Commit = $commit
-        Options = @{ SourceDir = Join-Path $Directory 'checkout with spaces'; Version = '1.31.1'; ExpectedCommit = $commit
+        Options = @{ SourceDir = Join-Path $Directory 'checkout with spaces'; Version = $Version; VersionFile = $VersionFile; ExpectedCommit = $commit
             RepoUrl = $repo; FallbackRepoUrl = $repo; MaxAttempts = 1; InitialDelaySeconds = 0 }
     }
 }
 
 function Invoke-OrtSourceFixture {
     param([Parameter(Mandatory)][scriptblock]$Exercise, [string]$ActualVersion = '1.31.1',
-        [string]$Payload = 'pinned payload', [string]$PayloadPath = 'payload.txt')
+        [string]$Payload = 'pinned payload', [string]$PayloadPath = 'payload.txt',
+        [string]$VersionFile = 'VERSION_NUMBER', [string]$Version = '1.31.1')
     $factory = Get-Command New-OrtSourceFixture -CommandType Function
-    Invoke-InTestDir -FixtureArgumentList @($factory, $Exercise, $ActualVersion, $Payload, $PayloadPath) -Body {
-        param($dir, $createFixture, $fixtureExercise, $fixtureVersion, $fixturePayload, $fixturePayloadPath)
+    Invoke-InTestDir -FixtureArgumentList @($factory, $Exercise, $ActualVersion, $Payload, $PayloadPath, $VersionFile, $Version) -Body {
+        param($dir, $createFixture, $fixtureExercise, $fixtureVersion, $fixturePayload, $fixturePayloadPath, $fixtureVersionFile, $fixtureRelease)
         Invoke-WithEnv @{ GIT_ALLOW_PROTOCOL = 'file'; GIT_TERMINAL_PROMPT = '0' } {
-            $fixture = & $createFixture -Directory $dir -ActualVersion $fixtureVersion -Payload $fixturePayload -PayloadPath $fixturePayloadPath
+            $fixture = & $createFixture -Directory $dir -ActualVersion $fixtureVersion -Payload $fixturePayload -PayloadPath $fixturePayloadPath -VersionFile $fixtureVersionFile -Version $fixtureRelease
             & $fixtureExercise $fixture
         }.GetNewClosure()
     }
@@ -52,4 +54,22 @@ function Invoke-OrtFixtureClone {
     $cloneArguments = $Fixture.Options
     Invoke-OrtSourceClone @cloneArguments 3>$null
 }
-Export-ModuleMember -Function New-OrtSourceFixture, Invoke-OrtSourceFixture, Add-OrtSourceFixtureSubmodule, Invoke-OrtFixtureClone
+
+function Get-OrtSourceFixtureRelease {
+    return @(
+        @{ Version = '1.31.1'; VersionFile = 'VERSION_NUMBER'; VersionKey = 'ONNXRUNTIME_VERSION'
+            Pin = 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT'; Commit = '6af1a932e2286d5c58166085d24c68783033edee'; Stage = 'media-core-built-onnx' },
+        @{ Version = '0.19.0'; VersionFile = 'VERSION_INFO'; VersionKey = 'ONNXRUNTIME_GENAI_VERSION'
+            Pin = 'ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT'; Commit = 'd01b2441a72d4e3223415b9b08474c6e65fbc028'; Stage = 'media-core-built' }
+    )
+}
+
+function Invoke-OrtSourceVariantFixture {
+    param([Parameter(Mandatory)][scriptblock]$Exercise, [switch]$WrongVersion)
+    foreach ($release in Get-OrtSourceFixtureRelease) {
+        $actualVersion = if ($WrongVersion) { '0.0.0' } else { $release.Version }
+        Invoke-OrtSourceFixture -VersionFile $release.VersionFile -Version $release.Version -ActualVersion $actualVersion -Exercise $Exercise
+    }
+}
+
+Export-ModuleMember -Function Get-OrtSourceFixtureRelease, Invoke-OrtSourceVariantFixture, New-OrtSourceFixture, Invoke-OrtSourceFixture, Add-OrtSourceFixtureSubmodule, Invoke-OrtFixtureClone
