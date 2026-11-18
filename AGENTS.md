@@ -156,7 +156,7 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    Regex cardinality assertions use the shared harness counter and retain caller-selected patterns and text.
    Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser; parse errors must fail before inspecting declarations. Copy `WindowsAst.Common.psm1` beside any copied harness module tree.
    Every static Windows patch keeps its actual upstream mapping and source pin in the patch-drift gate; torchvision's host adapter targets PyTorch's `cpp_extension.py`.
-   Required patch acceptance rejects unchecked upstreams after exact-commit fallback; CPack diagnostics use the shared batch logger without duplication exceptions.
+   Required patch acceptance rejects unchecked upstreams after exact-commit fallback; CPack diagnostics use the shared batch logger without duplication exceptions. Their mutation cases use the portable harness without Pester.
    Share unconditional and source-order wiring checks through `Assert-TestAstCommand -Unconditional` and `Assert-TestAstOrder`.
    ROCm pin defaults come from the compiling stage; shared module-closure checks tolerate intervening ARGs and retain portable mutation coverage.
    Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies.

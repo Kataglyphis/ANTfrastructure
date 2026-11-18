@@ -25,63 +25,6 @@ Describe 'WindowsCMake.Common' {
     Remove-TestDir -Path $script:buildRoot
   }
 
-  Context 'Write-CPackGeneratorLog' {
-    BeforeAll {
-      function New-CPackLogFixture {
-        param([string]$Name, [hashtable]$Files)
-        $build = Join-Path $script:buildRoot $Name
-        Write-TestFileTree -Root $build -Files $Files
-        return $build
-      }
-
-      # The lines the function logs for a build directory, both log writers captured.
-      function script:Get-CPackLogLines([string]$Build) {
-        InModuleScope WindowsCMake.Common -Parameters @{ Build = $Build } {
-          param($Build)
-          $script:cpackLines = [System.Collections.Generic.List[string]]::new()
-          Mock Write-BuildLog { $script:cpackLines.Add($Message) }
-          Mock Write-BuildLogMessages { foreach ($m in $Messages) { $script:cpackLines.Add($m) } }
-          Write-CPackGeneratorLog -Context @{} -BuildPath $Build -TailLines 2
-          $script:cpackLines
-        }
-      }
-    }
-
-    It 'prints the tail of every generator log under _CPack_Packages' {
-      $build = New-CPackLogFixture -Name 'cpack-logs' -Files @{ '_CPack_Packages/win64/NSIS/NSISOutput.log' = "line 1`nError: path too long`nline 3`n" }
-      $lines = @(Get-CPackLogLines $build)
-      ($lines -join "`n") | Should -Match 'NSISOutput\.log'
-      $lines | Should -Contain 'Error: path too long'
-      $lines | Should -Contain 'line 3'
-      $lines | Should -Not -Contain 'line 1'
-    }
-
-    It 'distinguishes missing and empty generator directories: <Name>' -TestCases @(
-      @{ Name = 'cpack-none'; Files = @{ 'unrelated.txt' = 'outside the generator directory' }; Pattern = 'does not exist' },
-      @{ Name = 'cpack-empty'; Files = @{ '_CPack_Packages/unrelated.txt' = 'not a generator log' }; Pattern = 'No CPack generator logs under ' }
-    ) {
-      param($Name, $Files, $Pattern)
-      $build = New-CPackLogFixture -Name $Name -Files $Files
-      (@(Get-CPackLogLines $build) -join "`n") | Should -Match $Pattern
-    }
-
-    It 'keeps deterministic generator log order and each separate tail' {
-      $build = New-CPackLogFixture -Name 'cpack-ordered' -Files @{
-        '_CPack_Packages/b.log' = "old-b`ntail-b1`ntail-b2`n"
-        '_CPack_Packages/a.log' = "old-a`ntail-a1`ntail-a2`n"
-        '_CPack_Packages/unrelated.txt' = 'not a generator log'
-      }
-      $lines = @(Get-CPackLogLines $build)
-      $lines.Count | Should -Be 6
-      $lines[0] | Should -Match 'a\.log'
-      $lines[1] | Should -Be 'tail-a1'
-      $lines[2] | Should -Be 'tail-a2'
-      $lines[3] | Should -Match 'b\.log'
-      $lines[4] | Should -Be 'tail-b1'
-      $lines[5] | Should -Be 'tail-b2'
-    }
-  }
-
   Context 'Get-CompileCommandsDatabase' {
     It 'throws when neither compile_commands.json nor build.ninja exists' {
       # An unscoped mock never reaches Test-Path inside the module, so the test would hit the real filesystem.

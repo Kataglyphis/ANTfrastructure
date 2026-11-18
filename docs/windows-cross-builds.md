@@ -623,8 +623,10 @@ The package licence suites validate real archive contents separately.
 When a package generator fails, `Write-CPackGeneratorLog` in `WindowsCMake.Common`
 collects each `*.log` below `_CPack_Packages`, in path order, and sends its heading
 and selected tail through the existing `Write-BuildLogMessages` logger. Missing and
-empty generator directories have distinct diagnostics. Local tests check selection,
-order and tails; they do not run NSIS, WiX or a native compiler.
+empty generator directories have distinct diagnostics. The portable
+`CMake.CPackDiagnostics.Tests.ps1` harness checks the exported entry, selection, order and
+tails without Pester; it runs no NSIS, WiX or native compiler. Other CMake Pester cases
+remain in the complete Windows run.
 
 **x64 packages carry the same closure** (owner decision 2026-09-25). A clean x64 PC lacks the
 media stack and may lack the VC++ runtime too. A CMake consumer whose packages come from CPack

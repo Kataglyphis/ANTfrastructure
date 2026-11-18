@@ -1097,7 +1097,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5230 entries** over **689 distinct test commands**; both digits are
+manifest holds **5231 entries** over **689 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1332,6 +1332,9 @@ The shards install no Pester, so a recipe whose test is a Pester-style suite
 every run as a vacuous bite. Put the cases a recipe needs in a harness-style
 suite; `test-mutation-pester-targets.sh` refuses a recipe that names a
 Pester-style one.
+`CMake.CPackDiagnostics.Tests.ps1` runs the CPack export, log selection, sorted tails and
+missing-directory cases through the harness on both hosts. It lifts the canonical batch
+logger over a state fixture; the remaining CMake Pester cases keep their separate full-run coverage.
 The cleanup unit-boundary recipes use `Stevedore.StorageUnits.Tests.ps1` through
 `Invoke-HarnessSuite.ps1`; existing Pester reclaim controls remain in the full Windows run.
 Copied-module source views use the portable `BuildKit.MountStub.Tests.ps1` fixture;

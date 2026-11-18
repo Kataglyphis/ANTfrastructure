@@ -1,5 +1,7 @@
 # Backlog — image gaps
 
+**Windows CPack mutation targets, 2026-11-18:** the dfbe full native run exposed four recipes targeting a Pester suite, which Linux mutation shards do not install. The cases move to the portable harness with a real export check; all other CMake Pester cases remain. The strict no-Pester registry guard is unchanged. Complete final-source qualification and G1-G5 acceptance remain required; CON228 stays OPEN/DRAFT.
+
 Every known gap in the images this hub publishes (`:latest`, `:winamd64`, the
 `:winarm64` bundle) that a consumer lane hits or works around. The refactoring
 registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).

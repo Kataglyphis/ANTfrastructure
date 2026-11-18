@@ -41829,7 +41829,7 @@
   "target": "windows/scripts/modules/WindowsCMake.Common.psm1",
   "find": "  Write-BuildLogMessages -Context $Context -Messages @(Get-CPackGeneratorLogMessages -BuildPath $BuildPath -TailLines $TailLines)",
   "replace": "  Write-Verbose 'CPack diagnostic messages omitted'",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsCMake.Common.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/integration-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only CMake.CPackDiagnostics.Tests.ps1",
   "why": "Generator paths, missing-directory diagnostics and file tails must reach the existing batch logger."
  },
  {
@@ -41837,7 +41837,7 @@
   "target": "windows/scripts/modules/WindowsCMake.Common.psm1",
   "find": "Get-Content -LiteralPath $log.FullName -Tail $TailLines",
   "replace": "Get-Content -LiteralPath $log.FullName -Tail 1",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsCMake.Common.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/integration-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only CMake.CPackDiagnostics.Tests.ps1",
   "why": "Each generator log retains the caller-selected number of tail lines."
  },
  {
@@ -41845,7 +41845,7 @@
   "target": "windows/scripts/modules/WindowsCMake.Common.psm1",
   "find": "-File -Filter '*.log' | Sort-Object FullName",
   "replace": "-File -Filter '*.log' | Sort-Object FullName -Descending",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsCMake.Common.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/integration-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only CMake.CPackDiagnostics.Tests.ps1",
   "why": "Multiple generator logs retain deterministic ascending path order and separate tails."
  },
  {
@@ -41853,7 +41853,15 @@
   "target": "windows/scripts/modules/WindowsCMake.Common.psm1",
   "find": "-File -Filter '*.log' |",
   "replace": "-File |",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsCMake.Common.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/integration-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only CMake.CPackDiagnostics.Tests.ps1",
   "why": "Unrelated files are not reported as CPack generator logs."
+ },
+ {
+  "id": "windows-lane.cpack-log-export",
+  "target": "windows/scripts/modules/WindowsCMake.Common.psm1",
+  "find": "Get-CmakeBuildArgs, Write-CPackGeneratorLog, Invoke-CmakeConfigureAndBuild",
+  "replace": "Get-CmakeBuildArgs, Invoke-CmakeConfigureAndBuild",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only CMake.CPackDiagnostics.Tests.ps1",
+  "why": "The real module must export its diagnostic entry; lifted function behavior alone does not prove consumer visibility."
  }
 ]

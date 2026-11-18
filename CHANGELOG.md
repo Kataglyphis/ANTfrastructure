@@ -17,6 +17,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-18 — prove CPack diagnostics without Pester
+
+- Move the four CPack diagnostic cases to a portable harness; retain the remaining CMake Pester cases.
+- Retarget their mutation recipes and prove the real exported entry, preserving the Linux no-Pester guard.
+
 ## 2026-11-18 — preserve strict patch evidence and shared package diagnostics during integration
 
 - Merge both source-identity protections and upstream-availability diagnostics; required patch acceptance
