@@ -185,6 +185,22 @@ function Get-StaticPatchResult {
     return [pscustomobject]@{ Patch = $Patch.Name; Repo = $repoKey; Ref = $spec.Ref; Status = $status }
 }
 
+# The exit code: a FAIL fails; a patch whose upstream answers 404 only warns (CON280).
+function Get-PatchDriftExitCode {
+    param([object[]]$Results)
+    $byKind = $Results | Group-Object { ($_.Status -split ' ')[0] } -AsHashTable
+    if ($byKind -and $byKind.ContainsKey('NOT')) {
+        $repos = @($byKind['NOT'] | ForEach-Object Repo | Sort-Object -Unique) -join ', '
+        Write-Host "::warning::$(@($byKind['NOT']).Count) patch(es) not checked: their upstream answers 404 ($repos); BACKLOG CON280"
+    }
+    if ($byKind -and $byKind.ContainsKey('FAIL')) {
+        Write-Host "$(@($byKind['FAIL']).Count) patch(es) FAILED to apply -- regenerate them against the new pinned upstream." -ForegroundColor Red
+        return 1
+    }
+    Write-Host "All mapped patches apply cleanly." -ForegroundColor Green
+    return 0
+}
+
 $patchExe = Resolve-GnuPatchExe
 
 # @(): a -PatchRoot holding one patch yields a scalar, and StrictMode refuses .Count on it.
@@ -206,14 +222,5 @@ finally {
 
 Write-Host ''
 $results | Format-Table -AutoSize | Out-String | Write-Host
-$gone = @($results | Where-Object { $_.Status -like 'NOT CHECKED*' })
-if ($gone.Count -gt 0) {
-    Write-Host "::warning::$($gone.Count) patch(es) not checked: their upstream answers 404 ($((@($gone | ForEach-Object Repo) | Sort-Object -Unique) -join ', ')); BACKLOG CON280"
-}
-$failed = @($results | Where-Object { $_.Status -like 'FAIL*' })
-if ($failed.Count -gt 0) {
-    Write-Host "$($failed.Count) patch(es) FAILED to apply -- regenerate them against the new pinned upstream." -ForegroundColor Red
-    exit 1
-}
-Write-Host "All mapped patches apply cleanly." -ForegroundColor Green
+exit (Get-PatchDriftExitCode -Results $results)
 

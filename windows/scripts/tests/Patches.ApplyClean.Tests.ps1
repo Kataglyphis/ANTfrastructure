@@ -5,7 +5,7 @@
 
 Describe 'Patch drift gate accounting' {
     $source = 'windows/scripts/tests/Test-PatchesApplyClean.ps1'
-    . (Get-ScriptFunctionDefinition -ScriptPath $source -FunctionName Get-PatchTargetPaths, Test-UpstreamGone, Get-PatchClone, Get-PatchApplyStatus, Get-StaticPatchResult)
+    . (Get-ScriptFunctionDefinition -ScriptPath $source -FunctionName Get-PatchTargetPaths, Test-UpstreamGone, Get-PatchClone, Get-PatchApplyStatus, Get-StaticPatchResult, Get-PatchDriftExitCode)
 
     function Invoke-WithPatchGit {
         param([int]$Code, [Parameter(Mandatory)][scriptblock]$Body)
@@ -61,6 +61,13 @@ Describe 'Patch drift gate accounting' {
                 & $case.Exercise $root
             }
         }
+    }
+
+    It 'the verdict fails on a FAIL and only warns on a vanished upstream (CON280)' {
+        $row = { param($status) [pscustomobject]@{ Patch = 'p.patch'; Repo = 'onnxruntime'; Ref = 'v1'; Status = $status } }
+        Assert-Equal 0 (Get-PatchDriftExitCode -Results @((& $row 'OK'), (& $row 'NOT CHECKED (upstream answers 404)'))) 'a 404 upstream warns'
+        Assert-Equal 1 (Get-PatchDriftExitCode -Results @((& $row 'NOT CHECKED (upstream answers 404)'), (& $row 'FAIL (clone)'))) 'a FAIL still fails'
+        Assert-Equal 0 (Get-PatchDriftExitCode -Results @((& $row 'OK'), (& $row 'SKIP (no +++ b/ headers)'))) 'clean'
     }
 
     It 'reports a sparse checkout that returned success but omitted its target' {
