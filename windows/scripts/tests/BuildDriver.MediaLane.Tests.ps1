@@ -39,6 +39,7 @@ function New-WbtFakeMediaVersionTable {
         QNN_SDK_VERSION           = 'qnnver-27'
         ORT_QNN_EP_VERSION        = 'qnnep-28'
         ORT_QNN_EP_SOURCE_SHA256  = 'qnnepsha-29'
+        ORT_QNN_EP_CORE_COMMIT = 'qnn-core-commit-29'
         LITERT_VERSION            = 'lrt-7'
         LITERT_LM_VERSION         = 'lm-8'
         TVM_REF                   = 'tvm-9'
@@ -84,6 +85,7 @@ Describe 'Get-MediaBranchVersionArg' {
                     QNN_SDK_VERSION           = 'qnnver-27'
                     ORT_QNN_EP_VERSION        = 'qnnep-28'
                     ORT_QNN_EP_SOURCE_SHA256  = 'qnnepsha-29'
+        ORT_QNN_EP_CORE_COMMIT = 'qnn-core-commit-29'
                     AMF_HEADERS_VERSION       = 'amf-15'
                     AMF_HEADERS_SHA256        = 'amfsha-16'
                 }
@@ -158,6 +160,7 @@ Describe 'Get-MediaMergeVersionArg' {
         Assert-Equal $expectedKeys (@($merge.Keys | Sort-Object) -join ',') 'exact merge key set'
         # Compile-only core inputs the merge Dockerfile declares no ARG for:
         Assert-False ($merge.Contains('ONNXRUNTIME_WINDOWS_SOURCE_COMMIT')) 'the source commit is a compile-only input'
+        Assert-False ($merge.Contains('ORT_QNN_EP_CORE_COMMIT')) 'the QNN header commit is a compile-only input'
         Assert-False ($merge.Contains('NV_CODEC_HEADERS_REF')) 'NV_CODEC_HEADERS_REF is excluded from the merge env'
         Assert-False ($merge.Contains('CUDA_ARCHITECTURES')) 'CUDA_ARCHITECTURES is excluded from the merge env'
         Assert-False ($merge.Contains('AMF_HEADERS_VERSION')) 'AMF_HEADERS_VERSION is excluded from the merge env'

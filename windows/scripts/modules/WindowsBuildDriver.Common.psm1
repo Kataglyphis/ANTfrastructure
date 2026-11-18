@@ -101,7 +101,7 @@ function Get-MediaCoreVersionArg {
         # The QAIRT Community zip Resolve-QnnSdk fetches (or the staged zip must match); both keys travel together.
         'QNN_SDK_ZIP_SHA256', 'QNN_SDK_VERSION',
         # The QNN and TensorRT plugin EPs and the TensorRT plugin's FetchContent seeds, built in the ORT RUN.
-        'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', 'ORT_TENSORRT_EP_COMMIT', 'ORT_TENSORRT_EP_SOURCE_SHA256',
+        'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', 'ORT_QNN_EP_CORE_COMMIT', 'ORT_TENSORRT_EP_COMMIT', 'ORT_TENSORRT_EP_SOURCE_SHA256',
         'ORT_TENSORRT_EP_PROTOBUF_VERSION', 'ORT_TENSORRT_EP_PROTOBUF_SHA256', 'ORT_TENSORRT_EP_ONNX_COMMIT', 'ORT_TENSORRT_EP_ONNX_SHA256',
         'ORT_TENSORRT_EP_GSL_VERSION', 'ORT_TENSORRT_EP_GSL_SHA256', 'ORT_TENSORRT_EP_FLATBUFFERS_VERSION', 'ORT_TENSORRT_EP_FLATBUFFERS_SHA256',
         # AMF headers (fetched on the rocm lane only) and FFmpeg's static software codecs (Build-FfmpegCodecs.ps1, amd64).
@@ -188,7 +188,7 @@ function Get-MediaMergeVersionArg {
         'PYTHON_VERSION', 'OPENCV_VERSION',   # media-core: OpenCV bindings target
         'PY_CYTHON_VERSION',                  # media-core + media-tvm: the Cython both branches install
         'QNN_SDK_ZIP_SHA256', 'QNN_SDK_VERSION', # QAIRT zip pin (#121/#154): every stage that mounts windows/qnn-sdk
-        'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', # media-core: the QNN plugin EP fork
+        'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', 'ORT_QNN_EP_CORE_COMMIT', # media-core: the QNN plugin EP fork
         # media-core: the TensorRT plugin EP and its seeds.
         'ORT_TENSORRT_EP_COMMIT', 'ORT_TENSORRT_EP_SOURCE_SHA256', 'ORT_TENSORRT_EP_PROTOBUF_VERSION', 'ORT_TENSORRT_EP_PROTOBUF_SHA256',
         'ORT_TENSORRT_EP_ONNX_COMMIT', 'ORT_TENSORRT_EP_ONNX_SHA256', 'ORT_TENSORRT_EP_GSL_VERSION', 'ORT_TENSORRT_EP_GSL_SHA256',

@@ -39439,5 +39439,173 @@
   "replace": "foreach ($commandName in @())",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.Ast.Tests.ps1",
   "why": "Shared required command maps retain caller-selected unconditional execution assertions."
+ },
+ {
+  "id": "windows-lane.qnn-source-release-pin",
+  "target": "linux/scripts/01-core/versions.env",
+  "find": "ORT_QNN_EP_CORE_COMMIT=2e2543fbe9fae542f921d47a72d21d5a4ef0b710",
+  "replace": "ORT_QNN_EP_CORE_COMMIT=0000000000000000000000000000000000000000",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "The separate header release retains its independently recorded full original commit."
+ },
+ {
+  "id": "windows-lane.qnn-source-committed-archive",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "\"--output=$archive\" $Commit | Out-Host",
+  "replace": "\"--output=$archive\" HEAD | Out-Host",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "The archive uses the checked commit even when the repository HEAD has moved."
+ },
+ {
+  "id": "windows-lane.qnn-source-archive-line-endings",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "-c core.autocrlf=false -c core.eol=lf ",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "Host autocrlf must not change canonical header bytes or break the upstream patches."
+ },
+ {
+  "id": "windows-lane.qnn-source-archive-status",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "    if ($LASTEXITCODE -ne 0) { throw \"QNN ort_core archive failed (exit $LASTEXITCODE).\" }",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "A failed native archive command remains fatal."
+ },
+ {
+  "id": "windows-lane.qnn-source-archive-hash",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "$Archive -Algorithm SHA256 -ErrorAction Stop",
+  "replace": "$Archive -Algorithm SHA384 -ErrorAction Stop",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "The local archive hash and CMake algorithm must agree exactly."
+ },
+ {
+  "id": "windows-lane.qnn-source-dependency-cardinality",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "$entries.Count -ne 1 -or $entries[0].Value -cnotmatch $change.Expected",
+  "replace": "$entries.Count -eq 0 -or $entries[0].Value -cnotmatch $change.Expected",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "Duplicate dependency declarations must refuse before substitution."
+ },
+ {
+  "id": "windows-lane.qnn-source-dependency-release",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "[regex]::Escape($Version)",
+  "replace": "'1.31.1'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "The dependency release comes from the unchanged QNN fork, separately from the newer chain core."
+ },
+ {
+  "id": "windows-lane.qnn-source-original-digest-shape",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "'\\.zip;[0-9a-f]{40}$'",
+  "replace": "'\\.zip;[0-9a-f]+$'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "An unverified original dependency declaration is not silently replaced."
+ },
+ {
+  "id": "windows-lane.qnn-source-persisted-substitution",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "return $entries.Count -eq 1 -and $entries[0].Value -ceq $change.Replacement",
+  "replace": "return $true",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "A helper that writes nothing must fail the persisted archive metadata check."
+ },
+ {
+  "id": "windows-lane.qnn-source-cmake-sha256",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "Replacement = 'URL_HASH SHA256=${DEP_SHA1_ort_core}'",
+  "replace": "Replacement = 'URL_HASH SHA1=${DEP_SHA1_ort_core}'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "CMake verifies the new local archive with SHA256 without dropping its patch population."
+ },
+ {
+  "id": "windows-lane.qnn-source-fork-core-version",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "$coreVersion = Get-OrtQnnEpCoreVersion -ForkRoot $forkRoot",
+  "replace": "$coreVersion = '1.31.1'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "The executable source path must read the fork-declared header release before cloning."
+ },
+ {
+  "id": "windows-lane.qnn-source-clone-unconditional",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "$null = Invoke-OrtSourceClone -SourceDir $coreSource -Version $coreVersion -ExpectedCommit $env:ORT_QNN_EP_CORE_COMMIT",
+  "replace": "if ($false) { $null = Invoke-OrtSourceClone -SourceDir $coreSource -Version $coreVersion -ExpectedCommit $env:ORT_QNN_EP_CORE_COMMIT }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "The exact-commit source identity check must execute before archiving and configuring."
+ },
+ {
+  "id": "windows-lane.qnn-source-substitution-unconditional",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "Set-OrtQnnEpCoreArchive -ForkRoot $forkRoot -Archive $coreArchive -Version $coreVersion",
+  "replace": "if ($false) { Set-OrtQnnEpCoreArchive -ForkRoot $forkRoot -Archive $coreArchive -Version $coreVersion }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "The original unavailable download cannot remain selected at configure time."
+ },
+ {
+  "id": "windows-lane.qnn-source-archive-pin",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "$coreArchive = Save-OrtQnnEpCoreArchive -SourceDir $coreSource -Root $SourceDir -Version $coreVersion -Commit $env:ORT_QNN_EP_CORE_COMMIT",
+  "replace": "$coreArchive = Save-OrtQnnEpCoreArchive -SourceDir $coreSource -Root $SourceDir -Version $coreVersion -Commit $env:ONNXRUNTIME_WINDOWS_SOURCE_COMMIT",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "The archive and clone must use the same separate header commit."
+ },
+ {
+  "id": "windows-lane.qnn-source-driver-pin",
+  "target": "windows/scripts/modules/WindowsBuildDriver.Common.psm1",
+  "find": "'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', 'ORT_QNN_EP_CORE_COMMIT', 'ORT_TENSORRT_EP_COMMIT'",
+  "replace": "'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', 'ORT_TENSORRT_EP_COMMIT'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildDriver.MediaLane.Tests.ps1 -ResultFile logs/test-results/qnn-source-mutations/driver.json",
+  "why": "The media-core driver forwards the separate header commit."
+ },
+ {
+  "id": "windows-lane.qnn-source-merge-scope",
+  "target": "windows/scripts/modules/WindowsBuildDriver.Common.psm1",
+  "find": "'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', 'ORT_QNN_EP_CORE_COMMIT', # media-core: the QNN plugin EP fork",
+  "replace": "'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', # media-core: the QNN plugin EP fork",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildDriver.MediaLane.Tests.ps1 -ResultFile logs/test-results/qnn-source-mutations/driver.json",
+  "why": "The compile-only QNN header pin must not pollute the media merge key."
+ },
+ {
+  "id": "windows-lane.qnn-source-stage-arg",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "ARG ORT_QNN_EP_CORE_COMMIT\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.TwinParity.Tests.ps1 -ResultFile logs/test-results/qnn-source-mutations/stage.json",
+  "why": "The ONNX compile stage declares the forwarded QNN header commit."
+ },
+ {
+  "id": "windows-lane.qnn-source-stage-env",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "    ORT_QNN_EP_CORE_COMMIT=\"${ORT_QNN_EP_CORE_COMMIT}\" `\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.TwinParity.Tests.ps1 -ResultFile logs/test-results/qnn-source-mutations/stage.json",
+  "why": "The stage passes the header commit to the QNN builder process."
+ },
+ {
+  "id": "windows-lane.qnn-fixture-callback-arguments",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "        & $Body $d @FixtureArgumentList\n",
+  "replace": "        & $Body $d\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/test-results/qnn-source-mutations/fixtures.json",
+  "why": "Shared directory fixture callbacks retain argument identity, boundaries and nested collections."
+ },
+ {
+  "id": "windows-lane.qnn-fixture-committed-identity",
+  "target": "windows/scripts/tests/WindowsHarness.GitFixtures.psm1",
+  "find": "    if ($PassThru) { Invoke-TestGitCommand -Path $Path -ArgumentList @('rev-parse', 'HEAD') }",
+  "replace": "    if ($false) { }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.GitFixtures.Tests.ps1",
+  "why": "Optional Git fixture commit results preserve the full actual identity while the default stays silent."
+ },
+ {
+  "id": "windows-lane.qnn-fixture-caller-bindings",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "function Invoke-InTestDir {\n    param([Parameter(Mandatory)][scriptblock]$Body, [Collections.IDictionary]$Files, [Alias('Prefix')][string]$DirectoryPrefix = 'wbt-', [object[]]$FixtureArgumentList = @())\n    $global:LASTEXITCODE = 0\n    $d = New-TestDir -Prefix $DirectoryPrefix -Files $Files\n    try {\n        & $Body $d @FixtureArgumentList\n    }\n    finally { Remove-TestDir -Path $d }\n}\n",
+  "replace": "function Invoke-InTestDir {\n    param([Parameter(Mandatory)][scriptblock]$Body, [Collections.IDictionary]$Files, [Alias('Prefix')][string]$DirectoryPrefix = 'wbt-', [Alias('FixtureArgumentList')][object[]]$BodyArgumentList = @())\n    $global:LASTEXITCODE = 0\n    $d = New-TestDir -Prefix $DirectoryPrefix -Files $Files\n    try {\n        & $Body $d @BodyArgumentList\n    }\n    finally { Remove-TestDir -Path $d }\n}\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/test-results/qnn-source-mutations/fixtures.json",
+  "why": "Directory fixture argument transport must not hide the enclosing function-module callback bindings."
  }
 ]

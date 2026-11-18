@@ -18,6 +18,8 @@
 
 ## 2026-11-18 — retain ONNX source identity when the primary repository is unavailable
 
+- Windows QNN preserves its separate original ONNX header commit and all upstream CMake patches while recovering unavailable source downloads through a verified local archive.
+
 - Pin the Windows ONNX core to its full original 1.31.1 commit. Keep the primary tag clone first; after its bounded retries, fetch that exact commit from the AMD-maintained fork with shallow recursive submodules.
 - Reject commit or VERSION_NUMBER mismatches and any failed fetch, checkout or submodule command before source patches or compilation. Existing non-ONNX clone behavior is unchanged.
 - Share required AST command selection, argument identity, scope and order checks across the affected wiring suites, preserving the existing call-assertion diagnostics and mutation cases.

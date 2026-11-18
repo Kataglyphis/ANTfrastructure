@@ -154,11 +154,11 @@ function New-TestDir {
 
 # Zeroes $LASTEXITCODE so cases that inspect native exit codes are isolated from earlier runs.
 function Invoke-InTestDir {
-    param([Parameter(Mandatory)][scriptblock]$Body, [Collections.IDictionary]$Files, [Alias('Prefix')][string]$DirectoryPrefix = 'wbt-')
+    param([Parameter(Mandatory)][scriptblock]$Body, [Collections.IDictionary]$Files, [Alias('Prefix')][string]$DirectoryPrefix = 'wbt-', [object[]]$FixtureArgumentList = @())
     $global:LASTEXITCODE = 0
     $d = New-TestDir -Prefix $DirectoryPrefix -Files $Files
     try {
-        & $Body $d
+        & $Body $d @FixtureArgumentList
     }
     finally { Remove-TestDir -Path $d }
 }

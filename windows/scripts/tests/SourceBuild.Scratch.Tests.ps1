@@ -43,15 +43,14 @@ function Remove-Item {
 
 function Invoke-QnnScratchCase {
     param([Parameter(Mandatory)][scriptblock]$Body)
-    $scratchCase = $Body
-    Invoke-InTestDir -Files @{
+    Invoke-InTestDir -FixtureArgumentList $Body -Files @{
         'build/qnn-sdk-extract/qairt/lib-safe/aarch64-android/libQnnHtpPrepare.so' = 'temporary SDK'
         'build/qnn-sdk-cache/qairt.zip' = 'pinned archive'
         'build/cpython/python.exe' = 'chain interpreter'
         'runtime/QnnCpu.dll' = 'selected runtime'
         'profile-temp/old.txt' = 'ordinary scratch'
     } -Body {
-        param($root)
+        param($root, $scratchCase)
         $state = @{
             Root = $root; Build = (Join-Path $root 'build'); Sdk = (Join-Path $root 'build/qnn-sdk-extract')
             Cache = (Join-Path $root 'build/qnn-sdk-cache/qairt.zip'); Runtime = (Join-Path $root 'runtime/QnnCpu.dll')

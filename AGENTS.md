@@ -14,7 +14,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
 | Wire a new project to this repo | [`docs/adopting-in-a-new-project.md`](docs/adopting-in-a-new-project.md) |
 | **Add or bump a dependency** | [`docs/third-party-licenses.md`](docs/third-party-licenses.md) § Maintaining this list — an `spdx` id is mandatory, copyleft needs a source pointer, and the build gates both |
 
-Windows ONNX source recovery must retain the full release commit, matching version file and recursively pinned submodules; a mirror branch or successful download alone is insufficient.
+Windows ONNX source recovery must retain the full release commit, matching version file and recursively pinned submodules; a mirror branch or successful download alone is insufficient. QNN header recovery preserves its separate release and CMake patch population through a verified local source archive.
 
 ## Contents
 

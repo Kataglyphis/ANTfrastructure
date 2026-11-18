@@ -2528,6 +2528,10 @@ and remove recursion; each must fail the suite.
 
 ## Structural test AST helpers
 
+Directory fixtures forward optional callback arguments after their root without
+flattening nested objects. Git fixture commits remain silent by default;
+`Add-TestGitCommit -PassThru` returns the full committed identity for source tests.
+
 Source-wiring suites share `Get-TestScriptCommandMap` for required command
 cardinality, optional text selection, and caller-selected order and unconditional
 checks. It preserves the original AST nodes for argument binding and delegates

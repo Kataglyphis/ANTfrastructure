@@ -627,3 +627,17 @@ Describe 'Recorded native command fixtures' {
         Assert-Null (Get-Command Invoke-RecordedNativeFixture -ErrorAction SilentlyContinue)
     }
 }
+
+Describe 'Directory fixture callback arguments' {
+    It 'passes the root then exact argument objects without flattening nested arrays' {
+        $expectedIdentity = [pscustomobject]@{ Value = 'fixture identity' }
+        Invoke-InTestDir -FixtureArgumentList @($expectedIdentity, 'argument with spaces', @('first', 'second')) -Body {
+            param($root, $receivedIdentity, $label, $items)
+            Assert-True (Test-Path -LiteralPath $root -PathType Container) 'fixture root remains first'
+            Assert-True ([object]::ReferenceEquals($expectedIdentity, $receivedIdentity)) 'caller identity survives forwarding'
+            Assert-Equal 'argument with spaces' $label 'one string argument'
+            Assert-Equal 2 $items.Count 'nested collection remains one argument'
+            Assert-Equal 'first|second' ($items -join '|')
+        }.GetNewClosure()
+    }
+}

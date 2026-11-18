@@ -2129,6 +2129,28 @@ listing or a cached probe. Do not infer a kernel cause from the cleanup timing.
 
 ## Windows: container networking
 
+### Windows ONNX source returns HTTP 404 while other public repositories work
+
+An inaccessible repository is not evidence of broken container DNS or a deleted
+project. Check the exact URL and retain the failure. The Windows core pairs its
+release with a full original commit; its bounded fallback checks the same commit,
+version and recursive submodules from the maintained mirror before any patch.
+See [pinned source recovery](windows-builds.md#pinned-windows-onnx-runtime-sources).
+QNN separately needs its older header release; its verified local archive retains
+CMake population and all original patches, with a SHA256 transport check.
+See [the QNN header transport](windows-cross-builds.md#the-qnn-plugin-ep).
+
+### QNN source patches fail with `different line endings` after a local Git archive
+
+Windows Git can apply host `core.autocrlf` while exporting a source ZIP. That
+changes LF source bytes and prevents the fork's original patches from applying.
+The QNN archive command fixes `core.autocrlf=false` and `core.eol=lf` for that
+invocation while retaining repository export attributes. Its regression uses
+an enabled host conversion and a later HEAD to check the requested commit's
+exact header bytes. A separate real CMake probe applies all six original patches
+and reverses them to the canonical export; it proves no plugin compilation.
+
+
 ### `Could not resolve host: github.com` seconds into the first downloading RUN
 
 **Symptom.** BK lane, seconds into the first downloading RUN: `Could not resolve host: github.com` / `git clone failed (exit 128)`

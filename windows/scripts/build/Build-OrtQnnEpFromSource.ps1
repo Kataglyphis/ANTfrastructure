@@ -46,6 +46,46 @@ function Get-OrtQnnEpCoreVersion {
     return $line.Matches[0].Groups[1].Value
 }
 
+function Save-OrtQnnEpCoreArchive {
+    # Archive committed bytes so FetchContent still extracts and applies the fork's original patches.
+    param([Parameter(Mandatory)][string]$SourceDir, [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string]$Version, [Parameter(Mandatory)][string]$Commit)
+    $archive = Join-Path $Root "ort-core-archive/refs/tags/v$Version.zip"
+    $null = New-Item -ItemType Directory -Path (Split-Path $archive -Parent) -Force
+    & git -c core.autocrlf=false -c core.eol=lf -C $SourceDir archive --format=zip "--prefix=onnxruntime-$Version/" "--output=$archive" $Commit | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "QNN ort_core archive failed (exit $LASTEXITCODE)." }
+    return $archive
+}
+
+function Set-OrtQnnEpCoreArchive {
+    # Keep upstream patch population, using SHA256 for the newly created local transport archive.
+    param([Parameter(Mandatory)][string]$ForkRoot, [Parameter(Mandatory)][string]$Archive,
+        [Parameter(Mandatory)][string]$Version)
+    $digest = (Get-FileHash -LiteralPath $Archive -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+    $changes = @(
+        @{ Path = 'cmake/deps.txt'; Pattern = '(?m)^ort_core;[^\r\n]+'
+            Expected = '^ort_core;https://github\.com/microsoft/onnxruntime/archive/refs/tags/v' + [regex]::Escape($Version) + '\.zip;[0-9a-f]{40}$'
+            Replacement = "ort_core;$($Archive -replace '\\', '/');$digest" }
+        @{ Path = 'cmake/external/onnxruntime_external_deps.cmake'; Pattern = 'URL_HASH [^\r\n]*\$\{DEP_SHA1_ort_core\}'
+            Expected = '^URL_HASH SHA1=\$\{DEP_SHA1_ort_core\}$'
+            Replacement = 'URL_HASH SHA256=${DEP_SHA1_ort_core}' }
+    )
+    foreach ($change in $changes) {
+        $path = Join-Path $ForkRoot $change.Path
+        $null = Edit-SourceFile -Path $path -Require -Transform {
+            param($text)
+            $entries = [regex]::Matches($text, $change.Pattern)
+            if ($entries.Count -ne 1 -or $entries[0].Value -cnotmatch $change.Expected) { throw 'QNN ort_core dependency identity changed; refusing archive substitution.' }
+            return $text.Replace($entries[0].Value, $change.Replacement)
+        }.GetNewClosure()
+        Assert-SourceFileContent -Path $path -Condition {
+            param($text)
+            $entries = [regex]::Matches($text, $change.Pattern)
+            return $entries.Count -eq 1 -and $entries[0].Value -ceq $change.Replacement
+        }.GetNewClosure() -FailureMessage 'QNN ort_core archive substitution did not persist.'
+    }
+}
+
 function Get-OrtQnnEpChainFile {
     # The chain's core and shared-provider DLLs and import libraries, keyed by the names the fork's copy step wants.
     param([Parameter(Mandatory)][string]$OrtPrefix)
@@ -168,8 +208,13 @@ if (-not $sdk) {
 $pin = Get-OrtQnnEpPin
 Reset-SourceBuildDirectory -Path $SourceDir
 $forkRoot = Save-VerifiedSourceArchive -Pin $pin -Archive (Join-Path $SourceDir "onnxruntime-qnn-$($pin.Version).tar.gz") -Destination (Join-Path $SourceDir 'src')
+$coreVersion = Get-OrtQnnEpCoreVersion -ForkRoot $forkRoot
+$coreSource = Join-Path $SourceDir 'ort-core-source'
+$null = Invoke-OrtSourceClone -SourceDir $coreSource -Version $coreVersion -ExpectedCommit $env:ORT_QNN_EP_CORE_COMMIT
+$coreArchive = Save-OrtQnnEpCoreArchive -SourceDir $coreSource -Root $SourceDir -Version $coreVersion -Commit $env:ORT_QNN_EP_CORE_COMMIT
+Set-OrtQnnEpCoreArchive -ForkRoot $forkRoot -Archive $coreArchive -Version $coreVersion
 $ortHome = New-OrtQnnEpHome -OrtPrefix $ortPrefix -Path (Join-Path $SourceDir 'ort-home')
-Write-Host "QNN plugin EP v$($pin.Version) ($arch): QAIRT $($sdk.Home), chain ORT $ortPrefix, ort_core headers v$(Get-OrtQnnEpCoreVersion -ForkRoot $forkRoot)"
+Write-Host "QNN plugin EP v$($pin.Version) ($arch): QAIRT $($sdk.Home), chain ORT $ortPrefix, ort_core headers v$coreVersion commit=$env:ORT_QNN_EP_CORE_COMMIT"
 
 Switch-BuildPhase '2. configure (onnxruntime_ORT_HOME: no ORT core of its own)'
 $py = Initialize-ToolchainPythonEnvironment

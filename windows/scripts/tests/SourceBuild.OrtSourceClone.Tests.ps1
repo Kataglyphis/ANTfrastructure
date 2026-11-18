@@ -9,9 +9,8 @@ function New-OrtSourceFixture {
     param([string]$Directory, [string]$ActualVersion, [string]$Payload = 'pinned payload', [switch]$SingleCommit)
     $repo = New-TestGitRepository -Path (Join-Path $Directory 'origin with spaces')
     if (-not $SingleCommit) { Add-TestGitCommit -Path $repo -Files @{ VERSION_NUMBER = $ActualVersion; 'payload.txt' = 'first' } }
-    Add-TestGitCommit -Path $repo -Files @{ VERSION_NUMBER = $ActualVersion; 'payload.txt' = $Payload } -Message 'release'
+    $commit = Add-TestGitCommit -Path $repo -Files @{ VERSION_NUMBER = $ActualVersion; 'payload.txt' = $Payload } -Message 'release' -PassThru
     $null = Invoke-TestGitCommand -Path $repo -ArgumentList @('tag', 'v1.31.1')
-    $commit = @(Invoke-TestGitCommand -Path $repo -ArgumentList @('rev-parse', 'HEAD'))[-1]
     return [pscustomobject]@{
         Directory = $Directory; Repo = $repo; Commit = $commit
         Options = @{ SourceDir = Join-Path $Directory 'checkout with spaces'; Version = '1.31.1'; ExpectedCommit = $commit

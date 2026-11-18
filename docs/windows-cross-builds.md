@@ -1176,6 +1176,19 @@ no plugin, with one notice, as before.
   `Copy-OrtQnnEpHeader` lays the fork's `_deps\ort_core-src` public headers flat into
   `ort-home\include`. It loads into the chain's ORT through the plugin ABI. Leave the fork's
   `ort_core` pin alone: Qualcomm validated the plugin against it.
+  `ORT_QNN_EP_CORE_COMMIT` binds that separate release to its full original Git
+  commit. The archive command fixes host autocrlf/eol settings for canonical
+  export bytes and retains repository attributes. The shared source clone verifies its version and recursively pinned
+  submodules. `git archive` packages only committed bytes; the builder replaces
+  exactly one original `ort_core` URL/hash with this local ZIP and its computed
+  SHA256. The matching CMake URL_HASH declaration changes to SHA256; its
+  six patch commands remain unchanged. Its path retains `refs/tags/v<version>.zip` for the fork's version parser.
+  CMake still extracts the archive and applies all six original patches in their
+  original order. No `FETCHCONTENT_SOURCE_DIR_ORT_CORE` override bypasses them.
+  Missing archives, drifted/duplicate dependency entries and failed archive
+  commands refuse. This proves transport only, not plugin compilation or NPU use.
+  The original 1.29.0 commit mapping is recorded in the historical
+  [Apache OpenNLP update](https://github.com/apache/opennlp/pull/1216).
 - The fork inherits ORT's MSVC-only `/experimental:external` and its warnings-as-errors; clang-cl reports the switch as
   unused and `-WX` makes that fatal. The ORT build's own fix runs on the fork's `build.ninja` too
   (`Update-NinjaFile -OrtMsvcOnlyFlags`), found by the first arm64 chain of 2026-11-08.
