@@ -2229,6 +2229,15 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 ## Open — hub tooling and the dev host
 
+- [ ] **CON280 — github.com/microsoft/onnxruntime answers 404** [S, ★★]. Since about 2026-11-17 22:20Z the
+      repository, its API and its release assets are gone, with `onnxruntime-genai` and other Microsoft ONNX repos;
+      third-party reports only, no statement from Microsoft or GitHub; pip and NuGet still serve the packages. Seen in
+      the Windows lane's `patch-drift` job (`Test-PatchesApplyClean.ps1`, every ORT patch `FAIL (clone)`, on e48e46a1
+      and f529753c). Every source build that clones `https://github.com/microsoft/onnxruntime(-genai).git` fails the
+      same way until it returns: the cross chain, the Windows media stages. No local checkout of v1.31.1 exists on the
+      Pi dev host. Next: an owner decision whether the family keeps its own mirror of the pinned ORT and GenAI tags
+      once the repos are back. Done when the job is green again and that decision is recorded.
+
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
       Left separately, before a release: the installer's licence wording for the end-user terms.
