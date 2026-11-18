@@ -73,6 +73,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    immutable manifest/config and successful producer/source/cleanup bindings before and after checks;
    its schema-2 receipt cannot promote a registry tag. Validate receipts before pruning checkouts.
    Keep lane-bound runtime identities and exact selected host-worker closures; image and export wheelhouses retain the same gates, and separately located owned wrappers match every selected companion byte.
+   A missing Android stage label requires its exact unpublished Android driver, lane, transport and complete source proof; derive only a local view and preserve the original receipt bytes.
    Linux acceptance restores disposable rootful checkout ownership on every exit;
    failed container cleanup or ownership restoration cannot produce a passed receipt.
    Require a successful engine query to prove every consumer and ownership-helper container absent;

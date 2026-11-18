@@ -55008,9 +55008,89 @@
  {
   "id": "image-acceptance.export-unit-lane",
   "target": "linux/scripts/image_acceptance_local.py",
-  "find": "    return re.compile(r'webgpu-normal-runtime-(?:' + (variant or 'default') + r'-)?' + arch + r'-[0-9-]+\\.service\\Z')\n",
-  "replace": "    return re.compile(r'webgpu-normal-runtime-(?:[a-z]+-)?' + arch + r'-[0-9-]+\\.service\\Z')\n",
+  "find": "    return re.compile(r'webgpu-normal-' + stage + r'-(?:' + (variant or 'default') + r'-)?' + arch + r'-[0-9-]+\\.service\\Z')\n",
+  "replace": "    return re.compile(r'webgpu-normal-' + stage + r'-(?:[a-z]+-)?' + arch + r'-[0-9-]+\\.service\\Z')\n",
   "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
   "why": "Independent lane refusals reject a runtime unit whose explicit vendor differs from its declared variant; no actual runtime or consumer proof."
+ },
+ {
+  "id": "image-acceptance.android-command-lane",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(isinstance(variant, str) and (variant, arch) in LANES, 'Undeclared Android lane differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic Android command, source and parent controls must reject the broken binding; original receipt bytes remain untouched and no real FINAL, hardware or licence acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.android-command-command-shape",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(isinstance(command, list) and all(isinstance(value, str) for value in command), 'Undeclared Android command is missing')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic Android command, source and parent controls must reject the broken binding; original receipt bytes remain untouched and no real FINAL, hardware or licence acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.android-command-driver",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(repo.startswith('ant-local/webgpu-') and command[:2] == ['systemd-run', '--user'] and command[-10:] == expected, 'Undeclared Android driver differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic Android command, source and parent controls must reject the broken binding; original receipt bytes remain untouched and no real FINAL, hardware or licence acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.android-command-transport",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require('--expand-environment=no' in command and [value for value in command if value.startswith('--unit=')] == ['--unit=' + unit]\n            and '--push' not in command and '--gates-only' not in command, 'Undeclared Android transport differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic Android command, source and parent controls must reject the broken binding; original receipt bytes remain untouched and no real FINAL, hardware or licence acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.android-command-variant",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require([value for value in command if value.startswith('CROSS_VARIANT=')] == ['CROSS_VARIANT=' + cast(str, variant)], 'Undeclared Android variant flag differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic Android command, source and parent controls must reject the broken binding; original receipt bytes remain untouched and no real FINAL, hardware or licence acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.android-command-launch",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(type(android.get('launch_status')) is int and android['launch_status'] == 0 and android.get('publication') is False\n            and android.get('source_full_preflight_passed') is True and android.get('producer_source_unchanged') is True, 'Undeclared Android source or launch differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic Android command, source and parent controls must reject the broken binding; original receipt bytes remain untouched and no real FINAL, hardware or licence acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.android-command-source-hash",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(fingerprint(proof) == text(android, 'source_full_preflight_sha256', HASH), 'Undeclared Android complete source proof changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic Android command, source and parent controls must reject the broken binding; original receipt bytes remain untouched and no real FINAL, hardware or licence acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.android-command-source-call",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "        local_api('normal_stage_launch').full_source(source, proof, text(android, 'source_revision', SHA))\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic Android command, source and parent controls must reject the broken binding; original receipt bytes remain untouched and no real FINAL, hardware or licence acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.android-command-stage-call",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    android = android_input(android, platform)\n",
+  "replace": "    android = android\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic Android command, source and parent controls must reject the broken binding; original receipt bytes remain untouched and no real FINAL, hardware or licence acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.android-command-dispatch",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    source = android_command(android, platform)\n",
+  "replace": "    source = Path(text(android, 'source'))\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent Android argv refusals must still execute after separating command and source validation; no actual FINAL, hardware or licence proof."
  }
 ]

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-18 — check ordinary Android commands before local FINAL
+
+- Derive a missing Android stage label from the exact unpublished Android driver, lane, literal transport and hash-bound complete source proof; preserve original producer bytes and reject explicit incorrect labels.
+- Share producer-unit matching across Runtime and Android, and extend independent command, duplicate-flag, launch and source-refusal fixtures across all six supported Linux lane schemas. These fixtures do not establish actual FINAL or GPU acceptance.
+
 ## 2026-11-18 — bind local FINAL acceptance to canonical runtime exports
 
 - Accept the existing image and verified export wheelhouse modes without changing required runtime gates, original source/Android evidence or the complete six-consumer plan.

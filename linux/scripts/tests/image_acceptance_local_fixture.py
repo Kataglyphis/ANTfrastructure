@@ -62,7 +62,7 @@ class LocalFixture:
         self.full_proof = self.root / 'complete-source-proof.json'
         self.full_proof.write_text('{"synthetic":true}\n')
         self.android_path, self.parent_path = self.root / 'android.json', self.root / 'native-parent.json'
-        self.android = {'stage':'android', 'variant':self.variant, 'target_arch':self.arch,
+        self.android: dict[str, Any] = {'stage':'android', 'variant':self.variant, 'target_arch':self.arch,
                         'source_revision':'b' * 40, 'image':'ant-local/webgpu-fixture:cross-android-' + self.arch}
         self.parent = {'manifest':'sha256:' + 'b' * 64, 'config':'sha256:' + 'e' * 64, 'source_revision':'b' * 40}
         self.android_path.write_text(json.dumps(self.android))
@@ -112,6 +112,21 @@ class LocalFixture:
                 'org.opencontainers.image.version':'9' * 40}}}
         self.digest_image = copy.deepcopy(self.tag_image)
         self.alias_row = {'Name':self.reference, 'Digest':self.manifest, 'Platform':self.platform}
+
+    def command_android(self) -> None:
+        self.android.pop('stage')
+        unit = 'webgpu-normal-android-' + self.arch + '-99999999-1.service'
+        directory = self.root / 'android-output'
+        self.android.update(source=str(self.source), output=str(directory), unit=unit, launch_status=0, publication=False,
+                            source_full_preflight_passed=True, producer_source_unchanged=True,
+                            source_full_preflight_proof=str(self.full_proof), source_full_preflight_sha256=LOCAL.fingerprint(self.full_proof))
+        self.android['command'] = ['systemd-run', '--user', '--expand-environment=no', '--unit=' + unit,
+                                  'CROSS_VARIANT=' + self.variant, '/bin/bash', str(self.source / 'linux/scripts/build-cross-stage.sh'),
+                                  '--stage', 'android', '--arch', self.arch, '--image-repo', 'ant-local/webgpu-fixture',
+                                  '--log-dir', str(directory / 'logs')]
+        self.android_path.write_text(json.dumps(self.android))
+        self.invocation['Android_invocation_sha256'] = LOCAL.fingerprint(self.android_path)
+        self.save()
 
     def save(self) -> None:
         self.invocation_path.write_text(json.dumps(self.invocation))

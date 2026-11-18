@@ -58,8 +58,8 @@ def complete_plan(plan: dict[str, Any], canonical: dict[str, Any]) -> None:
     require({**plan, 'platform': canonical['platform']} == canonical, 'Local FINAL acceptance requires the complete canonical consumer contract')
 
 
-def runtime_unit(arch: str, variant: str) -> re.Pattern[str]:
-    return re.compile(r'webgpu-normal-runtime-(?:' + (variant or 'default') + r'-)?' + arch + r'-[0-9-]+\.service\Z')
+def producer_unit(stage: str, arch: str, variant: str) -> re.Pattern[str]:
+    return re.compile(r'webgpu-normal-' + stage + r'-(?:' + (variant or 'default') + r'-)?' + arch + r'-[0-9-]+\.service\Z')
 
 
 def command_binding(invocation: dict[str, Any], android: dict[str, Any], platform: str, parent: str) -> None:
@@ -95,7 +95,7 @@ def producer_inputs(invocation: dict[str, Any], path: Path, platform: str) -> di
     variant = invocation.get('variant')
     require(invocation.get('stage') == 'runtime' and isinstance(variant, str) and (variant, arch) in LANES, 'Local FINAL producer must be a supported ordinary Linux runtime lane')
     require(type(invocation.get('launch_status')) is int and invocation['launch_status'] == 0 and invocation.get('publication') is False, 'Actual unpublished producer launch required')
-    unit = text(invocation, 'unit', runtime_unit(arch, cast(str, variant)))
+    unit = text(invocation, 'unit', producer_unit('runtime', arch, cast(str, variant)))
     require(Path(text(invocation, 'output')).resolve() == path.parent, 'Local runtime invocation directory differs')
     require(invocation.get('source_full_preflight_passed') is True and invocation.get('producer_source_unchanged') is True, 'Complete runtime source proof required')
     source, proof = Path(text(invocation, 'source')), Path(text(invocation, 'source_full_preflight_proof'))
@@ -135,10 +135,44 @@ def host_binding(invocation: dict[str, Any]) -> None:
             require(actual.is_file() and fingerprint(actual) == fingerprint(path), 'Runtime executed wrapper companion differs: ' + path.name)
 
 
+def android_command(android: dict[str, Any], platform: str) -> Path:
+    arch, variant = platform.removeprefix('linux/'), android.get('variant')
+    require(isinstance(variant, str) and (variant, arch) in LANES, 'Undeclared Android lane differs')
+    command = android.get('command')
+    require(isinstance(command, list) and all(isinstance(value, str) for value in command), 'Undeclared Android command is missing')
+    command = cast(list[str], command)
+    source, output_dir = Path(text(android, 'source')), Path(text(android, 'output'))
+    unit = text(android, 'unit', producer_unit('android', arch, cast(str, variant)))
+    repo = text(android, 'image').rsplit(':', 1)[0]
+    expected = ['/bin/bash', str(source / 'linux/scripts/build-cross-stage.sh'), '--stage', 'android', '--arch', arch,
+                '--image-repo', repo, '--log-dir', str(output_dir / 'logs')]
+    require(repo.startswith('ant-local/webgpu-') and command[:2] == ['systemd-run', '--user'] and command[-10:] == expected, 'Undeclared Android driver differs')
+    require('--expand-environment=no' in command and [value for value in command if value.startswith('--unit=')] == ['--unit=' + unit]
+            and '--push' not in command and '--gates-only' not in command, 'Undeclared Android transport differs')
+    require([value for value in command if value.startswith('CROSS_VARIANT=')] == ['CROSS_VARIANT=' + cast(str, variant)], 'Undeclared Android variant flag differs')
+    return source
+
+
+def android_input(android: dict[str, Any], platform: str) -> dict[str, Any]:
+    if 'stage' in android:
+        return android
+    source = android_command(android, platform)
+    require(type(android.get('launch_status')) is int and android['launch_status'] == 0 and android.get('publication') is False
+            and android.get('source_full_preflight_passed') is True and android.get('producer_source_unchanged') is True, 'Undeclared Android source or launch differs')
+    proof = Path(text(android, 'source_full_preflight_proof'))
+    require(fingerprint(proof) == text(android, 'source_full_preflight_sha256', HASH), 'Undeclared Android complete source proof changed')
+    try:
+        local_api('normal_stage_launch').full_source(source, proof, text(android, 'source_revision', SHA))
+    except AssertionError as error:
+        raise ValueError('Undeclared Android source proof failed: ' + str(error)) from error
+    return {**android, 'stage': 'android'}
+
+
 def parent_binding(invocation: dict[str, Any], platform: str) -> tuple[dict[str, Any], str]:
     android_path, proof_path = Path(text(invocation, 'Android_invocation')), Path(text(invocation, 'parent_OCI_proof'))
     require(fingerprint(android_path) == text(invocation, 'Android_invocation_sha256', HASH) and fingerprint(proof_path) == text(invocation, 'parent_OCI_proof_sha256', HASH), 'Original Android evidence changed')
     android, proof = read_object(android_path), read_object(proof_path)
+    android = android_input(android, platform)
     require(android.get('stage') == 'android' and android.get('target_arch') == platform.removeprefix('linux/') and android.get('variant') == invocation['variant'], 'Original Android lane differs')
     require(android.get('source_revision') == proof.get('source_revision') == text(invocation, 'parent_source_revision', SHA), 'Original Android source differs')
     require(proof.get('manifest') == text(invocation, 'parent_manifest', DIGEST) and proof.get('config') == text(invocation, 'parent_config', DIGEST), 'Original Android image differs')
@@ -237,7 +271,7 @@ def validate_receipt(receipt: dict[str, Any], image: str, platform: str) -> None
         text(before, key, DIGEST)
     terminal = before.get('unit', {})
     require(isinstance(terminal, dict), 'Local receipt producer unit is malformed')
-    text(terminal, 'Id', runtime_unit(platform.removeprefix('linux/'), variant))
+    text(terminal, 'Id', producer_unit('runtime', platform.removeprefix('linux/'), variant))
     require(terminal.get('LoadState') == 'loaded' and terminal.get('ActiveState') == 'active' and terminal.get('SubState') == 'exited', 'Local receipt producer was not terminal')
     require(terminal.get('MainPID') == terminal.get('ExecMainStatus') == '0' and terminal.get('Result') == 'success', 'Local receipt producer failed or was live')
     require(type(before.get('exit_timestamp_monotonic')) is int and before['exit_timestamp_monotonic'] > 0, 'Local receipt producer never exited')

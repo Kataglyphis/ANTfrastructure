@@ -102,6 +102,7 @@ class LocalAcceptanceTests(unittest.TestCase):
                     fixture.invocation['unit'] = fixture.terminal.return_value['Id'] = fixture.unit
                     fixture.invocation['command'] = [value.replace('RUNTIME_WHEELS_SOURCE=image', 'RUNTIME_WHEELS_SOURCE=export').replace(old_unit, fixture.unit) for value in fixture.invocation['command']]
                     fixture.save()
+                    fixture.command_android()
                 with fixture.commands(), self.subTest(variant=variant, arch=arch, mode=mode):
                     MAIN.check(fixture.args)
                 receipt = json.loads(Path(fixture.args.receipt).read_text())
@@ -110,11 +111,11 @@ class LocalAcceptanceTests(unittest.TestCase):
                 self.assertEqual(len(receipt['consumers']), 6)
 
     def test_explicit_runtime_unit_never_changes_lane_or_architecture(self) -> None:
-        pattern = LOCAL.runtime_unit('amd64', '')
+        pattern = LOCAL.producer_unit('runtime', 'amd64', '')
         for unit in ['webgpu-normal-runtime-rocm-amd64-999-1.service', 'webgpu-normal-runtime-default-arm64-999-1.service',
                      'webgpu-normal-runtime-nvidia-amd64-999-1.service', 'webgpu-normal-runtime-default-amd64-999-1.service.extra']:
             self.assertIsNone(pattern.fullmatch(unit))
-        self.assertIsNone(LOCAL.runtime_unit('amd64', 'rocm').fullmatch('webgpu-normal-runtime-default-amd64-999-1.service'))
+        self.assertIsNone(LOCAL.producer_unit('runtime', 'amd64', 'rocm').fullmatch('webgpu-normal-runtime-default-amd64-999-1.service'))
 
     def test_reference_and_object_text_inputs_reject_mutable_foreign_or_missing_values(self) -> None:
         for reference in ['ant-local/webgpu-fixture:latest', 'ghcr.io/owner/image@' + self.fixture.manifest,
@@ -286,6 +287,48 @@ class LocalAcceptanceTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 LOCAL.parent_binding(changed, self.fixture.platform)
         self.fixture.android_path.write_text(json.dumps(self.fixture.android))
+
+    def test_undeclared_android_requires_actual_source_and_preserves_original_bytes(self) -> None:
+        self.fixture.command_android()
+        original = self.fixture.android_path.read_bytes()
+        with self.fixture.commands():
+            normalized = LOCAL.android_input(self.fixture.android, self.fixture.platform)
+            self.assertEqual(normalized['stage'], 'android')
+            self.assertNotIn('stage', self.fixture.android)
+            self.fixture.full_source.assert_called_once_with(self.fixture.source, self.fixture.full_proof, 'b' * 40)
+            self.fixture.full_source.side_effect = AssertionError('synthetic complete-source refusal')
+            with self.assertRaisesRegex(ValueError, 'synthetic complete-source refusal'):
+                LOCAL.android_input(self.fixture.android, self.fixture.platform)
+        self.assertEqual(self.fixture.android_path.read_bytes(), original)
+
+    def test_undeclared_android_requires_valid_lane_launch_and_exact_source_evidence(self) -> None:
+        self.fixture.command_android()
+        for key, value in [('variant', None), ('variant', 'other'), ('unit', 'foreign.service'),
+                           ('launch_status', True), ('launch_status', 1), ('publication', True),
+                           ('source_full_preflight_passed', False), ('producer_source_unchanged', False),
+                           ('source_full_preflight_sha256', '0' * 64), ('source_revision', 'invalid'),
+                           ('command', None), ('command', [1])]:
+            with self.fixture.commands(), self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                LOCAL.android_input({**self.fixture.android, key:value}, self.fixture.platform)
+
+    def test_undeclared_android_full_driver_argv_and_variant_flag_cannot_change(self) -> None:
+        self.fixture.command_android()
+        original = self.fixture.android['command']
+        changes = [original[:-1], ['foreign', *original[1:]], [*original, '--push'], [*original, '--gates-only'],
+                   [value for value in original if value != '--expand-environment=no'],
+                   [value for value in original if not value.startswith('--unit=')],
+                   [value for value in original if not value.startswith('CROSS_VARIANT=')],
+                   [*original[:4], 'CROSS_VARIANT=foreign', *original[5:]],
+                   [*original[:4], 'CROSS_VARIANT=' + self.fixture.variant, *original[4:]],
+                   [*original[:4], '--unit=foreign.service', *original[4:]],
+                   [*original[:4], '--unit=' + self.fixture.android['unit'], *original[4:]]]
+        for index in range(len(original) - 10, len(original)):
+            changed = original.copy()
+            changed[index] = 'foreign'
+            changes.append(changed)
+        for command in changes:
+            with self.fixture.commands(), self.subTest(command=command), self.assertRaises(ValueError):
+                LOCAL.android_input({**self.fixture.android, 'command':command}, self.fixture.platform)
 
     def test_runtime_driver_every_gate_vendor_and_original_android_pin_are_required(self) -> None:
         original = self.fixture.invocation['command']

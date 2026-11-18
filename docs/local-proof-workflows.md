@@ -278,6 +278,8 @@ Actual Runtime5 completed base (244 s, status 0) and package import (938 s, stat
 
 The producer-bound checks accept both canonical wheelhouse delivery modes and bind an explicit lane name to the same declared variant. A separate owned-wrapper checkout is permitted only with identical selected companion bytes and a clean tree; the host revision and complete worker mapping still identify the original launcher checkout. No producer receipt is rewritten to fit the acceptance tool.
 
+Missing Android stage metadata is derived only from its complete checked ordinary Android command and original full-source proof. Preserve the unchanged receipt and its original hash, and retain the distinct actual native-parent proof. The synthetic controls cover all six lane schemas; they do not prove new consumer execution or hardware support.
+
 The explicit [unpublished FINAL mode](image-acceptance.md#check-an-unpublished-local-final-wrapper)
 uses the existing full consumer runner and a producer-bound local receipt. It shares
 `runtime_worker_files` and the platform/engine-aware `prepare_local_alias` helper;
