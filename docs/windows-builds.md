@@ -2981,6 +2981,17 @@ A successful primary clone with a mismatched identity refuses immediately;
 the fallback cannot override that failure. Fetch, checkout and submodule failures
 remain fatal. A mirror branch tip or a version string alone is never accepted.
 
+`Test-PatchesApplyClean.ps1` uses the same pin and identity validators with a
+sparse checkout. Its primary tag stays first; only a failed clone permits the
+same original commit from the mirror, without requiring a mirror tag. Clone
+errors and identity mismatches fail before caching or checking patches. The
+checkout retains `core.autocrlf=false`, target checks and both Git and GNU patch
+dry runs. A diagnostic `-Versions` release override also needs its matching
+`ONNXRUNTIME_SOURCE_COMMIT`. Sparse patch checks prove no recursive-submodule,
+compiler or hardware acceptance; full source builds retain their recursive path.
+Both local suites carry `WindowsOrt.SourceFixture.psm1` and its Git/harness
+companions; their shared release fixture preserves callback scope and payload paths.
+
 The 1.31.1 pin is `6af1a932e2286d5c58166085d24c68783033edee`.
 The historical [Apache OpenNLP Dependabot update](https://github.com/apache/opennlp/pull/1514)
 records the full original Microsoft release commit; the own previously accepted

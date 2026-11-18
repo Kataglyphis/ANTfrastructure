@@ -18,6 +18,8 @@
 
 ## 2026-11-18 — retain ONNX source identity when the primary repository is unavailable
 
+- Use the same original commit and release checks in sparse ONNX patch-drift CI, retaining Git and GNU patch dry runs and a tagless exact-commit fallback.
+
 - Run the eight source-pin declaration and routing mutations through the portable source-archive harness, retaining exact ONNX stage checks without requiring Pester or Windows CIM on Linux workers.
 
 - Windows QNN preserves its separate original ONNX header commit and all upstream CMake patches while recovering unavailable source downloads through a verified local archive.

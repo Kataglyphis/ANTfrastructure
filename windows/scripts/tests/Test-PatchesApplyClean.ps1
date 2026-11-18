@@ -15,7 +15,7 @@
     Root of the patch tree (default: windows/scripts/patches).
 
 .PARAMETER Versions
-    Hashtable overriding the pinned ref per repo key; MIGRAPHX takes a 40-hex commit.
+    Hashtable overriding pinned refs; ONNXRUNTIME_SOURCE_COMMIT must match an overridden ONNXRUNTIME release.
 
 .PARAMETER WorkDir
     Scratch dir for the clones (default: a temp dir, removed afterwards).
@@ -39,11 +39,13 @@ if (-not $WorkDir) { $WorkDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pa
 
 # Refs come from versions.env; these literals are only the fallback when it is missing.
 Import-Module (Join-Path $PSScriptRoot 'TestHarness.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSourceBuild.Common.psm1') -ErrorAction Stop
 $versionsFile = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
 function Get-PatchRefs {
     param([hashtable]$FileVersions = @{}, [hashtable]$Versions = @{})
     $refs = @{
         ONNXRUNTIME = 'v1.27.0'
+        ONNXRUNTIME_SOURCE_COMMIT = ''
         OPENCV      = '5.x'
         FFMPEG      = 'master'
         GSTREAMER   = '1.29.2'
@@ -56,6 +58,7 @@ function Get-PatchRefs {
     }
     foreach ($entry in @(
             @{ Ref = 'ONNXRUNTIME'; Key = 'ONNXRUNTIME_VERSION' },
+            @{ Ref = 'ONNXRUNTIME_SOURCE_COMMIT'; Key = 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT' },
             @{ Ref = 'OPENCV';      Key = 'OPENCV_VERSION' },
             @{ Ref = 'FFMPEG';      Key = 'FFMPEG_VERSION' },
             @{ Ref = 'GSTREAMER';   Key = 'GSTREAMER_VERSION' },
@@ -83,7 +86,7 @@ function Get-PatchRefs {
 function Get-PatchRepoMap {
     param([Parameter(Mandatory)][hashtable]$Refs)
     return @{
-        'onnxruntime'    = @{ Url = 'https://github.com/microsoft/onnxruntime.git';   Ref = $Refs.ONNXRUNTIME }
+        'onnxruntime'    = @{ Url = 'https://github.com/microsoft/onnxruntime.git'; Ref = $Refs.ONNXRUNTIME; ExpectedCommit = $Refs.ONNXRUNTIME_SOURCE_COMMIT; FallbackUrl = 'https://github.com/ROCm/onnxruntime.git' }
         'opencv'         = @{ Url = 'https://github.com/opencv/opencv.git';           Ref = $Refs.OPENCV }
         'opencv_contrib' = @{ Url = 'https://github.com/opencv/opencv_contrib.git';   Ref = $Refs.OPENCV }
         'ffmpeg'         = @{ Url = 'https://github.com/FFmpeg/FFmpeg.git';           Ref = $Refs.FFMPEG }
@@ -134,17 +137,43 @@ function Resolve-GnuPatchExe {
     throw "no GNU patch.exe found (tried: $($candidates -join ', ')): Invoke-SourcePatch applies tarball patches with it, so this gate must too."
 }
 
+function Get-PatchCheckout {
+    param([hashtable]$Spec, [string]$Clone)
+    $refArgs = @(if ($Spec.Ref -match '^[0-9a-f]{40}$') { "--revision=$($Spec.Ref)" } else { '--branch', $Spec.Ref })
+    & git clone --config core.autocrlf=false --depth 1 @refArgs --filter=blob:none --sparse $Spec.Url $Clone 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { return [pscustomobject]@{ Path = ''; Error = 'FAIL (clone)' } }
+    return [pscustomobject]@{ Path = $Clone; Error = '' }
+}
+
+function Get-OrtPatchCheckout {
+    param([hashtable]$Spec, [string]$Clone)
+    try {
+        $version = $Spec.Ref -replace '^v', ''
+        Assert-OrtSourcePin -Version $version -ExpectedCommit $Spec.ExpectedCommit
+        $result = Get-PatchCheckout -Spec $Spec -Clone $Clone
+        if ($result.Error) {
+            Write-Warning "Primary ONNX patch source failed; fetching the pinned commit from $($Spec.FallbackUrl)."
+            Reset-SourceBuildDirectory -Path $Clone
+            $fallback = @{ Url = $Spec.FallbackUrl; Ref = $Spec.ExpectedCommit }
+            $result = Get-PatchCheckout -Spec $fallback -Clone $Clone
+        }
+        if ($result.Error) { return $result }
+        Assert-OrtSourceIdentity -SourceDir $Clone -Version $version -ExpectedCommit $Spec.ExpectedCommit
+        return $result
+    } catch { return [pscustomobject]@{ Path = ''; Error = "FAIL (verified ONNX clone: $($_.Exception.Message))" } }
+}
+
 function Get-PatchClone {
     param([string]$RepoKey, [hashtable]$Spec, [hashtable]$Clones, [string]$WorkDir)
     $cacheKey = "$RepoKey|$($Spec.Ref)"
     if ($Clones[$cacheKey]) { return [pscustomobject]@{ Path = $Clones[$cacheKey]; Error = '' } }
     $clone = Join-Path $WorkDir $cacheKey.Replace('|', '_').Replace('/', '_')
     Write-Host "  clone $RepoKey @ $($Spec.Ref) (sparse)..." -ForegroundColor DarkGray
-    $refArgs = @(if ($Spec.Ref -match '^[0-9a-f]{40}$') { "--revision=$($Spec.Ref)" } else { '--branch', $Spec.Ref })
-    & git clone --config core.autocrlf=false --depth 1 @refArgs --filter=blob:none --sparse $Spec.Url $clone 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { return [pscustomobject]@{ Path = ''; Error = 'FAIL (clone)' } }
+    $result = if ($RepoKey -eq 'onnxruntime') { Get-OrtPatchCheckout -Spec $Spec -Clone $clone }
+    else { Get-PatchCheckout -Spec $Spec -Clone $clone }
+    if ($result.Error) { return $result }
     $Clones[$cacheKey] = $clone
-    return [pscustomobject]@{ Path = $clone; Error = '' }
+    return $result
 }
 
 function Get-PatchApplyStatus {

@@ -39615,5 +39615,109 @@
   "replace": "Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $versions",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
   "why": "Shared pin fixtures retain the selected branch and keep compile-only source pins out of unrelated branches."
+ },
+ {
+  "id": "windows-lane.ort-patch-source-pin-selector",
+  "target": "windows/scripts/tests/Test-PatchesApplyClean.ps1",
+  "find": "@{ Ref = 'ONNXRUNTIME_SOURCE_COMMIT'; Key = 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT' }",
+  "replace": "@{ Ref = 'ONNXRUNTIME_SOURCE_COMMIT'; Key = 'UNUSED_ONNXRUNTIME_SOURCE_COMMIT' }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1",
+  "why": "Patch drift must use the reviewed full original commit rather than an absent or unrelated pin."
+ },
+ {
+  "id": "windows-lane.ort-patch-source-pin-map",
+  "target": "windows/scripts/tests/Test-PatchesApplyClean.ps1",
+  "find": "ExpectedCommit = $Refs.ONNXRUNTIME_SOURCE_COMMIT",
+  "replace": "ExpectedCommit = ('f' * 40)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1",
+  "why": "The checked configured commit must reach the ONNX patch repository specification."
+ },
+ {
+  "id": "windows-lane.ort-patch-mirror-owner",
+  "target": "windows/scripts/tests/Test-PatchesApplyClean.ps1",
+  "find": "https://github.com/ROCm/onnxruntime.git",
+  "replace": "https://github.com/microsoft/onnxruntime.git",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1",
+  "why": "A fallback to the unavailable primary repository cannot recover the original pinned source."
+ },
+ {
+  "id": "windows-lane.ort-patch-shared-import",
+  "target": "windows/scripts/tests/Test-PatchesApplyClean.ps1",
+  "find": "Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\\WindowsSourceBuild.Common.psm1') -ErrorAction Stop\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1",
+  "why": "The real entry point must import its shared identity validators before any patch checkout."
+ },
+ {
+  "id": "windows-lane.ort-patch-pin-before-checkout",
+  "target": "windows/scripts/tests/Test-PatchesApplyClean.ps1",
+  "find": "        Assert-OrtSourcePin -Version $version -ExpectedCommit $Spec.ExpectedCommit\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1",
+  "why": "Malformed commit pins must fail before creating a patch source checkout."
+ },
+ {
+  "id": "windows-lane.ort-patch-identity-before-cache",
+  "target": "windows/scripts/tests/Test-PatchesApplyClean.ps1",
+  "find": "        Assert-OrtSourceIdentity -SourceDir $Clone -Version $version -ExpectedCommit $Spec.ExpectedCommit\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1",
+  "why": "A wrong commit or release cannot enter the patch clone cache after a successful transport."
+ },
+ {
+  "id": "windows-lane.ort-patch-tagless-commit",
+  "target": "windows/scripts/tests/Test-PatchesApplyClean.ps1",
+  "find": "$fallback = @{ Url = $Spec.FallbackUrl; Ref = $Spec.ExpectedCommit }",
+  "replace": "$fallback = @{ Url = $Spec.FallbackUrl; Ref = $Spec.Ref }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1",
+  "why": "The mirror is keyed by the original full commit and need not carry the upstream release tag."
+ },
+ {
+  "id": "windows-lane.ort-patch-sparse-input",
+  "target": "windows/scripts/tests/Test-PatchesApplyClean.ps1",
+  "find": "--filter=blob:none --sparse $Spec.Url $Clone",
+  "replace": "--filter=blob:none $Spec.Url $Clone",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1",
+  "why": "Patch checking retains sparse source selection instead of materializing a full long-path source tree."
+ },
+ {
+  "id": "windows-lane.ort-patch-lf-input",
+  "target": "windows/scripts/tests/Test-PatchesApplyClean.ps1",
+  "find": "clone --config core.autocrlf=false --depth 1",
+  "replace": "clone --depth 1",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1",
+  "why": "Inherited user autocrlf settings must not rewrite patch inputs during sparse checkout."
+ },
+ {
+  "id": "windows-lane.ort-patch-failed-cache",
+  "target": "windows/scripts/tests/Test-PatchesApplyClean.ps1",
+  "find": "    if ($result.Error) { return $result }\n    $Clones[$cacheKey] = $clone",
+  "replace": "    $Clones[$cacheKey] = $clone",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1",
+  "why": "Failed original or fallback clones must never enter the shared clone cache."
+ },
+ {
+  "id": "windows-lane.ort-patch-primary-first",
+  "target": "windows/scripts/tests/Test-PatchesApplyClean.ps1",
+  "find": "        if ($result.Error) {\n",
+  "replace": "        if ($true) {\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1",
+  "why": "A healthy checked primary release must not depend on an unnecessary fallback."
+ },
+ {
+  "id": "windows-lane.ort-patch-identity-export",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "    'Assert-OrtSourceIdentity',\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1",
+  "why": "The patch gate calls the shared identity API from a cold entry scope, so its export is required."
+ },
+ {
+  "id": "windows-lane.ort-patch-fixture-payload-path",
+  "target": "windows/scripts/tests/WindowsOrt.SourceFixture.psm1",
+  "find": "-PayloadPath $fixturePayloadPath\n",
+  "replace": "-PayloadPath 'payload.txt'\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1",
+  "why": "The shared release fixture retains the requested nested payload path so sparse and patch checks exercise the real target."
  }
 ]

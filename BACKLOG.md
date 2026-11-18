@@ -17,7 +17,7 @@ Earlier Windows and GPU measurements remain dated evidence in their individual e
 Decisions and checked closures live in [`docs/image-decisions.md`](docs/image-decisions.md).
 **Re-derive before acting; source completion, image publication and device execution are separate.**
 
-**Windows ONNX source transport, 2026-11-18:** a primary-repository 404 prompted an identity-pinned fallback to the original 1.31.1 commit in the AMD-maintained fork. QNN header transport separately retains its original 1.29.0 commit and all six CMake patches. Source transport checks do not complete the outstanding final-source producer, CUDA-repeat, hosted-CI or ARM64-device/publication requirements. CON228 remains OPEN/DRAFT.
+**Windows ONNX source transport, 2026-11-18:** a primary-repository 404 prompted an identity-pinned fallback to the original 1.31.1 commit in the AMD-maintained fork. QNN header transport separately retains its original 1.29.0 commit and all six CMake patches. Sparse patch-drift CI shares the original source identity checks and fallback; its actual network result remains a separate requirement. Source transport checks do not complete the outstanding final-source producer, CUDA-repeat, hosted-CI or ARM64-device/publication requirements. CON228 remains OPEN/DRAFT.
 **Digests read 2026-11-02:** `:latest-nvidia` is `70bc45db…`, `:latest-rocm` `05518138…` (created 2026-10-28),
 `:winamd64-nvidia` `b472f91b…` and `:winamd64-rocm` `774af209…`. Entries that cite the older Linux `a5d68fbe…` or
 `0e9dec34…` were not read again on the current digests.

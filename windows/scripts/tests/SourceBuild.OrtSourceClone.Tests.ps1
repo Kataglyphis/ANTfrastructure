@@ -5,50 +5,8 @@
 Import-TestRepoModule -Name 'WindowsScripts.Shared', 'WindowsSourceBuild.Common', 'WindowsBuildDriver.Common'
 Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.GitFixtures.psm1') -ErrorAction Stop
 
-function New-OrtSourceFixture {
-    param([string]$Directory, [string]$ActualVersion, [string]$Payload = 'pinned payload', [switch]$SingleCommit)
-    $repo = New-TestGitRepository -Path (Join-Path $Directory 'origin with spaces')
-    if (-not $SingleCommit) { Add-TestGitCommit -Path $repo -Files @{ VERSION_NUMBER = $ActualVersion; 'payload.txt' = 'first' } }
-    $commit = Add-TestGitCommit -Path $repo -Files @{ VERSION_NUMBER = $ActualVersion; 'payload.txt' = $Payload } -Message 'release' -PassThru
-    $null = Invoke-TestGitCommand -Path $repo -ArgumentList @('tag', 'v1.31.1')
-    return [pscustomobject]@{
-        Directory = $Directory; Repo = $repo; Commit = $commit
-        Options = @{ SourceDir = Join-Path $Directory 'checkout with spaces'; Version = '1.31.1'; ExpectedCommit = $commit
-            RepoUrl = $repo; FallbackRepoUrl = $repo; MaxAttempts = 1; InitialDelaySeconds = 0 }
-    }
-}
+Import-Module (Join-Path $PSScriptRoot 'WindowsOrt.SourceFixture.psm1') -ErrorAction Stop
 
-function Invoke-OrtSourceFixture {
-    param([Parameter(Mandatory)][scriptblock]$Exercise, [string]$ActualVersion = '1.31.1')
-    $fixtureExercise = $Exercise
-    Invoke-InTestDir {
-        param($dir)
-        Invoke-WithEnv @{ GIT_ALLOW_PROTOCOL = 'file'; GIT_TERMINAL_PROMPT = '0' } {
-            $fixture = New-OrtSourceFixture -Directory $dir -ActualVersion $ActualVersion
-            & $fixtureExercise $fixture
-        }
-    }.GetNewClosure()
-}
-
-function Add-OrtSourceFixtureSubmodule {
-    param($Fixture, [switch]$Missing)
-    $child = (New-OrtSourceFixture -Directory (Join-Path $Fixture.Directory 'child') -ActualVersion '1.31.1' -Payload 'pinned child' -SingleCommit).Repo
-    $commit = @(Invoke-TestGitCommand -Path $child -ArgumentList @('rev-parse', 'HEAD'))[-1]
-    $childPath = if ($Missing) { Join-Path $Fixture.Directory 'missing child' } else { $child }
-    $url = [uri]::new($childPath).AbsoluteUri
-    Write-TestFileTree -Root $Fixture.Repo -Files @{ '.gitmodules' = "[submodule `"dependency`"]`npath = dependency`nurl = $url`n" }
-    $null = Invoke-TestGitCommand -Path $Fixture.Repo -ArgumentList @('add', '.gitmodules')
-    $null = Invoke-TestGitCommand -Path $Fixture.Repo -ArgumentList @('update-index', '--add', '--cacheinfo', "160000,$commit,dependency")
-    $null = Invoke-TestGitCommand -Path $Fixture.Repo -ArgumentList @('commit', '--quiet', '-m', 'pinned submodule')
-    $Fixture.Options.ExpectedCommit = @(Invoke-TestGitCommand -Path $Fixture.Repo -ArgumentList @('rev-parse', 'HEAD'))[-1]
-    $Fixture.Options.RepoUrl = Join-Path $Fixture.Directory 'missing primary'
-}
-
-function Invoke-OrtFixtureClone {
-    param($Fixture)
-    $cloneArguments = $Fixture.Options
-    Invoke-OrtSourceClone @cloneArguments 3>$null
-}
 Describe 'Pinned ONNX source clone' {
     It 'binds the configured 1.31.1 release to the independently recorded original commit' {
         $versions = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux/scripts/01-core/versions.env')

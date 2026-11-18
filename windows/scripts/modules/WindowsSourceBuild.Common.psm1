@@ -204,6 +204,20 @@ function Get-GitPinnedFetchResult {
     return [pscustomobject]@{ ExitCode = $code; Output = $output.ToArray() }
 }
 
+function Assert-OrtSourcePin {
+    param([string]$Version, [AllowEmptyString()][string]$ExpectedCommit)
+    if ($ExpectedCommit -cnotmatch '^[0-9a-f]{40}$') { throw 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT must be a full lowercase Git commit.' }
+    if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'ONNX source version must be a release version.' }
+}
+
+function Assert-OrtSourceIdentity {
+    param([string]$SourceDir, [string]$Version, [string]$ExpectedCommit)
+    $actual = @(& git -C $SourceDir rev-parse --verify HEAD 2>&1)
+    if ($LASTEXITCODE -ne 0 -or $actual.Count -ne 1 -or $actual[0] -cne $ExpectedCommit) { throw "ONNX source commit mismatch: expected $ExpectedCommit, got $($actual -join ' ')." }
+    $actualVersion = (Get-Content -LiteralPath (Join-Path $SourceDir 'VERSION_NUMBER') -Raw -ErrorAction Stop).Trim()
+    if ($actualVersion -cne $Version) { throw "ONNX source version mismatch: expected $Version, got $actualVersion." }
+}
+
 function Invoke-OrtSourceClone {
     param(
         [Parameter(Mandatory)][string]$SourceDir,
@@ -213,8 +227,7 @@ function Invoke-OrtSourceClone {
         [string]$FallbackRepoUrl = 'https://github.com/ROCm/onnxruntime.git',
         [int]$MaxAttempts = 3, [int]$InitialDelaySeconds = 10
     )
-    if ($ExpectedCommit -cnotmatch '^[0-9a-f]{40}$') { throw 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT must be a full lowercase Git commit.' }
-    if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'ONNX source version must be a release version.' }
+    Assert-OrtSourcePin -Version $Version -ExpectedCommit $ExpectedCommit
     try {
         $null = Invoke-GitClone -RepoUrl $RepoUrl -Tag "v$Version" -SourceDir $SourceDir -Recursive `
             -MaxAttempts $MaxAttempts -InitialDelaySeconds $InitialDelaySeconds
@@ -226,10 +239,7 @@ function Invoke-OrtSourceClone {
             throw "Pinned ONNX fallback failed (exit $($fallback.ExitCode)): $(($fallback.Output | Select-Object -Last 10) -join [Environment]::NewLine)"
         }
     }
-    $actual = @(& git -C $SourceDir rev-parse --verify HEAD 2>&1)
-    if ($LASTEXITCODE -ne 0 -or $actual.Count -ne 1 -or $actual[0] -cne $ExpectedCommit) { throw "ONNX source commit mismatch: expected $ExpectedCommit, got $($actual -join ' ')." }
-    $actualVersion = (Get-Content -LiteralPath (Join-Path $SourceDir 'VERSION_NUMBER') -Raw -ErrorAction Stop).Trim()
-    if ($actualVersion -cne $Version) { throw "ONNX source version mismatch: expected $Version, got $actualVersion." }
+    Assert-OrtSourceIdentity -SourceDir $SourceDir -Version $Version -ExpectedCommit $ExpectedCommit
     return $true
 }
 
@@ -2924,6 +2934,8 @@ Export-ModuleMember -Function @(
     'Invoke-ShieldedNative',
     'Invoke-GitClone',
     'Invoke-OrtSourceClone',
+    'Assert-OrtSourcePin',
+    'Assert-OrtSourceIdentity',
     'Reset-SourceBuildDirectory',
     'Invoke-CmakeConfigure',
     'Invoke-CmakeConfigureLogged',
