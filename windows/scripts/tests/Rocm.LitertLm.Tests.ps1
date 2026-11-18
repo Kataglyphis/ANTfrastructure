@@ -40,7 +40,7 @@ Describe 'Build-LitertLmBazel: the bazel command per lane' {
             foreach ($t in '', 'cpu', 'rocm', 'ROCm') {
                 Invoke-WithEnv @{ GPU_TYPE = $t; HIP_PATH = $dir; ROCM_PATH = $null; TENSORRT_ROOT = '' } {
                     $hasRocm = [bool](Get-GpuEnvironment).HasRocm
-                    Assert-Equal $hasRocm ((Get-LitertLmBazelArg -GpuType $env:GPU_TYPE).Count -eq 5) "GPU_TYPE='$t'"
+                    Assert-Equal $hasRocm (@(Get-LitertLmBazelArg -GpuType $env:GPU_TYPE) -contains '@directx_shader_compiler//:dxc_dlls') "GPU_TYPE='$t'"
                 }
             }
         }

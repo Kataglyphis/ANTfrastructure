@@ -41,6 +41,7 @@ Describe 'FFmpeg codec Meson compiler environment' {
 `$script:Prefix = 'C:\codec-prefix'
 $sharedEnvironment
 function Test-SccacheRemoteConfigured { return `$false }
+function Get-WindowsTargetSimdFlags { param([string]`$Arch) return '/clang:-march=x86-64-v3' }
 function meson {
     `$State.Calls.Add(@(`$args))
     `$State.CompilerStates.Add([pscustomobject]@{
@@ -48,6 +49,8 @@ function meson {
         CC = [Environment]::GetEnvironmentVariable('CC')
         CXXSet = Test-Path Env:CXX
         CXX = [Environment]::GetEnvironmentVariable('CXX')
+        CFLAGS = [Environment]::GetEnvironmentVariable('CFLAGS')
+        CXXFLAGS = [Environment]::GetEnvironmentVariable('CXXFLAGS')
     })
     `$global:LASTEXITCODE = `$State.Code
 }
@@ -74,6 +77,8 @@ function meson {
                 Assert-True $during.CCSet
                 Assert-Equal 'clang-cl' $during.CXX
                 Assert-True $during.CXXSet
+                Assert-Equal '/clang:-march=x86-64-v3' $during.CFLAGS 'meson sees the amd64 floor (CON265)'
+                Assert-Equal '/clang:-march=x86-64-v3' $during.CXXFLAGS
             }
         }
         Invoke-InTestDir {
