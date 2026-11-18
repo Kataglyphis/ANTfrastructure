@@ -21,6 +21,8 @@
   `verify_pattern_limits.py` fails when a row with `max` matches more often and prints `file:line` of each match;
   `run-lint-gates.sh` runs it as its ninth gate. A `max` that is no whole number of zero or more fails too.
   See [pattern limits](docs/code-quality-tooling.md#pattern-limits-pattern-limits).
+- The two sampled consumer rules bind: OxidANT `ef2cad1` (no `[features]` table) and
+  AccelerANTgine `bee101b` (no direct stdout diagnostic in `Src/`), each with a row, a planted-tree test and a recipe.
 
 ## 2026-11-18 — a workspace Cargo license is staged under its file name alone
 

@@ -2399,17 +2399,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       in `test-consumer-hooks.sh`, a default `lint-shell.sh` run lists both hook files, a commit passes
       beside an unstaged deletion, and a commit in a worktree without the submodule is stopped or named.
 
-- [ ] **CON245 — a `kind = "pattern"` row with `max = 0` fails the lint gates** [S, ★★]. Found by the audit of
-      2026-11-12: many AGENTS.md rules are one pattern, and two sampled ones hold by habit only
-      (AccelerANTgine: no direct `g_print`, `printf` or `std::cout` in `Src/`; OxidANT: no `[features]` table
-      in any `Cargo.toml`). `pattern_metric` (`linux/scripts/quality_report_text.py:208`) counts such a row,
-      and a regression is reported, not enforced (`.github/workflows/code-quality-report.yml:111`).
-      First step: the row may carry `max = 0`, and `run-lint-gates.sh` fails when such a row has a match,
-      printing file and line. No new rule registry.
-      **Hub half done 2026-11-18:** `verify_pattern_limits.py`, the ninth gate of `run-lint-gates.sh`, its
-      `lint-gates.pattern-limits-*` recipes and both doc pages. Left: done when the two consumers, on a hub pin with the
-      gate, have added their row with one recipe each.
-
 - [ ] **CON246 — a rise in oversized Rust, Dart or C++ functions shows in `--compare`** [S, ★★]. Found by the
       audit of 2026-11-12. `functions_over_80_lines_extra_languages` is class `REPORT`
       (`linux/scripts/quality_report_tree.py:113`), so `quality-report.sh --compare` never grades it,
