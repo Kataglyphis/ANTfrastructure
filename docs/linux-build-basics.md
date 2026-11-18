@@ -423,6 +423,11 @@ Ubuntu 26.04 and newer.
 Native AMD packages load the CPU ORT core and carry `libmigraphx-ep.so` separately. Source
 `ort-runtime-bundle.sh` before `ort-package-proof.sh`, then call
 `ort_package_stage_amdgpu_licenses ROOT LIB_DIR NEW_LICENSE_DIR` after staging the module.
+An optional fourth `NEW_PROVENANCE_FILE` also stages the image's original `provenance.txt`.
+Keep this file outside the exact license tree, with an existing parent inside `ROOT`.
+Pass the same fourth path to `ort_package_verify_amdgpu` when checking finished payloads.
+Missing, empty or linked originals, changed or linked payloads, escaping parents and existing
+stage targets fail. Copy failures retain their raw status; staging is not atomic.
 The destination parent must already exist inside `ROOT`; stale destinations refuse. The helper
 copies the image's complete original license tree, preserving transitive texts, and requires its
 original plugin LICENSE before writing. Allocation and copy errors retain their raw statuses.

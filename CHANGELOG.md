@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-18 — retain original AMD plugin package provenance
+
+- Extend shared AMD package staging and verification with an optional provenance path outside the exact license tree. Original image bytes, regular files, package containment and fresh stage targets are required; existing three-argument callers retain their behavior.
+- Synthetic refusal cases and mutations cover missing, changed, linked, escaping and overwritten files plus raw copy failures. These checks do not prove linkage, full licence closure or GPU inference.
+
 ## 2026-11-18 — package the selected Linux TAR bundle
 
 - Make Linux TAR use the shared bundle resolver, including `APP_PACKAGING_BUNDLE_DIR`, instead of the raw Flutter tree. This retains the prepared runtime closure and ORT notices in Omni packages.

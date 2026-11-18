@@ -55244,5 +55244,77 @@
   "replace": "${APP_PACKAGING_BUNDLE_DIR-build/linux/${matrix_arch}/release/bundle}",
   "test": "bash linux/scripts/tests/test-app-packaging-api.sh",
   "why": "An empty override retains the documented default Flutter tree rather than becoming an empty path."
+ },
+ {
+  "id": "ort.amdgpu-provenance-forward",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "    _ort_package_amdgpu_provenance \"$operation\" \"$root\" \"$licenses\" \"$5\" || return",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "An explicitly requested provenance file remains required."
+ },
+ {
+  "id": "ort.amdgpu-provenance-source-present",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "  [ -s \"$source\" ] && [ ! -L \"$source\" ] || {",
+  "replace": "  [ ! -L \"$source\" ] || {",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "Empty provenance cannot be staged as an original text."
+ },
+ {
+  "id": "ort.amdgpu-provenance-source-regular",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "  [ -s \"$source\" ] && [ ! -L \"$source\" ] || {",
+  "replace": "  [ -s \"$source\" ] || {",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "Linked image provenance cannot attest its bytes."
+ },
+ {
+  "id": "ort.amdgpu-provenance-destination-inside",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "  _ort_package_inside \"$root\" \"$parent\" 'Plugin provenance destination escapes package' || return 1",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "Escaping parents refuse before any outside file is written."
+ },
+ {
+  "id": "ort.amdgpu-provenance-license-separate",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "  case \"$resolved/\" in \"$license_root/\"*)",
+  "replace": "  case \"$resolved/\" in /impossible-root/*)",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "Provenance cannot contaminate the exact license inventory."
+ },
+ {
+  "id": "ort.amdgpu-provenance-no-overwrite",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "    [ ! -e \"$destination\" ] && [ ! -L \"$destination\" ] || {",
+  "replace": "    true || {",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "Existing provenance is not overwritten by a later stage."
+ },
+ {
+  "id": "ort.amdgpu-provenance-copy-status",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "    cp \"$source\" \"$destination\" || return",
+  "replace": "    cp \"$source\" \"$destination\" || true",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "Conditional callers retain a failed copy raw status."
+ },
+ {
+  "id": "ort.amdgpu-provenance-destination-regular",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "  [ -f \"$destination\" ] && [ ! -L \"$destination\" ] || {",
+  "replace": "  [ -f \"$destination\" ] || {",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "A linked packaged provenance file refuses even with matching text."
+ },
+ {
+  "id": "ort.amdgpu-provenance-exact-bytes",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "  cmp \"$source\" \"$destination\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "Packaged provenance must match the original image bytes."
  }
 ]

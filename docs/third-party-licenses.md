@@ -263,6 +263,12 @@ their tarball and DEB trees without a second copy. Run it after AppImage generat
 the generator can alter ELF files after an install-tree check has passed. It does
 not prove GPU execution or account for other dependencies.
 
+AMD package consumers can pass a fourth provenance-file path to both
+`ort_package_stage_amdgpu_licenses` and `ort_package_verify_amdgpu`. It binds the image's
+original `provenance.txt` separately from the complete license tree; linked or changed
+files and paths outside the package refuse. Original source metadata does not establish
+linkage, licence completeness or GPU inference.
+
 <!-- generated:deps-table:start -->
 
 ## Linux Images (`ghcr.io/kataglyphis/kataglyphis_beschleuniger`)

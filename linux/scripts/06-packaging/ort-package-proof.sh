@@ -91,6 +91,31 @@ _ort_package_amdgpu_license_source() {
   printf '%s\n' "$image_licenses"
 }
 
+_ort_package_amdgpu_provenance() {
+  local operation="$1" root="$2" licenses="$3" destination="$4" source parent resolved license_root
+  source="$(ort_amdgpu_ep_dir)/../provenance.txt"
+  [ -s "$source" ] && [ ! -L "$source" ] || {
+    printf 'Image plugin provenance is missing, empty or linked\n' >&2; return 1;
+  }
+  parent="$(realpath -e "$(dirname "$destination")")" || return 1
+  _ort_package_inside "$root" "$parent" 'Plugin provenance destination escapes package' || return 1
+  resolved="$(realpath -m "$destination")" || return 1
+  license_root="$(realpath -m "$licenses")" || return 1
+  case "$resolved/" in "$license_root/"*)
+    printf 'Plugin provenance must stay outside the exact license tree\n' >&2; return 1 ;;
+  esac
+  if [ "$operation" = stage ]; then
+    [ ! -e "$destination" ] && [ ! -L "$destination" ] || {
+      printf 'Plugin provenance destination already exists\n' >&2; return 1;
+    }
+    cp "$source" "$destination" || return
+  fi
+  [ -f "$destination" ] && [ ! -L "$destination" ] || {
+    printf 'Packaged plugin provenance is missing or linked\n' >&2; return 1;
+  }
+  cmp "$source" "$destination"
+}
+
 _ort_package_amdgpu() {
   local operation="$1" root lib="$3" licenses="$4" image_licenses
   root="$(realpath -e "$2")" || return 1
@@ -101,6 +126,9 @@ _ort_package_amdgpu() {
     return 1
   fi
   image_licenses="$(_ort_package_amdgpu_license_source)" || return 1
+  if [ -n "${5:-}" ]; then
+    _ort_package_amdgpu_provenance "$operation" "$root" "$licenses" "$5" || return
+  fi
   if [ "$operation" = stage ]; then
     _ort_package_inside "$root" "$(dirname "$licenses")" 'Plugin license destination escapes package' || return 1
     mkdir "$licenses" || return
@@ -110,10 +138,10 @@ _ort_package_amdgpu() {
   diff --no-dereference -qr "$image_licenses" "$licenses"
 }
 
-# Usage: ort_package_verify_amdgpu ROOT LIB_DIR PLUGIN_LICENSE_DIR; image identity and complete original texts, not inference.
+# Optional PROVENANCE_FILE binds the original image text separately from the exact license tree; this proves no inference.
 ort_package_verify_amdgpu() { _ort_package_amdgpu verify "$@"; }
 
-# Usage: ort_package_stage_amdgpu_licenses ROOT LIB_DIR NEW_LICENSE_DIR; the destination parent must already be inside ROOT.
+# Usage: ort_package_stage_amdgpu_licenses ROOT LIB_DIR NEW_LICENSE_DIR [NEW_PROVENANCE_FILE]; parents must exist inside ROOT.
 ort_package_stage_amdgpu_licenses() { _ort_package_amdgpu stage "$@"; }
 
 # Usage: ort_package_require_program ROOT FILE; path, mode and regular-file checks, not execution or byte identity.

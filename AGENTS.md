@@ -281,6 +281,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    GPU AppImages must retain the wheel's unstripped ORT bytes and verify the finished artifact, including both notices; a staged-tree match alone is insufficient.
    Their opt-in shared patchelf wrapper also preserves libmigraphx-ep.so exactly; its image-byte proof must survive package generation.
    Finished-package ORT trees use `06-packaging/ort-package-proof.sh` for library and notice checks; keep failures explicit under conditional callers.
+   Optional AMD provenance paths stay outside the exact license tree and bind the original image text; preserve old callers, refusal before overwrite and raw copy failures.
    Its AMD plugin staging/proof APIs also require `ort-runtime-bundle.sh`; preserve image-identical module bytes, full original license trees and in-tree-provider refusal.
    Linux GPU app bundles require the image's provider in the self-test's available list and a relocatable ELF scan; packaging retains that requirement, and a separate GPU-host test must require the active provider before distribution.
    Python DEB dependency discovery must prove isolated launcher and sitecustomize startup before omitting preloaded site-package libraries; executable `.pth` lines invalidate that proof.
