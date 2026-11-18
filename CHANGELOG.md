@@ -61,6 +61,14 @@
   LiteRT and LiteRT-LM carry it. arm64 gets nothing. Nothing is built with it until the owner's
   go; `docs/amd64-x86-64-v3-baseline.md` § Windows x64 says where it lands and what it leaves out.
 
+## 2026-11-18 — the patch-drift gate tells a vanished upstream from a drifted patch (CON280)
+
+- `Test-PatchesApplyClean.ps1`: when a clone fails and the upstream page answers 404, the patch is `NOT CHECKED
+  (upstream answers 404)` and the job prints a warning naming the repos, instead of failing; a reachable upstream
+  that refuses the clone, and every patch that does not apply, still fail. Since 2026-11-17 22:20Z
+  `github.com/microsoft/onnxruntime` answers 404, which turned every hub commit's Windows lane red (owner decision
+  2026-11-18). `Patches.ApplyClean.Tests.ps1` covers both cases.
+
 ## 2026-11-18 — the pre-commit mutation sample runs in the image on a host without pwsh (CON279)
 
 - The hook's sampled `verify_mutations.py` run is teed; when it fails because the host lacks the `pwsh` or

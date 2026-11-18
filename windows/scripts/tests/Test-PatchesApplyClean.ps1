@@ -120,6 +120,16 @@ function Resolve-GnuPatchExe {
     throw "no GNU patch.exe found (tried: $($candidates -join ', ')): Invoke-SourcePatch applies tarball patches with it, so this gate must too."
 }
 
+# A clone that failed because the upstream repository answers 404 (CON280: microsoft/onnxruntime since 2026-11-17).
+function Test-UpstreamGone {
+    param([string]$Url)
+    try { $null = Invoke-WebRequest -Uri ($Url -replace '\.git$', '') -Method Head -MaximumRedirection 5 -ErrorAction Stop; return $false }
+    catch {
+        $response = $_.Exception.PSObject.Properties['Response']
+        return [bool]($response -and $response.Value -and [int]$response.Value.StatusCode -eq 404)
+    }
+}
+
 function Get-PatchClone {
     param([string]$RepoKey, [hashtable]$Spec, [hashtable]$Clones, [string]$WorkDir)
     $cacheKey = "$RepoKey|$($Spec.Ref)"
@@ -128,7 +138,11 @@ function Get-PatchClone {
     Write-Host "  clone $RepoKey @ $($Spec.Ref) (sparse)..." -ForegroundColor DarkGray
     $refArgs = @(if ($Spec.Ref -match '^[0-9a-f]{40}$') { "--revision=$($Spec.Ref)" } else { '--branch', $Spec.Ref })
     & git clone --config core.autocrlf=false --depth 1 @refArgs --filter=blob:none --sparse $Spec.Url $clone 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { return [pscustomobject]@{ Path = ''; Error = 'FAIL (clone)' } }
+    if ($LASTEXITCODE -ne 0) {
+        # A vanished upstream proves nothing about the patch; a reachable one that refuses the ref still fails (owner 2026-11-18).
+        if (Test-UpstreamGone -Url $Spec.Url) { return [pscustomobject]@{ Path = ''; Error = 'NOT CHECKED (upstream answers 404)' } }
+        return [pscustomobject]@{ Path = ''; Error = 'FAIL (clone)' }
+    }
     $Clones[$cacheKey] = $clone
     return [pscustomobject]@{ Path = $clone; Error = '' }
 }
@@ -192,6 +206,10 @@ finally {
 
 Write-Host ''
 $results | Format-Table -AutoSize | Out-String | Write-Host
+$gone = @($results | Where-Object { $_.Status -like 'NOT CHECKED*' })
+if ($gone.Count -gt 0) {
+    Write-Host "::warning::$($gone.Count) patch(es) not checked: their upstream answers 404 ($((@($gone | ForEach-Object Repo) | Sort-Object -Unique) -join ', ')); BACKLOG CON280"
+}
 $failed = @($results | Where-Object { $_.Status -like 'FAIL*' })
 if ($failed.Count -gt 0) {
     Write-Host "$($failed.Count) patch(es) FAILED to apply -- regenerate them against the new pinned upstream." -ForegroundColor Red

@@ -5,7 +5,7 @@
 
 Describe 'Patch drift gate accounting' {
     $source = 'windows/scripts/tests/Test-PatchesApplyClean.ps1'
-    . (Get-ScriptFunctionDefinition -ScriptPath $source -FunctionName Get-PatchTargetPaths, Get-PatchClone, Get-PatchApplyStatus, Get-StaticPatchResult)
+    . (Get-ScriptFunctionDefinition -ScriptPath $source -FunctionName Get-PatchTargetPaths, Test-UpstreamGone, Get-PatchClone, Get-PatchApplyStatus, Get-StaticPatchResult)
 
     function Invoke-WithPatchGit {
         param([int]$Code, [Parameter(Mandatory)][scriptblock]$Body)
@@ -39,6 +39,18 @@ Describe 'Patch drift gate accounting' {
                     Assert-Equal 'FAIL (clone)' $result.Status
                     Assert-Equal 0 $cache.Count 'a failed clone cannot be reused'
                     Assert-Equal 1 $state.Calls.Count 'one clone attempt'
+                }
+            } },
+        @{ Name = 'a clone of an upstream that answers 404 is not checked, not failed (CON280)'; Files = @{ 'mapped/one.patch' = "--- a/file`n+++ b/file`n" }; Exercise = {
+                param($root)
+                function Test-UpstreamGone { param([string]$Url) return $Url -eq 'https://example.invalid/gone.git' }
+                Invoke-WithPatchGit -Code 128 -Body { param($state)
+                    $gone = Get-StaticPatchResult -Patch (Get-Item -LiteralPath (Join-Path $root 'mapped/one.patch')) `
+                        -RepoMap @{ mapped = @{ Url = 'https://example.invalid/gone.git'; Ref = 'v1' } } -Clones @{} -WorkDir $root -PatchExe 'unused'
+                    Assert-Equal 'NOT CHECKED (upstream answers 404)' $gone.Status
+                    $there = Get-StaticPatchResult -Patch (Get-Item -LiteralPath (Join-Path $root 'mapped/one.patch')) `
+                        -RepoMap @{ mapped = @{ Url = 'https://example.invalid/there.git'; Ref = 'v1' } } -Clones @{} -WorkDir $root -PatchExe 'unused'
+                    Assert-Equal 'FAIL (clone)' $there.Status 'a reachable upstream that refuses the clone still fails'
                 }
             } }
     )

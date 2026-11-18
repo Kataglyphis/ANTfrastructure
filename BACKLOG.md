@@ -218,6 +218,8 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       it ([`amd64-x86-64-v3-baseline.md` § Windows x64](docs/amd64-x86-64-v3-baseline.md#windows-x64)). Not
       covered: the ROCm lane (PyTorch, llama.cpp HIP, MIGraphX) and OxidANT's MSIX cargo build. Left: build and
       measure with CON264's chain on the owner's go.
+      **Owner 2026-11-18:** he records the "before" numbers on the 5950X at the next lab session, with the new lab
+      baselines, and then gives the go.
 
 - [ ] **CON266 — language models on the Intel GPU and NPU** [M, ★★]. Owner request 2026-11-12. Nothing was
       read for it: after CON260, choose between OpenVINO GenAI and ONNX Runtime GenAI over the OpenVINO
@@ -2235,8 +2237,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the Windows lane's `patch-drift` job (`Test-PatchesApplyClean.ps1`, every ORT patch `FAIL (clone)`, on e48e46a1
       and f529753c). Every source build that clones `https://github.com/microsoft/onnxruntime(-genai).git` fails the
       same way until it returns: the cross chain, the Windows media stages. No local checkout of v1.31.1 exists on the
-      Pi dev host. Next: an owner decision whether the family keeps its own mirror of the pinned ORT and GenAI tags
-      once the repos are back. Done when the job is green again and that decision is recorded.
+      Pi dev host.
+      **Owner decisions 2026-11-18:** (1) once the repos are back, the family keeps private mirrors of the pinned ORT
+      and GenAI tags under Kataglyphis, which source builds try first; (2) until then `Test-PatchesApplyClean.ps1`
+      reports a patch whose upstream answers 404 as `NOT CHECKED` with a warning, not a failure (done 2026-11-18).
+      Done when the mirrors exist and the builds read them.
 
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
