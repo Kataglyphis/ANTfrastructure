@@ -204,11 +204,23 @@ Invoke-BundleStep 'vulkaninfo lists llvmpipe (lavapipe ICD + loader run)' {
     Assert-VulkanInfoSummary -Kind Drivers -Manifest $icd -Expect 'llvmpipe'
 } $results
 
+# A store published before CON238 has no pytest-timeout; once the store carries it, it is installed and imported.
+function Get-BundlePytestStack {
+    param([Parameter(Mandatory)][string]$WheelDir)
+    $packages = @('pytest', 'pytest-cov', 'pytest-benchmark', 'pytest-html', 'pytest-md', 'pytest-md-report', 'requests')
+    $imports = @('pytest', 'pytest_cov', 'pytest_benchmark', 'pytest_html', 'pytest_md_report', 'requests', 'coverage')
+    if (@(Get-ChildItem -LiteralPath $WheelDir -Filter 'pytest_timeout-*.whl' -ErrorAction SilentlyContinue).Count -gt 0) {
+        $packages += 'pytest-timeout'; $imports += 'pytest_timeout'
+    } else { Write-Host '  pytest-timeout: not in this store yet (CON238)' }
+    return [pscustomobject]@{ Packages = $packages; Imports = $imports -join ', ' }
+}
+
 # BACKLOG CON67 added the pytest stack.
 Invoke-BundleStep 'pytest stack from the wheel store (offline, the bundle interpreter''s tag)' {
-    & $py @offlinePip pytest pytest-cov pytest-benchmark pytest-html pytest-md pytest-md-report pytest-timeout requests
+    $stack = Get-BundlePytestStack -WheelDir (Join-Path $BundleRoot 'wheels')
+    & $py @offlinePip @($stack.Packages)
     if ($LASTEXITCODE -ne 0) { throw "pip could not install the pytest stack offline (exit $LASTEXITCODE)" }
-    & $py -c "import pytest, pytest_cov, pytest_benchmark, pytest_html, pytest_md_report, pytest_timeout, requests, coverage; print('pytest', pytest.__version__, '| coverage', coverage.__version__)"
+    & $py -c "import $($stack.Imports); print('pytest', pytest.__version__, '| coverage', coverage.__version__)"
 } $results
 
 $layerJson = Join-Path $BundleRoot 'vulkan-layers\VkLayer_khronos_validation.json'

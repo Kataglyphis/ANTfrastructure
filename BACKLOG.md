@@ -638,7 +638,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
          (`scripts/windows/Stage-Arm64Tests.ps1`), so a pytest timeout setting would fail on the device.
          In source since 2026-11-18: `PYTEST_WINDOWS_ARM64_PYTEST_TIMEOUT_*` pins pytest-timeout 2.4.0 (OrchestrANT's
          lock, PyPI's SHA256), `Copy-Arm64TorchWheels.ps1` stores it and `Test-Arm64Bundle.ps1` installs and
-         imports it offline. Left: a `:winarm64` publish that carries it.
+         imports it offline once the store carries it (a store published before says so and passes). Left: a
+         `:winarm64` publish that carries it.
 
       Done when the Linux smoke asserts `cargo mutants --version` at its pin on a published `:latest`, and
       `Test-Arm64Bundle.ps1` installs pytest-timeout offline from the store.
