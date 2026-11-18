@@ -1190,7 +1190,12 @@ Prepare recurring require-removal data with `python3 docs/scripts/generate_requi
 Use `python3 docs/scripts/merge_mutation_recipes.py <manifest>` to preview
 adding reviewed recipes; pass `--write` to apply and `--replace <id>` for an
 intentional change to an existing recipe. It checks unique in-repo anchors before
-writing atomically. Run the mutation gate afterwards: an applicable anchor does
+writing atomically. JSON output escapes non-ASCII characters without changing any
+decoded recipe value. Deliberately corrupt strings used by encoding mutations must
+remain data: writing them literally makes source encoding checks reject the clean
+baseline before the mutation runs. The merger fixture checks semantic preservation,
+escaped Unicode and repeated writes; it does not prove that recipe tests bite.
+Run the mutation gate afterwards: an applicable anchor does
 not prove the test catches the mutation.
 
 `--root` selects both the files executed and the Git checkout used by `--changed` or
@@ -1232,7 +1237,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **6922 entries** over **816 distinct test commands**; both digits are
+manifest holds **6923 entries** over **816 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-18 — preserve escaped mutation recipe data
+
+- Serialize merged registries as ASCII-safe JSON while preserving every decoded value. Intentional corrupt strings in encoding mutations no longer contaminate the clean registry source.
+- Add round-trip, existing-entry and repeated-write controls plus a mutation that restores literal Unicode output. These checks cover registry serialization, not consumer encoding coverage or complete mutation acceptance.
+
 ## 2026-11-18 — refresh derived quality documentation
 
 - Run the canonical doc-number updater after the package and loader mutation additions. Preserve the computed totals, family counts and census values; repeat the previously invalid doc-number and registry baselines and their existing mutation recipes.

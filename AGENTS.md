@@ -294,7 +294,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Python DEB version-node minimums come from the host package's symbols file; a missing node or malformed line fails, and unversioned symbols remain CON188.
    Python DEBs without bundled glibc require libc6 >= 2.36 for DT_RELR or its GLIBC_ABI_DT_RELR marker; reject unrecognized GLIBC_ABI markers rather than understate the host requirement.
    Use `docs/scripts/generate_require_mutations.py` for recurring require-removal recipe preparation; it does not replace canonical merge, parse checks or actual mutation runs.
-   Use `docs/scripts/merge_mutation_recipes.py` to preview or merge recurring mutation recipe updates; stale anchors and unintended replacements fail before writing.
+   Use `docs/scripts/merge_mutation_recipes.py` to preview or merge recurring mutation recipe updates; stale anchors and unintended replacements fail before writing. Keep serialized registries ASCII-safe and decoded values exact, including deliberately corrupt negative-test strings.
    Core disk probes share validation without merging zero-disabled and nonnegative-free-space policies.
    Invalid temporary-allocation fixtures share the harness emitter and retain failed, empty and missing-path outcomes.
    Test workers use the harness optional-function emitter; keep required definitions mandatory.
