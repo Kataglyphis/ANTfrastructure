@@ -181,6 +181,7 @@ See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 - [`zconf.h: No such file or directory` in civetweb under the SBSA DeepStream build](#zconfh-no-such-file-or-directory-in-civetweb-under-the-sbsa-deepstream-build)
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
 - [apt: `libc6:i386` install is unsatisfiable after an archive/ports drift](#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift)
+- [Windows CPython zlib-ng loses AVX-512 features](#windows-cpython-zlib-ng-loses-avx-512-features)
 - [A from-source CPython silently drops an extension module](#a-from-source-cpython-silently-drops-an-extension-module)
 - [The delete guard denies its own legitimate work](#the-delete-guard-denies-its-own-legitimate-work)
 - [OpenCV: `std::complex` breaks on a shadowed `complex.h`](#opencv-stdcomplex-breaks-on-a-shadowed-complexh)
@@ -880,6 +881,22 @@ because the helper's name appears in a comment.
 **Retry after a drift.** Nothing in the image needs rebuilding. Wait for the
 mirror to catch up and re-run the stage (`--from-stage android`, ancestry
 checked) — the failed run left no partial tags (0/7 cache stages exported).
+
+### Windows CPython zlib-ng loses AVX-512 features
+
+**Symptom.** ClangCL reports that zlib-ng intrinsics require `avx512f`, `avx512bw`
+or `avx512vl` while compiling CPython in the toolchain stage. The enclosing
+`patched-llvm` stage name does not mean LLVM itself failed.
+
+**Cause.** A global `-march=x86-64-v3` takes precedence over the upstream project's
+per-file `/arch:AVX512`. Reordering those two switches cannot fix that precedence.
+
+**Fix.** The checked-in CPython props apply the floor immediately before `ClCompile`
+using each item's ISA metadata: v3 normally, v4 for existing AVX512 items, with
+inherited VNNI/VPCLMUL options. Retain the x64/ClangCL guards; do not remove optimized
+files or raise the global baseline. See [Windows x64 ISA floors](amd64-x86-64-v3-baseline.md#windows-x64).
+The portable XML-wiring suite and native compiler probe have separate coverage;
+full CPython and lane acceptance still require their actual build results.
 
 ### A from-source CPython silently drops an extension module
 

@@ -42,6 +42,12 @@ label truncates its earlier stage logs and replaces timing entries. Parent
 probes retain the ordinary publication disk floor; label changes must not
 reclassify those probes as compilation.
 
+CPython x64 ClangCL floors are applied immediately before `ClCompile`, after upstream
+per-file ISA metadata is known. Ordinary files retain v3; existing AVX512 files retain
+v4 plus their VNNI/VPCLMUL additions. Preserve ARM64 exclusion and every selected source.
+An early global `-march` overrides `/arch:AVX512` and breaks zlib-ng; a global v4 would
+raise the runtime CPU requirement. XML wiring tests do not prove native compilation.
+
 ## Contents
 
 **Shell and PowerShell discipline**

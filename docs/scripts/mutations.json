@@ -41863,5 +41863,61 @@
   "replace": "Get-CmakeBuildArgs, Invoke-CmakeConfigureAndBuild",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only CMake.CPackDiagnostics.Tests.ps1",
   "why": "The real module must export its diagnostic entry; lifted function behavior alone does not prove consumer visibility."
+ },
+ {
+  "id": "windows-lane.cpython-isa-late-target",
+  "target": "windows/scripts/build/cpython-Directory.Build.props",
+  "find": "BeforeTargets=\"ClCompile\"",
+  "replace": "AfterTargets=\"ClCompile\"",
+  "test": "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','SourceBuild.CpythonIsa.Tests.ps1','-ResultFile','logs/code-quality/cpython-isa.json'],check=True); d=json.load(open('logs/code-quality/cpython-isa.json',encoding='utf-8-sig')); assert d['Total']==5 and d['Passed']==5 and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"",
+  "why": "the floor must precede the compiler"
+ },
+ {
+  "id": "windows-lane.cpython-isa-x64-only",
+  "target": "windows/scripts/build/cpython-Directory.Build.props",
+  "find": "'$(Platform)' == 'x64'",
+  "replace": "'$(Platform)' != 'x64'",
+  "test": "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','SourceBuild.CpythonIsa.Tests.ps1','-ResultFile','logs/code-quality/cpython-isa.json'],check=True); d=json.load(open('logs/code-quality/cpython-isa.json',encoding='utf-8-sig')); assert d['Total']==5 and d['Passed']==5 and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"",
+  "why": "ARM64 must not inherit an x64 floor"
+ },
+ {
+  "id": "windows-lane.cpython-isa-clang-only",
+  "target": "windows/scripts/build/cpython-Directory.Build.props",
+  "find": "'$(PlatformToolset)' == 'ClangCL'",
+  "replace": "'$(PlatformToolset)' != 'ClangCL'",
+  "test": "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','SourceBuild.CpythonIsa.Tests.ps1','-ResultFile','logs/code-quality/cpython-isa.json'],check=True); d=json.load(open('logs/code-quality/cpython-isa.json',encoding='utf-8-sig')); assert d['Total']==5 and d['Passed']==5 and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"",
+  "why": "other toolsets must not inherit Clang switches"
+ },
+ {
+  "id": "windows-lane.cpython-isa-baseline-v3",
+  "target": "windows/scripts/build/cpython-Directory.Build.props",
+  "find": "/clang:-march=x86-64-v3",
+  "replace": "/clang:-march=x86-64-v4",
+  "test": "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','SourceBuild.CpythonIsa.Tests.ps1','-ResultFile','logs/code-quality/cpython-isa.json'],check=True); d=json.load(open('logs/code-quality/cpython-isa.json',encoding='utf-8-sig')); assert d['Total']==5 and d['Passed']==5 and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"",
+  "why": "ordinary files must not acquire AVX512"
+ },
+ {
+  "id": "windows-lane.cpython-isa-dispatched-v4",
+  "target": "windows/scripts/build/cpython-Directory.Build.props",
+  "find": "/clang:-march=x86-64-v4",
+  "replace": "/clang:-march=x86-64-v3",
+  "test": "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','SourceBuild.CpythonIsa.Tests.ps1','-ResultFile','logs/code-quality/cpython-isa.json'],check=True); d=json.load(open('logs/code-quality/cpython-isa.json',encoding='utf-8-sig')); assert d['Total']==5 and d['Passed']==5 and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"",
+  "why": "existing AVX512 items must retain their ISA"
+ },
+ {
+  "id": "windows-lane.cpython-isa-upstream-options",
+  "target": "windows/scripts/build/cpython-Directory.Build.props",
+  "find": "/clang:-march=x86-64-v4 %(ClCompile.AdditionalOptions)",
+  "replace": "/clang:-march=x86-64-v4",
+  "test": "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','SourceBuild.CpythonIsa.Tests.ps1','-ResultFile','logs/code-quality/cpython-isa.json'],check=True); d=json.load(open('logs/code-quality/cpython-isa.json',encoding='utf-8-sig')); assert d['Total']==5 and d['Passed']==5 and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"",
+  "why": "VNNI and VPCLMUL options must survive"
+ },
+ {
+  "id": "windows-lane.cpython-isa-metadata-selector",
+  "target": "windows/scripts/build/cpython-Directory.Build.props",
+  "find": "'%(ClCompile.EnableEnhancedInstructionSet)' == 'AdvancedVectorExtensions512'",
+  "replace": "'%(ClCompile.EnableEnhancedInstructionSet)' != 'AdvancedVectorExtensions512'",
+  "test": "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','SourceBuild.CpythonIsa.Tests.ps1','-ResultFile','logs/code-quality/cpython-isa.json'],check=True); d=json.load(open('logs/code-quality/cpython-isa.json',encoding='utf-8-sig')); assert d['Total']==5 and d['Passed']==5 and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"",
+  "why": "higher ISA must follow upstream per-file metadata"
  }
 ]

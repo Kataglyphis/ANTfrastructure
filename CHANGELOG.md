@@ -17,6 +17,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-18 — preserve CPython zlib-ng ISA dispatch under ClangCL
+
+- Apply CPython instruction floors after MSBuild per-file metadata: ordinary x64 stays v3; existing AVX-512 files use v4 and retain VNNI/VPCLMUL options. ARM64 is unchanged.
+- Add a portable XML-wiring regression and mutation recipes. A native MSBuild/ClangCL probe reproduces the old feature-loss failure and compiles all four corrected cases; complete lane acceptance remains separate.
+
 ## 2026-11-18 — prove CPack diagnostics without Pester
 
 - Move the four CPack diagnostic cases to a portable harness; retain the remaining CMake Pester cases.

@@ -346,6 +346,10 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       it ([`amd64-x86-64-v3-baseline.md` § Windows x64](docs/amd64-x86-64-v3-baseline.md#windows-x64)). Not
       covered: the ROCm lane (PyTorch, llama.cpp HIP, MIGraphX) and OxidANT's MSIX cargo build. Left: build and
       measure with CON264's chain on the owner's go.
+      **2026-11-18 compatibility fix:** the first NVIDIA attempt failed in CPython zlib-ng because
+      global v3 suppressed per-file AVX512. Late per-item v3/v4 selection preserves dispatch;
+      native MSBuild/ClangCL controls reproduce the old failure and compile all four corrected cases.
+      Full producer acceptance and CPU measurements remain open.
       **Owner 2026-11-18:** he records the "before" numbers on the 5950X at the next lab session, with the new lab
       baselines, and then gives the go.
 
