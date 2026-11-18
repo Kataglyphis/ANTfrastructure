@@ -276,6 +276,8 @@ Actual Runtime5 completed base (244 s, status 0) and package import (938 s, stat
 
 ## Local FINAL consumer acceptance
 
+The producer-bound checks accept both canonical wheelhouse delivery modes and bind an explicit lane name to the same declared variant. A separate owned-wrapper checkout is permitted only with identical selected companion bytes and a clean tree; the host revision and complete worker mapping still identify the original launcher checkout. No producer receipt is rewritten to fit the acceptance tool.
+
 The explicit [unpublished FINAL mode](image-acceptance.md#check-an-unpublished-local-final-wrapper)
 uses the existing full consumer runner and a producer-bound local receipt. It shares
 `runtime_worker_files` and the platform/engine-aware `prepare_local_alias` helper;

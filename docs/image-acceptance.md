@@ -98,6 +98,8 @@ Run its exact invocation-owned cleanup command and independently prove every
 owned container absent. A live or failed producer, changed source/worker bytes,
 missing cleanup, a base/package image or a foreign manifest/config cannot qualify.
 
+Both canonical wheelhouse modes, `image` and `export`, retain the same required runtime gates. The unit may use the historical architecture-only name or include its exact `default`, `rocm` or `nvidia` lane; a different lane or architecture refuses. Host-tool identity comes from the complete recorded runtime-worker mapping and its clean pinned checkout. An owned engine wrapper located in another clean checkout must match every selected wrapper companion byte. Missing, duplicate or unsupported mode flags, changed wrapper bytes and a different ownership environment refuse before consumer execution. These transport checks do not replace the actual successful producer, original Android ancestry, complete source proof or cleanup.
+
 Commit the acceptance tooling, then use a fresh workspace and receipt. The [bounded host launcher](local-proof-workflows.md#local-final-consumer-acceptance), `linux/scripts/launch-local-final.py`, installs invocation-owned cleanup before all six consumers and requires a stopped proof with independent container absence. Its explicit scheduling companion `launch-normal-runtime.py --serial-smoke` preserves the runtime's same required smoke while reducing concurrent context materialization. The direct runner remains:
 
 ```bash

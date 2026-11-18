@@ -54964,5 +54964,53 @@
   "replace": "for name in STAT_FIELDS if name != 'st_ino' and (not stable or name != 'st_ctime_ns')",
   "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
   "why": "New receipts must retain every stable identity field, including the original inode."
+ },
+ {
+  "id": "image-acceptance.export-wheel-mode",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(wheels in [['RUNTIME_WHEELS_SOURCE=image'], ['RUNTIME_WHEELS_SOURCE=export']], 'Runtime wheelhouse delivery mode differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Synthetic producer and engine controls must reject invalid delivery, host or wrapper identity; no real FINAL consumers, image, hardware or legal acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.export-host-mapping",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(isinstance(selected, dict) and all(isinstance(path, str) for path in selected), 'Runtime worker mapping is malformed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Synthetic producer and engine controls must reject invalid delivery, host or wrapper identity; no real FINAL consumers, image, hardware or legal acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.export-host-profile",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(len(profiles) == 1 and profiles[0].is_absolute() and len(profiles[0].parents) >= 4, 'Runtime host profile is missing or ambiguous')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Synthetic producer and engine controls must reject invalid delivery, host or wrapper identity; no real FINAL consumers, image, hardware or legal acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.export-wrapper-clean",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(not output(['git', '-C', str(wrapper.parents[2]), 'status', '--porcelain']).strip(), 'Runtime wrapper source changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Synthetic producer and engine controls must reject invalid delivery, host or wrapper identity; no real FINAL consumers, image, hardware or legal acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.export-wrapper-companions",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "            require(actual.is_file() and fingerprint(actual) == fingerprint(path), 'Runtime executed wrapper companion differs: ' + path.name)\n",
+  "replace": "            pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Synthetic producer and engine controls must reject invalid delivery, host or wrapper identity; no real FINAL consumers, image, hardware or legal acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.export-unit-lane",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    return re.compile(r'webgpu-normal-runtime-(?:' + (variant or 'default') + r'-)?' + arch + r'-[0-9-]+\\.service\\Z')\n",
+  "replace": "    return re.compile(r'webgpu-normal-runtime-(?:[a-z]+-)?' + arch + r'-[0-9-]+\\.service\\Z')\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent lane refusals reject a runtime unit whose explicit vendor differs from its declared variant; no actual runtime or consumer proof."
  }
 ]

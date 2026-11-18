@@ -38,6 +38,7 @@ class LocalFixture:
         self.engine_failure = self.consumer_status = 0
         self.consumer_timeout = self.producer_present = self.consumer_present = self.dirty_consumer = False
         self.host_head, self.host_dirty, self.exit_timestamp = 'c' * 40, '', '7'
+        self.host_states: dict[str, tuple[str, str]] = {}
         self.systemctl_state: dict[str, str] = {}
         self.journal_rows: list[dict[str, Any]] = []
         self.full_source = mock.Mock()
@@ -85,6 +86,8 @@ class LocalFixture:
                  'WRAPPER_CONTENT_GATE=1', 'ANCESTRY_STAMP_ENFORCE=1', 'CROSS_NO_PUSH=1', 'ARTIFACT_CONTEXT_MODE=oci',
                  'CROSS_RUN_ID=runtime-' + 'f' * 32, 'APP_REF=' + '9' * 40,
                  'RUNTIME_ANDROID_PIN_' + self.arch + '=' + self.parent_reference]
+        flags += ['NERDCTL_BIN=' + str(self.host / 'linux/scripts/owned-nerdctl.py'), 'ANT_RUNTIME_ENGINE=engine',
+                  'ANT_RUNTIME_OWNER_LABEL=org.kataglyphis.normal-runtime', 'ANT_RUNTIME_RUN_ID=' + 'f' * 32]
         command = ['systemd-run', '--user', '--expand-environment=no', '--unit=' + self.unit, *flags,
                    '/bin/bash', str(self.source / 'linux/scripts/build-runtime-manifest.sh'), '--image', prefix,
                    '--target-arches', self.arch, '--artifact-image-prefix', 'ant-local/webgpu-fixture:cross-android',
@@ -98,7 +101,7 @@ class LocalFixture:
             'Android_invocation':str(self.android_path), 'Android_invocation_sha256':LOCAL.fingerprint(self.android_path),
             'parent_OCI_proof':str(self.parent_path), 'parent_OCI_proof_sha256':LOCAL.fingerprint(self.parent_path),
             'parent_manifest':self.parent['manifest'], 'parent_config':self.parent['config'],
-            'host_tools_revision':'c' * 40, 'engine_wrapper':str(self.host / 'linux/scripts/owned-nerdctl.py'),
+            'host_tools_revision':'c' * 40, 'engine':'engine', 'engine_wrapper':str(self.host / 'linux/scripts/owned-nerdctl.py'),
             'selected_host_workers_sha256':{str(path):LOCAL.fingerprint(path) for path in self.workers},
             'run_id':'f' * 32, 'expected_runtime_run_id':'runtime-' + 'f' * 32, 'owner_label':'org.kataglyphis.normal-runtime'}
 
@@ -125,7 +128,8 @@ class LocalFixture:
         elif command[0] == 'journalctl':
             stdout = '\n'.join(json.dumps(row) for row in self.journal_rows)
         elif command[0] == 'git':
-            stdout = self.host_head if command[-1] == 'HEAD' else self.host_dirty
+            head, dirty = self.host_states.get(command[2], (self.host_head, self.host_dirty))
+            stdout = head if command[-1] == 'HEAD' else dirty
         elif command[0] == 'engine':
             status, stdout, stderr = self.engine_command(command, options)
         else:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
 import sys
 import tempfile
 import types
@@ -91,15 +92,29 @@ class LocalAcceptanceTests(unittest.TestCase):
     def test_metadata_transport_covers_exactly_the_six_linux_lanes(self) -> None:
         for index, (variant, arch) in enumerate([('', 'amd64'), ('', 'arm64'), ('', 'riscv64'),
                                                ('rocm', 'amd64'), ('nvidia', 'amd64'), ('nvidia', 'arm64')]):
-            directory = self.root / str(index)
-            directory.mkdir()
-            fixture = LocalFixture(directory, arch, variant)
-            with fixture.commands(), self.subTest(variant=variant, arch=arch):
-                MAIN.check(fixture.args)
-            receipt = json.loads(Path(fixture.args.receipt).read_text())
-            self.assertEqual(receipt['local_subject']['variant'], variant)
-            self.assertEqual(receipt['platform'], 'linux/' + arch)
-            self.assertEqual(len(receipt['consumers']), 6)
+            for mode in ['image', 'export']:
+                directory = self.root / (str(index) + mode)
+                directory.mkdir()
+                fixture = LocalFixture(directory, arch, variant)
+                if mode == 'export':
+                    old_unit = fixture.unit
+                    fixture.unit = old_unit.replace('runtime-', 'runtime-' + (variant or 'default') + '-')
+                    fixture.invocation['unit'] = fixture.terminal.return_value['Id'] = fixture.unit
+                    fixture.invocation['command'] = [value.replace('RUNTIME_WHEELS_SOURCE=image', 'RUNTIME_WHEELS_SOURCE=export').replace(old_unit, fixture.unit) for value in fixture.invocation['command']]
+                    fixture.save()
+                with fixture.commands(), self.subTest(variant=variant, arch=arch, mode=mode):
+                    MAIN.check(fixture.args)
+                receipt = json.loads(Path(fixture.args.receipt).read_text())
+                self.assertEqual(receipt['local_subject']['variant'], variant)
+                self.assertEqual(receipt['platform'], 'linux/' + arch)
+                self.assertEqual(len(receipt['consumers']), 6)
+
+    def test_explicit_runtime_unit_never_changes_lane_or_architecture(self) -> None:
+        pattern = LOCAL.runtime_unit('amd64', '')
+        for unit in ['webgpu-normal-runtime-rocm-amd64-999-1.service', 'webgpu-normal-runtime-default-arm64-999-1.service',
+                     'webgpu-normal-runtime-nvidia-amd64-999-1.service', 'webgpu-normal-runtime-default-amd64-999-1.service.extra']:
+            self.assertIsNone(pattern.fullmatch(unit))
+        self.assertIsNone(LOCAL.runtime_unit('amd64', 'rocm').fullmatch('webgpu-normal-runtime-default-amd64-999-1.service'))
 
     def test_reference_and_object_text_inputs_reject_mutable_foreign_or_missing_values(self) -> None:
         for reference in ['ant-local/webgpu-fixture:latest', 'ghcr.io/owner/image@' + self.fixture.manifest,
@@ -215,10 +230,48 @@ class LocalAcceptanceTests(unittest.TestCase):
             wrong.write_text('synthetic')
             with self.assertRaises(ValueError):
                 LOCAL.host_binding(dict(self.fixture.invocation, engine_wrapper=str(wrong)))
+            wrong = self.fixture.host / 'linux/scripts/other.py'
+            wrong.write_bytes(Path(self.fixture.invocation['engine_wrapper']).read_bytes())
+            with self.assertRaises(ValueError):
+                LOCAL.host_binding(dict(self.fixture.invocation, engine_wrapper=str(wrong)))
             path = self.fixture.workers[0]
             path.write_text(path.read_text() + '# changed\n')
             with self.assertRaises(ValueError):
                 LOCAL.host_binding(self.fixture.invocation)
+
+    def test_foreign_wrapper_requires_every_identical_companion_and_clean_source(self) -> None:
+        directory = self.root / 'separate-wrapper/linux/scripts'
+        directory.mkdir(parents=True)
+        companions = [path for path in self.fixture.workers if path.parent == self.fixture.host / 'linux/scripts']
+        for path in companions:
+            shutil.copyfile(path, directory / path.name)
+        changed = dict(self.fixture.invocation, engine_wrapper=str(directory / 'owned-nerdctl.py'))
+        with self.fixture.commands():
+            LOCAL.host_binding(changed)
+            for path in companions:
+                actual = directory / path.name
+                original = actual.read_bytes()
+                actual.write_bytes(original + b'# changed\n')
+                with self.subTest(companion=path.name), self.assertRaisesRegex(ValueError, 'executed wrapper companion'):
+                    LOCAL.host_binding(changed)
+                actual.unlink()
+                with self.assertRaises((ValueError, FileNotFoundError)):
+                    LOCAL.host_binding(changed)
+                actual.write_bytes(original)
+            for root, label in [(self.fixture.host, 'host'), (directory.parents[1], 'wrapper')]:
+                self.fixture.host_states[str(root)] = ('c' * 40, ' M source')
+                with self.subTest(root=label), self.assertRaisesRegex(ValueError, label + ' source changed'):
+                    LOCAL.host_binding(changed)
+                self.fixture.host_states.clear()
+
+    def test_worker_mapping_refuses_malformed_missing_ambiguous_and_relative_profiles(self) -> None:
+        original = self.fixture.invocation['selected_host_workers_sha256']
+        profile = str(self.fixture.host / 'linux/scripts/local-proof/runtime_launch_profile.py')
+        for mapping in [[], {1:'x'}, {}, {**original, '/other/linux/scripts/local-proof/runtime_launch_profile.py':'x'},
+                        {'relative/linux/scripts/local-proof/runtime_launch_profile.py':'x'}]:
+            with self.fixture.commands(), self.subTest(mapping=mapping), self.assertRaises(ValueError):
+                LOCAL.host_binding(dict(self.fixture.invocation, selected_host_workers_sha256=mapping))
+        self.assertIn(profile, original)
 
     def test_parent_hash_source_lane_and_manifest_config_are_independent_bindings(self) -> None:
         for key in ['Android_invocation_sha256', 'parent_OCI_proof_sha256', 'parent_source_revision', 'parent_manifest', 'parent_config']:

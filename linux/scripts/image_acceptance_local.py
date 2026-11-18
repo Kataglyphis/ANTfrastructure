@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
 
 import runtime_terminal_evidence as terminal_evidence
 from source_ci.common import fingerprint, require
@@ -58,6 +58,10 @@ def complete_plan(plan: dict[str, Any], canonical: dict[str, Any]) -> None:
     require({**plan, 'platform': canonical['platform']} == canonical, 'Local FINAL acceptance requires the complete canonical consumer contract')
 
 
+def runtime_unit(arch: str, variant: str) -> re.Pattern[str]:
+    return re.compile(r'webgpu-normal-runtime-(?:' + (variant or 'default') + r'-)?' + arch + r'-[0-9-]+\.service\Z')
+
+
 def command_binding(invocation: dict[str, Any], android: dict[str, Any], platform: str, parent: str) -> None:
     arch = platform.removeprefix('linux/')
     command = invocation.get('command')
@@ -71,8 +75,12 @@ def command_binding(invocation: dict[str, Any], android: dict[str, Any], platfor
     require('--expand-environment=no' in command and '--unit=' + invocation['unit'] in command, 'Local runtime transport differs')
     require(invocation.get('image') == prefix + '-' + arch, 'Local subject is not the final runtime wrapper')
     amd, nvidia = ACCELERATORS[invocation['variant']]
-    flags = {'CROSS_VARIANT':invocation['variant'], 'ENABLE_AMD':amd, 'ENABLE_NVIDIA':nvidia, 'RUNTIME_WHEELS_SOURCE':'image', 'RUNTIME_IMAGE_SMOKE':'1', 'RUNTIME_INPUT_PREFLIGHT':'1',
+    wheels = [value for value in command if value.startswith('RUNTIME_WHEELS_SOURCE=')]
+    require(wheels in [['RUNTIME_WHEELS_SOURCE=image'], ['RUNTIME_WHEELS_SOURCE=export']], 'Runtime wheelhouse delivery mode differs')
+    flags = {'CROSS_VARIANT':invocation['variant'], 'ENABLE_AMD':amd, 'ENABLE_NVIDIA':nvidia, 'RUNTIME_IMAGE_SMOKE':'1', 'RUNTIME_INPUT_PREFLIGHT':'1',
              'WRAPPER_CONTENT_GATE':'1', 'ANCESTRY_STAMP_ENFORCE':'1', 'CROSS_NO_PUSH':'1', 'ARTIFACT_CONTEXT_MODE':'oci',
+             'NERDCTL_BIN':text(invocation, 'engine_wrapper'), 'ANT_RUNTIME_ENGINE':text(invocation, 'engine'),
+             'ANT_RUNTIME_OWNER_LABEL':'org.kataglyphis.normal-runtime', 'ANT_RUNTIME_RUN_ID':text(invocation, 'run_id', re.compile(r'[0-9a-f]{32}\Z')),
              'CROSS_RUN_ID':text(invocation, 'expected_runtime_run_id', re.compile(r'runtime-[0-9a-f]{32}\Z')), 'APP_REF':text(invocation, 'app_ref', SHA)}
     for name, expected_value in flags.items():
         require([value for value in command if value.startswith(name + '=')] == [name + '=' + expected_value], 'Local runtime gate or pin differs: ' + name)
@@ -87,7 +95,7 @@ def producer_inputs(invocation: dict[str, Any], path: Path, platform: str) -> di
     variant = invocation.get('variant')
     require(invocation.get('stage') == 'runtime' and isinstance(variant, str) and (variant, arch) in LANES, 'Local FINAL producer must be a supported ordinary Linux runtime lane')
     require(type(invocation.get('launch_status')) is int and invocation['launch_status'] == 0 and invocation.get('publication') is False, 'Actual unpublished producer launch required')
-    unit = text(invocation, 'unit', re.compile(r'webgpu-normal-runtime-' + arch + r'-[0-9-]+\.service\Z'))
+    unit = text(invocation, 'unit', runtime_unit(arch, cast(str, variant)))
     require(Path(text(invocation, 'output')).resolve() == path.parent, 'Local runtime invocation directory differs')
     require(invocation.get('source_full_preflight_passed') is True and invocation.get('producer_source_unchanged') is True, 'Complete runtime source proof required')
     source, proof = Path(text(invocation, 'source')), Path(text(invocation, 'source_full_preflight_proof'))
@@ -111,11 +119,20 @@ def producer_inputs(invocation: dict[str, Any], path: Path, platform: str) -> di
 def host_binding(invocation: dict[str, Any]) -> None:
     wrapper = Path(text(invocation, 'engine_wrapper')).resolve(strict=True)
     require(wrapper.name == 'owned-nerdctl.py' and wrapper.parent.name == 'scripts' and wrapper.parent.parent.name == 'linux', 'Runtime engine wrapper layout differs')
-    host = wrapper.parents[2]
+    selected = invocation.get('selected_host_workers_sha256')
+    require(isinstance(selected, dict) and all(isinstance(path, str) for path in selected), 'Runtime worker mapping is malformed')
+    profiles = [Path(path) for path in cast(dict[str, str], selected) if path.endswith('/linux/scripts/local-proof/runtime_launch_profile.py')]
+    require(len(profiles) == 1 and profiles[0].is_absolute() and len(profiles[0].parents) >= 4, 'Runtime host profile is missing or ambiguous')
+    host = profiles[0].parents[3]
     require(output(['git', '-C', str(host), 'rev-parse', 'HEAD']).strip() == text(invocation, 'host_tools_revision', SHA), 'Runtime host source revision differs')
     require(not output(['git', '-C', str(host), 'status', '--porcelain']).strip(), 'Runtime host source changed')
     workers = local_api('runtime_launch_profile').runtime_worker_files(host)
     require(invocation.get('selected_host_workers_sha256') == {str(path): fingerprint(path) for path in workers}, 'Runtime worker closure changed')
+    require(not output(['git', '-C', str(wrapper.parents[2]), 'status', '--porcelain']).strip(), 'Runtime wrapper source changed')
+    for path in workers:
+        if path.parent == host / 'linux/scripts':
+            actual = wrapper.with_name(path.name)
+            require(actual.is_file() and fingerprint(actual) == fingerprint(path), 'Runtime executed wrapper companion differs: ' + path.name)
 
 
 def parent_binding(invocation: dict[str, Any], platform: str) -> tuple[dict[str, Any], str]:
@@ -220,7 +237,7 @@ def validate_receipt(receipt: dict[str, Any], image: str, platform: str) -> None
         text(before, key, DIGEST)
     terminal = before.get('unit', {})
     require(isinstance(terminal, dict), 'Local receipt producer unit is malformed')
-    text(terminal, 'Id', re.compile(r'webgpu-normal-runtime-' + platform.removeprefix('linux/') + r'-[0-9-]+\.service\Z'))
+    text(terminal, 'Id', runtime_unit(platform.removeprefix('linux/'), variant))
     require(terminal.get('LoadState') == 'loaded' and terminal.get('ActiveState') == 'active' and terminal.get('SubState') == 'exited', 'Local receipt producer was not terminal')
     require(terminal.get('MainPID') == terminal.get('ExecMainStatus') == '0' and terminal.get('Result') == 'success', 'Local receipt producer failed or was live')
     require(type(before.get('exit_timestamp_monotonic')) is int and before['exit_timestamp_monotonic'] > 0, 'Local receipt producer never exited')

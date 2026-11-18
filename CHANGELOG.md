@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-18 — bind local FINAL acceptance to canonical runtime exports
+
+- Accept the existing image and verified export wheelhouse modes without changing required runtime gates, original source/Android evidence or the complete six-consumer plan.
+- Match explicit runtime unit lanes to their declared variant and bind the original host checkout through its complete selected worker mapping. Separately located owned wrappers must retain every selected companion byte, a clean source tree and exact invocation ownership flags.
+- Extend synthetic producer, receipt and companion refusal controls across all six Linux lane schemas and both delivery modes. These controls do not establish actual FINAL consumer, GPU, clean-host or legal acceptance.
+
 ## 2026-11-17 — preserve OCI link receipts across later child exports
 
 - New schema-2 parent-link receipts retain mandatory blob hashes, exact source/child inodes, size, mode, ownership and mtime while allowing ctime to advance when another child links the same bytes. Schema-1 receipts keep their original strict ctime policy and are never rewritten.
