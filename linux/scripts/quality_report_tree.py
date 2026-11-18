@@ -111,7 +111,7 @@ SCANNER_METRICS = {
                    ("python_duplicate_blocks", "pairs", "pairs", REPORT, True)),
     "code-size": (("functions_over_80_lines", "oversized_functions", "functions", CODE, False),
                   ("functions_over_80_lines_extra_languages", "oversized_functions",
-                   "functions", REPORT, True)),
+                   "functions", CODE, True)),
     "code-complexity": (("functions_over_complexity_15", "over_cc", "functions", CODE, False),),
     "hub-reuse": (("hub_reuse_pairs", "pairs", "pairs", CODE, False),),
 }

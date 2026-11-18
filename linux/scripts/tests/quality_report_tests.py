@@ -140,6 +140,20 @@ class Checkouts(unittest.TestCase):
         self.assertIn("REGRESSED duplicated_blocks 0 -> 1", out)
         self.assertRegex((root / "logs/code-quality/queue.md").read_text(), r"- tools/[ab]\.sh:1 ")
 
+    def test_oversized_rust_function_regresses_and_dart_test_main_does_not(self) -> None:
+        body = "".join(f"    let v{i} = {i};\n" for i in range(79))
+        test_main = "void main() {\n" + "".join(f"  test('t{i}', () {{}});\n" for i in range(85)) + "}\n"
+        root = repo(self.tmp, "c", {"src/lib.rs": "fn small() {\n}\n", "test/a_test.dart": test_main})
+        rc, out = run(root, self.hub)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.measured(root)["functions_over_80_lines_extra_languages"]["value"], 0)
+        shutil.copy(root / "logs/code-quality/measurements.json", self.tmp / "before.json")
+        (root / "src/lib.rs").write_text("fn small() {\n}\nfn big() {\n" + body + "}\n")
+        git(root, "add", "-A")
+        rc, out = run(root, self.hub, "--compare", str(self.tmp / "before.json"))
+        self.assertEqual(rc, 1, out)
+        self.assertIn("REGRESSED functions_over_80_lines_extra_languages 0 -> 1", out)
+
     def test_moved_set_member_holds(self) -> None:
         root = repo(self.tmp, "c", {"tools/s.sh": f"#!/usr/bin/env bash\n{MARKER}\nx=1\n"})
         run(root, self.hub)

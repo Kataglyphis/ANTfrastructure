@@ -2399,17 +2399,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       in `test-consumer-hooks.sh`, a default `lint-shell.sh` run lists both hook files, a commit passes
       beside an unstaged deletion, and a commit in a worktree without the submodule is stopped or named.
 
-- [ ] **CON246 — a rise in oversized Rust, Dart or C++ functions shows in `--compare`** [S, ★★]. Found by the
-      audit of 2026-11-12. `functions_over_80_lines_extra_languages` is class `REPORT`
-      (`linux/scripts/quality_report_tree.py:113`), so `quality-report.sh --compare` never grades it,
-      fleet-health shows a change as `moved`, and the size ratchets bind shell and Python only
-      ([`code-quality-tooling.md` § Extra-language readers](docs/code-quality-tooling.md#extra-language-readers-report-only)).
-      The reader found 35 oversized functions of 2290 in OxidANT, 10 of 352 in AccelerANTgine and 31 in
-      OmniAccelerANT, about 22 of those Dart test `main()` bodies.
-      1. `linux/scripts/lang_units.py` tells a Dart test `main()` from product code, so the graded count is
-         not mostly tests.
-      2. The metric moves from `REPORT` to a graded class.
-
       File size and complexity for these languages stay report-only. Done when `test-quality-report.sh`
       shows a planted 81-line Rust function as `regressed` on a fixture, `test-lang-units.sh` covers the
       test-body rule, and the page says which extra-language number is graded.

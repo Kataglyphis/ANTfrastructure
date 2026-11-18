@@ -15,6 +15,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-18 — a new oversized Rust, Dart or C++ function reads `regressed` (CON246)
+
+- `functions_over_80_lines_extra_languages` was class `report`, so `quality-report.sh --compare` never graded it and
+  fleet-health showed a rise as `moved`. It is graded now (class `code`). A Dart `main()` in a `*_test.dart` file
+  (`lang_units.is_test_body`) is counted apart as `oversized_test_bodies`: about 22 of the 76 oversized functions in
+  OxidANT, AccelerANTgine and OmniAccelerANT were such bodies, whose length is the number of tests. The scanner's own
+  exit status does not change. See
+  [extra-language readers](docs/code-quality-tooling.md#extra-language-readers-report-only).
+
 ## 2026-11-18 — a `quality-report.toml` pattern row with `max` fails the lint gates (CON245)
 
 - A `kind = "pattern"` row was counted and reported only, so an AGENTS.md rule that is one pattern held by habit.

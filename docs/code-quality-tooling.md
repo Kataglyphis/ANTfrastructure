@@ -1080,7 +1080,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5073 entries** over **660 distinct test commands**; both digits are
+manifest holds **5077 entries** over **660 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2775,7 +2775,9 @@ against the text verdict on a fixture tree.
 `--extra-languages` adds units that never change the exit status:
 
 - `verify_code_size.py` prints `REPORT-ONLY:` for each Rust (`.rs`), Dart (`.dart`) and C/C++
-  (`.c .cc .cpp .h .hpp .ixx`) function over `FUNCTION_SIZE_LIMIT`, and a total line.
+  (`.c .cc .cpp .h .hpp .ixx`) function over `FUNCTION_SIZE_LIMIT`, and a total line. A Dart
+  `main()` in a `*_test.dart` file is a `test body` and counted apart (`oversized_test_bodies`): its
+  length is the number of tests in it, not product code.
 - `verify_code_dupes.py` indexes Python files apart from the gated kinds and prints file pairs
   over the threshold. Units are outermost functions, with decorators, and blank-line chunks.
   Comments are dropped and strings reduced before shingling. A shell or PowerShell count
@@ -2799,6 +2801,11 @@ descended. Blind spots:
 
 `test-lang-units.sh` pins hand-counted fixtures for each language.
 
+**The one graded number.** The scanner's exit status never moves, but `quality-report.sh --compare`
+grades `functions_over_80_lines_extra_languages` (class `code`): a new oversized Rust, Dart or C/C++
+function, test bodies left out, reads `regressed`. The Python duplicate units, file size and
+complexity for these languages stay report-only.
+
 ## quality-report
 
 `bash linux/scripts/quality-report.sh --root . [--compare FILE|previous-develop] [--offline]`
@@ -2819,7 +2826,7 @@ graded, `report` is not), `source` command, `status` and, for a set, sorted `mem
 | `ruff_findings`, `ty_diagnostics` (`ty_unresolved_imports`, report) | `python-static.sh --report-only`, with ty given an empty `VIRTUAL_ENV` so host packages cannot resolve imports |
 | `duplicated_blocks` (`python_duplicate_blocks`, report) | `verify_code_dupes.py --json`, `totals.pairs` |
 | `hub_reuse_pairs` | `verify_hub_reuse.py --json` against the hub holding the script; not collected in the hub itself |
-| `functions_over_80_lines` (`…_extra_languages`, report) | `verify_code_size.py --extra-languages --json` |
+| `functions_over_80_lines` (`…_extra_languages`, graded, Dart test `main()` left out) | `verify_code_size.py --extra-languages --json` |
 | `functions_over_complexity_15` | `verify_code_complexity.py --json`, `totals.over_cc` |
 | `powershell_complexity_findings` | `Invoke-CodeComplexity.ps1 -JsonPath` over every tracked `.ps1`/`.psm1` |
 | `allow_rows.<file>`, `allow_budget_total` | rows per tracked `*.allow`; budgets summed from `quality_allow.iter_rows` where every row has a count |

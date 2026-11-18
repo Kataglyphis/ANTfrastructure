@@ -40577,6 +40577,38 @@
   "why": "auto is the family's rule, the usable CPUs but one and at most eight, so a Pi perf copy does not oversubscribe its four cores (CON218)"
  },
  {
+  "id": "quality-report.extra-language-size-graded",
+  "target": "linux/scripts/quality_report_tree.py",
+  "find": "                   \"functions\", CODE, True)),",
+  "replace": "                   \"functions\", REPORT, True)),",
+  "test": "bash linux/scripts/tests/test-quality-report.sh",
+  "why": "a new oversized Rust, Dart or C++ function must read regressed in --compare, not moved"
+ },
+ {
+  "id": "quality-report.dart-test-main-is-test-body",
+  "target": "linux/scripts/lang_units.py",
+  "find": "    return lang == \"dart\" and name == \"main\" and rel.endswith(\"_test.dart\")",
+  "replace": "    return False",
+  "test": "bash linux/scripts/tests/test-lang-units.sh",
+  "why": "a Dart test file's main() grows with its tests; graded as product code it drowns the real count"
+ },
+ {
+  "id": "quality-report.test-body-only-in-test-files",
+  "target": "linux/scripts/lang_units.py",
+  "find": "    return lang == \"dart\" and name == \"main\" and rel.endswith(\"_test.dart\")",
+  "replace": "    return lang == \"dart\" and name == \"main\"",
+  "test": "bash linux/scripts/tests/test-lang-units.sh",
+  "why": "an app's own lib/main.dart is product code and stays graded"
+ },
+ {
+  "id": "code-size.extra-language-test-bodies-left-out",
+  "target": "linux/scripts/verify_code_size.py",
+  "find": "        over += len(big) - len(test_bodies)",
+  "replace": "        over += len(big)",
+  "test": "bash linux/scripts/tests/test-quality-report.sh",
+  "why": "the graded total leaves Dart test main() bodies out, or an added test reads as a regression"
+ },
+ {
   "id": "python.lane-coverage-extra-forwarded",
   "target": ".github/workflows/python-ci-linux.yml",
   "find": "-e PYTHON_COVERAGE_EXTRA=${{ inputs.coverage-extra }}",
