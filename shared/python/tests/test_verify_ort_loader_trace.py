@@ -167,6 +167,34 @@ class LoaderTraceTest(unittest.TestCase):
         result = self.gpu_check(script=copied)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def parent_trace(self) -> None:
+        (self.root / "bin").mkdir()
+        for name in (CORE, PLUGIN):
+            (self.bundle / name).write_bytes(b"ELF fixture only")
+        self.write_trace([f"{self.root}/bin/../{self.bundle.name}/{name}" for name in (CORE, PLUGIN)])
+
+    def test_parent_segments_require_live_resolution_and_retain_raw_paths(self) -> None:
+        self.parent_trace()
+        self.assert_refused(self.gpu_check())
+        result = self.gpu_check("--resolve-root", str(self.bundle))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = json.loads(result.stdout)
+        self.assertEqual(record["loaded"]["libonnxruntime.so"],
+                         [f"{self.root}/bin/../{self.bundle.name}/{CORE}"])
+        (self.bundle / CORE).unlink()
+        self.assert_refused(self.gpu_check("--resolve-root", str(self.bundle)))
+
+    def test_parent_segments_cannot_hide_a_symlink_escape(self) -> None:
+        self.parent_trace()
+        outside = self.root / "outside"
+        (outside / "bin").mkdir(parents=True)
+        (outside / self.bundle.name).mkdir()
+        for name in (CORE, PLUGIN):
+            (outside / self.bundle.name / name).write_bytes(b"foreign ELF fixture only")
+        (self.root / "bin").rmdir()
+        (self.root / "bin").symlink_to(outside / "bin", target_is_directory=True)
+        self.assert_refused(self.gpu_check("--resolve-root", str(self.bundle)))
+
     def test_bad_option_combinations_and_paths_are_refused(self) -> None:
         for extra in (("--profile", str(self.profile)), ("--device", "cpu"),
                       ("--min-runs", "0"), ("--plugin", "../outside.so"),

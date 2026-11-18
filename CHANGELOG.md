@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-18 — resolve real package loader parent segments
+
+- Accept a traced `$ORIGIN/../lib` path only with explicit live root resolution, a normalized expected package directory and actual file containment. Canonical CLI roots, missing-file and symlink-escape refusals remain strict; receipts preserve the original trace paths.
+- Synthetic live-file controls and mutations cover valid parent segments, missing files, absent resolution and symlink traversal. This does not authenticate traces or library bytes, prove a session or GPU inference, or repair the original failed C++ hardware receipt.
+
 ## 2026-11-18 — preserve the exact staged consumer index
 
 - Restore the optional working-source copier on the current tooling branch. Generate its overlay from the index, preserving staged gitlinks even when both the selected base and actual child checkout differ. Regular-file staging, complete index, copied bytes/modes/links, source-race and independent-object checks remain required; committed recursive acceptance stays strict.

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import posixpath
 import re
 import subprocess
 import sys
@@ -18,13 +19,13 @@ CORE_NAME = re.compile(r"libonnxruntime\.so(?:\.[0-9]+)*")
 LIBRARY_NAME = re.compile(r"[A-Za-z0-9_+.-]+\.so(?:\.[0-9]+)*")
 
 
-def normalized_path(value: str, *, absolute: bool) -> PurePosixPath:
+def normalized_path(value: str, *, absolute: bool, allow_parent: bool = False) -> PurePosixPath:
     path = PurePosixPath(value)
     if (
         path.is_absolute() != absolute
         or not path.parts
         or str(path) != value
-        or ".." in path.parts
+        or (".." in path.parts and not allow_parent)
         or "\\" in value
         or any(ord(char) < 32 or ord(char) == 127 for char in value)
     ):
@@ -56,7 +57,8 @@ def trace_records(trace: Path, expected_pid: int | None) -> list[str]:
 
 
 def validate_origin(value: str, directory: Pattern[str], real_root: Path | None) -> None:
-    path = normalized_path(value, absolute=True)
+    path = normalized_path(value, absolute=True, allow_parent=real_root is not None)
+    path = PurePosixPath(posixpath.normpath(str(path)))
     if not directory.fullmatch(str(path.parent)):
         raise ValueError("library loaded outside the expected package")
     if real_root is not None:

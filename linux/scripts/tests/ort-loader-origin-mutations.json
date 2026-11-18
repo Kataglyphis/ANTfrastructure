@@ -98,10 +98,10 @@
   {
     "id": "packaging.ort-loader-canonical-path",
     "target": "shared/python/verify_ort_loader_trace.py",
-    "find": "path = normalized_path(value, absolute=True)",
+    "find": "path = normalized_path(value, absolute=True, allow_parent=real_root is not None)",
     "replace": "path = PurePosixPath(value)",
     "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
-    "why": "Normalization must reject traversal and repeated or dot separators instead of hiding them."
+    "why": "Only explicitly resolved parent segments may normalize; repeated/dot separators, malformed paths and unresolved traversal remain refused."
   },
   {
     "id": "packaging.ort-loader-package-directory",
@@ -166,5 +166,21 @@
     "replace": "\"0\" * 64",
     "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
     "why": "The output must bind the exact profile bytes sent to the canonical verifier."
+  },
+  {
+    "target": "shared/python/verify_ort_loader_trace.py",
+    "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+    "id": "packaging.ort-loader-parent-needs-resolution",
+    "find": "allow_parent=real_root is not None",
+    "replace": "allow_parent=True",
+    "why": "Parent segments cannot be accepted from archived trace strings without existing-file root resolution."
+  },
+  {
+    "target": "shared/python/verify_ort_loader_trace.py",
+    "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+    "id": "packaging.ort-loader-parent-normalization",
+    "find": "    path = PurePosixPath(posixpath.normpath(str(path)))",
+    "replace": "    path = PurePosixPath(str(path))",
+    "why": "A legitimate package origin with a parent segment must match its normalized expected directory only after input validation; raw evidence remains unchanged."
   }
 ]

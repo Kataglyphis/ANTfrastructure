@@ -1086,9 +1086,14 @@ python3 -I shared/python/verify_ort_loader_trace.py \
 For AppImages, supply the extraction parent as `--runtime-root` and the relative
 payload directory, such as `--appimage-subdir usr/lib/oxidant/lib`. The extraction
 directory must be `appimage_extracted_` followed by exactly 32 lowercase hex digits.
-Traversal, noncanonical paths, missing libraries and linked trace files fail.
-When the files still exist, `--resolve-root /absolute/bundle/lib` also rejects a
-loaded library whose symlink resolves outside that root.
+Canonical CLI roots, malformed trace paths, missing libraries and linked trace files fail.
+Parent segments in a traced path, such as `/usr/bin/../lib/accelerantgine/libonnxruntime.so.1`,
+require explicit `--resolve-root /usr/lib/accelerantgine` while those files still exist.
+The normalized lexical parent must match the expected package directory, and the original
+path must resolve strictly to a file inside that real root. A symlink before `..` can change
+the actual destination, so lexical normalization alone is insufficient. Without live resolution,
+parent segments remain refused. Repeated separators, dot components and backslashes stay invalid;
+receipts retain each original trace path rather than replacing the evidence with a normalized copy.
 
 Copy `verify_ort_profile.py` beside the new CLI when using profile mode. The Python
 API `verify_loader_traces` also accepts a caller-owned directory regex for archived
