@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-18 — repair full-preflight documentation and recipe namespaces
+
+- Keep the loader-origin pointer in the existing GPU bundle bullet, restoring the README's unchanged 100-line limit.
+- Move the nine AMD provenance recipe IDs from the unregistered `ort` family to the existing `packaging` family. Keep every target, edit, test and reason unchanged and preserve a one-to-one ID map with the proof; the registry retains all 6,922 recipes.
+
 ## 2026-11-18 — share profiled ORT loader-origin checks
 
 - Add a shared parser and CLI for bundle and AppImage loader paths. Profile mode validates the original profile bytes with the canonical provider/run verifier, then requires the matching PID trace and every requested plugin beside ORT.

@@ -4892,3 +4892,13 @@ restricted PATH that excludes ripgrep. Their complete assertion totals remain
 mandatory. Searches use portable grep, and negative checks require its exact
 no-match status rather than accepting every failure. Missing helper definitions,
 missing commands and malformed search inputs must make the fixtures fail.
+
+
+## Mutation namespace repairs
+
+Recipe IDs use a preflight slug or a declared descriptive family. Move a misplaced
+recipe into its existing owning family while preserving its target, edit, test and
+reason. Record a one-to-one old/new ID map with the validation evidence and retain
+every recipe. The AMD package-provenance recipes belong to `packaging`; declaring
+a second family for those same checks is unnecessary. Use the canonical mutation
+merge driver for the validated additions after removing only the mapped old IDs.
