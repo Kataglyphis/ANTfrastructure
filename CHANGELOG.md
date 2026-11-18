@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — a consumer's shell line endings are a gate (CON269 item 1)
+
+- The hub's `crlf-guard` was a function of `preflight.sh` over the hub's own files, so no consumer hook checked line
+  endings. `linux/scripts/verify-shell-eol.sh [<root>] [--staged]` holds it; preflight calls it, and
+  `run-lint-gates.sh` runs it in the full gates (git's `w/` column) and in the staged checks (`i/`, the bytes the
+  commit carries). Every consumer passed on 2026-11-19.
+
 ## 2026-11-18 — the large-files gate grades the index, not the working tree (CON269 item 4)
 
 - `verify_large_files.py --root` refused a tracked file missing from disk, so a deletion not staged yet stopped every

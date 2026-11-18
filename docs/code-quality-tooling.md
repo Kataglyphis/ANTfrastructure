@@ -1080,7 +1080,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5084 entries** over **661 distinct test commands**; both digits are
+manifest holds **5087 entries** over **662 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2602,9 +2602,12 @@ slug below is proven now; see
 
 ### `crlf-guard`, the worked example
 
-`check_crlf_guard` is inline in `preflight.sh`: it asks `lint-shell.sh --list-files`
+`linux/scripts/verify-shell-eol.sh [<root>]` (preflight's `check_crlf_guard` calls it on
+the hub, `run-lint-gates.sh` on a consumer) asks `lint-shell.sh --list-files`
 which of the tracked files are shell scripts, reads `git ls-files --eol` over exactly
-those, and fails naming every one whose **working-tree** bytes carry CR.
+those, and fails naming every one whose **working-tree** bytes carry CR. With
+`--staged`, the consumers' commit hook, it reads the `i/` column of the staged scripts
+instead: the bytes the commit carries.
 
 **Which column decides.** `git ls-files --eol` prints `i/<eol> w/<eol> attr/<attr>`
 — the index shape and the working-tree shape. Only `w/` counts here, because

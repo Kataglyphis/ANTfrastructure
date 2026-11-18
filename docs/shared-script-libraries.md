@@ -1288,7 +1288,7 @@ package and OxidANT a Rust crate, neither has a single `.py`, and refusing an em
 Python scope made both lanes exit 1 on every push for a reason nothing in either tree
 could change. A permanently red lane is a tolerated failure by construction.
 
-### `run-lint-gates.sh` — nine gates over a consumer tree, plus the opt-in ratchets
+### `run-lint-gates.sh` — ten gates over a consumer tree, plus the opt-in ratchets
 
 ```bash
 bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD"
@@ -1319,6 +1319,12 @@ are the consumer's own, and dropping the whole prefix excluded them silently.
 The pin *preconditions* the copies carried ("does the pinned `lint-secrets.sh`
 understand a scan root yet?") are gone by construction: this script ships in the
 same commit as the gates it calls.
+
+**Shell line endings** runs `verify-shell-eol.sh <consumer-root>`, the hub's own
+[`crlf-guard`](code-quality-tooling.md#crlf-guard-the-worked-example): no tracked shell script
+(by `lint-shell.sh --list-files`, so a hook without a suffix counts) with `w/crlf`, `w/mixed` or
+`w/-text`. The staged checks run it with `--staged`, which reads the `i/` column of the staged
+scripts: the bytes the commit carries.
 
 **Pattern limits** runs `verify_pattern_limits.py --root <consumer-root>`: a
 `quality-report.toml` row `kind = "pattern"` with `max = 0` fails on its first match and prints

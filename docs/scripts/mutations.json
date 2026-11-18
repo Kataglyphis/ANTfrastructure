@@ -1393,9 +1393,9 @@
  },
  {
   "id": "crlf-guard.pattern-neutered",
-  "target": "linux/scripts/preflight.sh",
-  "find": "if (c[2] == \"w/crlf\" || c[2] == \"w/mixed\" || c[2] == \"w/-text\")",
-  "replace": "if (c[2] == \"never-matches\")",
+  "target": "linux/scripts/verify-shell-eol.sh",
+  "find": "if (c[n] == p \"crlf\" || c[n] == p \"mixed\" || c[n] == p \"-text\")",
+  "replace": "if (c[n] == \"never-matches\")",
   "test": "bash linux/scripts/tests/test-crlf-guard.sh",
   "why": "the CRLF guard must actually select CR-bearing rows: neutering the awk condition makes every dirty working tree look clean"
  },
@@ -2097,25 +2097,25 @@
  },
  {
   "id": "crlf-guard.mixed-blind",
-  "target": "linux/scripts/preflight.sh",
-  "find": "c[2] == \"w/crlf\" || c[2] == \"w/mixed\" || c[2] == \"w/-text\"",
-  "replace": "c[2] == \"w/crlf\" || c[2] == \"w/-text\"",
+  "target": "linux/scripts/verify-shell-eol.sh",
+  "find": "c[n] == p \"crlf\" || c[n] == p \"mixed\" || c[n] == p \"-text\"",
+  "replace": "c[n] == p \"crlf\" || c[n] == p \"-text\"",
   "test": "bash linux/scripts/tests/test-crlf-guard.sh",
   "why": "git says w/crlf only when EVERY line ends CRLF; a file an editor or merge half-rewrote is w/mixed, the realistic accident that produces \"$'\\r': command not found\" in the containers"
  },
  {
   "id": "crlf-guard.lone-cr-blind",
-  "target": "linux/scripts/preflight.sh",
-  "find": "|| c[2] == \"w/-text\"",
-  "replace": "|| c[2] == \"never-emitted\"",
+  "target": "linux/scripts/verify-shell-eol.sh",
+  "find": "|| c[n] == p \"-text\"",
+  "replace": "|| c[n] == \"never-emitted\"",
   "test": "bash linux/scripts/tests/test-crlf-guard.sh",
   "why": "a bare CR (no LF after it) makes git report w/-text, not w/crlf; it breaks bash the same way and no tracked *.sh is legitimately binary"
  },
  {
   "id": "crlf-guard.index-column",
-  "target": "linux/scripts/preflight.sh",
-  "find": "if (c[2] == \"w/crlf\"",
-  "replace": "if (c[1] == \"i/crlf\"",
+  "target": "linux/scripts/verify-shell-eol.sh",
+  "find": "root=\".\" column=\"w\" field=2 staged=0",
+  "replace": "root=\".\" column=\"i\" field=1 staged=0",
   "test": "bash linux/scripts/tests/test-crlf-guard.sh",
   "why": "buildkit snapshots the WORKING TREE, so only git's w/ column decides; reading i/ turns a CRLF-in-index/LF-on-disk file into a false positive and misses the real one"
  },
@@ -2553,27 +2553,35 @@
  },
  {
   "id": "crlf-guard.scope-sh-suffix-only",
-  "target": "linux/scripts/preflight.sh",
-  "find": "git ls-files -z 2>/dev/null \\\n    | xargs -0r bash linux/scripts/lint-shell.sh --list-files 2>/dev/null \\\n    | tr '\\n' '\\0' \\\n    | xargs -0r git ls-files --eol -- 2>/dev/null \\\n",
-  "replace": "git ls-files --eol -- '*.sh' 2>/dev/null \\\n",
+  "target": "linux/scripts/verify-shell-eol.sh",
+  "find": "  \"${list[@]}\" 2>/dev/null \\\n    | xargs -0r bash \"${_EOL_DIR}/lint-shell.sh\" --list-files 2>/dev/null \\\n    | tr '\\n' '\\0' \\\n    | xargs -0r git ls-files --eol -- 2>/dev/null \\\n",
+  "replace": "  git ls-files --eol -- '*.sh' 2>/dev/null \\\n",
   "test": "bash linux/scripts/tests/test-crlf-guard.sh",
   "why": "a *.sh pathspec cannot see an extension-less script on a shell shebang, so the commit hook that runs this very gate was outside it while the neighbouring shellcheck gate covered it"
  },
  {
   "id": "crlf-guard.scope-not-classified",
-  "target": "linux/scripts/preflight.sh",
-  "find": "xargs -0r bash linux/scripts/lint-shell.sh --list-files 2>/dev/null",
+  "target": "linux/scripts/verify-shell-eol.sh",
+  "find": "xargs -0r bash \"${_EOL_DIR}/lint-shell.sh\" --list-files 2>/dev/null",
   "replace": "xargs -0r printf '%s\\n' 2>/dev/null",
   "test": "bash linux/scripts/tests/test-crlf-guard.sh",
   "why": "the scope must be lint-shell.sh's answer to 'what is a shell script'; taking every tracked path instead turns CR in prose, patches and fixtures into gate failures"
  },
  {
   "id": "crlf-guard.pipefail-pin",
-  "target": "linux/scripts/preflight.sh",
+  "target": "linux/scripts/verify-shell-eol.sh",
   "find": "set -uo pipefail",
   "replace": "set -u",
   "test": "bash linux/scripts/tests/test-crlf-guard.sh",
   "why": "__git-ls-files-FAILED__ is reachable only because a failing stage fails the pipeline; without pipefail awk's zero is the verdict and a broken git or a missing lint-shell.sh reads as a clean tree"
+ },
+ {
+  "id": "crlf-guard.staged-reads-index",
+  "target": "linux/scripts/verify-shell-eol.sh",
+  "find": "    --staged) staged=1 column=\"i\" field=1 ;;",
+  "replace": "    --staged) staged=1 ;;",
+  "test": "bash linux/scripts/tests/test-crlf-guard.sh",
+  "why": "the commit carries the index's bytes; a staged CR with LF on disk must stop the commit, which the w/ column never sees"
  },
  {
   "id": "python-lint.embedded-extraction-off",
@@ -14978,6 +14986,22 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-lint-gates.sh",
   "why": "a gate function nothing registers never runs in a consumer lane"
+ },
+ {
+  "id": "lint-gates.shell-eol-registered",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  run_gate \"shell line endings\" _lint_gates_shell_eol\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh",
+  "why": "a consumer's CR-bearing script breaks bash in its container; a gate nothing registers never runs in its lane"
+ },
+ {
+  "id": "lint-gates.shell-eol-staged-registered",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  run_gate \"shell line endings (staged)\" _lint_gates_shell_eol --staged\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh",
+  "why": "the commit hook is where a CR is cheapest to stop; without the staged gate it reaches the push"
  },
  {
   "id": "lib.dartdoc-guides-anchor-kept",

@@ -2362,10 +2362,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON269 — what the consumer hook pair and the staleness gate leave open** [S, ★★]. Found 2026-11-12
       while CON243 and CON244 were built; what is built is in `CHANGELOG.md` and
       [`adopting-in-a-new-project.md` § The git hooks, by reference](docs/adopting-in-a-new-project.md#the-git-hooks-by-reference).
-      1. No hook checks line endings in a consumer. The hub's `crlf-guard` is a function of
-         `preflight.sh` over the hub's own shell files, and `run-lint-gates.sh` has no such gate.
-         First step: move that check into a script that takes `--root`, then call it from the staged
-         checks and the full gates.
+      1. Done 2026-11-19: `linux/scripts/verify-shell-eol.sh [<root>] [--staged]` is the hub's `crlf-guard`
+         and a gate of `run-lint-gates.sh`, in the full gates (`w/` column) and the staged checks (`i/`).
       2. Done 2026-11-18: `lint-shell.sh`'s default sweep takes `shared/linux`, the hook templates included;
          they were clean, and the warning ratchet did not move.
       3. The refusal of `--index` without `--staged` has a test and no mutation recipe: its mutant runs

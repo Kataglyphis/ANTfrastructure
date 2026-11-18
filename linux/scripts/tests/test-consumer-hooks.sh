@@ -23,7 +23,7 @@ _REAL=(shared/linux/templates/git-hooks/pre-commit shared/linux/templates/git-ho
   linux/scripts/run-lint-gates.sh linux/scripts/01-core/gates.sh linux/scripts/01-core/python-probe.sh
   linux/scripts/gate_scope.py linux/scripts/quality_allow.py linux/scripts/verify_large_files.py
   docs/scripts/verify_mutations.py docs/scripts/mutation_parse.py docs/scripts/mutation_shards.py
-  docs/scripts/mutation_push.py)
+  docs/scripts/mutation_push.py linux/scripts/verify-shell-eol.sh)
 # Short of a real token's length, so the hub's own secret scan does not read this suite as a leak.
 _TOKEN="ghp_fixture"
 
@@ -56,7 +56,10 @@ _hub_copy() {
     mkdir -p "${d}/$(dirname "${rel}")"
     cp -p "${HUB}/${rel}" "${d}/${rel}"
   done
-  for rel in lint-shell.sh lint-workflows.sh lint-python.sh; do _stub_sh "${d}/linux/scripts/${rel}"; done
+  for rel in lint-workflows.sh lint-python.sh; do _stub_sh "${d}/linux/scripts/${rel}"; done
+  # --list-files only classifies paths, so it is logged apart from a lint run; it names no shell file here.
+  printf '#!/usr/bin/env bash\nif [ "${1-}" = --list-files ]; then echo "lint-shell.sh --list-files" >> "${HOOK_TEST_ARGV}"; exit 0; fi\nprintf "%%s\\n" "${0##*/}" >> "${HOOK_TEST_ARGV}"\n' \
+    > "${d}/linux/scripts/lint-shell.sh"
   _stub_sh "${d}/shared/config/sync-shared-config.sh"
   _stub_secrets "${d}/linux/scripts/lint-secrets.sh"
   for rel in docs/scripts/sync_versions.py docs/scripts/verify_doc_dupes.py linux/scripts/verify_readme_length.py \
@@ -143,7 +146,7 @@ _section_commit() {
   _run "${d}" commit -q -m clean
   t_assert_eq 0 "${_rc}" "${_out}"
   t_assert_contains "${_out}" "pre-commit: scripts/linux/run-lint-gates.sh --staged" "the repo's own wrapper carries its flags"
-  t_assert_contains "${_out}" "STAGED CHECKS OK (2 gate(s))" "large files, behind the wrapper's --ratchets, and the secret scan"
+  t_assert_contains "${_out}" "STAGED CHECKS OK (3 gate(s))" "large files, behind the wrapper's --ratchets, the secret scan and the line endings"
   t_assert_grep "${HOOK_TEST_ARGV}" '^lint-secrets\.sh .*/tree/README\.md$'
   t_assert_no_grep "${HOOK_TEST_ARGV}" '^(lint-(shell|workflows|python)|sync-shared-config)\.sh$|^--'
   t_assert_eq 1 "$((SECONDS < 60))" "a commit hook that takes a minute teaches --no-verify; took ${SECONDS}s"
@@ -155,7 +158,7 @@ _section_commit() {
   _run "${d}" commit -q -m blob
   t_assert_eq 1 "${_rc}" "${_out}"
   t_assert_contains "${_out}" "blob.bin"
-  t_assert_contains "${_out}" "STAGED CHECKS FAILED (1 of 2): large files"
+  t_assert_contains "${_out}" "STAGED CHECKS FAILED (1 of 3): large files"
   t_assert_contains "${_out}" "git commit --no-verify" "the refusal names the bypass"
   t_assert_eq "${head}" "$(git -C "${d}" rev-parse HEAD)" "no commit was made"
   _stage "${d}" large-files.allow "blob.bin | 1024 | fixture"
@@ -207,7 +210,7 @@ _section_commit() {
   _run "${bare}" commit -q -m blob
   t_assert_eq 0 "${_rc}" "the large-file check is opt-in with --ratchets, which only a wrapper passes: ${_out}"
   t_assert_contains "${_out}" "linux/scripts/run-lint-gates.sh ${bare} --staged"
-  t_assert_contains "${_out}" "STAGED CHECKS OK (1 gate(s))"
+  t_assert_contains "${_out}" "STAGED CHECKS OK (2 gate(s))"
   _stage "${bare}" conf/app.txt "token = ${_TOKEN}"
   _run "${bare}" commit -q -m leak
   t_assert_eq 1 "${_rc}" "the secret scan needs no flag: ${_out}"
@@ -220,7 +223,7 @@ _section_push() {
   d="$(_consumer)"
   _push "${d}" 0 README.md "more"
   t_assert_contains "${_out}" "pre-push: scripts/linux/run-lint-gates.sh"
-  t_assert_contains "${_out}" "LINT GATES OK (10 gate(s))" "the nine of every consumer and the wrapper's ratchets"
+  t_assert_contains "${_out}" "LINT GATES OK (11 gate(s))" "the ten of every consumer and the wrapper's ratchets"
   t_assert_contains "${_out}" "demo-mutations.json: 1 entr(ies)"
   t_assert_grep "${HOOK_TEST_ARGV}" '^lint-shell\.sh$'
   t_assert_grep "${HOOK_TEST_ARGV}" '^--against-hub --root '
@@ -234,7 +237,7 @@ _section_push() {
   _push "${d}" 1
   t_assert_contains "${_out}" "demo.guard" "the recipe to re-point"
   t_assert_contains "${_out}" "demo-mutations.json" "and its manifest"
-  t_assert_contains "${_out}" "LINT GATES FAILED (1 of 10): mutation staleness"
+  t_assert_contains "${_out}" "LINT GATES FAILED (1 of 11): mutation staleness"
   t_assert_contains "${_out}" "git push --no-verify" "the refusal names the bypass"
   t_assert_eq "${tip}" "$(_tip "${d}")" "the remote did not move"
 
@@ -255,7 +258,7 @@ _section_push() {
   bare="$(_consumer bare)"
   _push "${bare}" 0 README.md "more"
   t_assert_contains "${_out}" "linux/scripts/run-lint-gates.sh ${bare}"
-  t_assert_contains "${_out}" "LINT GATES OK (9 gate(s))"
+  t_assert_contains "${_out}" "LINT GATES OK (10 gate(s))"
   t_assert_no_grep "${HOOK_TEST_ARGV}" '^--against-hub'
   _push "${bare}" 1 scripts/linux/subject.sh "GUARD=renamed"
   t_assert_contains "${_out}" "demo.guard"
@@ -378,7 +381,7 @@ _section_notice() {
   t_assert_eq 0 "$?" "a warning is not a verdict: ${out}"
   t_assert_eq 1 "$(printf '%s\n' "${out}" | grep -c -e 'core.hooksPath is unset')" "${out}"
   t_assert_contains "${out}" "set it once: git config core.hooksPath ${HOOKS_REL}"
-  t_assert_eq "LINT GATES OK (10 gate(s))" "$(printf '%s\n' "${out}" | tail -n 1)" "the verdict stays the last line"
+  t_assert_eq "LINT GATES OK (11 gate(s))" "$(printf '%s\n' "${out}" | tail -n 1)" "the verdict stays the last line"
   t_assert_contains "$(cd "${d}" && bash scripts/linux/run-lint-gates.sh --staged 2>&1)" "core.hooksPath is unset" \
     "the staged checks run by hand say it too"
 

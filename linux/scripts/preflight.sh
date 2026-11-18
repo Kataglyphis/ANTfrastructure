@@ -139,22 +139,7 @@ run_check() {
 
 # 0. Only git's w/ column counts: buildkit snapshots the worktree. See docs/code-quality-tooling.md#crlf-guard-the-worked-example
 check_crlf_guard() {
-  local offenders
-  offenders="$(git ls-files -z 2>/dev/null \
-    | xargs -0r bash linux/scripts/lint-shell.sh --list-files 2>/dev/null \
-    | tr '\n' '\0' \
-    | xargs -0r git ls-files --eol -- 2>/dev/null \
-    | awk -F'\t' '{ split($1, c, /[ \t]+/)
-        if (c[2] == "w/crlf" || c[2] == "w/mixed" || c[2] == "w/-text")
-          printf "  %s  %s\n", c[2], $2 }' \
-    || echo "__git-ls-files-FAILED__")"
-  if [ -n "${offenders}" ]; then
-    printf 'CRLF working-tree line endings detected in tracked shell script(s):\n'
-    printf '%s\n' "${offenders}"
-    printf 'Fix (re-materialize LF from the index): rm <file> && git checkout -- <file>\n'
-    return 1
-  fi
-  printf 'no w/crlf, w/mixed or w/-text shell scripts in the working tree\n'
+  bash linux/scripts/verify-shell-eol.sh .
 }
 run_check crlf-guard "working-tree CRLF guard"    check_crlf_guard
 
