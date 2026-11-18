@@ -57,7 +57,9 @@ elif [ "${#FILES[@]}" -eq 0 ]; then
     "${REPO_ROOT}/linux/host-config" \
     "${REPO_ROOT}/linux/llm-stack" \
     "${REPO_ROOT}/linux/webserver" \
-    \( -name '*.sh' -o -path "${REPO_ROOT}/linux/host-config/git-hooks/*" \) \
+    "${REPO_ROOT}/shared/linux" \
+    \( -name '*.sh' -o -path "${REPO_ROOT}/linux/host-config/git-hooks/*" \
+       -o -path "${REPO_ROOT}/shared/linux/templates/git-hooks/*" \) \
     -type f | sort)
 fi
 

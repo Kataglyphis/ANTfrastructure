@@ -2366,9 +2366,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
          `preflight.sh` over the hub's own shell files, and `run-lint-gates.sh` has no such gate.
          First step: move that check into a script that takes `--root`, then call it from the staged
          checks and the full gates.
-      2. `lint-shell.sh` without arguments scans `linux/` only, so no gate lints
-         `shared/linux/templates/git-hooks/*`. They were checked by hand with
-         `bash linux/scripts/lint-shell.sh <file>`.
+      2. Done 2026-11-18: `lint-shell.sh`'s default sweep takes `shared/linux`, the hook templates included;
+         they were clean, and the warning ratchet did not move.
       3. The refusal of `--index` without `--staged` has a test and no mutation recipe: its mutant runs
          the downloaded linters inside `test-lint-gates.sh`.
       4. The commit hook's large-file check is `verify_large_files.py --root`, which refuses a tracked

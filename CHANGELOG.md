@@ -15,6 +15,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-18 — the consumer hook templates are linted (CON269 item 2)
+
+- `lint-shell.sh` without arguments swept `linux/` only, so `shared/linux/templates/git-hooks/*` and the copied
+  `antfrastructure.sh`, which every consumer runs, were linted by hand. The default sweep takes `shared/linux`;
+  the files were clean and the warning ratchet holds at 35.
+
 ## 2026-11-18 — the Windows detector parity run is one hub copy (CON252)
 
 - OxidANT's and OmniAccelerANT's `scripts/windows/check_gpu_detector_parity.py` shared about 110 lines, the

@@ -24785,6 +24785,14 @@
   "why": "each lint driver initializes the selected consumer scope and remaining arguments"
  },
  {
+  "id": "shellcheck.consumer-hook-templates-linted",
+  "target": "linux/scripts/lint-shell.sh",
+  "find": "    \"${REPO_ROOT}/shared/linux\" \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
+  "why": "every consumer runs the hook templates and the copied bootstrap; outside the sweep no gate lints them"
+ },
+ {
   "id": "dockerfile-lint.scope-init-entry",
   "target": "linux/scripts/lint-dockerfiles.sh",
   "find": ". \"${CORE_DIR}/lint-scope-init.sh\" || exit 1",
