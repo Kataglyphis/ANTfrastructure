@@ -16,6 +16,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-18 — retain ONNX source identity when the primary repository is unavailable
+
+- Pin the Windows ONNX core to its full original 1.31.1 commit. Keep the primary tag clone first; after its bounded retries, fetch that exact commit from the AMD-maintained fork with shallow recursive submodules.
+- Reject commit or VERSION_NUMBER mismatches and any failed fetch, checkout or submodule command before source patches or compilation. Existing non-ONNX clone behavior is unchanged.
+- Share required AST command selection, argument identity, scope and order checks across the affected wiring suites, preserving the existing call-assertion diagnostics and mutation cases.
+- Producer, hardware and hosted-CI requalification remain required for this changed source closure; earlier 0b552573 results retain their original attribution.
+
 ## 2026-11-17 — preserve readable module closures and resume completed media builds
 
 - Add explicit `media-merge` selection after completed media branches, checking

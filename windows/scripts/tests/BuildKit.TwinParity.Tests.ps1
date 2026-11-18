@@ -21,7 +21,7 @@ BeforeAll {
 
     # Each media-core stage declares exactly its component's keys, so one bump never re-runs the ONNX build.
     $script:coreComponentKeys = @{
-        'media-core-built-onnx'   = @('ONNXRUNTIME_VERSION', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION', 'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256') + $script:TrtEpKeys
+        'media-core-built-onnx'   = @('ONNXRUNTIME_VERSION', 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION', 'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256') + $script:TrtEpKeys
         'media-core-built-ffmpeg' = @('FFMPEG_VERSION', 'PYAV_VERSION', 'PY_CYTHON_VERSION', 'NV_CODEC_HEADERS_REF',
                                       'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',
                                       'DAV1D_VERSION', 'DAV1D_SHA256', 'X264_MESON_BRANCH', 'X264_MESON_COMMIT',
@@ -129,7 +129,7 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
     It 'covers the driver''s whole media-core version-arg set with the per-stage union (no drift)' {
         # A forwarded key no stage declares is silently dropped, so the union is checked against the driver's own map.
         $table = @{}
-        foreach ($k in @('ONNXRUNTIME_VERSION', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_VERSION',
+        foreach ($k in @('ONNXRUNTIME_VERSION', 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_VERSION',
                          'FFMPEG_VERSION', 'PYAV_VERSION', 'PY_CYTHON_VERSION', 'QNN_SDK_ZIP_SHA256', 'QNN_SDK_VERSION', 'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256',
                          'NV_CODEC_HEADERS_REF', 'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',
                          'DAV1D_VERSION', 'DAV1D_SHA256', 'X264_MESON_BRANCH', 'X264_MESON_COMMIT', 'X265_VERSION', 'X265_SHA256',

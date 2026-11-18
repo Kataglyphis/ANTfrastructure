@@ -26,6 +26,7 @@ $script:WbtTrtEpPins = @{
 function New-WbtFakeMediaVersionTable {
     $table = @{
         ONNXRUNTIME_VERSION       = 'ort-1'
+        ONNXRUNTIME_WINDOWS_SOURCE_COMMIT = 'ort-commit-52'
         ONNXRUNTIME_GENAI_VERSION = 'genai-2'
         OPENCV_VERSION            = 'cv-3'
         FFMPEG_VERSION            = 'ff-4'
@@ -69,6 +70,7 @@ Describe 'Get-MediaBranchVersionArg' {
         $cases = @(
             @{ Branch = 'media-core'; Expected = @{
                     ONNXRUNTIME_VERSION       = 'ort-1'
+        ONNXRUNTIME_WINDOWS_SOURCE_COMMIT = 'ort-commit-52'
                     ONNXRUNTIME_GENAI_VERSION = 'genai-2'
                     OPENCV_SOURCE_VERSION     = 'cv-3'
                     OPENCV_VERSION            = 'cv-3'
@@ -155,6 +157,7 @@ Describe 'Get-MediaMergeVersionArg' {
         ) -join ','
         Assert-Equal $expectedKeys (@($merge.Keys | Sort-Object) -join ',') 'exact merge key set'
         # Compile-only core inputs the merge Dockerfile declares no ARG for:
+        Assert-False ($merge.Contains('ONNXRUNTIME_WINDOWS_SOURCE_COMMIT')) 'the source commit is a compile-only input'
         Assert-False ($merge.Contains('NV_CODEC_HEADERS_REF')) 'NV_CODEC_HEADERS_REF is excluded from the merge env'
         Assert-False ($merge.Contains('CUDA_ARCHITECTURES')) 'CUDA_ARCHITECTURES is excluded from the merge env'
         Assert-False ($merge.Contains('AMF_HEADERS_VERSION')) 'AMF_HEADERS_VERSION is excluded from the merge env'

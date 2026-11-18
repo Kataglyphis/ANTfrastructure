@@ -37850,16 +37850,16 @@
  },
  {
   "id": "windows-lane.call-assertions-source-order",
-  "target": "windows/scripts/tests/WindowsHarness.CallAssertions.psm1",
-  "find": "        Assert-TestAstOrder -Before $commands[$index - 1] -After $commands[$index]",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "        Assert-TestAstOrder -Before $commandMap[$Order[$mapOrderIndex - 1]] -After $commandMap[$Order[$mapOrderIndex]]",
   "replace": "        Write-Verbose 'source order omitted'",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/call-assertions-mutation.json",
   "why": "source call order assertions must reject a reversed sequence"
  },
  {
   "id": "windows-lane.call-assertions-source-uniqueness",
-  "target": "windows/scripts/tests/WindowsHarness.CallAssertions.psm1",
-  "find": "        Assert-Equal 1 $selected.Count \"one selected call to $commandName\"",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "        Assert-Equal 1 $selectedCommands.Count ($CountReason -f $commandName)",
   "replace": "        Write-Verbose 'call uniqueness omitted'",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/call-assertions-mutation.json",
   "why": "a repeated selected source call must fail before source-order verification"
@@ -39303,5 +39303,141 @@
   "replace": "FROM ${BASE_IMAGE} AS missing-llamamods",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Rocm.Structure.Tests.ps1 -ResultFile logs/code-quality/rocm-structure-mutation.json",
   "why": "A missing named source stage must fail before inspecting its module declarations."
+ },
+ {
+  "id": "windows-lane.ort-source-commit-shape",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "$ExpectedCommit -cnotmatch '^[0-9a-f]{40}$'",
+  "replace": "$false",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "Malformed or abbreviated source pins must fail before the destination changes."
+ },
+ {
+  "id": "windows-lane.ort-source-version-shape",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "$Version -notmatch '^\\d+\\.\\d+\\.\\d+$'",
+  "replace": "$false",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "Malformed release names must fail before the destination changes."
+ },
+ {
+  "id": "windows-lane.ort-source-commit-identity",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "$actual[0] -cne $ExpectedCommit",
+  "replace": "$false",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "A primary tag resolving to another commit must refuse without a fallback override."
+ },
+ {
+  "id": "windows-lane.ort-source-version-identity",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "$actualVersion -cne $Version",
+  "replace": "$false",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "The pinned root must contain the requested release version."
+ },
+ {
+  "id": "windows-lane.ort-source-fallback-status",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "$fallback.ExitCode -ne 0",
+  "replace": "$false",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "A failed recursive source transport cannot become a successful clone."
+ },
+ {
+  "id": "windows-lane.ort-source-native-status",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "ExitCode = $code; Output = $output.ToArray()",
+  "replace": "ExitCode = 0; Output = $output.ToArray()",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "Preserve failed fetch and submodule exit codes."
+ },
+ {
+  "id": "windows-lane.ort-source-shallow-fetch",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "'fetch', '--depth=1', '--no-tags', 'origin', $Commit",
+  "replace": "'fetch', '--no-tags', 'origin', $Commit",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "The exact-commit fallback must not download full history."
+ },
+ {
+  "id": "windows-lane.ort-source-recursive-fetch",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "if ($Recursive) { $steps +=",
+  "replace": "if ($false) { $steps +=",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "A root checkout alone is incomplete when pinned submodules are required."
+ },
+ {
+  "id": "windows-lane.ort-source-caller-order",
+  "target": "windows/scripts/build/Build-OnnxFromSource.ps1",
+  "find": "Invoke-OrtSourceClone -SourceDir $SourceDir -Version $OnnxVersion -ExpectedCommit $env:ONNXRUNTIME_WINDOWS_SOURCE_COMMIT | Out-Null",
+  "replace": "if ($false) { Invoke-OrtSourceClone -SourceDir $SourceDir -Version $OnnxVersion -ExpectedCommit $env:ONNXRUNTIME_WINDOWS_SOURCE_COMMIT | Out-Null }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "The source identity check must be unconditional before source patches."
+ },
+ {
+  "id": "windows-lane.ort-source-release-pin",
+  "target": "linux/scripts/01-core/versions.env",
+  "find": "ONNXRUNTIME_WINDOWS_SOURCE_COMMIT=6af1a932e2286d5c58166085d24c68783033edee",
+  "replace": "ONNXRUNTIME_WINDOWS_SOURCE_COMMIT=0000000000000000000000000000000000000000",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "The release configuration must retain the independently recorded full original commit."
+ },
+ {
+  "id": "windows-lane.ort-source-driver-pin",
+  "target": "windows/scripts/modules/WindowsBuildDriver.Common.psm1",
+  "find": "'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT', 'ONNXRUNTIME_GENAI_VERSION'",
+  "replace": "'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_GENAI_VERSION'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildDriver.MediaLane.Tests.ps1 -ResultFile logs/test-results/ort-source-mutations/driver.json",
+  "why": "The driver must forward the core source pin."
+ },
+ {
+  "id": "windows-lane.ort-source-merge-scope",
+  "target": "windows/scripts/modules/WindowsBuildDriver.Common.psm1",
+  "find": "'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES', 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT'",
+  "replace": "'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildDriver.MediaLane.Tests.ps1 -ResultFile logs/test-results/ort-source-mutations/driver.json",
+  "why": "A core compile-only source pin must not pollute the merge cache key."
+ },
+ {
+  "id": "windows-lane.ort-source-stage-arg",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "ARG ONNXRUNTIME_WINDOWS_SOURCE_COMMIT\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.TwinParity.Tests.ps1 -ResultFile logs/test-results/ort-source-mutations/stage.json",
+  "why": "The ONNX stage must declare its forwarded source commit."
+ },
+ {
+  "id": "windows-lane.ort-source-stage-env",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "    ONNXRUNTIME_WINDOWS_SOURCE_COMMIT=\"${ONNXRUNTIME_WINDOWS_SOURCE_COMMIT}\" `\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.TwinParity.Tests.ps1 -ResultFile logs/test-results/ort-source-mutations/stage.json",
+  "why": "The declared source commit must reach the builder process."
+ },
+ {
+  "id": "windows-lane.ort-source-primary-retries",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "[int]$MaxAttempts = 3, [int]$InitialDelaySeconds = 10",
+  "replace": "[int]$MaxAttempts = 2, [int]$InitialDelaySeconds = 10",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "The source recovery retains all three canonical primary attempts before fallback."
+ },
+ {
+  "id": "windows-lane.ort-command-map-text-selection",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "if ($TextContains.ContainsKey($commandName))",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.Ast.Tests.ps1",
+  "why": "Shared source-command selection retains the caller-specific text filter before checking uniqueness."
+ },
+ {
+  "id": "windows-lane.ort-command-map-unconditional",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "foreach ($commandName in $UnconditionalText.Keys)",
+  "replace": "foreach ($commandName in @())",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.Ast.Tests.ps1",
+  "why": "Shared required command maps retain caller-selected unconditional execution assertions."
  }
 ]

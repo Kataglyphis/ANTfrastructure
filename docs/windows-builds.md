@@ -2528,6 +2528,12 @@ and remove recursion; each must fail the suite.
 
 ## Structural test AST helpers
 
+Source-wiring suites share `Get-TestScriptCommandMap` for required command
+cardinality, optional text selection, and caller-selected order and unconditional
+checks. It preserves the original AST nodes for argument binding and delegates
+scope/order assertions to `Assert-TestAstCommand` and `Assert-TestAstOrder`.
+The ONNX, Torchvision, Python bundle and shared call-assertion callers retain their distinct policies.
+
 `Uv.CensusPath.Tests.ps1` runs the same three checkout, copied-image and missing-census
 cases under Linux and Windows. Its Dockerfile destination mapping recognises either
 trailing separator after host path conversion. It shares the wheel-store tree with
@@ -2945,3 +2951,31 @@ probes. Those children terminate on inner errors so failed setup cannot produce
 a green exit. `Consumer.NativeExecution.Tests.ps1` keeps actual batch transport
 separate from the portable consumer suite. These checks do not establish installed
 compiler behavior or live debugger acceptance.
+
+## Pinned Windows ONNX Runtime sources
+
+The Windows core build pairs `ONNXRUNTIME_VERSION` with
+`ONNXRUNTIME_WINDOWS_SOURCE_COMMIT` in `linux/scripts/01-core/versions.env`.
+The driver forwards both pins only through the media-core branch; the Dockerfile
+exports the commit to `Build-OnnxFromSource.ps1`. A direct stage invocation must
+provide that commit too. Updating the version requires re-deriving the full
+original release commit; an unchanged commit with a new version refuses.
+
+`Invoke-OrtSourceClone` first uses the existing three-attempt Microsoft tag clone.
+If that clone fails, it fetches the exact commit from `ROCm/onnxruntime`, checks it
+out detached and initializes the recursively pinned submodules at depth one.
+The full HEAD commit and `VERSION_NUMBER` must match before any patch or build.
+A successful primary clone with a mismatched identity refuses immediately;
+the fallback cannot override that failure. Fetch, checkout and submodule failures
+remain fatal. A mirror branch tip or a version string alone is never accepted.
+
+The 1.31.1 pin is `6af1a932e2286d5c58166085d24c68783033edee`.
+The historical [Apache OpenNLP Dependabot update](https://github.com/apache/opennlp/pull/1514)
+records the full original Microsoft release commit; the own previously accepted
+wheel reports its `6af1a93` short ID. A separate Git-object inspection verifies
+the matching tree and all three declared submodule commits from their original
+repositories. This is a recovery transport for unchanged source, not adoption of
+the fork's development branch. It proves no current upstream-ref reachability,
+compiler success, GPU inference or final-image acceptance.
+
+

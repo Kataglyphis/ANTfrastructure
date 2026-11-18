@@ -590,6 +590,32 @@ function Get-TestScriptCommands {
     Get-TestAstCommands -Ast (Get-TestScriptAst -ScriptPath $ScriptPath) -Name $Name
 }
 
+function Get-TestScriptCommandMap {
+    # Original nodes retain ancestry and offsets for the caller's scope and order policies.
+    param([Parameter(Mandatory)][string]$ScriptPath, [Parameter(Mandatory)][string[]]$Name,
+        [hashtable]$TextContains = @{}, [string[]]$Order = @(), [hashtable]$UnconditionalText = @{},
+        [string]$CountReason = 'one call matching {0}')
+    $scriptAst = Get-TestScriptAst -ScriptPath $ScriptPath
+    $commandMap = @{}
+    foreach ($commandName in $Name) {
+        $selectedCommands = @(Get-TestAstCommands -Ast $scriptAst -Name $commandName)
+        if ($TextContains.ContainsKey($commandName)) {
+            $selectedCommands = @($selectedCommands | Where-Object { $_.Extent.Text.Contains($TextContains[$commandName]) })
+        }
+        Assert-Equal 1 $selectedCommands.Count ($CountReason -f $commandName)
+        $commandMap[$commandName] = $selectedCommands[0]
+    }
+    for ($mapOrderIndex = 1; $mapOrderIndex -lt $Order.Count; $mapOrderIndex++) {
+        Assert-TestAstOrder -Before $commandMap[$Order[$mapOrderIndex - 1]] -After $commandMap[$Order[$mapOrderIndex]]
+    }
+    foreach ($commandName in $UnconditionalText.Keys) {
+        Assert-TestAstCommand -Command @($commandMap[$commandName]) -Text $UnconditionalText[$commandName] -Unconditional
+    }
+    return $commandMap
+}
+
+Export-ModuleMember -Function Get-TestScriptCommandMap
+
 function Get-TestSourceCopyLoopText {
     param([Parameter(Mandatory)][string]$ScriptPath,
         [Parameter(Mandatory)][string]$LoopVariable,

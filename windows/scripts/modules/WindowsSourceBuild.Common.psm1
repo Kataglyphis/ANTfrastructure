@@ -179,6 +179,60 @@ function Invoke-GitClone {
     }
 }
 
+function Get-GitPinnedFetchResult {
+    param([string]$RepoUrl, [string]$SourceDir, [string]$Commit, [switch]$Recursive)
+    $steps = @(
+        @{ Arguments = @('init', $SourceDir) }
+        @{ Arguments = @('-C', $SourceDir, 'remote', 'add', 'origin', $RepoUrl) }
+        @{ Arguments = @('-C', $SourceDir, 'fetch', '--depth=1', '--no-tags', 'origin', $Commit) }
+        @{ Arguments = @('-C', $SourceDir, 'checkout', '--detach', $Commit) }
+    )
+    if ($Recursive) { $steps += @{ Arguments = @('-C', $SourceDir, 'submodule', 'update', '--init', '--recursive', '--depth', '1') } }
+    $output = [Collections.Generic.List[object]]::new()
+    $code = 1
+    foreach ($step in $steps) {
+        $arguments = $step.Arguments
+        $savedPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $lines = @(& git -c fetch.fsckObjects=true @arguments 2>&1)
+            $code = $LASTEXITCODE
+        } finally { $ErrorActionPreference = $savedPreference }
+        foreach ($line in $lines) { $output.Add($line) }
+        if ($code -ne 0) { break }
+    }
+    return [pscustomobject]@{ ExitCode = $code; Output = $output.ToArray() }
+}
+
+function Invoke-OrtSourceClone {
+    param(
+        [Parameter(Mandatory)][string]$SourceDir,
+        [Parameter(Mandatory)][string]$Version,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$ExpectedCommit,
+        [string]$RepoUrl = 'https://github.com/microsoft/onnxruntime.git',
+        [string]$FallbackRepoUrl = 'https://github.com/ROCm/onnxruntime.git',
+        [int]$MaxAttempts = 3, [int]$InitialDelaySeconds = 10
+    )
+    if ($ExpectedCommit -cnotmatch '^[0-9a-f]{40}$') { throw 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT must be a full lowercase Git commit.' }
+    if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'ONNX source version must be a release version.' }
+    try {
+        $null = Invoke-GitClone -RepoUrl $RepoUrl -Tag "v$Version" -SourceDir $SourceDir -Recursive `
+            -MaxAttempts $MaxAttempts -InitialDelaySeconds $InitialDelaySeconds
+    } catch {
+        Write-Warning "Primary ONNX clone failed; fetching the pinned commit from $FallbackRepoUrl. Original failure: $($_.Exception.Message)"
+        Reset-SourceBuildDirectory -Path $SourceDir
+        $fallback = Get-GitPinnedFetchResult -RepoUrl $FallbackRepoUrl -SourceDir $SourceDir -Commit $ExpectedCommit -Recursive
+        if ($fallback.ExitCode -ne 0) {
+            throw "Pinned ONNX fallback failed (exit $($fallback.ExitCode)): $(($fallback.Output | Select-Object -Last 10) -join [Environment]::NewLine)"
+        }
+    }
+    $actual = @(& git -C $SourceDir rev-parse --verify HEAD 2>&1)
+    if ($LASTEXITCODE -ne 0 -or $actual.Count -ne 1 -or $actual[0] -cne $ExpectedCommit) { throw "ONNX source commit mismatch: expected $ExpectedCommit, got $($actual -join ' ')." }
+    $actualVersion = (Get-Content -LiteralPath (Join-Path $SourceDir 'VERSION_NUMBER') -Raw -ErrorAction Stop).Trim()
+    if ($actualVersion -cne $Version) { throw "ONNX source version mismatch: expected $Version, got $actualVersion." }
+    return $true
+}
+
 function Get-CMakeRocmIsolationArgs {
     # TheRock's bin is on PATH on the rocm lane, so CMake would take its flatbuffers/zlib for non-HIP builds.
     if ($env:GPU_TYPE -ne 'rocm') { return @() }
@@ -2869,6 +2923,7 @@ Export-ModuleMember -Function @(
     'Disable-ContainerWindowsUpdate',
     'Invoke-ShieldedNative',
     'Invoke-GitClone',
+    'Invoke-OrtSourceClone',
     'Reset-SourceBuildDirectory',
     'Invoke-CmakeConfigure',
     'Invoke-CmakeConfigureLogged',

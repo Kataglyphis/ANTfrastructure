@@ -38,13 +38,10 @@ Describe 'Torchvision ROCm host compiler cache' {
     }
 
     It 'wires the helper before publishing the process environment and building the wheel' {
-        $wire = @(Get-TestScriptCommands -ScriptPath $script:VisionCacheBuilder -Name 'Enable-TorchvisionRocmCompilerCache')
-        Assert-TestAstCommand -Command $wire -Text "Enable-TorchvisionRocmCompilerCache -WorkDir `$WorkDir -BuildEnv `$visionEnv -SccachePath `$sccachePath -PatchRoot (Join-Path `$scriptAssetRoot 'patches')" -Unconditional
-        $publish = @(Get-TestScriptCommands -ScriptPath $script:VisionCacheBuilder -Name 'Set-TorchRocmProcessEnv')
-        $wheel = @(Get-TestScriptCommands -ScriptPath $script:VisionCacheBuilder -Name 'Invoke-TorchRocmLogged' | Where-Object { $_.Extent.Text.Contains('setup.py bdist_wheel') })
-        Assert-Equal 1 $publish.Count 'one environment publication'
-        Assert-Equal 1 $wheel.Count 'one wheel build'
-        Assert-TestAstOrder -Before $wire[0] -After $publish[0]
-        Assert-TestAstOrder -Before $publish[0] -After $wheel[0]
+        $null = Get-TestScriptCommandMap -ScriptPath $script:VisionCacheBuilder `
+            -Name @('Enable-TorchvisionRocmCompilerCache', 'Set-TorchRocmProcessEnv', 'Invoke-TorchRocmLogged') `
+            -Order @('Enable-TorchvisionRocmCompilerCache', 'Set-TorchRocmProcessEnv', 'Invoke-TorchRocmLogged') `
+            -TextContains @{ 'Invoke-TorchRocmLogged' = 'setup.py bdist_wheel' } `
+            -UnconditionalText @{ 'Enable-TorchvisionRocmCompilerCache' = "Enable-TorchvisionRocmCompilerCache -WorkDir `$WorkDir -BuildEnv `$visionEnv -SccachePath `$sccachePath -PatchRoot (Join-Path `$scriptAssetRoot 'patches')" }
     }
 }
