@@ -15,6 +15,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-18 — the Windows detector parity run is one hub copy (CON252)
+
+- OxidANT's and OmniAccelerANT's `scripts/windows/check_gpu_detector_parity.py` shared about 110 lines, the
+  photo's hash typed into each. `shared/python/check_detector_parity.py` holds the run: three clean child
+  processes, their profiles and the pairwise comparisons, the photo digest, the confined runtime and the
+  DirectML adapter. The launcher command is an argument. See
+  [detector parity](docs/gpu-artifact-receipts.md#detector-parity).
+
 ## 2026-11-18 — a new oversized Rust, Dart or C++ function reads `regressed` (CON246)
 
 - `functions_over_80_lines_extra_languages` was class `report`, so `quality-report.sh --compare` never graded it and

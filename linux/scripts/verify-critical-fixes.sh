@@ -526,9 +526,11 @@ fix11_ort_fetch_denylist() {
   _f11_verdict "$(printf '%s\n' "${w}" | grep -E -e ': (ort_lib_path|ort_strategy|ort_skip_download|cargo_net_offline|ort_offline)=' \
       | grep -vE -e ': (ort_skip_download|cargo_net_offline|ort_offline)=(1|true)$' || true)" \
     "nothing re-arms the ort crate download (ORT_LIB_PATH/ORT_STRATEGY set at all, a skip switch set to anything but 1/true)"
+  # The parity run points a test child at the extracted package's own onnxruntime.dll; it builds nothing.
   _f11_verdict "$(printf '%s\n' "${w}" | grep -E -e ': (ort_lib_location|ort_dylib_path)=' \
-      | grep -vE -e '^(windows/Dockerfile|linux/Dockerfile\.package):' || true)" \
-    "ORT_LIB_LOCATION/ORT_DYLIB_PATH are set only by the two final images"
+      | grep -vE -e '^(windows/Dockerfile|linux/Dockerfile\.package):' \
+      | grep -vE -e '^shared/python/check_detector_parity\.py:[0-9]+: ort_dylib_path=str\(stage$' || true)" \
+    "ORT_LIB_LOCATION/ORT_DYLIB_PATH are set only by the two final images (and the parity run's child, at its package)"
 }
 
 # _f11_env_writes <corpus>: "<path>:<line>: <name>=<value>" per ort-sys variable set in any syntax; value lower-cased.

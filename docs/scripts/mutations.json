@@ -33081,6 +33081,46 @@
   "why": "a GPU detector must reject boxes that disagree with the CPU baseline"
  },
  {
+  "id": "packaging.detector-parity-gpu-only",
+  "target": "shared/python/check_detector_parity.py",
+  "find": "        device not in {\"cuda\", \"directml\"}",
+  "replace": "        False",
+  "test": "bash linux/scripts/tests/test-detector-parity.sh",
+  "why": "the parity run compares a GPU with the CPU; a cpu device would compare the CPU with itself"
+ },
+ {
+  "id": "packaging.detector-parity-photo-digest",
+  "target": "shared/python/check_detector_parity.py",
+  "find": "    if hashlib.sha256(fixture.read_bytes()).hexdigest() != FIXTURE_SHA256:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-detector-parity.sh",
+  "why": "the expected detections belong to one photo; another photo makes every verdict meaningless"
+ },
+ {
+  "id": "packaging.detector-parity-runtime-confined",
+  "target": "shared/python/check_detector_parity.py",
+  "find": "        raise ValueError(\"ONNX Runtime escapes the extracted package\")",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-detector-parity.sh",
+  "why": "a runtime reached through a link is not the package's, so the run would prove another build"
+ },
+ {
+  "id": "packaging.detector-parity-overrides-stripped",
+  "target": "shared/python/check_detector_parity.py",
+  "find": "            del env[key]",
+  "replace": "            pass",
+  "test": "bash linux/scripts/tests/test-detector-parity.sh",
+  "why": "an inherited KATAGLYPHIS_ or ORT_ override changes what the child runs, so CPU and GPU would differ by setting"
+ },
+ {
+  "id": "packaging.detector-parity-directml-adapter",
+  "target": "shared/python/check_detector_parity.py",
+  "find": "        env[\"KATAGLYPHIS_DIRECTML_DEVICE_ID\"] = index",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-detector-parity.sh",
+  "why": "DirectML picks adapter 0 by default; the verified adapter must be the one the child uses"
+ },
+ {
   "id": "packaging.gpu-stage-file-hash",
   "target": "shared/python/stage_gpu_artifact.py",
   "find": "if hashes is not None and digest.hexdigest() != hashes[item.filename]:",

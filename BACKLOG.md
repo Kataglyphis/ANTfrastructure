@@ -2080,19 +2080,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       on today's image and green on a chain's `:winamd64`, and `SourceBuild.GstreamerWebRtc.Tests.ps1` holds
       the VP8 call with a mutation recipe. The arm64 bundle was not checked.
 
-- [ ] **CON254 — `New-PortableBundle` returns its package check's output with its result** [S, ★★★]. Found
-      2026-11-12: AccelerANTgine's two Windows lanes stopped at "The property 'Bundle' cannot be found on this
-      object" (run 43220521132), one push after its hub pin moved to d66d390. Line 173 of
-      `windows/scripts/modules/WindowsCrossBundle.Common.psm1` calls `& $PackageCheck` unassigned. The default
-      check, `Assert-PackageMsvcRuntimeNotice`, runs the Python verifier through `Assert-PackageLicense`
-      (`WindowsMsiLicense.Common.psm1`), and a native command's standard output is pipeline output: the caller
-      gets the verifier's lines and then the object. The runner's output is kept out and has a test
-      (`windows/scripts/tests/CrossBundle.Common.Tests.ps1`, "a passed runner's output does not join the result
-      either"); the package check came later and has none. AccelerANTgine, the only caller, takes the last
-      object since its 2d91dbc. First step: discard the check's output inside the function and add the twin
-      test with a chatty `-PackageCheck`. Done when that test fails without the discard and a recipe in the
-      mutation manifest removes it.
-
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [ ] **CON173 — reconcile and prove the GPU image architecture matrix** [L, ★★★]. A live
@@ -2494,9 +2481,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       2026-11-12: OxidANT's and OmniAccelerANT's `scripts/windows/check_gpu_detector_parity.py` (186 and 183
       lines) share about 110 lines, with the photo's hash typed into each. Two consumers, so the rule for
       moving code upstream is met.
-      First step: one copy beside `shared/python/compare_detector_parity.py`, with the launcher command as
-      an argument and a test under `shared/python/tests/`.
-      Done when both repos call the hub copy and have deleted their own.
+      **Hub half done 2026-11-18:** `shared/python/check_detector_parity.py` (the launcher is an argument)
+      with `shared/python/tests/test_check_detector_parity.py`. Left: done when both repos' scripts keep only
+      their launcher and model check and call the hub copy.
 
 - [ ] **CON253 — Home Assistant keeps the cameras' model time, and warns when it rises** [S, ★★]. Found by the
       audit of 2026-11-12: no performance budget covers the Pi-class boards the cameras run on, as the
