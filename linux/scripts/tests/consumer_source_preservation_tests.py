@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
@@ -41,9 +43,316 @@ class SourcePreservationTests(unittest.TestCase):
         self.plan.write_text(json.dumps({"consumers": [{"name": "Alpha"}]}))
         self.log = self.checkouts / "Alpha.log"
         self.log.write_text("consumer started after source snapshot\n")
+        self.base = M.head(self.source)
+        self.working_destination = self.root / "working-copy"
+        self.working_output = self.root / "working-proof"
 
     def preserve(self) -> dict:
         return M.preserve(self.checkouts, self.plan, self.output)
+
+    def working(self) -> dict:
+        return M.preserve_working(
+            self.source, self.working_destination, self.working_output, self.base
+        )
+
+    def stage_working_change(self) -> None:
+        (self.source / "source.txt").write_text("working source bytes\n")
+        M.git(self.source, "add", "source.txt")
+
+    def commit_fixture(self, root: Path, message: str) -> None:
+        M.git(
+            root, "-c", "user.name=Fixture", "-c",
+            "user.email=fixture@example.invalid", "commit", "-m", message,
+        )
+
+    def invoke_cli(self, arguments: list[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                sys.executable,
+                str(HERE.parent / "preserve-consumer-sources.py"),
+                *arguments,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+
+    def test_working_cli_persists_the_complete_receipt(self) -> None:
+        self.stage_working_change()
+        result = self.invoke_cli(
+            [
+                "--working-source",
+                str(self.source),
+                "--directory",
+                str(self.working_output),
+                "--destination",
+                str(self.working_destination),
+                "--revision",
+                self.base,
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = json.loads((self.working_output / "progress.json").read_text())
+        self.assertEqual(json.loads(result.stdout), record)
+        self.assertEqual(record["selected_base"], self.base)
+        self.assertEqual(
+            M.working_files(self.working_destination), M.working_files(self.source)
+        )
+
+    def test_committed_cli_still_requires_its_plan(self) -> None:
+        result = self.invoke_cli(
+            ["--checkouts", str(self.checkouts), "--directory", str(self.output)]
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(self.output.exists())
+
+    def test_working_copy_keeps_selected_base_and_all_staged_bytes(self) -> None:
+        (self.source / "later.txt").write_text("post-base committed bytes\n")
+        M.git(self.source, "add", "later.txt")
+        self.commit_fixture(self.source, "later")
+        self.stage_working_change()
+        record = self.working()
+        self.assertEqual(M.head(self.working_destination), self.base)
+        self.assertEqual(record["owner_head"], M.head(self.source))
+        self.assertNotEqual(record["owner_head"], record["selected_base"])
+        self.assertEqual(
+            (self.working_destination / "source.txt").read_text(),
+            "working source bytes\n",
+        )
+        self.assertEqual(
+            (self.working_destination / "later.txt").read_text(),
+            "post-base committed bytes\n",
+        )
+        self.assertFalse(record["recursive_children_preserved"])
+        self.assertEqual(
+            M.working_files(self.working_destination), M.working_files(self.source)
+        )
+        for original in (self.source / ".git/objects").glob("??/*"):
+            duplicate = self.working_destination / original.relative_to(self.source)
+            if duplicate.exists():
+                self.assertFalse(original.samefile(duplicate))
+
+    def test_working_copy_refuses_unstaged_changes_before_allocating(self) -> None:
+        (self.source / "source.txt").write_text("not staged\n")
+        with self.assertRaisesRegex(ValueError, "Stage every tracked source edit"):
+            self.working()
+        self.assertFalse(self.working_output.exists())
+
+    def test_working_copy_refuses_existing_outputs_and_linked_destinations(
+        self,
+    ) -> None:
+        self.working_destination.mkdir()
+        (self.working_destination / "keep").write_text("original\n")
+        with self.assertRaisesRegex(ValueError, "existing preservation tree"):
+            self.working()
+        self.assertEqual((self.working_destination / "keep").read_text(), "original\n")
+
+    def test_working_copy_refuses_an_existing_evidence_directory(self) -> None:
+        self.working_output.mkdir()
+        with self.assertRaises(FileExistsError):
+            self.working()
+
+    def test_working_copy_refuses_source_overlap_and_partial_revision(self) -> None:
+        with self.assertRaisesRegex(ValueError, "overlaps"):
+            M.preserve_working(
+                self.source, self.source / "copy", self.working_output, self.base
+            )
+        with self.assertRaisesRegex(ValueError, "overlaps"):
+            M.preserve_working(
+                self.source, self.source.parent, self.working_output, self.base
+            )
+        with self.assertRaisesRegex(ValueError, "full commit"):
+            M.preserve_working(
+                self.source, self.working_destination, self.working_output, "HEAD"
+            )
+
+    def test_working_copy_retains_staged_gitlink_instead_of_child_checkout(self) -> None:
+        child = self.source / "third_party/ANTfrastructure"
+        original = M.head(child)
+        self.stage_working_change()
+        for message in ("indexed", "checked out"):
+            (child / "source.txt").write_text(message + "\n")
+            M.git(child, "add", "source.txt")
+            self.commit_fixture(child, message)
+            if message == "indexed":
+                indexed = M.head(child)
+                M.git(self.source, "add", "third_party/ANTfrastructure")
+        self.assertEqual(len({original, indexed, M.head(child)}), 3)
+        before, child_before = M.working_snapshot(self.source), M.working_snapshot(child)
+        record = self.working()
+        self.assertEqual(M.working_snapshot(self.source), before)
+        self.assertEqual(M.working_snapshot(child), child_before)
+        self.assertEqual(M.working_snapshot(self.working_destination), before)
+        self.assertEqual(
+            record["versioned_paths"]["third_party/ANTfrastructure"]["revision"], indexed
+        )
+        self.assertFalse(record["recursive_children_preserved"])
+
+    def test_working_copy_checks_index_independently_of_file_bytes(self) -> None:
+        clone = M.clone_checkout
+
+        def changing_index(source: Path, destination: Path, revision: str) -> None:
+            clone(source, destination, revision)
+            M.git(destination, "update-index", "--cacheinfo",
+                  f"160000,{self.base},third_party/ANTfrastructure")
+
+        with (
+            mock.patch.object(M, "clone_checkout", changing_index),
+            self.assertRaisesRegex(ValueError, "Working source index differs"),
+        ):
+            self.working()
+
+    def test_working_copy_detects_source_changes_during_preparation(self) -> None:
+        clone = M.clone_checkout
+
+        def changing_clone(source: Path, destination: Path, revision: str) -> None:
+            clone(source, destination, revision)
+            (source / "source.txt").write_text("changed after snapshot\n")
+
+        with (
+            mock.patch.object(M, "clone_checkout", changing_clone),
+            self.assertRaisesRegex(ValueError, "Working source changed"),
+        ):
+            self.working()
+
+    def test_working_copy_checks_actual_destination_bytes(self) -> None:
+        clone = M.clone_checkout
+
+        def corrupting_clone(source: Path, destination: Path, revision: str) -> None:
+            clone(source, destination, revision)
+            (destination / "source.txt").write_text("different copied bytes\n")
+
+        with (
+            mock.patch.object(M, "clone_checkout", corrupting_clone),
+            self.assertRaisesRegex(ValueError, "bytes, modes or links differ"),
+        ):
+            self.working()
+
+    def test_working_copy_requires_independent_complete_objects(self) -> None:
+        clone = M.clone_checkout
+
+        def borrowed_clone(source: Path, destination: Path, revision: str) -> None:
+            clone(source, destination, revision)
+            (destination / ".git/objects/info/alternates").write_text(
+                str(source / ".git/objects") + "\n"
+            )
+
+        with (
+            mock.patch.object(M, "clone_checkout", borrowed_clone),
+            self.assertRaisesRegex(ValueError, "borrow or promise"),
+        ):
+            self.working()
+
+    def test_working_copy_checks_all_git_objects(self) -> None:
+        clone = M.clone_checkout
+
+        def corrupt_clone(source: Path, destination: Path, revision: str) -> None:
+            clone(source, destination, revision)
+            corrupt = destination / ".git/objects/aa" / ("a" * 38)
+            corrupt.parent.mkdir(exist_ok=True)
+            corrupt.write_bytes(b"not a Git object")
+
+        with (
+            mock.patch.object(M, "clone_checkout", corrupt_clone),
+            self.assertRaises(subprocess.CalledProcessError),
+        ):
+            self.working()
+
+    def test_working_copy_refuses_empty_versioned_scope(self) -> None:
+        M.git(self.source, "rm", "--cached", "-r", ".")
+        with self.assertRaisesRegex(ValueError, "no versioned files"):
+            self.working()
+
+    def test_working_paths_refuse_unresolved_index_stages(self) -> None:
+        row = b"100644 " + b"a" * 40 + b" 1\tsource.txt\0"
+        with (
+            mock.patch.object(M, "git", return_value=row),
+            self.assertRaisesRegex(ValueError, "unresolved stages"),
+        ):
+            M.working_files(self.source)
+
+    @unittest.skipIf(os.name == "nt", "Unix symlink transport is checked on Linux")
+    def test_working_paths_refuse_external_parent_links(self) -> None:
+        outside = self.root / "outside"
+        outside.mkdir()
+        (outside / "file").write_text("external\n")
+        (self.source / "escape").symlink_to(outside, target_is_directory=True)
+        row = b"100644 " + b"a" * 40 + b" 0\tescape/file\0"
+        with (
+            mock.patch.object(M, "git", return_value=row),
+            self.assertRaisesRegex(ValueError, "escapes its root"),
+        ):
+            M.working_files(self.source)
+
+    @unittest.skipIf(
+        os.name == "nt", "Unix mode and symlink transport is checked on Linux"
+    )
+    def test_working_copy_keeps_executable_modes_and_literal_links(self) -> None:
+        self.stage_working_change()
+        (self.source / "source.txt").chmod(0o755)
+        (self.source / "alias").symlink_to("source.txt")
+        M.git(self.source, "add", "source.txt", "alias")
+        self.working()
+        self.assertEqual(
+            (self.working_destination / "source.txt").stat().st_mode & 0o777, 0o755
+        )
+        self.assertEqual(
+            str((self.working_destination / "alias").readlink()), "source.txt"
+        )
+
+    @unittest.skipIf(os.name == "nt", "Unix file modes are checked on Linux")
+    def test_working_copy_restores_actual_modes_across_umasks(self) -> None:
+        (self.source / "source.txt").chmod(0o664)
+        original = os.umask(0o077)
+        self.addCleanup(os.umask, original)
+        self.working()
+        self.assertEqual(
+            (self.working_destination / "source.txt").stat().st_mode & 0o777, 0o664
+        )
+
+    @unittest.skipIf(os.name == "nt", "Unix symlink transport is checked on Linux")
+    def test_working_copy_refuses_linked_evidence_and_destination(self) -> None:
+        self.working_destination.symlink_to(
+            self.root / "absent", target_is_directory=True
+        )
+        with self.assertRaisesRegex(ValueError, "must not be linked"):
+            self.working()
+        self.working_destination.unlink()
+        self.working_output.symlink_to(self.root / "absent", target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "must not be linked"):
+            self.working()
+
+    def test_working_source_cli_modes_cannot_silently_mix(self) -> None:
+        for extra in (
+            [],
+            ["--revision", self.base],
+            ["--destination", str(self.working_destination)],
+            [
+                "--destination",
+                str(self.working_destination),
+                "--revision",
+                self.base,
+                "--plan",
+                str(self.plan),
+            ],
+        ):
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(HERE.parent / "preserve-consumer-sources.py"),
+                    "--working-source",
+                    str(self.source),
+                    "--directory",
+                    str(self.working_output),
+                    *extra,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 2)
+        self.assertFalse(self.working_destination.exists())
 
     def test_exact_recursive_copies_use_independent_objects_and_survive_source_removal(
         self,

@@ -55420,5 +55420,149 @@
   "replace": "            json.dump(records, output, indent=1, ensure_ascii=False)",
   "test": "bash linux/scripts/tests/test-merge-mutation-recipes.sh",
   "why": "Escaped negative-test strings must round-trip without contaminating the registry source."
+ },
+ {
+  "id": "image-acceptance.working-source-selected-base",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "    clone_checkout(source, destination, revision)\n    if patch:",
+  "replace": "    clone_checkout(source, destination, original_head)\n    if patch:",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "The destination retains the selected committed base while applying later working bytes."
+ },
+ {
+  "id": "image-acceptance.working-source-staged-input",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "    require(\n        not git(source, \"diff\", \"--name-only\", \"--ignore-submodules=all\").strip(),\n        \"Stage every tracked source edit before preservation\",\n    )",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Unstaged edits refuse before evidence allocation."
+ },
+ {
+  "id": "image-acceptance.working-source-full-base",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "    require(\n        re.fullmatch(r\"[0-9a-f]{40}\", revision) is not None,\n        \"Working base must be a full commit\",\n    )",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "A mutable or abbreviated revision cannot identify the selected base."
+ },
+ {
+  "id": "image-acceptance.working-source-linked-output",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "    require(\n        not destination.is_symlink() and not directory.is_symlink(),\n        \"Working destination must not be linked\",\n    )",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Linked destinations and evidence roots cannot redirect writes."
+ },
+ {
+  "id": "image-acceptance.working-source-child-overlap",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "not output.is_relative_to(source) and not source.is_relative_to(output)",
+  "replace": "not source.is_relative_to(output)",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "A descendant of the original source cannot become its copied destination."
+ },
+ {
+  "id": "image-acceptance.working-source-parent-overlap",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "not output.is_relative_to(source) and not source.is_relative_to(output)",
+  "replace": "not output.is_relative_to(source)",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "An ancestor containing the source cannot become a destination."
+ },
+ {
+  "id": "image-acceptance.working-source-nonempty-files",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "    require(bool(files), \"Working source has no versioned files\")",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "An empty versioned manifest cannot grant source preservation."
+ },
+ {
+  "id": "image-acceptance.working-source-fresh-evidence",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "    directory.mkdir(parents=True, exist_ok=False)",
+  "replace": "    directory.mkdir(parents=True, exist_ok=True)",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Existing evidence cannot be reused."
+ },
+ {
+  "id": "image-acceptance.working-source-apply-overlay",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "        git(destination, \"apply\", \"--index\", str(patch_path))",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "The exact staged overlay must reach the independent copy."
+ },
+ {
+  "id": "image-acceptance.working-source-index",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "    require(\n        git(destination, \"ls-files\", \"--stage\", \"-z\") == index,\n        \"Working source index differs\",\n    )",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "The complete original index and its unchanged gitlink IDs must match."
+ },
+ {
+  "id": "image-acceptance.working-source-bytes",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "    require(\n        working_files(destination) == files,\n        \"Working source bytes, modes or links differ\",\n    )",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Actual copied file bytes, modes and links must match the owner independently of Git objects."
+ },
+ {
+  "id": "image-acceptance.working-source-objects",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "    verify_objects(destination)\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Working copies need independent complete Git objects, not only readable tracked files."
+ },
+ {
+  "id": "image-acceptance.working-source-source-race",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "    require(\n        working_snapshot(source) == (original_head, index, files),\n        \"Working source changed during preparation\",\n    )",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "A changing source cannot receive an exact-copy receipt."
+ },
+ {
+  "id": "image-acceptance.working-source-unresolved-index",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "        require(stage == \"0\", \"Working source index has unresolved stages\")",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Unresolved index entries cannot define a single source snapshot."
+ },
+ {
+  "id": "image-acceptance.working-source-external-parent",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "            require(\n                path.resolve().is_relative_to(root),\n                \"Working source file escapes its root: \" + name,\n            )",
+  "replace": "            pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "A regular file reached through an external parent symlink cannot enter the source manifest."
+ },
+ {
+  "id": "image-acceptance.working-source-file-modes",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "    restore_working_modes(destination, files)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Actual source permissions survive a clone with a different umask."
+ },
+ {
+  "id": "image-acceptance.working-source-index-only-patch",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "        \"--cached\",\n        \"--binary\",",
+  "replace": "        \"--binary\",",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Three different base, staged and child-checkout revisions must retain the index rather than the actual child HEAD."
+ },
+ {
+  "id": "image-acceptance.working-source-staged-gitlinks",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "        \"--cached\",\n        \"--binary\",",
+  "replace": "        \"--cached\",\n        \"--ignore-submodules=all\",\n        \"--binary\",",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "An index-only patch must retain staged gitlink changes, with actual child trees bound separately."
  }
 ]

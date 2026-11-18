@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-18 — preserve the exact staged consumer index
+
+- Restore the optional working-source copier on the current tooling branch. Generate its overlay from the index, preserving staged gitlinks even when both the selected base and actual child checkout differ. Regular-file staging, complete index, copied bytes/modes/links, source-race and independent-object checks remain required; committed recursive acceptance stays strict.
+- Real temporary Git fixtures cover three distinct base/index/child revisions and independently corrupted destination indices. Mutations restore working-tree selection or omit gitlinks; these controls do not authenticate pins, materialize child sources, build a consumer or prove inference.
+
 ## 2026-11-18 — preserve escaped mutation recipe data
 
 - Serialize merged registries as ASCII-safe JSON while preserving every decoded value. Intentional corrupt strings in encoding mutations no longer contaminate the clean registry source.
