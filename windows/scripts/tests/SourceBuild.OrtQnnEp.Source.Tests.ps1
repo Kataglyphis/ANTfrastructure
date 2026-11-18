@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 # Real Git/ZIP fixtures cover committed bytes and transport refusals; no network, upstream patches, compilation or hardware acceptance is covered.
 
-Import-TestRepoModule -Name 'WindowsScripts.Shared', 'WindowsSourceBuild.Common'
+Import-TestRepoModule -Name 'WindowsScripts.Shared', 'WindowsSourceBuild.Common', 'WindowsBuildDriver.Common'
 Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.GitFixtures.psm1') -ErrorAction Stop
 $script:QnnSourceScript = 'windows/scripts/build/Build-OrtQnnEpFromSource.ps1'
 . (Get-ScriptFunctionDefinition -ScriptPath $script:QnnSourceScript -FunctionName @('Save-OrtQnnEpCoreArchive', 'Set-OrtQnnEpCoreArchive'))
@@ -127,5 +127,28 @@ Describe 'QNN separate ONNX header archive' {
         Assert-Equal '$env:ORT_QNN_EP_CORE_COMMIT' $archive['Commit'] 'archive that same commit'
         $text = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $script:QnnSourceScript))
         Assert-False ($text.Contains('FETCHCONTENT_SOURCE_DIR_ORT_CORE')) 'retain CMake patch population'
+    }
+}
+
+Describe 'ONNX source identity pins in the compiling stage' {
+    It 'declares and exports both separate source commits in the ONNX stage' {
+        $facts = Get-TestDockerfileStageFacts -Path (Join-Path (Get-RepoRoot) 'windows/Dockerfile.media-builder')
+        $stage = $facts['media-core-built-onnx']
+        foreach ($pin in @('ONNXRUNTIME_WINDOWS_SOURCE_COMMIT', 'ORT_QNN_EP_CORE_COMMIT')) {
+            Assert-True ($stage.Args -ccontains $pin) "ONNX compile stage must declare $pin"
+            Assert-True ($stage.EnvMirrored -ccontains $pin) "ONNX compile stage must export $pin"
+        }
+    }
+}
+
+Describe 'ONNX source identity pin routing' {
+    It 'forwards both exact configured commits only to the compiling branch' {
+        $core = Get-TestMediaPinContext -Branch 'media-core'
+        $litert = Get-TestMediaPinContext -Branch 'media-litert'
+        foreach ($pin in @('ONNXRUNTIME_WINDOWS_SOURCE_COMMIT', 'ORT_QNN_EP_CORE_COMMIT')) {
+            Assert-Equal $core.Versions[$pin] $core.Branch[$pin] "the compiling branch forwards $pin"
+            Assert-False ($core.Merge.Contains($pin)) "the merge excludes compile-only $pin"
+            Assert-False ($litert.Branch.Contains($pin)) "unrelated branches exclude compile-only $pin"
+        }
     }
 }

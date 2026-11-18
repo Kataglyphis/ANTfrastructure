@@ -56,7 +56,7 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    pre-commit hook), a lint gate, or a smoke assertion against a `versions.env` pin.
    **Mutation-test every new gate**: break what it guards, watch it go red, and say in its header
    what it does NOT cover. A gate that cannot fail is worse than no gate; two audits found one.
-   Windows mutation recipes use harness-only suites; Linux mutation shards do not install Pester.
+   Windows mutation recipes use harness-only suites; Linux mutation shards do not install Pester. Source-pin ARG/ENV checks retain exact compile-stage scope through the shared Dockerfile facts.
 4. **Docs follow the change, in the same work unit.** A behavior, flag, workflow or invariant
    change updates AGENTS.md (rules, quick reference), README.md (user-facing pointers), the owning
    `docs/` page and `CHANGELOG.md` before it is done. A mechanism only git history knows does not

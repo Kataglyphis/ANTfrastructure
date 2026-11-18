@@ -1077,3 +1077,18 @@ function ConvertTo-TestDiagnosticText {
 }
 
 Export-ModuleMember -Function ConvertTo-TestDiagnosticText
+
+function Get-TestMediaPinContext {
+    # Share the real version/branch/merge view so pin suites cannot drift onto different fixture tables.
+    param([Parameter(Mandatory)][string]$Branch)
+    foreach ($name in @('WindowsScripts.Shared.psm1', 'WindowsBuildDriver.Common.psm1')) {
+        Import-Module ([IO.Path]::Combine((Get-RepoRoot), 'windows', 'scripts', 'modules', $name)) -DisableNameChecking -ErrorAction Stop
+    }
+    $versions = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux/scripts/01-core/versions.env')
+    return [pscustomobject]@{
+        Versions = $versions
+        Branch = (Get-MediaBranchVersionArg -Branch $Branch -VersionTable $versions)
+        Merge = (Get-MediaMergeVersionArg -VersionTable $versions)
+    }
+}
+Export-ModuleMember -Function Get-TestMediaPinContext

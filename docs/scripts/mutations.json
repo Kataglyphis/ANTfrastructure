@@ -21200,7 +21200,7 @@
   "target": "windows/scripts/tests/TestHarness.psm1",
   "find": "    Assert-Equal ([Convert]::ToHexString([Text.Encoding]::ASCII.GetBytes($Expected))) ([Convert]::ToHexString([IO.File]::ReadAllBytes($Path)))",
   "replace": "    $null = $Path",
-  "test": "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','Harness.Fixtures.Tests.ps1','-ResultFile','logs/code-quality/harness-batch-byte-verdict.json'],check=True); d=json.load(open('logs/code-quality/harness-batch-byte-verdict.json',encoding='utf-8-sig')); assert d['Total']==45 and d['Passed']==45 and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"",
+  "test": "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','Harness.Fixtures.Tests.ps1','-ResultFile','logs/code-quality/harness-batch-byte-verdict.json'],check=True); d=json.load(open('logs/code-quality/harness-batch-byte-verdict.json',encoding='utf-8-sig')); assert d['Total']==46 and d['Passed']==46 and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"",
   "why": "The byte verdict must reject changed caller lines and requested exit codes rather than let writer mutants survive."
  },
  {
@@ -39389,7 +39389,7 @@
   "target": "windows/scripts/modules/WindowsBuildDriver.Common.psm1",
   "find": "'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT', 'ONNXRUNTIME_GENAI_VERSION'",
   "replace": "'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_GENAI_VERSION'",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildDriver.MediaLane.Tests.ps1 -ResultFile logs/test-results/ort-source-mutations/driver.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
   "why": "The driver must forward the core source pin."
  },
  {
@@ -39397,7 +39397,7 @@
   "target": "windows/scripts/modules/WindowsBuildDriver.Common.psm1",
   "find": "'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES', 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT'",
   "replace": "'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES'",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildDriver.MediaLane.Tests.ps1 -ResultFile logs/test-results/ort-source-mutations/driver.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
   "why": "A core compile-only source pin must not pollute the merge cache key."
  },
  {
@@ -39405,7 +39405,7 @@
   "target": "windows/Dockerfile.media-builder",
   "find": "ARG ONNXRUNTIME_WINDOWS_SOURCE_COMMIT\n",
   "replace": "",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.TwinParity.Tests.ps1 -ResultFile logs/test-results/ort-source-mutations/stage.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
   "why": "The ONNX stage must declare its forwarded source commit."
  },
  {
@@ -39413,7 +39413,7 @@
   "target": "windows/Dockerfile.media-builder",
   "find": "    ONNXRUNTIME_WINDOWS_SOURCE_COMMIT=\"${ONNXRUNTIME_WINDOWS_SOURCE_COMMIT}\" `\n",
   "replace": "",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.TwinParity.Tests.ps1 -ResultFile logs/test-results/ort-source-mutations/stage.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
   "why": "The declared source commit must reach the builder process."
  },
  {
@@ -39557,7 +39557,7 @@
   "target": "windows/scripts/modules/WindowsBuildDriver.Common.psm1",
   "find": "'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', 'ORT_QNN_EP_CORE_COMMIT', 'ORT_TENSORRT_EP_COMMIT'",
   "replace": "'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', 'ORT_TENSORRT_EP_COMMIT'",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildDriver.MediaLane.Tests.ps1 -ResultFile logs/test-results/qnn-source-mutations/driver.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
   "why": "The media-core driver forwards the separate header commit."
  },
  {
@@ -39565,7 +39565,7 @@
   "target": "windows/scripts/modules/WindowsBuildDriver.Common.psm1",
   "find": "'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', 'ORT_QNN_EP_CORE_COMMIT', # media-core: the QNN plugin EP fork",
   "replace": "'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', # media-core: the QNN plugin EP fork",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildDriver.MediaLane.Tests.ps1 -ResultFile logs/test-results/qnn-source-mutations/driver.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
   "why": "The compile-only QNN header pin must not pollute the media merge key."
  },
  {
@@ -39573,7 +39573,7 @@
   "target": "windows/Dockerfile.media-builder",
   "find": "ARG ORT_QNN_EP_CORE_COMMIT\n",
   "replace": "",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.TwinParity.Tests.ps1 -ResultFile logs/test-results/qnn-source-mutations/stage.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
   "why": "The ONNX compile stage declares the forwarded QNN header commit."
  },
  {
@@ -39581,7 +39581,7 @@
   "target": "windows/Dockerfile.media-builder",
   "find": "    ORT_QNN_EP_CORE_COMMIT=\"${ORT_QNN_EP_CORE_COMMIT}\" `\n",
   "replace": "",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.TwinParity.Tests.ps1 -ResultFile logs/test-results/qnn-source-mutations/stage.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
   "why": "The stage passes the header commit to the QNN builder process."
  },
  {
@@ -39607,5 +39607,13 @@
   "replace": "function Invoke-InTestDir {\n    param([Parameter(Mandatory)][scriptblock]$Body, [Collections.IDictionary]$Files, [Alias('Prefix')][string]$DirectoryPrefix = 'wbt-', [Alias('FixtureArgumentList')][object[]]$BodyArgumentList = @())\n    $global:LASTEXITCODE = 0\n    $d = New-TestDir -Prefix $DirectoryPrefix -Files $Files\n    try {\n        & $Body $d @BodyArgumentList\n    }\n    finally { Remove-TestDir -Path $d }\n}\n",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/test-results/qnn-source-mutations/fixtures.json",
   "why": "Directory fixture argument transport must not hide the enclosing function-module callback bindings."
+ },
+ {
+  "id": "windows-lane.source-pin-context-branch",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "Get-MediaBranchVersionArg -Branch $Branch -VersionTable $versions",
+  "replace": "Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $versions",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1",
+  "why": "Shared pin fixtures retain the selected branch and keep compile-only source pins out of unrelated branches."
  }
 ]

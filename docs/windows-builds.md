@@ -2958,6 +2958,14 @@ compiler behavior or live debugger acceptance.
 
 ## Pinned Windows ONNX Runtime sources
 
+Pin suites share `Get-TestMediaPinContext` for the actual version, branch and
+merge maps, retaining each caller's key and DLL checks. The source-pin ARG/ENV
+mutations run the source-archive harness with its explicit
+module closure and shared Dockerfile stage facts. They require both commit pins
+in the ONNX compile stage, forwarded by the core branch and excluded from merge. Linux mutation shards need neither Pester nor Windows CIM; the broader
+Pester parity contract remains in the full Windows suite. These checks establish
+declarations and routing, not download, compiler or hardware acceptance.
+
 The Windows core build pairs `ONNXRUNTIME_VERSION` with
 `ONNXRUNTIME_WINDOWS_SOURCE_COMMIT` in `linux/scripts/01-core/versions.env`.
 The driver forwards both pins only through the media-core branch; the Dockerfile
