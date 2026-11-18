@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-18 — package the selected Linux TAR bundle
+
+- Make Linux TAR use the shared bundle resolver, including `APP_PACKAGING_BUNDLE_DIR`, instead of the raw Flutter tree. This retains the prepared runtime closure and ORT notices in Omni packages.
+- Preserve default paths, empty overrides, Android APK selection and legacy output copies; fail on an invalid selected tree or resolver error. Real TAR fixtures and mutations cover selection and argument boundaries, not native inference or full licence closure.
+
 ## 2026-11-18 — preserve consumer command seals
 
 - Add a reusable terminal command/cleanup sealer for cache-captured consumer jobs. It reuses the existing unit parser and terminal verdict, retains input hashes and raw statistics, and refuses an existing exclusive cleanup. Caller markers are not artifact, cache or GPU acceptance.

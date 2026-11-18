@@ -194,9 +194,11 @@ app_packaging_package_bundle_outputs_tar() {
 app_packaging_package_linux_bundle_tar() {
   local matrix_arch="${1:?matrix_arch is required (x64|arm64)}"
   local app_name="${2:?app_name is required}"
+  local bundle_source_dir
+  bundle_source_dir="$(app_packaging_detect_bundle_dir "$matrix_arch")" || return $?
 
   app_packaging_prepare_workspace "$matrix_arch"
-  app_packaging_package_bundle_outputs_tar "build/linux/${matrix_arch}/release/bundle" "$app_name" "$matrix_arch"
+  app_packaging_package_bundle_outputs_tar "$bundle_source_dir" "$app_name" "$matrix_arch"
 }
 
 app_packaging_sanitize_package_name() {

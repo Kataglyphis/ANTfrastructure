@@ -616,6 +616,13 @@ for why.
 The shared native-app DEB builder uses gzip control and data archives for older
 Debian package managers, and makes payload entries root-owned.
 
+Linux TAR selects its source through `app_packaging_detect_bundle_dir`, honoring
+`APP_PACKAGING_BUNDLE_DIR` and its default Flutter path. It refuses a missing selected tree
+or failed resolution instead of falling back to raw build output. The generic TAR writer
+retains its legacy `out/` and project-root copies; Android APK TAR still selects its own
+build output. Real TAR fixture tests cover selected bytes, notices and paths with spaces,
+but do not establish native execution or complete licence coverage.
+
 Every packager in the file obeys three rules. Staging trees are container-native,
 never inside the mounted workspace: a bind-mounted host drive refuses chmod/fchmod
 for the container uid, so dpkg-deb, appimagetool and flatpak-builder fail there,
