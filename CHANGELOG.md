@@ -22,6 +22,7 @@
   processes, their profiles and the pairwise comparisons, the photo digest, the confined runtime and the
   DirectML adapter. The launcher command is an argument. See
   [detector parity](docs/gpu-artifact-receipts.md#detector-parity).
+- Both consumers call it: OxidANT `16890ff` and OmniAccelerANT `85eddd8` keep only their launcher and model check.
 
 ## 2026-11-18 — a new oversized Rust, Dart or C++ function reads `regressed` (CON246)
 

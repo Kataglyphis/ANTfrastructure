@@ -2477,14 +2477,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       new behaviour with a mutation recipe each, OxidANT's quality report records Rust test counts, and
       OrchestrANT's lane prints a second percentage for `benchmarks/`. The pytest-timeout half is CON238.
 
-- [ ] **CON252 — `check_gpu_detector_parity.py` moves to `shared/python/`** [S, ★]. Found by the audit of
-      2026-11-12: OxidANT's and OmniAccelerANT's `scripts/windows/check_gpu_detector_parity.py` (186 and 183
-      lines) share about 110 lines, with the photo's hash typed into each. Two consumers, so the rule for
-      moving code upstream is met.
-      **Hub half done 2026-11-18:** `shared/python/check_detector_parity.py` (the launcher is an argument)
-      with `shared/python/tests/test_check_detector_parity.py`. Left: done when both repos' scripts keep only
-      their launcher and model check and call the hub copy.
-
 - [ ] **CON253 — Home Assistant keeps the cameras' model time, and warns when it rises** [S, ★★]. Found by the
       audit of 2026-11-12: no performance budget covers the Pi-class boards the cameras run on, as the
       perf-host baselines are for one desktop CPU. ObservANT's `/healthz` already reports `model_ms`,
