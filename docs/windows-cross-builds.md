@@ -920,7 +920,7 @@ lane's replacement for `Install-StagedPythonWheel`/`Test-PythonImport`, which st
 
 The wheel store also carries the pinned cpXY pytest stack a consumer runs its suite with on the
 device. That is pytest 9.1.1, pytest-cov 7.1.0, pytest-benchmark 5.2.3, pytest-html 4.2.0,
-pytest-md 0.2.0, pytest-md-report 0.8.0 and requests 2.34.2, with their dependency closure:
+pytest-md 0.2.0, pytest-md-report 0.8.0, pytest-timeout 2.4.0 (CON238) and requests 2.34.2, with their dependency closure:
 the versions OrchestrANT's lock runs on x64. Before, OrchestrANT's `Stage-Arm64Tests.ps1`
 fetched them from PyPI at cross-build time, unpinned.
 

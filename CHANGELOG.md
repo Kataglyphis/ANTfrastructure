@@ -61,6 +61,13 @@
   LiteRT and LiteRT-LM carry it. arm64 gets nothing. Nothing is built with it until the owner's
   go; `docs/amd64-x86-64-v3-baseline.md` § Windows x64 says where it lands and what it leaves out.
 
+## 2026-11-18 — pytest-timeout in the arm64 wheel store (CON238, step 2, in source)
+
+- The `:winarm64` wheel store's pinned pytest stack gains pytest-timeout 2.4.0 (`PYTEST_WINDOWS_ARM64_PYTEST_TIMEOUT_*`,
+  the version OrchestrANT's lock runs on x64, PyPI's SHA256). `Copy-Arm64TorchWheels.ps1` stores it and
+  `Test-Arm64Bundle.ps1` installs and imports it offline, so a consumer's pytest timeout works on the device. A
+  `:winarm64` publish carries it.
+
 ## 2026-11-18 — the patch-drift gate tells a vanished upstream from a drifted patch (CON280)
 
 - `Test-PatchesApplyClean.ps1`: when a clone fails and the upstream page answers 404, the patch is `NOT CHECKED

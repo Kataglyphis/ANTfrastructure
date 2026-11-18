@@ -636,6 +636,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
          ([`windows-cross-builds.md` § A consumer's test runner, pinned](docs/windows-cross-builds.md#a-consumers-test-runner-pinned-con67-2026-10-06)).
          OrchestrANT's arm64 tests install their runner offline from that store
          (`scripts/windows/Stage-Arm64Tests.ps1`), so a pytest timeout setting would fail on the device.
+         In source since 2026-11-18: `PYTEST_WINDOWS_ARM64_PYTEST_TIMEOUT_*` pins pytest-timeout 2.4.0 (OrchestrANT's
+         lock, PyPI's SHA256), `Copy-Arm64TorchWheels.ps1` stores it and `Test-Arm64Bundle.ps1` installs and
+         imports it offline. Left: a `:winarm64` publish that carries it.
 
       Done when the Linux smoke asserts `cargo mutants --version` at its pin on a published `:latest`, and
       `Test-Arm64Bundle.ps1` installs pytest-timeout offline from the store.

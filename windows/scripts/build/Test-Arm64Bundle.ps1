@@ -206,9 +206,9 @@ Invoke-BundleStep 'vulkaninfo lists llvmpipe (lavapipe ICD + loader run)' {
 
 # BACKLOG CON67 added the pytest stack.
 Invoke-BundleStep 'pytest stack from the wheel store (offline, the bundle interpreter''s tag)' {
-    & $py @offlinePip pytest pytest-cov pytest-benchmark pytest-html pytest-md pytest-md-report requests
+    & $py @offlinePip pytest pytest-cov pytest-benchmark pytest-html pytest-md pytest-md-report pytest-timeout requests
     if ($LASTEXITCODE -ne 0) { throw "pip could not install the pytest stack offline (exit $LASTEXITCODE)" }
-    & $py -c "import pytest, pytest_cov, pytest_benchmark, pytest_html, pytest_md_report, requests, coverage; print('pytest', pytest.__version__, '| coverage', coverage.__version__)"
+    & $py -c "import pytest, pytest_cov, pytest_benchmark, pytest_html, pytest_md_report, pytest_timeout, requests, coverage; print('pytest', pytest.__version__, '| coverage', coverage.__version__)"
 } $results
 
 $layerJson = Join-Path $BundleRoot 'vulkan-layers\VkLayer_khronos_validation.json'
