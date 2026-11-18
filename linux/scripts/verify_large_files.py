@@ -27,11 +27,14 @@ SNIFF = 8000
 DATA_EXT = frozenset([".pdf", ".obj", ".mtl", ".gltf", ".glb", ".ply", ".stl", ".fbx", ".dae", ".blend", ".usd", ".usda", ".usdc", ".usdz", ".onnx", ".pt", ".pth", ".tflite", ".gguf", ".safetensors", ".npy", ".npz", ".csv", ".tsv", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tga", ".dds", ".ktx", ".ktx2", ".hdr", ".exr", ".mp4", ".webm", ".mov", ".mp3", ".wav", ".zip", ".gz", ".xz", ".7z", ".tar", ".whl", ".exe", ".dll", ".so", ".a", ".lib"])
 
 
-def is_data(path: str) -> bool:
-    if os.path.splitext(path)[1].lower() in DATA_EXT:
+def is_data(root: str, rel: str, sha: str) -> bool:
+    """A data format by name, else a NUL in the blob's first bytes; the blob, so an unstaged deletion cannot hide it."""
+    if os.path.splitext(rel)[1].lower() in DATA_EXT:
         return True
-    with open(path, "rb") as fh:
-        return b"\0" in fh.read(SNIFF)
+    out = subprocess.run(["git", "-C", root, "cat-file", "blob", sha], capture_output=True, check=False)
+    if out.returncode != 0:
+        raise gate_scope.ScopeError(f"git cat-file could not read the blob of {rel} in {root}")
+    return b"\0" in out.stdout[:SNIFF]
 
 
 def blob_sizes(root: str, shas: Sequence[str]) -> dict[str, int]:
@@ -56,15 +59,12 @@ def large_data(root: str) -> list[tuple[tuple[str], int]]:
                          encoding="utf-8", check=False)
     if out.returncode != 0:
         raise gate_scope.ScopeError(f"{root} is not a git checkout; --root must be one")
-    tracked, missing = [], []
+    tracked = []
     for entry in filter(None, out.stdout.split("\0")):
         meta, rel = entry.split("\t", 1)
         mode, sha = meta.split()[:2]
         # Symlinks (120000) and gitlinks (160000) are paths, not data: one into an absent submodule must not fail the tree.
         if mode not in REGULAR or rel.split("/", 1)[0] in gate_scope.EXCLUDE:
-            continue
-        if not os.path.isfile(os.path.join(root, rel)):
-            missing.append(rel)
             continue
         tracked.append((rel, sha))
     sizes = blob_sizes(root, sorted({sha for _, sha in tracked}))
@@ -72,13 +72,8 @@ def large_data(root: str) -> list[tuple[tuple[str], int]]:
     for rel, sha in tracked:
         # The blob, not the checkout: core.autocrlf grows a text scene by a byte a line (suzanne.obj, 986 to 1017 KiB).
         kib = sizes[sha] // 1024
-        if kib > LIMIT_KIB and is_data(os.path.join(root, rel)):
+        if kib > LIMIT_KIB and is_data(root, rel, sha):
             found.append(((rel,), kib))
-    if missing:
-        raise gate_scope.ScopeError(
-            f"{len(missing)} tracked file(s) are not on disk, so this gate would grade a partial tree: "
-            f"{', '.join(sorted(missing)[:5])}"
-        )
     return found
 
 

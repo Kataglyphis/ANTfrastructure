@@ -73,7 +73,17 @@ t_assert_eq 0 "$(_rc "${d}")" "a symlink is a path, not data"
 d="$(_repo assets/small.bin 10 bin)"
 ln -s ../third_party/absent/custom.css "${d}/assets/custom.css" && git -C "${d}" add -A && git -C "${d}" commit -q -m dangling
 t_assert_eq 0 "$(_rc "${d}")" "a symlink into an absent submodule does not make the tree partial"
+
+t_case "the index is graded, not the working tree: an unstaged deletion neither stops nor hides a file"
+d="$(_repo assets/big.bin 900 bin)"
+rm "${d}/assets/big.bin"
+t_assert_eq 1 "$(_rc "${d}")" "the index still holds the large binary, so it still fails"
+t_assert_contains "$(_out "${d}")" "assets/big.bin"
+d="$(_repo assets/small.bin 10 bin)"
 rm "${d}/assets/small.bin"
-t_assert_eq 2 "$(_rc "${d}")" "a missing regular file still makes it partial: exit 2, nothing graded"
+t_assert_eq 0 "$(_rc "${d}")" "a deletion not staged yet must not stop every commit"
+d="$(_repo assets/scene.txt 900 bin)"
+printf 'now text\n' > "${d}/assets/scene.txt"
+t_assert_eq 1 "$(_rc "${d}")" "the blob holds a NUL, whatever the working tree holds now"
 
 t_summary

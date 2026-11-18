@@ -2370,10 +2370,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
          they were clean, and the warning ratchet did not move.
       3. The refusal of `--index` without `--staged` has a test and no mutation recipe: its mutant runs
          the downloaded linters inside `test-lint-gates.sh`.
-      4. The commit hook's large-file check is `verify_large_files.py --root`, which refuses a tracked
-         file that is missing from disk. A deletion that is not staged yet stops every commit until it
-         is; AccelerANTgine's clone on the Linux dev host was in that state on 2026-11-12. First step:
-         the gate sniffs the blob (`git cat-file`) in place of the working-tree file.
+      4. Done 2026-11-18: `verify_large_files.py` sniffs the blob (`git cat-file blob`), so an unstaged
+         deletion no longer stops every commit and the index is what is graded.
       5. The config line is relative, so a linked worktree whose hub submodule is not checked out has
          no hook: in a scratch clone of OxidANT a 1 MB binary was committed there without one line of
          output, and the `core.hooksPath` warning stays silent because the setting is not empty.

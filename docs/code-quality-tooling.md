@@ -1080,7 +1080,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5083 entries** over **661 distinct test commands**; both digits are
+manifest holds **5084 entries** over **661 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -4671,7 +4671,9 @@ Four rules, each of which a copy got wrong somewhere:
 4. **A tracked path that is not on disk is reported, not skipped.** The old walk
    could only yield files that exist; the index can name files a sparse checkout
    never materialised, and `except OSError: continue` turned that into a quiet
-   partial grading.
+   partial grading. A gate that reads only blobs has no such gap: `large-files`
+   sizes and sniffs `git cat-file` output, so a file missing from disk is graded
+   as the index holds it.
 
 A gate's `--root` must default to `None`, never to its own `ROOT`. `resolve_root`
 maps `None` to the gate's own tree without asking git, while a named root must

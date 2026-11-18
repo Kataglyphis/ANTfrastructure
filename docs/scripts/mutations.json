@@ -16252,6 +16252,14 @@
   "why": "a blob git cannot size would be graded as missing data, never as a failure"
  },
  {
+  "id": "large-files.blob-sniffed",
+  "target": "linux/scripts/verify_large_files.py",
+  "find": "    return b\"\\0\" in out.stdout[:SNIFF]",
+  "replace": "    with open(os.path.join(root, rel), \"rb\") as fh:\n        return b\"\\0\" in fh.read(SNIFF)",
+  "test": "bash linux/scripts/tests/test-large-files.sh",
+  "why": "the index is graded: a working-tree read stops every commit on an unstaged deletion and misses a binary staged before an edit"
+ },
+ {
   "id": "docs-site.hub-docs-never-pypi-in-ci",
   "target": "linux/scripts/build-docs.sh",
   "find": "  elif [ \"${CI:-}\" = true ]; then\n    err \"no ${IMAGE_VENV}: the docs build in the family image (build-docs.yml), never from PyPI in CI\"\n",

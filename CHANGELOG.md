@@ -15,6 +15,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-18 — the large-files gate grades the index, not the working tree (CON269 item 4)
+
+- `verify_large_files.py --root` refused a tracked file missing from disk, so a deletion not staged yet stopped every
+  commit until it was (AccelerANTgine's clone, 2026-11-12). The size already came from the blob; the NUL sniff now
+  reads the blob too, so the gate grades the index alone and a missing working-tree file is no partial tree.
+
 ## 2026-11-18 — the consumer hook templates are linted (CON269 item 2)
 
 - `lint-shell.sh` without arguments swept `linux/` only, so `shared/linux/templates/git-hooks/*` and the copied
