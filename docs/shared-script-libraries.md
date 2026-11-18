@@ -1288,7 +1288,7 @@ package and OxidANT a Rust crate, neither has a single `.py`, and refusing an em
 Python scope made both lanes exit 1 on every push for a reason nothing in either tree
 could change. A permanently red lane is a tolerated failure by construction.
 
-### `run-lint-gates.sh` — eight gates over a consumer tree, plus the opt-in ratchets
+### `run-lint-gates.sh` — nine gates over a consumer tree, plus the opt-in ratchets
 
 ```bash
 bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD"
@@ -1298,7 +1298,8 @@ bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD" --ratche
 
 shellcheck, actionlint (+ the CI image-ref check), gitleaks, ruff (error tier),
 the shared-config drift check, the consumer pin-forwarding check, the
-[README length](code-quality-tooling.md#readme-length-readme-length) and mutation
+[README length](code-quality-tooling.md#readme-length-readme-length), the
+[pattern limits](code-quality-tooling.md#pattern-limits-pattern-limits) and mutation
 staleness, in one command, every gate running even after one fails. Three consumers had grown their own copy
 — two of them as `run:` blocks inside a workflow, so the gate blocking their
 deploy could not be reproduced locally at all.
@@ -1318,6 +1319,10 @@ are the consumer's own, and dropping the whole prefix excluded them silently.
 The pin *preconditions* the copies carried ("does the pinned `lint-secrets.sh`
 understand a scan root yet?") are gone by construction: this script ships in the
 same commit as the gates it calls.
+
+**Pattern limits** runs `verify_pattern_limits.py --root <consumer-root>`: a
+`quality-report.toml` row `kind = "pattern"` with `max = 0` fails on its first match and prints
+file and line. Without such a row it passes with one line.
 
 **Mutation staleness** runs `verify_mutations.py --stale-check --root <consumer-root>` over
 every tracked `scripts/linux/tests/*mutations*.json`, directly in that directory, and runs no

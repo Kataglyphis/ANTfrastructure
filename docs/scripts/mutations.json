@@ -14940,6 +14940,46 @@
   "why": "a gate function nothing registers never runs in a consumer lane"
  },
  {
+  "id": "lint-gates.pattern-limits-limit-enforced",
+  "target": "linux/scripts/verify_pattern_limits.py",
+  "find": "    if len(hits) <= limit:",
+  "replace": "    if True:",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "a match of a max = 0 row must fail the lint gates, or the AGENTS.md rule holds by habit only"
+ },
+ {
+  "id": "lint-gates.pattern-limits-limit-not-off-by-one",
+  "target": "linux/scripts/verify_pattern_limits.py",
+  "find": "    if len(hits) <= limit:",
+  "replace": "    if len(hits) <= limit + 1:",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "max is the most matches allowed; one more than max must fail"
+ },
+ {
+  "id": "lint-gates.pattern-limits-bad-max-refused",
+  "target": "linux/scripts/verify_pattern_limits.py",
+  "find": "        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 0:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "max = true, -1 or \"0\" is a typo, and reading it as some limit lets matches through"
+ },
+ {
+  "id": "lint-gates.pattern-limits-consumer-half-grades",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  _lint_gates_hub linux/scripts/verify_pattern_limits.py || return 1",
+  "replace": "  return 0",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "the consumer half must run the gate and return its verdict, or lint-gates.yml passes every planted match"
+ },
+ {
+  "id": "lint-gates.pattern-limits-consumer-half-registered",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  run_gate \"pattern limits\" _lint_gates_pattern_limits\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "a gate function nothing registers never runs in a consumer lane"
+ },
+ {
   "id": "lib.dartdoc-guides-anchor-kept",
   "target": "linux/scripts/lib/dartdoc-guides.py",
   "find": "        path, sep, fragment = href.partition(\"#\")",

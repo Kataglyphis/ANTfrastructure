@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-18 — a `quality-report.toml` pattern row with `max` fails the lint gates (CON245)
+
+- A `kind = "pattern"` row was counted and reported only, so an AGENTS.md rule that is one pattern held by habit.
+  `verify_pattern_limits.py` fails when a row with `max` matches more often and prints `file:line` of each match;
+  `run-lint-gates.sh` runs it as its ninth gate. A `max` that is no whole number of zero or more fails too.
+  See [pattern limits](docs/code-quality-tooling.md#pattern-limits-pattern-limits).
+
 ## 2026-11-18 — a workspace Cargo license is staged under its file name alone
 
 - `stage-cargo-licenses.py` copied a `workspace` policy text to `<name@version>/workspace/<its repo path>`.

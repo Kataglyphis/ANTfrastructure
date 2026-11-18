@@ -1080,7 +1080,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5068 entries** over **660 distinct test commands**; both digits are
+manifest holds **5073 entries** over **660 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2173,6 +2173,32 @@ is no allowlist. `tests/test-readme-length.sh` drives both halves; the `readme-l
 mutations prove the limit, the unterminated last line, the missing file, and that
 `run-lint-gates.sh` registers the gate and returns its verdict.
 
+## Pattern limits (`pattern-limits`)
+
+A `kind = "pattern"` row of `quality-report.toml` is counted and reported; with `max` it also
+binds. `linux/scripts/verify_pattern_limits.py --root <repo>` fails when such a row matches more
+often than its `max`, and prints every match as `file:line: text`. An AGENTS.md rule that is one
+pattern ("no `std::cout` in `Src/`") holds by gate this way, not by habit.
+
+```toml
+[[metric]]
+name = "direct_stdout_in_src"
+kind = "pattern"
+pattern = '\bstd::cout\b'
+include = ["Src/*"]
+max = 0
+```
+
+- **Where it runs.** In every consumer through `run-lint-gates.sh`, so `lint-gates.yml` and the
+  pre-push template run it. A repo without `quality-report.toml`, or without a row that has `max`,
+  prints one line and passes.
+- **Malformed.** A `max` that is not a whole number of zero or more (`true`, `-1`, `"0"`), a broken
+  regex or a malformed TOML fails the gate; it is never read as no limit.
+- **Not covered.** A match in an untracked file, and `kind = "ruff"` rows: Ruff's own gate binds those.
+
+`tests/test-lint-gates.sh` plants a match in a fixture tree; the `lint-gates.pattern-limits-*` mutations prove
+the limit, the malformed `max`, and that `run-lint-gates.sh` registers the gate.
+
 ## AGENTS drift (`agents-drift`)
 
 `linux/scripts/verify_agents_drift.py --root <consumer> [--json PATH]` fails when a consumer's
@@ -2821,7 +2847,8 @@ lines in the file. A moved line keeps its key; a new member regresses even when 
   ([declaration](fleet-health.md#perf-host)).
 - `[[metric]]` rows: `kind = "pattern"` (a regex over tracked files under `paths`, filtered by
   `include` and `exclude` globs, set-valued) or `kind = "ruff"` (the locked Ruff over `paths`
-  with `config` overrides).
+  with `config` overrides). A pattern row with `max` is also a gate:
+  [pattern limits](#pattern-limits-pattern-limits).
 
 An artifact source is read from the checkout first. Otherwise, unless `--offline`, the GitHub CLI
 downloads the newest matching artifact of a run at the same SHA. No file, no run or no login

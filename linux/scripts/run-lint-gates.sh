@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-lint-gates.sh - shellcheck, actionlint, gitleaks, ruff, shared config, pins, README length, mutation staleness (+ratchets) over ONE consumer tree.
+# run-lint-gates.sh - shellcheck, actionlint, gitleaks, ruff, shared config, pins, README length, pattern limits, mutation staleness (+ratchets) over ONE consumer tree.
 
 #   run-lint-gates.sh <consumer-root> [--exclude <top-level-dir>]... [--ratchets] [--code-dupes|--code-dupes-report] [--allow-empty-shell] [--agents-drift] [--staged [--index <file>]]
 
@@ -185,6 +185,13 @@ _lint_gates_readme() {
   _lint_gates_hub linux/scripts/verify_readme_length.py || return 1
   _lint_gates_interpreter || return 1
   ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --root "${_LINT_GATES_ROOT}"
+}
+
+# A quality-report.toml pattern row with `max` binds here; without one this prints a line and passes.
+_lint_gates_pattern_limits() {
+  _lint_gates_hub linux/scripts/verify_pattern_limits.py || return 1
+  _lint_gates_interpreter || return 1
+  _lint_gates_hub_python --root "${_LINT_GATES_ROOT}"
 }
 
 # A recipe whose find text a refactor moved fails before the push, not in the mutation lane after it.
@@ -553,6 +560,7 @@ _lint_gates_main() {
   run_gate "shared-config drift" _lint_gates_shared_config
   run_gate "consumer pins" _lint_gates_consumer_pins
   run_gate "README length" _lint_gates_readme
+  run_gate "pattern limits" _lint_gates_pattern_limits
   run_gate "mutation staleness" _lint_gates_mutation_staleness
   if [ "${_LINT_GATES_RATCHETS}" -eq 1 ]; then
     run_gate "ratchets" _lint_gates_ratchet

@@ -2406,9 +2406,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       and a regression is reported, not enforced (`.github/workflows/code-quality-report.yml:111`).
       First step: the row may carry `max = 0`, and `run-lint-gates.sh` fails when such a row has a match,
       printing file and line. No new rule registry.
-      Done when `test-lint-gates.sh` fails on a planted match in a fixture tree, the gate has its mutation
-      recipe and its lines in the `run-lint-gates.sh` section of `docs/shared-script-libraries.md`, and the
-      two consumers have added their row with one recipe each.
+      **Hub half done 2026-11-18:** `verify_pattern_limits.py`, the ninth gate of `run-lint-gates.sh`, its
+      `lint-gates.pattern-limits-*` recipes and both doc pages. Left: done when the two consumers, on a hub pin with the
+      gate, have added their row with one recipe each.
 
 - [ ] **CON246 — a rise in oversized Rust, Dart or C++ functions shows in `--compare`** [S, ★★]. Found by the
       audit of 2026-11-12. `functions_over_80_lines_extra_languages` is class `REPORT`
