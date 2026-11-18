@@ -55092,5 +55092,125 @@
   "replace": "    source = Path(text(android, 'source'))\n",
   "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
   "why": "Independent Android argv refusals must still execute after separating command and source validation; no actual FINAL, hardware or licence proof."
+ },
+ {
+  "id": "host.consumer-command-seal-fresh-seals",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "not output.exists() and not stopped_output.exists()",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal fresh-seals control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
+ },
+ {
+  "id": "host.consumer-command-seal-exclusive-cleanup",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "not cleanup_path.exists()",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal exclusive-cleanup control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
+ },
+ {
+  "id": "host.consumer-command-seal-unit-name",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "re.fullmatch(r\"[A-Za-z0-9][A-Za-z0-9_.@:-]*\\.service\", args.unit)",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal unit-name control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
+ },
+ {
+  "id": "host.consumer-command-seal-invocation-unit",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "invocation[\"unit\"] == args.unit",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal invocation-unit control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
+ },
+ {
+  "id": "host.consumer-command-seal-run-id",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "re.fullmatch(r\"[0-9a-f]{32}\", invocation[\"run_id\"])",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal run-id control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
+ },
+ {
+  "id": "host.consumer-command-seal-evidence-files",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "all(path.is_file() and not path.is_symlink() for path in paths)",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal evidence-files control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
+ },
+ {
+  "id": "host.consumer-command-seal-success-markers",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "args.success_marker and all(marker and marker in lines for marker in args.success_marker)",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal success-markers control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
+ },
+ {
+  "id": "host.consumer-command-seal-raw-status",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "paths[2].read_text() == \"command_status=0\\ncache_stats_status=0\\n\"",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal raw-status control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
+ },
+ {
+  "id": "host.consumer-command-seal-cache-structure",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "isinstance(statistics.get(\"stats\"), dict)",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal cache-structure control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
+ },
+ {
+  "id": "host.consumer-command-seal-terminal-result",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "terminal = successful_unit(unit_state(args.unit), args.unit)",
+  "replace": "terminal = unit_state(args.unit)",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal terminal-result control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
+ },
+ {
+  "id": "host.consumer-command-seal-stopped-result",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "stopped.get(\"MainPID\") == \"0\" and stopped.get(\"ActiveState\") == \"inactive\"",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal stopped-result control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
+ },
+ {
+  "id": "host.consumer-command-seal-cleanup-result",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "cleanup.get(\"exit_status\") == 0 and cleanup.get(\"run_id\") == invocation[\"run_id\"]\n            and cleanup.get(\"owner_label\") == invocation[\"owner_label\"]",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal cleanup-result control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
+ },
+ {
+  "id": "host.consumer-command-seal-preserve-cache-counts",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "\"cache_statistics\": statistics",
+  "replace": "\"cache_statistics\": {\"stats\": {}}",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal preserve-cache-counts control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
+ },
+ {
+  "id": "host.consumer-command-seal-acceptance-scope",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "\"acceptance_claimed\": False",
+  "replace": "\"acceptance_claimed\": True",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal acceptance-scope control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
+ },
+ {
+  "id": "host.consumer-command-seal-input-hashes",
+  "target": "linux/scripts/seal-command-unit.py",
+  "find": "fingerprint(path) for path in paths",
+  "replace": "\"0\" * 64 for path in paths",
+  "test": "bash linux/scripts/tests/test-seal-command-unit.sh",
+  "why": "Retain the command seal input-hashes control; mocked metadata is not proof of real build, container, cache or GPU acceptance."
  }
 ]

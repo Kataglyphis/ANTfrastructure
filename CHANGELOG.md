@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-18 — preserve consumer command seals
+
+- Add a reusable terminal command/cleanup sealer for cache-captured consumer jobs. It reuses the existing unit parser and terminal verdict, retains input hashes and raw statistics, and refuses an existing exclusive cleanup. Caller markers are not artifact, cache or GPU acceptance.
+- Mocked positive/refusal controls and 15 mutations cover identity, status, markers, evidence, stopping, cleanup and preserved scope.
+
 ## 2026-11-18 — check ordinary Android commands before local FINAL
 
 - Derive a missing Android stage label from the exact unpublished Android driver, lane, literal transport and hash-bound complete source proof; preserve original producer bytes and reject explicit incorrect labels.

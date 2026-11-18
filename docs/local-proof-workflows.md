@@ -637,3 +637,29 @@ independent cross-wrapper and SDK-parent refusal fixtures, cleanup authorization
 identity preservation. It uses disposable host doubles and cannot reclaim real storage or prove
 an image. Mutation recipes remove the corresponding guards and must fail assertions. Existing
 `test-proof-workflows.sh` remains responsible for the isolated runner and observer transport.
+
+## Consumer command seals
+
+`linux/scripts/seal-command-unit.py` replaces repeated manual terminal-command sealing for
+consumer jobs whose invocation and cache capture are already preserved. Run it only after
+the actual unit is terminal successful:
+
+```bash
+python3 linux/scripts/seal-command-unit.py --directory /absolute/job-output \
+  --unit webgpu-consumer-example.service --success-marker 'Actual command passed'
+```
+
+The directory needs `invocation.json`, `unit.log`, `compiler-cache/exit-status.txt` and
+`compiler-cache/cache-stats.json`. The invocation records the unit, run ID and owner label.
+The log must contain every supplied marker as a complete line, both raw statuses must be
+zero, and the existing shared terminal verdict must pass. The tool records input hashes
+and the uninterpreted cache counters, stops the unit, and requires matching owned cleanup
+with exit status zero before writing `command-proof-stopped.json`.
+
+Existing seals and `cleanup.json` refuse before stopping: an exclusive cleanup cannot be
+replayed, including on a retained terminal Runtime producer. Keep `seal-mutation-unit.py`,
+`runtime_terminal_evidence.py`, `host_commands.py` and `source_ci/common.py` with this entry.
+The supplied marker is not authenticated; a seal proves command lifecycle and cleanup,
+not artifact contents, cache success, physical GPU inference, clean-host behavior or image
+promotion. Preserve independent engine-absence and acceptance checks separately. Mocked
+regressions and their mutation recipes live under `linux/scripts/tests/`.

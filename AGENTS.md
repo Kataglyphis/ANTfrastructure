@@ -76,6 +76,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    A missing Android stage label requires its exact unpublished Android driver, lane, transport and complete source proof; derive only a local view and preserve the original receipt bytes.
    Linux acceptance restores disposable rootful checkout ownership on every exit;
    failed container cleanup or ownership restoration cannot produce a passed receipt.
+   Local command seals preserve raw command/cache-capture status and owned cleanup identity; an existing exclusive cleanup must never run again, and marker matches do not confer artifact acceptance.
    Require a successful engine query to prove every consumer and ownership-helper container absent;
    retain both removal and query statuses and diagnostics, including already-auto-removed containers.
    Windows vendor-specific DirectML defaults use the shared DXGI selector only when no explicit adapter is set; enumeration does not prove inference.
