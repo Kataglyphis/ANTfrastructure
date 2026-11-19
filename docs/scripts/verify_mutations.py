@@ -32,6 +32,7 @@ from mutation_parse import Edit, MissingParser, MutationEntry, refusals
 from mutation_push import (
     changed_files,
     coverage_line,
+    refuse_without_pwsh,
     select_push,
     set_aside,
     touches,
@@ -708,6 +709,8 @@ def prove_selected(args: argparse.Namespace, entries: list[MutationEntry]) -> in
     if args.delegate_chrome:
         runnable, delegated, refused_rc = set_aside(entries, args.root, lambda e: refuse_unparsable(e, args.root, report), say)
     else:
+        if refuse_without_pwsh(entries, args.root, say):
+            return 1
         (runnable, refused_rc), delegated = refuse_unparsable(entries, args.root, report), []
     rc = max(prove_in_mirrors(args, runnable, report), refused_rc)
     report.summary(entries)

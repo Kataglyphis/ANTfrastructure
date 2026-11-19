@@ -184,10 +184,20 @@ if [ -n "${_staged_any}" ]; then
     # A host without the pwsh or bash a mutant must parse with proves the sample in the image (CON279), as pre-push does (CON277).
     _runner="$(git config --get kataglyphis.imageRunner || true)"
     if [ "${_mrc}" -ne 0 ] && [ -n "${_runner}" ] && grep -q "is not on PATH, so" "${_mlog}"; then
-      echo "pre-commit: this host lacks a parser the sample needs; the sample again in the image through '${_runner}'"
+      _again=("${_only[@]}")
+      _ps="$(sed -n 's/^FAIL: pwsh is not on PATH, so [0-9]* selected test(s) cannot run here: //p' "${_mlog}" | tr -d '\r,')"
       _mrc=0
+      if [ -n "${_ps}" ]; then
+        # Only the tests that start pwsh go to the image; the rest stay on the host they were written for.
+        echo "pre-commit: ${_ps} need pwsh; the rest here, those in the image through '${_runner}'"
+        ${_PY} docs/scripts/verify_mutations.py "${_only[@]}" --delegate-chrome </dev/null || _mrc=$?
+        _again=()
+        for _id in ${_ps}; do _again+=(--only "${_id}"); done
+      else
+        echo "pre-commit: this host lacks a parser the sample needs; the sample again in the image through '${_runner}'"
+      fi
       # shellcheck disable=SC2086 # the runner is a command line of its own, split on purpose
-      ${_runner} "python3 docs/scripts/verify_mutations.py ${_only[*]}" </dev/null || _mrc=$?
+      ${_runner} "python3 docs/scripts/verify_mutations.py ${_again[*]}" </dev/null || _mrc=$?
     fi
     rm -f "${_mlog}"
     if [ "${_mrc}" -ne 0 ]; then

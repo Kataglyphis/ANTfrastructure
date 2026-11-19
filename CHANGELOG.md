@@ -15,6 +15,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — the text contract's schema case is typed once, and the page names each binding's backends (CON237 items 1, 2)
+
+- `tiny-genai-model.py` writes `schema_case` into `fixture.json`: the schema `{"enum": [7]}` and its answer, which the
+  successor rule never predicts, so only a live guidance mask yields it. `genai-guidance-smoke.py` reads it from
+  there in place of its own copy; it printed `genai-guidance-schema-ok 7` in `:latest` on 2026-11-19.
+- `language-ai.md`: `:winamd64` ships llguidance (its smoke gate runs the schema case), LAI-H2 is done, and a table
+  names each binding's backends; AccelerANTgine's C++ and C have no endpoint client.
+- `verify_mutations.py` without `--delegate-chrome` names a selected recipe whose test starts `pwsh` on a host
+  without it (`FAIL: pwsh is not on PATH, so …`) instead of running it into exit 127, a vacuous bite. The commit hook
+  reruns its sample in the image on that line (CON279), but now proves the rest on the host (`--delegate-chrome`)
+  and sends only the named pwsh tests to the image: a host-only test, such as the process-tree kill of
+  `test-mutation-gate.sh`, fails in the container for the container's reasons.
+
 ## 2026-11-19 — what CON269 left: the `--index` refusal's recipe and two commits through the hook pair
 
 - `lint-gates.index-needs-staged` proves that `run-lint-gates.sh` refuses `--index` without `--staged`. Its mutant ran

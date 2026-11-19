@@ -85,8 +85,14 @@ class TinyGenaiModel(unittest.TestCase):
                           "tokenizer_config.json"], names)
         self.assertEqual(self.oracle, self.config("fixture.json"))
         self.assertEqual({"prompt": "abc", "prompt_ids": [97, 98, 99], "continuation": "defg",
-                          "continuation_ids": [100, 101, 102, 103], "max_length": 7, "eos_token_id": 256},
+                          "continuation_ids": [100, 101, 102, 103], "max_length": 7, "eos_token_id": 256,
+                          "schema_case": {"schema": {"enum": [7]}, "answer": "7"}},
                          self.oracle)
+
+    def test_the_schema_case_names_an_answer_the_model_never_predicts(self) -> None:
+        case = self.oracle["schema_case"]
+        self.assertEqual(json.loads(case["answer"]), case["schema"]["enum"][0])
+        self.assertNotIn(case["answer"], self.oracle["continuation"], "only a live mask may produce it")
 
     def test_the_model_header(self) -> None:
         self.assertEqual([8], get(self.model, 1))

@@ -619,6 +619,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
          or an error kind). A new case reaches a repo only at its hub pin bump, and AccelerANTgine's contract
          test pins one case on purpose, so plan it with that repo.
 
+      Items 1 and 2 done 2026-11-19: the page names each binding's backends and says `:winamd64` ships
+      llguidance; `fixture.json` carries `schema_case`, which the image smoke replays (`genai-guidance-schema-ok 7`
+      in `:latest` too). Left: items 3 and 4, which need OxidANT's and OrchestrANT's stream tests.
       Done when `test-tiny-genai-model.sh` reads the schema case back, the image smoke replays it, Rust and
       Python read the one stream file, and the page names each binding's backends. Items 1 and 2 need no
       consumer.

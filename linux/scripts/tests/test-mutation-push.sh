@@ -150,6 +150,12 @@ _out="$(PATH="${_work}/nopwsh" _gate --delegate-chrome --only probe.ps --only pr
 t_assert_contains "${_out}" "delegated 2 entr(ies) to CI, needs pwsh, which this host lacks: pwsh -NoProfile -File ps-test.ps1"
 t_assert_contains "${_out}" "2 delegated to CI"
 t_assert_eq "0" "$(grep -c 'cannot be checked to parse' <<< "${_out}")" "a PowerShell mutant is parsed where it is proved"
+t_case "without --delegate-chrome, a pwsh test on a host without pwsh is named on the line the commit hook reruns in the image on"
+_out="$(PATH="${_work}/nopwsh" _gate --only probe.ps)"
+t_assert_contains "${_out}" "FAIL: pwsh is not on PATH, so 1 selected test(s) cannot run here: probe.ps" \
+  "its exit 127 would read as a vacuous bite, which the hook cannot tell from a weak test"
+t_assert_eq 1 "$(PATH="${_work}/nopwsh" t_rc _gate --only probe.ps)"
+
 # A stand-in pwsh that runs the suite: the recipe is proved here.
 printf '%s\n' '#!/usr/bin/env bash' 'grep -q GUARD=on ps.sh' > "${_work}/bin/pwsh"
 chmod +x "${_work}/bin/pwsh"

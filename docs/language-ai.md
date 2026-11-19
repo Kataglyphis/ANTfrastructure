@@ -25,7 +25,7 @@ the text API, the model packages and the order of work. Owner goal of 2026-10-30
 | Piece | Where | Gap |
 |---|---|---|
 | GenAI at `ONNXRUNTIME_GENAI_VERSION` | Linux `/usr/local/lib/onnxruntime-genai` on amd64, arm64 and riscv64 (CPU; CUDA in the nvidia variant); Windows `ONNX_GENAI_ROOT` (DirectML; CUDA in the nvidia variant); the `:winarm64` bundle | no Android build, no web build |
-| llguidance: JSON schema and grammars | Linux, `--use_guidance` in `60-build-genai.sh`; Windows, `-DUSE_GUIDANCE=ON` in `Build-OnnxGenaiFromSource.ps1` | Windows needs its next chain to ship it; arm64 has only the build's byte check |
+| llguidance: JSON schema and grammars | Linux, `--use_guidance` in `60-build-genai.sh`; Windows, `-DUSE_GUIDANCE=ON` in `Build-OnnxGenaiFromSource.ps1` | `:winamd64` ships it: its smoke gate (`Test-Container.ps1`) runs `genai-guidance-smoke.py`, a schema-constrained `generate()` over the [test model](#the-test-model); arm64 has only the build's byte check |
 | `ort_genai.h`, `ort_genai_c.h` | GenAI's `include/` | required by the Linux artifact check since LAI-H1 ([contract](consumer-image-contract.md#genais-library-and-headers)) |
 | Ollama, Open WebUI, the APISIX gateway | [`linux/llm-stack/`](../linux/llm-stack/README.md) | none |
 | GenieX on Snapdragon | [`geniex-local-ai-setup.md`](geniex-local-ai-setup.md) | HTTP only |
@@ -33,12 +33,19 @@ the text API, the model packages and the order of work. Owner goal of 2026-10-30
 
 ## The text contract
 
-Every binding (C++, C, Rust, Python, Dart) offers the same calls against two backends:
+Each binding offers the same calls against the backends it has:
 
 - **local:** GenAI in the process, from the chain build only, loaded the way that binding
   loads ONNX Runtime.
 - **endpoint:** an OpenAI-compatible server, by URL or by name through
   [`backends.json`](../linux/llm-stack/README.md#named-backends).
+
+| Binding | Repository | local | endpoint |
+|---|---|---|---|
+| Rust | OxidANT | `crates/text/src/genai.rs` | `crates/text/src/endpoint.rs` |
+| Python | OrchestrANT | `orchestrant/genai/engine.py` | `orchestrant/benchmark/client.py` |
+| C++, C | AccelerANTgine | `Src/text_generation.cpp` | none |
+| Dart | OmniAccelerANT | through OxidANT's bridge (`lib/src/rust/api/text.dart`) | the playground's `endpoint_chat.dart` |
 
 | Call | Contract |
 |---|---|
@@ -120,7 +127,9 @@ export, so today they reach an app through an endpoint only.
 
 - **The rule:** every byte token predicts its successor, and byte 255 predicts the end token. Greedy
   decoding of `abc` with `max_length` 7 therefore yields `defg`, token ids 100 to 103.
-- **The oracle:** `fixture.json` holds the prompt, its ids, the continuation and `max_length`.
+- **The oracle:** `fixture.json` holds the prompt, its ids, the continuation and `max_length`, and
+  `schema_case`: a JSON schema whose one legal answer the successor rule never predicts, with that
+  answer, so only a live guidance mask produces it. The image smoke reads it from there.
   A binding test reads it instead of retyping the numbers.
 - **The cache:** one layer whose `present` outputs concatenate the past with one embedding per
   token, so GenAI exercises its KV-cache loop exactly as with a real decoder.
@@ -149,7 +158,7 @@ Every item is open until its row says otherwise. Each repository's backlog names
 | ID | Work | Repo |
 |---|---|---|
 | LAI-H1 | Require the GenAI library and both headers in the Linux artifact check; the header copy fails instead of `\|\| true`. Done 2026-10-30. | hub |
-| LAI-H2 | Build GenAI with llguidance on Windows. In source; a local build linked it, and the smoke gate runs a schema-constrained `generate()` over the [test model](#the-test-model). Needs a Windows chain to ship. | hub |
+| LAI-H2 | Build GenAI with llguidance on Windows. Done: `:winamd64` ships it, and its smoke gate runs a schema-constrained `generate()` over the [test model](#the-test-model) with the schema case from its `fixture.json`. | hub |
 | LAI-H3 | This page: the decisions, the contract, the model search order. Done 2026-10-30. | hub |
 | LAI-H4 | A fixture that writes a tiny GenAI model, its config and tokenizer, so no test loads a model file ([§ The test model](#the-test-model)). Done 2026-10-30. | hub |
 | LAI-H5 | The image smoke's GenAI tier 4 decodes the test model on every arch instead of reporting `generate()` as unproven. Done 2026-10-30; arm64 and riscv64 prove it at the next chain. | hub |

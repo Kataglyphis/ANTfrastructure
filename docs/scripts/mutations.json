@@ -20980,6 +20980,14 @@
   "why": "the check mode must grade the pooled output against the oracle, not merely read it"
  },
  {
+  "id": "lib.tiny-genai-schema-case",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "              \"eos_token_id\": EOS_ID, \"schema_case\": SCHEMA_CASE}",
+  "replace": "              \"eos_token_id\": EOS_ID}",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "the schema case is typed once, in fixture.json; without it the image smoke and five consumer tests retype it"
+ },
+ {
   "id": "lib.genai-smoke-tiny-mismatch",
   "target": "linux/scripts/06-packaging/smoke-common.sh",
   "find": "        fails.extend(f\"tiny model: {problem}\" for problem in tiny_problems)",
@@ -36595,7 +36603,7 @@
  {
   "id": "genai-guidance.schema-unchecked",
   "target": "windows/scripts/build/genai-guidance-smoke.py",
-  "find": "    if json.loads(answer) != 7:\n",
+  "find": "    if json.loads(answer) != json.loads(expected):\n",
   "replace": "    if False:\n",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiGuidance.Tests.ps1 -ResultFile logs/code-quality/genai-guidance-mutation.json",
   "why": "valid JSON that breaks the schema must not print the sentinel"
@@ -40721,6 +40729,14 @@
   "why": "a staged list that cannot be read is empty, and an empty list passes every staged check"
  },
  {
+  "id": "pre-commit.image-reruns-only-pwsh-tests",
+  "target": "linux/host-config/git-hooks/pre-commit",
+  "find": "        for _id in ${_ps}; do _again+=(--only \"${_id}\"); done\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+  "why": "a test written for the host fails in the container for the container's reasons; only the pwsh tests need the image"
+ },
+ {
   "id": "doc-links.numbered-mention-passes",
   "target": "docs/scripts/verify_doc_links.py",
   "find": "            if num and num.group(1) in NUMBERED_HEADING.findall(other.body):\n                continue",
@@ -40863,6 +40879,14 @@
   "replace": "encoding=\"utf-8\", start_new_session=True)",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "A test that prints bytes that are not UTF-8 keeps its verdict; strict decoding crashed the whole run."
+ },
+ {
+  "id": "mutations.pwsh-test-named-on-a-host-without-it",
+  "target": "docs/scripts/mutation_push.py",
+  "find": "    _here, wanting = split_pwsh(entries, root, host_has_pwsh)\n    if wanting:\n        # The commit hook",
+  "replace": "    wanting: list[E] = []\n    if wanting:\n        # The commit hook",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "a recipe whose test starts pwsh exits 127 on a host without it, a vacuous bite the commit hook cannot tell from a weak test"
  },
  {
   "id": "recipe-pytest.venv-synced-per-recipe",

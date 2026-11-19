@@ -197,6 +197,18 @@ t_assert_contains "$(cat "${_RUNNER_ARGV}")" "-- python3 docs/scripts/verify_mut
 t_assert_eq "3" "$(grep -o -e '--only' "${_RUNNER_ARGV}" | grep -c .)" "the image proves the same sample"
 t_assert_fails _run_hook_runner "fake-runner --" "${_no_pwsh}" 1
 
+t_case "a pwsh test on a host without pwsh: the rest proves here, only the named ids go to the image"
+_out="$(HOOK_TEST_DELEGATED_RC=0 _run_hook_runner "fake-runner --" \
+  "FAIL: pwsh is not on PATH, so 2 selected test(s) cannot run here: lib.one, lib.two" 0)"
+t_assert_contains "${_out}" "pre-commit: OK"
+t_assert_eq "-- python3 docs/scripts/verify_mutations.py --only lib.one --only lib.two" "$(cat "${_RUNNER_ARGV}")" \
+  "the image proves only the pwsh tests, so a test written for the host never runs where it cannot"
+t_assert_contains "$(cat "${_ARGV}")" "--delegate-chrome"
+HOOK_TEST_DELEGATED_RC=1 t_assert_fails _run_hook_runner "fake-runner --" \
+  "FAIL: pwsh is not on PATH, so 1 selected test(s) cannot run here: lib.one" 0
+t_assert_eq "-- python3 docs/scripts/verify_mutations.py --only lib.one" "$(cat "${_RUNNER_ARGV}")" \
+  "a survivor on the host stops the commit, after the image had its say"
+
 t_case "CON279: no runner set, or a real survivor: the commit stops and the image is not asked"
 t_assert_fails _run_hook_runner "" "${_no_pwsh}" 0
 t_assert_fails _run_hook_runner "fake-runner --" "SURVIVED: lib.example" 0

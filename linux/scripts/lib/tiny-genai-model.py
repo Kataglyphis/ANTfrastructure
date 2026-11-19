@@ -23,6 +23,8 @@ OPSET, IR_VERSION = 17, 8
 CONTEXT = 512
 ATTR_INT = 2
 PROMPT, CONTINUATION = "abc", "defg"
+# One legal answer the successor rule never predicts from the prompt: only a live guidance mask produces it.
+SCHEMA_CASE = {"schema": {"enum": [7]}, "answer": "7"}
 CHAT_TEMPLATE = "{% for message in messages %}{{ message['content'] }}{% endfor %}"
 
 
@@ -185,7 +187,7 @@ def write(out: Path, hidden_states: bool = False) -> dict[str, object]:
     tok, tok_config = tokenizer()
     oracle = {"prompt": PROMPT, "prompt_ids": prompt_ids, "continuation": CONTINUATION,
               "continuation_ids": expected_ids, "max_length": len(prompt_ids) + len(expected_ids),
-              "eos_token_id": EOS_ID}
+              "eos_token_id": EOS_ID, "schema_case": SCHEMA_CASE}
     if hidden_states:
         oracle["embedding"] = unit_mean([hidden_row(byte) for byte in PROMPT.encode()])
     files = {"genai_config.json": genai_config(CONTEXT, hidden_states), "tokenizer.json": tok,
