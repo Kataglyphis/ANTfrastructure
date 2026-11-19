@@ -282,7 +282,7 @@ _agentic_load_loop_config() {
         max_iterations max_retries loop_delay auto_commit commit_prefix \
         full_matrix_every_n fix_build_failures max_consecutive_build_failures \
         skip_planner_when_pending delete_completed test_cmd quality_cmd \
-        build_script; do
+        build_script commit_gate max_consecutive_gate_failures; do
         _AL[$_al_key]=""
     done
     local _al_cfg
@@ -302,7 +302,9 @@ _agentic_load_loop_config() {
         @sh "_AL[delete_completed]=\(.backlog.deleteCompletedTasks // true | v)",
         @sh "_AL[test_cmd]=\(.build[$p + "TestCommand"] // .build.linuxTestCommand // "" | v)",
         @sh "_AL[quality_cmd]=\(.build[$p + "QualityCommand"] // .build.linuxQualityCommand // "" | v)",
-        @sh "_AL[build_script]=\(.build[$p + "Script"] // .build.linuxScript // "" | v)"
+        @sh "_AL[build_script]=\(.build[$p + "Script"] // .build.linuxScript // "" | v)",
+        @sh "_AL[commit_gate]=\(.git.commitGate // "" | v)",
+        @sh "_AL[max_consecutive_gate_failures]=\(.intervals.maxConsecutiveGateFailures // 3 | v)"
     ' "$config_json")
     eval "$_al_cfg"
     if [[ -n "${MAX_ITERATIONS_OVERRIDE:-}" ]]; then
@@ -313,6 +315,20 @@ _agentic_load_loop_config() {
     _AL[tasks_completed]=0
     _AL[build_cycle_index]=0
     _AL[consecutive_build_failures]=0
+    _AL[consecutive_gate_failures]=0
+}
+
+# git.commitGate before the auto-commit: 0 passed or none set, 1 failed (the task stays uncommitted), 2 failed too often.
+_agentic_commit_gate() {
+    [[ "${_AL[auto_commit]}" == "true" && -n "${_AL[commit_gate]}" ]] || return 0
+    if _agentic_run_phase "${_AL[commit_gate]}" "COMMIT GATE" "commit gate" "COMMIT GATE"; then
+        _AL[consecutive_gate_failures]=0
+        return 0
+    fi
+    _AL[consecutive_gate_failures]=$(( _AL[consecutive_gate_failures] + 1 ))
+    log "Consecutive commit-gate failures: ${_AL[consecutive_gate_failures]}/${_AL[max_consecutive_gate_failures]}; the task stays uncommitted" "WARN"
+    [[ "${_AL[consecutive_gate_failures]}" -lt "${_AL[max_consecutive_gate_failures]}" ]] || return 2
+    return 1
 }
 
 # On build failure, optionally runs the fixer agent and retries the build once.
@@ -361,10 +377,14 @@ _agentic_build_phase() {
     fi
 }
 
-# After-task phases (commit, build, quality); 1 when the commit is refused, so the next task is not piled onto it.
+# After-task phases (gate, commit, build, quality); 1 when the commit is refused or its gate failed too often.
 _agentic_after_task_phases() {
-    local matrix_count="$1"
-    invoke_git_auto_commit "${_AL[commit_prefix]}: task #${_AL[tasks_completed]}" "${_AL[repo_root]}" "${_AL[auto_commit]}" || return 1
+    local matrix_count="$1" gate=0
+    _agentic_commit_gate || gate=$?
+    [[ "$gate" -ne 2 ]] || return 1
+    if [[ "$gate" -eq 0 ]]; then
+        invoke_git_auto_commit "${_AL[commit_prefix]}: task #${_AL[tasks_completed]}" "${_AL[repo_root]}" "${_AL[auto_commit]}" || return 1
+    fi
     if [[ "${SKIP_BUILD:-false}" != "true" && $(( _AL[tasks_completed] % _AL[build_every_n] )) -eq 0 ]]; then
         _agentic_build_phase "$matrix_count"
     fi
@@ -400,7 +420,7 @@ _agentic_drain_executor_queue() {
             # Prune any leftover checked entries before the auto-commit
             [[ "${_AL[delete_completed]}" == "true" ]] && remove_checked_tasks "$backlog"
             if ! _agentic_after_task_phases "$matrix_count"; then
-                log "Auto-commit refused — stopping queue drain" "ERROR"
+                log "Auto-commit refused or its gate failed too often — stopping queue drain" "ERROR"
                 return 1
             fi
             if [[ "${_AL[consecutive_build_failures]}" -ge "${_AL[max_consecutive_build_failures]}" ]]; then

@@ -971,6 +971,20 @@ function Invoke-QualityCommand {
     Invoke-AgenticCommandPhase -Command $Command -Title 'QUALITY' -Label 'quality' -UseRepoRoot -RepoRoot $RepoRoot -Advisory
 }
 
+# git.commitGate before the auto-commit: 'pass', 'held' (the task stays uncommitted) or 'stop' after MaxFailures in a row.
+function Invoke-AgenticCommitGate {
+    param([Parameter(Mandatory)][string]$Command, [string]$RepoRoot, [int]$MaxFailures = 3)
+    if (Invoke-AgenticCommandPhase -Command $Command -Title 'COMMIT GATE' -Label 'commit-gate' -Verdict 'COMMIT GATE' -UseRepoRoot -RepoRoot $RepoRoot) {
+        $script:consecutiveGateFailures = 0
+        return 'pass'
+    }
+    $script:consecutiveGateFailures++
+    Write-AgenticLog "Consecutive commit-gate failures: $($script:consecutiveGateFailures)/$MaxFailures; the task stays uncommitted" 'WARN'
+    if ($script:consecutiveGateFailures -lt $MaxFailures) { return 'held' }
+    Write-AgenticLog 'Commit gate failed too often - stopping queue drain' -Level ERROR
+    return 'stop'
+}
+
 # -- Build-failure fixer --------------------------------------------------
 function Invoke-BuildFixer {
     <#
@@ -1114,6 +1128,8 @@ function Invoke-AgenticLoop {
     $gitCfg = Get-AgenticConfigValue $Config 'git' $null
     $autoCommit = [bool](Get-AgenticConfigValue $gitCfg 'autoCommit' $true)
     $commitPrefix = Get-AgenticConfigValue $gitCfg 'commitPrefix' 'agentic-loop'
+    $commitGate = Get-AgenticConfigValue $gitCfg 'commitGate' $null
+    $maxConsecutiveGateFailures = [int](Get-AgenticConfigValue $intervals 'maxConsecutiveGateFailures' 3)
     $backlogCfg = Get-AgenticConfigValue $Config 'backlog' $null
     $skipPlannerWhenPending = [bool](Get-AgenticConfigValue $backlogCfg 'skipPlannerWhenTasksPending' $true)
     $deleteCompleted = [bool](Get-AgenticConfigValue $backlogCfg 'deleteCompletedTasks' $true)
@@ -1143,6 +1159,7 @@ function Invoke-AgenticLoop {
     $script:AgenticTasksCompleted = 0
     $script:buildIdx = 0
     $script:consecutiveBuildFailures = 0
+    $script:consecutiveGateFailures = 0
 
     # On a build failure the fixer may run, then the build is retried once.
     function Invoke-BuildAndTestForEntry {
@@ -1198,8 +1215,10 @@ function Invoke-AgenticLoop {
     }
     # Commit, build, quality; $false on a refused commit or once the consecutive-build-failure cap is hit.
     function Invoke-AfterTaskPhases {
+        $gate = if ($autoCommit -and $commitGate) { Invoke-AgenticCommitGate -Command $commitGate -RepoRoot $RepoRoot -MaxFailures $maxConsecutiveGateFailures } else { 'pass' }
+        if ($gate -eq 'stop') { return $false }
         # Only an explicit $false is a refusal; a stub that returns nothing is not.
-        if ($false -eq (Invoke-GitAutoCommit -Message "${commitPrefix}: task #${tasksDone}" -RepoRoot $RepoRoot -Enabled $autoCommit)) {
+        if ($gate -eq 'pass' -and $false -eq (Invoke-GitAutoCommit -Message "${commitPrefix}: task #${tasksDone}" -RepoRoot $RepoRoot -Enabled $autoCommit)) {
             Write-AgenticLog 'Auto-commit refused - stopping queue drain' -Level ERROR
             return $false
         }

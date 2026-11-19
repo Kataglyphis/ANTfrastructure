@@ -137,7 +137,7 @@ t_assert_contains "${_out}" "rc=0" "a stalled queue ends the drain; it is not a 
 t_case "a refused auto-commit stops the drain, so the next task is not piled onto it"
 printf -- '- [ ] first\n- [ ] second\n- [ ] third\n' > "${_work}/BACKLOG.md"
 _out="$(_drain "${_TICK}" 1)"
-t_assert_contains "${_out}" "Auto-commit refused — stopping queue drain"
+t_assert_contains "${_out}" "Auto-commit refused or its gate failed too often — stopping queue drain"
 t_assert_contains "${_out}" "completed=1"
 t_assert_contains "${_out}" "rc=1"
 

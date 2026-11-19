@@ -38,6 +38,7 @@
     "agentRetryDelaySeconds": 30,
     "fixBuildFailures": true,
     "maxConsecutiveBuildFailures": 3,
+    "maxConsecutiveGateFailures": 3,
     "waitForUsageLimitReset": true
   },
   "backlog": {
@@ -46,8 +47,10 @@
     "deleteCompletedTasks": true
   },
   "git": {
+    "_comment": "commitGate: a command run before each auto-commit, for example bash scripts/linux/run-lint-gates.sh; a failure keeps the task uncommitted.",
     "autoCommit": true,
-    "commitPrefix": "agentic-loop"
+    "commitPrefix": "agentic-loop",
+    "commitGate": ""
   },
   "logging": {
     "logDir": "logs/agentic-loop",

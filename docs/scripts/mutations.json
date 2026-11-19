@@ -33665,6 +33665,22 @@
   "why": "a refused commit must stop the queue drain with exit 1, not run the next task"
  },
  {
+  "id": "lib.agentic-commit-gate-holds",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "    if [[ \"$gate\" -eq 0 ]]; then\n        invoke_git_auto_commit",
+  "replace": "    if true; then\n        invoke_git_auto_commit",
+  "test": "bash linux/scripts/tests/test-agentic-phases.sh",
+  "why": "a task whose gate failed must stay uncommitted; committing it anyway makes the gate decorative"
+ },
+ {
+  "id": "lib.agentic-commit-gate-capped",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "    [[ \"${_AL[consecutive_gate_failures]}\" -lt \"${_AL[max_consecutive_gate_failures]}\" ]] || return 2",
+  "replace": "    true",
+  "test": "bash linux/scripts/tests/test-agentic-phases.sh",
+  "why": "a gate that keeps failing must stop the queue, as the build failure cap does, not hold tasks forever"
+ },
+ {
   "id": "packaging.parity-files-normalised",
   "target": "linux/scripts/06-packaging/verify-parity.sh",
   "find": "  normalize_find_output \"${native_file}\" > \"${native_file}.clean\"\n",

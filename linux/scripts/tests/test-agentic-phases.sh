@@ -100,4 +100,27 @@ t_assert_eq 0 "$(t_rc invoke_git_auto_commit 'x' "$d" false)"
 t_assert_eq 0 "$(DRY_RUN=true t_rc invoke_git_auto_commit 'x' "$d" true)"
 t_assert_eq 1 "$(git -C "$d" rev-list --count HEAD)" 'still the base commit'
 
+t_case 'the commit gate: a pass commits, a failure holds the task uncommitted, the cap stops the drain'
+d="$(_commit_repo)"; : > "$LOG_FILE"
+declare -A _AL  # the sourced lib declares it; shellcheck cannot follow that source
+_AL[auto_commit]=true; _AL[commit_prefix]=loop; _AL[repo_root]="$d"; _AL[tasks_completed]=1
+_AL[commit_gate]="test -f $d/gate-ok"; _AL[max_consecutive_gate_failures]=2; _AL[consecutive_gate_failures]=0
+_AL[build_every_n]=1000; _AL[quality_every_n]=1000; _AL[quality_cmd]=''
+export SKIP_BUILD=true SKIP_QUALITY=true
+printf 'two\n' >> "$d/tracked.txt"
+t_assert_eq 0 "$(t_rc _agentic_after_task_phases 1)" 'one failure holds, it does not stop'
+_agentic_after_task_phases 1 >/dev/null || true
+t_assert_eq 1 "$(git -C "$d" rev-list --count HEAD)" 'a failed gate commits nothing'
+t_assert_contains "$(cat "$LOG_FILE")" 'Consecutive commit-gate failures: 1/2; the task stays uncommitted'
+t_assert_eq 1 "$(t_rc _agentic_after_task_phases 1)" 'the second failure in a row reaches the cap'
+_AL[consecutive_gate_failures]=1
+: > "$d/gate-ok"; printf 'gate-ok\n' >> "$d/.git/info/exclude"
+t_assert_eq 0 "$(t_rc _agentic_after_task_phases 1)"
+_agentic_after_task_phases 1 >/dev/null
+t_assert_eq 2 "$(git -C "$d" rev-list --count HEAD)" 'a passing gate commits the held work'
+t_assert_eq 0 "${_AL[consecutive_gate_failures]}" 'a pass resets the count'
+_AL[commit_gate]=''
+t_assert_eq 0 "$(t_rc _agentic_commit_gate)" 'no gate set is a pass'
+unset SKIP_BUILD SKIP_QUALITY
+
 t_summary

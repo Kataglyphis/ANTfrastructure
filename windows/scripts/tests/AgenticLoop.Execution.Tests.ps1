@@ -5,7 +5,7 @@ Import-Module (Join-Path $PSScriptRoot 'WindowsAgentic.Fixtures.psm1') -ErrorAct
 Import-Module (Join-Path $PSScriptRoot 'WindowsTest.MutationCases.psm1') -ErrorAction Stop
 
 $script:agenticExecutionFactory = New-TestAgenticModuleFactory -Properties @{ ProgressAt = @(); Attempts = 0; BuildOk = $true; CommitOk = $true } `
-        -FunctionName @('Invoke-AgenticCommandPhase', 'Start-AgenticCommandPhase', 'Invoke-AgenticLoop', 'Resolve-AgenticLoopInputs', 'Get-AgenticConfigValue', 'Resolve-BuildMatrixEntry', 'Invoke-QualityCommand',
+        -FunctionName @('Invoke-AgenticCommandPhase', 'Start-AgenticCommandPhase', 'Invoke-AgenticCommitGate', 'Invoke-AgenticLoop', 'Resolve-AgenticLoopInputs', 'Get-AgenticConfigValue', 'Resolve-BuildMatrixEntry', 'Invoke-QualityCommand',
             'Get-AgenticDefaultBacklogPath', 'Get-AgenticBacklogTaskCount', 'Get-UncheckedTaskCount', 'Get-BlockedTaskCount', 'Remove-CheckedBacklogTasks') -Prelude @'
 $script:AgenticExitCode = 0
 function Resolve-AgenticEngine { return @{ Engine = 'fixture'; PlannerModel = 'planner'; ExecutorModel = 'executor' } }
@@ -44,11 +44,11 @@ function Get-AgenticExecutionCalls {
 }
 
 function Invoke-AgenticExecutionFixture {
-    param($State, [switch]$ExecutorOnly)
+    param($State, [switch]$ExecutorOnly, [string]$CommitGate)
     $config = @{
         intervals = @{ buildEveryNTasks = 1; qualityEveryNTasks = 2
-            maxIterations = 3; maxExecutorRetries = 2; fixBuildFailures = $false; maxConsecutiveBuildFailures = 2 }
-        git = @{ commitPrefix = 'fixture' }
+            maxIterations = 3; maxExecutorRetries = 2; fixBuildFailures = $false; maxConsecutiveBuildFailures = 2; maxConsecutiveGateFailures = 2 }
+        git = @{ commitPrefix = 'fixture'; commitGate = $CommitGate }
         build = @{ windowsQualityCommand = 'quality exits unsuccessfully' }
     }
     Invoke-MutAgenticLoop -Config $config -PlannerPrompt planner -ExecutorPrompt executor -BuildConfigs debug, release `
@@ -107,8 +107,8 @@ Describe 'Agentic executor batch' {
             ModuleArgumentsFactory = $script:agenticExecutionFactory; Find = '$script:AgenticExitCode = 1'
             Replace = '$script:AgenticExitCode = 0'; Expected = 'both modes must fail'; Body = { param($state) Invoke-AgenticModeAssertions $state ${function:Assert-AgenticFailureCap} } } }
         @{ Name = 'stops both modes with a failing exit code when the auto-commit is refused, before the build, with a fault control'; Arguments = @{
-            ModuleArgumentsFactory = $script:agenticExecutionFactory; Find = 'if ($false -eq (Invoke-GitAutoCommit'
-            Replace = 'if ($false -and (Invoke-GitAutoCommit'; Expected = 'a refused commit is a failed phase'; Body = {
+            ModuleArgumentsFactory = $script:agenticExecutionFactory; Find = '-and $false -eq (Invoke-GitAutoCommit'
+            Replace = '-and $false -and (Invoke-GitAutoCommit'; Expected = 'a refused commit is a failed phase'; Body = {
                 param($state)
                 foreach ($executorOnly in @($true, $false)) {
                     Reset-MutAgenticExecution -ProgressAt 1, 2 -Tasks 2 -CommitOk $false
@@ -117,6 +117,20 @@ Describe 'Agentic executor batch' {
                     Assert-Equal 1 @(Get-AgenticExecutionCalls $state commit).Count 'the next task is not piled onto the refused one'
                     Assert-Equal 0 @(Get-AgenticExecutionCalls $state build).Count 'no build of a tree the commit did not take'
                     Assert-True ($state.Calls -contains 'log|ERROR|Auto-commit refused - stopping queue drain') 'the log says why it stopped'
+                }
+            } } }
+        @{ Name = 'holds a task whose commit gate fails and stops both modes when it fails twice in a row, with a cap fault control'; Arguments = @{
+            ModuleArgumentsFactory = $script:agenticExecutionFactory; Find = 'if ($script:consecutiveGateFailures -lt $MaxFailures) { return ''held'' }'
+            Replace = 'return ''held'''; Expected = 'the gate cap is a failed run'; Body = {
+                param($state)
+                foreach ($executorOnly in @($true, $false)) {
+                    Reset-MutAgenticExecution -ProgressAt 1, 2, 3 -Tasks 3
+                    Invoke-AgenticExecutionFixture -State $state -ExecutorOnly:$executorOnly -CommitGate 'gate exits unsuccessfully'
+                    Assert-Equal 1 (Get-MutAgenticExecutionResult).ExitCode 'the gate cap is a failed run'
+                    Assert-Equal 2 (Get-MutAgenticExecutionResult).Completed 'the cap stops the third task'
+                    Assert-Equal 0 @(Get-AgenticExecutionCalls $state commit).Count 'a failed gate commits nothing'
+                    Assert-Equal 2 @($state.Calls | Where-Object { $_ -eq 'quality|gate exits unsuccessfully' }).Count 'the gate ran once per task'
+                    Assert-True ($state.Calls -contains 'log|ERROR|Commit gate failed too often - stopping queue drain') 'the log says why it stopped'
                 }
             } } }
         @{ Name = 'logs command phases but disables execution in dry runs, with a guard fault control'; Arguments = @{

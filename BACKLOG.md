@@ -2404,24 +2404,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Not taken from the audit: a per-repo lane-to-path table, and a hook that stops a push without its
       `[ci <lane>]` token. A path hint, if it comes, is a warning in the lint lane's summary only.
 
-- [ ] **CON248 — the agentic loop reads git's exit code and stages by rule** [S, ★]. Found by the audit of
-      2026-11-12 and read in the hub's code. `invoke_git_auto_commit`
-      (`linux/scripts/lib/agentic-loop.sh:232-237`) runs `git add -A` and `git commit`, each with
-      `2>/dev/null || true`. `Invoke-GitAutoCommit` (`windows/scripts/modules/WindowsAgenticLoop.Common.psm1:867-874`)
-      logs `Committed` without reading the exit code. The loop's own commit comes before its build and
-      quality phases (`_agentic_after_task_phases`), an advisory phase returns 0 whatever its command
-      returned, and `shared/agentic-loop/system-prompts/executor.md:71` tells the agent to run `git add -A`.
-      The same prompt has the agent build, and test when the task says so, before it commits (steps 6, 7
-      and 9), so what is missing is a check the loop runs itself. A refused commit is silent, and a core
-      file or a test output in the tree would be committed. Low today: the four AI consumers do not run the
-      loop, and the 19 MB core file of that week came from an agent session that ran `git add -A` by hand.
-      Due before a consumer adopts the loop.
-      1. and 2. Done 2026-11-19: both twins read git's exit code (a refused commit stops the queue with exit 1
-         and says why) and stage `git add -u` plus new text files of at most 500 KiB, logging what they leave out;
-         the executor prompt names files.
-      3. A commit gate from a config key runs before the commit; a consumer sets its
-         `bash scripts/linux/run-lint-gates.sh`. Its failures are capped like `maxConsecutiveBuildFailures`.
-
       Done when `test-agentic-loop.sh` and `WindowsAgenticLoop.Common.Tests.ps1` prove three new cases, each
       with a mutation recipe: a planted untracked 1 MB binary is not committed, a failing gate stops the
       commit and returns non-zero, and a failing `git commit` is reported as failed.

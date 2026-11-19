@@ -373,6 +373,7 @@ The config is read from `AgenticLoop.config.json`. Key sections:
 | `intervals.agentRetryDelaySeconds` | `[int]` | 20 | Base backoff delay between agent retries |
 | `intervals.fixBuildFailures` | `[bool]` | `true` | Dispatch the fixer agent after a failed build, then rebuild once |
 | `intervals.maxConsecutiveBuildFailures` | `[int]` | 3 | Stop the loop after N consecutive failed build phases |
+| `intervals.maxConsecutiveGateFailures` | `[int]` | 3 | Stop the loop with exit code 1 after N consecutive failed commit gates |
 | `intervals.waitForUsageLimitReset` | `[bool]` | `true` | When an agent fails because the Claude usage/session limit was hit, sleep until the reset time stated in the message (+2 min) and retry without burning a retry attempt (capped at 10 waits per invocation) |
 | `buildMatrix.windows` | `[array]` | — | Windows build matrix entries (objects with name, sanitizer, buildDir, buildType, testCommand) |
 | `buildMatrix.linux` | `[array]` | — | Linux build matrix entries |
@@ -384,6 +385,7 @@ The config is read from `AgenticLoop.config.json`. Key sections:
 | `build.linuxQualityCommand` | `[string]` | — | Quality command for Linux |
 | `git.autoCommit` | `[bool]` | `true` | Auto-commit after each completed task |
 | `git.commitPrefix` | `[string]` | `agentic-loop` | Prefix for auto-commit messages |
+| `git.commitGate` | `[string]` | — | A command run from the repo root before each auto-commit, for example `bash scripts/linux/run-lint-gates.sh`. A failure keeps the task uncommitted (the next passing gate commits it with its successor) and counts toward `maxConsecutiveGateFailures`; a pass resets the count |
 | `backlog.skipPlannerWhenTasksPending` | `[bool]` | `true` | Skip the planner phase while `BACKLOG.md` still has actionable `- [ ]` tasks. Blocked `- [b]` entries don't count, and a zero-progress iteration forces the planner to run next iteration (starvation guard); if the planner ran and the executor still made no progress, the loop stops |
 | `backlog.deleteCompletedTasks` | `[bool]` | `true` | Prune completed (`- [x]`) task blocks from `BACKLOG.md` after each task (history lives in git) |
 | `logging.logDir` | `[string]` | `logs/agentic-loop` | Repo-relative log directory, read by `Initialize-AgenticLoop` (the Bash loop always uses the default) |

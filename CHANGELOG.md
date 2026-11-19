@@ -15,13 +15,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
-## 2026-11-19 — the agentic loop reads git's exit code and stages by rule (CON248 items 1 and 2)
+## 2026-11-19 — the agentic loop reads git's exit code and stages by rule (CON248)
 
 - `invoke_git_auto_commit` and `Invoke-GitAutoCommit` ran `git add -A` and `git commit` and read neither exit code,
   so a refused commit was silent and a core file or test output would have gone in. Both stage tracked changes
   (`git add -u`) and new text files of at most 500 KiB (the large-files limit), log each file they leave out, and
   return a refusal: the queue drain stops with exit 1 before the build. Nothing to commit is no failure. The
   executor prompt says to stage changed files by name, never `git add -A`.
+- `git.commitGate` (CON248 item 3) is a command both twins run before each auto-commit, for example
+  `bash scripts/linux/run-lint-gates.sh`. A failure keeps the task uncommitted, and
+  `intervals.maxConsecutiveGateFailures` (3) failures in a row stop the queue with exit 1, like the build cap.
 - `verify_stdout_returns.py` read a one-line function (`f() { …; }`) to the next column-0 brace, so a later function's
   log lines counted as its own; a one-line body now ends on its line, and the loggers' own definitions are exempt.
 
