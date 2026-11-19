@@ -41991,5 +41991,77 @@
   "replace": "    return $true\n",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
   "why": "A successful primary checkout at a different commit must refuse before fallback or build."
+ },
+ {
+  "id": "lib.iree-x86-clangcl-feature-f",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "$features = @('f', 'vl', 'cd', 'bw', 'dq')",
+  "replace": "$features = @('vl', 'cd', 'bw', 'dq')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.IsaFloor.Tests.ps1",
+  "why": "The dispatched AVX512-base target must retain every explicit clang-cl feature under the global x86-64-v3 baseline."
+ },
+ {
+  "id": "lib.iree-x86-clangcl-feature-vl",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "$features = @('f', 'vl', 'cd', 'bw', 'dq')",
+  "replace": "$features = @('f', 'cd', 'bw', 'dq')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.IsaFloor.Tests.ps1",
+  "why": "The dispatched AVX512-base target must retain every explicit clang-cl feature under the global x86-64-v3 baseline."
+ },
+ {
+  "id": "lib.iree-x86-clangcl-feature-cd",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "$features = @('f', 'vl', 'cd', 'bw', 'dq')",
+  "replace": "$features = @('f', 'vl', 'bw', 'dq')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.IsaFloor.Tests.ps1",
+  "why": "The dispatched AVX512-base target must retain every explicit clang-cl feature under the global x86-64-v3 baseline."
+ },
+ {
+  "id": "lib.iree-x86-clangcl-feature-bw",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "$features = @('f', 'vl', 'cd', 'bw', 'dq')",
+  "replace": "$features = @('f', 'vl', 'cd', 'dq')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.IsaFloor.Tests.ps1",
+  "why": "The dispatched AVX512-base target must retain every explicit clang-cl feature under the global x86-64-v3 baseline."
+ },
+ {
+  "id": "lib.iree-x86-clangcl-feature-dq",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "$features = @('f', 'vl', 'cd', 'bw', 'dq')",
+  "replace": "$features = @('f', 'vl', 'cd', 'bw')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.IsaFloor.Tests.ps1",
+  "why": "The dispatched AVX512-base target must retain every explicit clang-cl feature under the global x86-64-v3 baseline."
+ },
+ {
+  "id": "lib.iree-x86-clangcl-wired",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "\nSet-IreeX86KernelCmakeFlags -SourceDir $SourceDir\n",
+  "replace": "\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.IsaFloor.Tests.ps1",
+  "why": "The checked source patch must run before native and cross-host configuration."
+ },
+ {
+  "id": "lib.iree-x86-clangcl-layout-fatal",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "throw 'IREE AVX512 base options layout changed; explicit clang-cl kernel flags were not applied.'",
+  "replace": "Write-Warning 'IREE AVX512 base options layout changed; explicit clang-cl kernel flags were not applied.'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.IsaFloor.Tests.ps1",
+  "why": "A missing or partially patched source block cannot silently keep incorrect flags."
+ },
+ {
+  "id": "lib.iree-x86-clangcl-idempotent",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "-SkipIfMatch $ready -Require -Quiet",
+  "replace": "-Require -Quiet",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.IsaFloor.Tests.ps1",
+  "why": "Repeated source patching must preserve the complete already-correct block without failing or rewriting it."
+ },
+ {
+  "id": "lib.iree-x86-clangcl-required-file",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "-SkipIfMatch $ready -Require -Quiet",
+  "replace": "-SkipIfMatch $ready -Quiet",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.IsaFloor.Tests.ps1",
+  "why": "A missing upstream file must retain the required-input failure and diagnostic."
  }
 ]

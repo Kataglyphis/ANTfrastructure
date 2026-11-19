@@ -3158,3 +3158,12 @@ All original selection cases remain covered; three valid unquoting mutations rej
 transport on the deliberately spaced case. Fake download/extraction tests do not grade real SDK
 downloads, installation or inference. A diagnostic clean-PATH pass does not replace a failed full
 preflight result.
+
+
+### IREE AVX512 ukernel says it was compiled without avx512f
+
+**Symptom.** `conv_nchwc_x86_64_avx512_base.c` fails on `_mm512_loadu_ps`, `_mm512_fmadd_ps` or `_mm512_storeu_ps`. Its command contains both `/clang:-march=x86-64-v3` and `/arch:AVX512`.
+
+**Cause.** clang-cl forwards the explicit baseline `-march` after interpreting its MSVC-style architecture option. Moving the arguments does not restore the missing AVX512 features.
+
+**Fix.** `Set-IreeX86KernelCmakeFlags` adds the five explicit clang-cl AVX512-base feature flags to upstream's dispatched target options before configuration. GNU/MSVC options and all other targets remain unchanged. Missing, changed or partially patched input fails; repeated patching is byte-identical. Keep the baseline and the kernels enabled. The small compiler reproduction does not prove the shipped Windows compiler, complete IREE, runtime dispatch or GPU execution; those still need their actual builds and acceptance checks.

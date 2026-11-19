@@ -173,6 +173,7 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    Wrap provisioning deletes the git wraps it extracts; a dependency reached only through a wrap's `[provide]` needs a pinned wrap-file, and its plugin belongs in the contract.
    Copied `WindowsBuild.Common.psm1` and `Build-TorchApp.ps1` carry `WindowsSdistCompiler.Common.psm1` with its `WindowsTargetArch` and `WindowsScripts.Shared` siblings; its gate grades only what uv reports as built.
    Windows source builders share Meson binaries, ARM per-file feature selection, handoff transfers and sccache commands; retain caller flags and failure policy.
+   IREE x86 dispatched AVX512 kernels retain explicit clang-cl feature flags beside the global x86-64-v3 floor; never promote those flags to global C/C++ options. Patch before native and cross-host configuration and refuse unknown source layouts.
    CPython applies x64 ClangCL ISA floors after per-file metadata: ordinary files retain v3, upstream AVX512 files retain v4 and their VNNI/VPCLMUL options; ARM64 stays untouched.
    Standalone HailoRT starts its shared cache session before configure, prints stderr counters after compilation and drains before success cleanup; wiring tests do not prove hits.
    CMake consumers use `Get-CmakeBuildArgs` for target, configuration and parallel flags; keep its argument order and caller-specific build verdict.

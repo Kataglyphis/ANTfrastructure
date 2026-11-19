@@ -17,6 +17,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — preserve IREE dispatched AVX512 under the Windows ISA floor
+
+- Give IREE's AVX512-base clang-cl branch explicit feature flags: a forwarded global `-march=x86-64-v3` overrides `/arch:AVX512`. GNU/MSVC options and the global baseline stay intact.
+- Apply before native and cross-host configuration, reject unknown source layouts and test idempotence, scope and failure paths. Compiler controls reproduce the conflict; full new-source quality and all lane/device/CI acceptance remain required.
+
 ## 2026-11-19 — retain GenAI extensions when the primary source is unavailable
 
 - Fetch GenAI's exact upstream extensions commit before CMake, retaining primary retries, recursive checkout and fatal commit checks through the shared clone implementation.

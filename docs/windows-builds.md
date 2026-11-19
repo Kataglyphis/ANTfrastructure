@@ -1,5 +1,7 @@
 # Windows Build Image
 
+IREE's x86-64-v3 floor coexists with explicit clang-cl AVX512 flags on its dispatched kernels. The source patch runs before native and cross-host configuration; it preserves GNU/MSVC options and refuses changed input layouts. See [the ISA invariant](windows-build-invariants.md#avx-512amx-flags-never-go-in-global-cxx-flags). The 24908390 NVIDIA attempt stopped in this kernel compilation after eleven completed phases; earlier stages are not full-lane acceptance.
+
 The reference for the image itself: what is installed, how it is built, how it is verified. Lane
 mechanics, resource budgets and host fixes moved to their own pages on 2026-08-25:
 
