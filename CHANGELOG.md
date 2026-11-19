@@ -15,6 +15,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — `ctest-run.sh --fail-on-skipped REGEX`: a skip is not a pass (BeschleunigerBallett X2)
+
+- BeschleunigerBallett's llvmpipe lane counted its hardware ray-tracing `GTEST_SKIP`s as passes. After ctest,
+  `ctest-run.sh` now reads ctest's JUnit report and fails the run on each test matching REGEX that was skipped,
+  printing its name and ctest's reason; ctest's own failing status wins. Disabled tests never count. The report is
+  the caller's `--output-junit` or a temporary one, and a missing one fails; `CTEST_FAIL_ON_SKIPPED` sets the pattern
+  from the environment. The suite reads a report ctest 4.4.3 wrote and runs the host's ctest too. See
+  [`ctest-run.sh`](docs/shared-script-libraries.md#ctest-runsh--run-a-cmake-projects-test-suite-in-a-container).
+
 ## 2026-11-19 — the Cargo license stager gates the crate graph it stages (BeschleunigerBallett X4)
 
 - Only a comment in a manifest kept wgpu out of BeschleunigerBallett's C++ bridge. `stage-cargo-licenses.py` gains

@@ -41047,5 +41047,45 @@
   "replace": "kinds = {None} if args.graph_scope",
   "test": "bash linux/scripts/tests/test-stage-cargo-licenses.sh",
   "why": "A forbidden build dependency in the tree scope must print the build edge that reaches it."
+ },
+ {
+  "id": "lib.ctest-run-fail-on-skipped-verdict",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "  if [[ \"${skipped}\" -gt 0 ]]; then\n",
+  "replace": "  if false; then\n",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "A skipped test that --fail-on-skipped names must fail the run."
+ },
+ {
+  "id": "lib.ctest-run-fail-on-skipped-disabled-exempt",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "      disabled) disabled=$((disabled + 1)) ;;\n",
+  "replace": "      disabled) skipped=$((skipped + 1)) ;;\n",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "ctest's Disabled tests are deliberate and must never fail a --fail-on-skipped run."
+ },
+ {
+  "id": "lib.ctest-run-fail-on-skipped-status",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": " || [[ \"${rc}\" -ne 0 ]] || rc=1\n",
+  "replace": "\n",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "The skip verdict must reach the status a passing ctest returned."
+ },
+ {
+  "id": "lib.ctest-run-fail-on-skipped-missing-report",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "no readable JUnit report at ${report}\"\n    return 1\n",
+  "replace": "no readable JUnit report at ${report}\"\n    return 0\n",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "Without a report the gate saw nothing, and that must not pass."
+ },
+ {
+  "id": "lib.ctest-run-fail-on-skipped-stale-report",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "    rm -f \"${CTEST_RUN_JUNIT_REPORT}\" || err \"Cannot remove the old JUnit report: ${CTEST_RUN_JUNIT_REPORT}\"\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "An earlier run's report must not stand in for a run that wrote none."
  }
 ]

@@ -725,6 +725,17 @@ uses.
 | `CTEST_RUN_SAFE_DIRECTORY` | git `safe.directory`; empty disables | `/workspace` |
 | `CTEST_RUN_USAGE_INTRO` | one-line description shown in `--help` | — |
 
+**`--fail-on-skipped REGEX` (env `CTEST_FAIL_ON_SKIPPED`): a skip is not a pass.** After ctest, each test whose name
+matches REGEX (an extended regular expression, matched anywhere, as `-R` does) and whose
+JUnit record says skipped is printed with ctest's reason (`SKIP_REGULAR_EXPRESSION_MATCHED`,
+`SKIP_RETURN_CODE=77`) and fails the run: status 1, or ctest's own when that already
+failed. A GoogleTest `GTEST_SKIP` under `gtest_discover_tests` is such a skip. ctest's
+Disabled tests (`Not Run (Disabled)`) never count; its other Not Run tests do, and ctest
+fails those anyway. The report is the caller's last `--output-junit`, removed before the
+run so an old one cannot stand in, or a temporary one the library appends and deletes; no
+readable report fails the run. It needs `python3`, and an invalid pattern stops before
+ctest starts.
+
 A GPU test suite needs the loader and the layers on the same terms the build had,
 which is why the Vulkan environment is resolved here too.
 

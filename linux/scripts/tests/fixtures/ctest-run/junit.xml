@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="5"
+	failures="0"
+	disabled="1"
+	skipped="2"
+	hostname=""
+	time="0"
+	timestamp="2026-11-19T18:06:17"
+	>
+	<testcase name="ok" classname="ok" time="0.0013722" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="Gpu.Skipped" classname="Gpu.Skipped" time="0.0010925" status="notrun">
+		<skipped message="SKIP_REGULAR_EXPRESSION_MATCHED"/>
+		<properties/>
+		<system-out>[  SKIPPED ] no gpu
+</system-out>
+	</testcase>
+	<testcase name="Gpu.Ran" classname="Gpu.Ran" time="0.000977996" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="Gpu.Disabled" classname="Gpu.Disabled" time="0" status="disabled">
+		<properties/>
+		<system-out>Disabled</system-out>
+	</testcase>
+	<testcase name="rc77 with space &amp; &lt;x&gt;" classname="rc77 with space &amp; &lt;x&gt;" time="0.000971496" status="notrun">
+		<skipped message="SKIP_RETURN_CODE=77"/>
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+</testsuite>
