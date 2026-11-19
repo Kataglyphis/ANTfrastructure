@@ -1948,14 +1948,15 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 ## Open — Linux arm64 and riscv64
 
 - [ ] **CON145 — `cxxbridge` in the Linux and Windows images** [S, ★★]. Found 2026-10-21 with
-      BeschleunigerBallett 7f54642c: every BB configure runs an unpinned `cargo install cxxbridge-cmd` at build time
-      (`_myproject_find_or_install_cxxbridge`, `third_party/CMakeLists.txt:103`). `CXXBRIDGE_CMD_VERSION=1.0.205` matches
-      OxidANT's lock; the two must match. **Windows:** `:winamd64`, `:winarm64`, `:winamd64-nvidia` and `:winamd64-rocm`
-      of 2026-10-28/29 carry that ARG in their history, and `Test-Container.ps1:455` asserts the binary. Left:
-      - `:latest` (web-lane tools, three arches) and the NVIDIA and ROCm variants: no Linux script installs it. An
-        AccelerANTgine GPU package check had to compile it in its container, and an OmniAccelerANT CUDA build failed
-        installing it from an incomplete offline Cargo cache. Verify the pinned binary before publication.
-      - BB's helper refuses a missing or mismatched binary in CI.
+      BeschleunigerBallett 7f54642c, whose configure ran an unpinned `cargo install cxxbridge-cmd` at build time.
+      `CXXBRIDGE_CMD_VERSION=1.0.205` matches OxidANT's lock; the two must match. **Windows:** `:winamd64`, `:winarm64`,
+      `:winamd64-nvidia` and `:winamd64-rocm` of 2026-10-28/29 carry that ARG in their history, and
+      `Test-Container.ps1:455` asserts the binary. **BB deleted that helper on 2026-11-19:** nothing read its result, and
+      Corrosion takes a `cxxbridge` at the lock's `cxx` version or builds exactly that one. Left:
+      - `:latest` (web-lane tools, three arches) and the NVIDIA and ROCm variants: no Linux script installs it, so every
+        fresh Linux or riscv64 BB build directory compiles `cxxbridge` 1.0.205 through Corrosion. An AccelerANTgine GPU
+        package check had to compile it in its container, and an OmniAccelerANT CUDA build failed installing it from an
+        incomplete offline Cargo cache. Verify the pinned binary before publication.
 
 - [ ] **CON110 — OrchestrANT's riscv64 free-threaded leg needs a seeded cache** [M, ★]. The seed's second pass on X.Yt
       and the torch stage's `ar` fix are in source since 2026-10-20 (CHANGELOG); from that seed OrchestrANT de144d10's `3.14t`
