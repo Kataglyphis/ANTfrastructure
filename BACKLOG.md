@@ -487,20 +487,6 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       with the console captured. Done when the cause is named and fixed in its own repo, and the
       retry logs no `flaky:` line on 50 consecutive runs.
 
-- [ ] **CON234 — the three detectors' golden tests get the same pixels, and the contract rows read 0** [S, ★★].
-      What is left of the decode contract of 2026-11-12. Done since: ModelANT `a6eaca1` carries nine decode cases
-      with a recipe per rule, its contract lists the metadata keys and their values, OxidANT, AccelerANTgine and
-      OrchestrANT pin it and replay every case, and all three refuse a model whose `kataglyphis.preprocess` or
-      `kataglyphis.output` contradicts what the detector does (C++ and Rust since 2026-11-13).
-      1. A decoded, lossless copy of `two_cats` in ModelANT's `contracts/fixtures/` (PNG, or raw RGB with its
-         SHA-256 in the contract), so the three golden tests give the model the same pixels. Today three JPEG
-         decoders feed them, and one box's score differs by 0.019 between two recordings (not double-checked).
-      2. Done 2026-11-14: ModelANT `7b02dfb` names each detector's guard under rule 4 (OrchestrANT's and
-         AccelerANTgine's suppression recipes, OxidANT's replayed case).
-
-      Done when the three golden tests read the lossless copy at one ModelANT pin and fleet-health's contract
-      rows (CON247) read 0.
-
 - [ ] **CON236 — the Windows publish dispatches the consumers' lanes too** [S, ★★]. Owner decision 2026-11-13:
       after each publish every consumer's lanes run once on the new image. `build-runtime-manifest.sh`
       calls `dispatch-consumer-lanes.sh --tag <tag>` after a promotion; since 2026-11-14
