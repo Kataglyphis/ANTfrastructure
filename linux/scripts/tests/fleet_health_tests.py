@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 from typing import Any
 
@@ -189,6 +190,19 @@ class FleetHealthTests(unittest.TestCase):
         rerun = self.metric(record, "OrchestrANT", "ci.linux-x64.yml.rerun_rate")
         self.assertEqual(rerun["value"], 25.0, "one of four decisive runs, the retry workflow's own rerun left out")
 
+    def test_a_lane_that_has_not_run_on_the_newest_image_is_named(self) -> None:
+        rc, out, record = self.run_main("--repos", "OrchestrANT")
+        self.assertEqual(rc, 0, out)
+        row = self.metric(record, "OrchestrANT", "image_lag.lanes_without_run")
+        self.assertEqual(row["value"], 1, "linux-x64.yml last ran 2026-10-31, :latest is of 2026-11-01")
+        self.assertEqual(row["members"], ["linux-x64.yml (:latest)"])
+
+    def test_without_read_packages_the_image_row_is_not_collected(self) -> None:
+        row = fleet.gh.lanes_behind_image({"linux-x64.yml": fleet.gh.dt.datetime(2026, 10, 1, tzinfo=fleet.gh.dt.UTC)},
+                                          {}, {})
+        self.assertEqual((row["value"], row["status"]), (None, "not-collected"))
+        self.assertIn("read:packages", row["reason"])
+
     def test_a_lane_with_no_green_run_has_no_debt_value(self) -> None:
         def red(answers: dict[str, Any]) -> None:
             for row in answers["/repos/Kataglyphis/OrchestrANT/actions/workflows/11/runs"
@@ -356,6 +370,8 @@ class FleetHealthTests(unittest.TestCase):
         rc, out, record = self.run_main("--repos", "OrchestrANT", change=elsewhere)
         self.assertIn("not-collected: OrchestrANT/tests_passed.linux-x64 (no run at ", out)
         self.assertEqual(self.metric(record, "OrchestrANT", "bench_history.bench-history-k.verdict")["value"], "ok")
+        age = self.metric(record, "OrchestrANT", "bench_history.bench-history-k.days_since_sample")
+        self.assertEqual((age["value"], age["stale"]), (1, False), "sampled 2026-10-31, measured 2026-11-02")
         self.assertEqual(self.metric(record, "OrchestrANT", "develop_red.open_issues")["value"], 1)
         self.assertEqual(self.metric(record, "OrchestrANT", "code_scanning.open_on_absent_paths")["value"], 1)
 
@@ -441,6 +457,36 @@ class SharedContractTests(unittest.TestCase):
         facts = fleet.tree.shared_contracts({"OrchestrANT": locked, "OxidANT": copied, "AccelerANTgine": other})
         self.assertEqual(facts["shared_facts.contract_inference_v1"]["value"], 1, "one repo sees another file")
         self.assertEqual(facts["shared_facts.contract_text_generation_v1"]["value"], 0)
+
+    def test_a_bench_history_sample_older_than_two_weeks_is_stale(self) -> None:
+        import datetime as dt
+
+        class Answers:
+            def call(self, method: str, path: str) -> dict[str, Any]:
+                return {"total_count": 1, "artifacts": [{"id": 1, "name": "k", "expired": False,
+                        "created_at": "2026-10-01T00:00:00Z", "workflow_run": {"id": 5, "head_branch": "develop"}}]}
+        with unittest.mock.patch.object(fleet.gh, "download", lambda *a: "d"), \
+                unittest.mock.patch.object(fleet.gh, "read_json", lambda *a: {"verdict": "ok"}):
+            rows = fleet.gh.bench_history(Answers(), "OxidANT", ["k"], "unused",
+                                          dt.datetime(2026, 11, 19, tzinfo=dt.UTC))
+        self.assertEqual(rows["bench_history.k.days_since_sample"]["value"], 49)
+        self.assertTrue(rows["bench_history.k.days_since_sample"]["stale"])
+
+    def test_sibling_gitlinks_are_found_and_their_lag_recorded(self) -> None:
+        omni = self.repo("OmniAccelerANT", {"README.md": b"x"})
+        pin = "7" * 40
+        subprocess.run(["git", "-C", omni.path, "update-index", "--add", "--cacheinfo",
+                        f"160000,{pin},third_party/OxidANT"], check=True)
+        subprocess.run(["git", "-C", omni.path, "commit", "-qm", "pin"], check=True, env={**os.environ, **self.env})
+        self.assertEqual(fleet.tree.sibling_pins(omni), {"OxidANT": pin}, "AccelerANTgine has no gitlink here")
+
+        class Answers:
+            def call(self, method: str, path: str) -> dict[str, int]:
+                assert path == f"/repos/Kataglyphis/OxidANT/compare/{pin}...develop", path
+                return {"ahead_by": 12}
+        rows = fleet.gh.sibling_pin_lag(Answers(), {"OxidANT": pin})
+        self.assertEqual(rows["sibling_pin.OxidANT.lag_commits"]["value"], 12)
+        self.assertEqual(fleet.gh.sibling_pin_lag(Answers(), {}), {}, "no gitlink, no row")
 
     def test_a_repo_without_the_contract_is_not_collected(self) -> None:
         bare = {r: self.repo(r, {"README.md": b"x"}) for r in ("OrchestrANT", "OxidANT", "AccelerANTgine")}

@@ -2367,35 +2367,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       in `test-consumer-hooks.sh`, a default `lint-shell.sh` run lists both hook files, a commit passes
       beside an unstaged deletion, and a commit in a worktree without the submodule is stopped or named.
 
-- [ ] **CON247 — fleet-health shows lane debt, reruns, contract drift and pin lag** [M, ★★]. Found by the audit
-      of 2026-11-12. None of these rows exists in `linux/scripts/fleet_health_github.py` or
-      `fleet_health_tree.py` today. In order of value:
-      Items 1 to 3 done 2026-11-19 (`lane.<workflow>.commits_since_green`, `ci.<workflow>.rerun_rate`, the two
-      `shared_facts.contract_*` rows; the three repos agree on both contracts that day).
-      1. `lane.<workflow>.commits_since_green`: develop commits after the head commit of that workflow's last
-         green develop run. It needs no path map and also shows debt from portable code. Measured since
-         2026-10-16: a Windows-path commit waited a median of 21 to 23 hours for a Windows run in
-         OmniAccelerANT, OxidANT and AccelerANTgine, and about 137 hours in OrchestrANT.
-      2. `ci.<workflow>.rerun_rate`: the share of the last 20 develop runs that needed a second attempt,
-         without the reruns whose first attempt failed in the disk-refusal step (`retry-disk-refusal.yml`
-         reruns those on purpose). `ci_runs` reads the run list already.
-      3. `shared_facts.contract_inference_v1` and `shared_facts.contract_text_generation_v1`: the SHA-256 of
-         ModelANT's two contract files as each repo sees them (a submodule, a lock file's hash or a tracked
-         copy), distinct values minus one, built like `shared_facts.models_lock_deim`.
-      4. For OmniAccelerANT, how far its OxidANT and AccelerANTgine gitlinks lag their develop, as
-         `hub_pin.lag_commits` does for the hub.
-      5. `bench_history.<artifact>.days_since_sample`, so the history of an on-request lane that stopped
-         moving shows. The audit asks for a red row when OxidANT's newest `criterion-arm64` sample is older
-         than 14 days (not double-checked).
-      6. Per consumer, the lanes with no develop run since the image tag they pull (`:latest`, `:winamd64`)
-         was last published: the report-only half of CON236, which needs no decision.
-
-      Each row gets a case in `test-fleet-health.sh`, a mutation recipe and a line in
-      [`fleet-health.md`](docs/fleet-health.md). Done when a weekly `fleet-health.yml` record carries all six.
-      Not taken from the audit: a per-repo lane-to-path table, and a hook that stops a push without its
-      `[ci <lane>]` token. A path hint, if it comes, is a warning in the lint lane's summary only.
-
-
 - [ ] **CON253 — Home Assistant keeps the cameras' model time, and warns when it rises** [S, ★★]. Found by the
       audit of 2026-11-12: no performance budget covers the Pi-class boards the cameras run on, as the
       perf-host baselines are for one desktop CPU. ObservANT's `/healthz` already reports `model_ms`,

@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tomllib
@@ -97,10 +98,36 @@ def clone_checkout(work: str, repo: str, url: str) -> Checkout:
     return co
 
 
+def image_tags(co: Checkout) -> dict[str, str]:
+    """{workflow file: the family image tag it pulls}: one it names, else :winamd64 for a Windows lane, else :latest."""
+    tags: dict[str, str] = {}
+    for rel in git(co.path, "ls-files", "--", ".github/workflows/*.yml").stdout.split():
+        with open(os.path.join(co.path, rel), encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+        named = sorted(set(re.findall(r"kataglyphis_beschleuniger:([a-z0-9][a-z0-9.-]*)", text)))
+        name = os.path.basename(rel)
+        tags[name] = named[0] if len(named) == 1 else ("winamd64" if "windows" in name else "latest")
+    return tags
+
+
+def gitlink(co: Checkout, path: str) -> str | None:
+    """The commit a gitlink at <path> records, if the checkout has one there."""
+    out = git(co.path, "ls-tree", "HEAD", path).stdout.split()
+    return out[2] if len(out) >= 3 and out[0] == "160000" else None
+
+
 def hub_pin(co: Checkout) -> str | None:
     """The checkout's third_party/ANTfrastructure gitlink, if it has one."""
-    out = git(co.path, "ls-tree", "HEAD", HUB_GITLINK).stdout.split()
-    return out[2] if len(out) >= 3 and out[0] == "160000" else None
+    return gitlink(co, HUB_GITLINK)
+
+
+# OmniAccelerANT builds on both through gitlinks; another repo that adds one gets the row too.
+SIBLINGS = ("OxidANT", "AccelerANTgine")
+
+
+def sibling_pins(co: Checkout) -> dict[str, str]:
+    """{sibling: commit} for each third_party/<sibling> gitlink the checkout records."""
+    return {s: pin for s in SIBLINGS if s != co.repo and (pin := gitlink(co, f"third_party/{s}"))}
 
 
 def config(co: Checkout) -> dict[str, Any]:

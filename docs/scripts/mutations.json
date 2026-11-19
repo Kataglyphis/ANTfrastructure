@@ -34625,6 +34625,46 @@
   "why": "OrchestrANT holds the contracts as lock rows only; without them it reads as absent"
  },
  {
+  "id": "fleet-health.sibling-pin-lag-read",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "            ahead = get(client, f\"/repos/{OWNER}/{sibling}/compare/{pin}...develop\")[\"ahead_by\"]",
+  "replace": "            ahead = 0",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "OmniAccelerANT's OxidANT and AccelerANTgine gitlinks lag silently without this row"
+ },
+ {
+  "id": "fleet-health.sibling-pins-found",
+  "target": "linux/scripts/fleet_health_tree.py",
+  "find": "    return {s: pin for s in SIBLINGS if s != co.repo and (pin := gitlink(co, f\"third_party/{s}\"))}",
+  "replace": "    return {}",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a gitlink nobody reads cannot show its lag"
+ },
+ {
+  "id": "fleet-health.bench-sample-stale",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "\"stale\": days > BENCH_STALE_DAYS}}",
+  "replace": "\"stale\": False}}",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "an on-request lane whose history stopped moving must read stale after two weeks"
+ },
+ {
+  "id": "fleet-health.image-lag-compares-runs",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "              if tag_of.get(name, \"latest\") in published and when < published[tag_of.get(name, \"latest\")]]",
+  "replace": "              if False]",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a lane that has not run since its image was published has the new image untried"
+ },
+ {
+  "id": "fleet-health.image-lag-not-collected-without-scope",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "    if not published:\n        return gap(",
+  "replace": "    if False:\n        return gap(",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "without read:packages there are no dates; 0 lanes would read as all lanes current"
+ },
+ {
   "id": "python.static-ty-uses-quality-environment",
   "target": "linux/scripts/python-static.sh",
   "find": "  ty_env_flags=(--extra-search-path \"$site\")",

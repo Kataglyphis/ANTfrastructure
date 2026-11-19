@@ -23,6 +23,10 @@
 - `shared_facts.contract_inference_v1` and `shared_facts.contract_text_generation_v1`: ModelANT's two contracts as
   OxidANT, AccelerANTgine and OrchestrANT see them (lock row, tracked copy or gitlink blob), distinct digests minus
   one. All three agreed on 2026-11-19.
+- Items 4 to 6: `sibling_pin.<repo>.lag_commits` for OmniAccelerANT's OxidANT and AccelerANTgine gitlinks;
+  `bench_history.<artifact>.days_since_sample`, `stale` above 14 days; and `image_lag.lanes_without_run`, the lanes
+  whose newest develop run is older than the image tag they pull, from the package versions (`fleet-health.yml`
+  gains `packages: read`). CON247 is done.
 
 ## 2026-11-19 — what CON248 and CON249 had left: a real auto-commit suite and uv's floor
 

@@ -52,6 +52,8 @@ Per repo, under `repos.<repo>.metrics`:
 | Artifact metrics (`tests_passed.*`, `line_coverage.*`, `mutations_caught.*`, …) | `code` | the `code-quality-measurements` artifact of a run at the same SHA; else not collected |
 | `ci.<workflow>.success_rate`, `ci.<workflow>.median_minutes` | external | the last 20 completed develop runs of each active workflow from push, dispatch or schedule, conclusion success or failure |
 | `ci.<workflow>.rerun_rate` | external | the share of those runs with a second attempt; a rerun `github-actions[bot]` started (`retry-disk-refusal.yml`, on purpose) is left out |
+| `image_lag.lanes_without_run` | external | the lanes whose newest develop run is older than the newest version of the family image tag they pull (one `kataglyphis_beschleuniger:<tag>` the workflow names, else `:winamd64` for a Windows file name, else `:latest`); `members` names them. The package versions need `packages: read`, which `fleet-health.yml` grants; without it, not collected |
+| `sibling_pin.<repo>.lag_commits` | external | for each `third_party/OxidANT` or `third_party/AccelerANTgine` gitlink (OmniAccelerANT's), the commits on that repo's develop the gitlink lacks, as `hub_pin.lag_commits` does for the hub |
 | `lane.<workflow>.commits_since_green` | external | develop commits after the head of the newest green run among them (`compare/<head>...develop`): the debt that lane has not run on, portable code included; not collected without a green run |
 | `dependabot.open.<severity>` | external | open Dependabot alerts (a 100th alert makes it not collected: cursor pages are not followed) |
 | `dependabot.high_critical_ids` | advisory | the GHSA ids of the HIGH and CRITICAL ones |
@@ -64,6 +66,7 @@ Per repo, under `repos.<repo>.metrics`:
 | `security_audit.verdict`, `security_audit.findings.<severity>` | external | the newest develop `security-audit` artifact |
 | `security_audit.high_critical_ids` | advisory | the HIGH and CRITICAL advisory ids in it |
 | `bench_history.<artifact>.verdict` | external | the newest develop artifact of each `[[output]] kind = "benchmark"` row in `quality-report.toml` |
+| `bench_history.<artifact>.days_since_sample` | external | that artifact's age in days; `stale: true` above 14, so the history of an on-request lane that stopped moving shows |
 | `ai_regression.verdict` | external | the newest completed develop run of `ai-regression.yml`; not collected where there is none |
 
 Under `repos.fleet.metrics`, the shared-facts check is a `code` metric: `shared_facts.models_lock_deim`
