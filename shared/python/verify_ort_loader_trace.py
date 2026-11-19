@@ -42,7 +42,7 @@ def selected_library(value: str, required: tuple[str, ...]) -> str | None:
     return name if name in required else None
 
 
-def trace_records(trace: Path, expected_pid: int | None) -> list[str]:
+def trace_records(trace: Path) -> list[tuple[str, str]]:
     if trace.is_symlink() or not trace.is_file():
         raise ValueError("missing or linked loader trace")
     result = []
@@ -50,9 +50,7 @@ def trace_records(trace: Path, expected_pid: int | None) -> list[str]:
         if "calling init: " not in line:
             continue
         prefix, value = line.split("calling init: ", 1)
-        if expected_pid is not None and not re.fullmatch(rf"\s*{expected_pid}:\s*", prefix):
-            raise ValueError("loader trace process differs from profile")
-        result.append(value.strip())
+        result.append((prefix, value.strip()))
     return result
 
 
@@ -78,9 +76,11 @@ def verify_loader_traces(
         raise ValueError("missing loader traces or ORT requirement")
     found: dict[str, set[str]] = {name: set() for name in required}
     for trace in traces:
-        for value in trace_records(trace, expected_pid):
+        for prefix, value in trace_records(trace):
             name = selected_library(value, required)
             if name is not None:
+                if expected_pid is not None and not re.fullmatch(rf"\s*{expected_pid}:\s*", prefix):
+                    raise ValueError("loader trace process differs from profile")
                 validate_origin(value, directory, real_root)
                 found[name].add(value)
     if any(not paths for paths in found.values()):

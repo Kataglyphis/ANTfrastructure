@@ -55267,7 +55267,7 @@
   "find": "if expected_pid is not None and not re.fullmatch(rf\"\\s*{expected_pid}:\\s*\", prefix):",
   "replace": "if False:",
   "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
-  "why": "Every init record must name the actual profiled process."
+  "why": "Every selected ORT core and requested plugin record must name the actual profiled process, including duplicate records."
  },
  {
   "id": "packaging.ort-loader-canonical-path",
@@ -56228,5 +56228,13 @@
   "replace": "            pass",
   "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
   "why": "Real GNU tar controls change file bytes with identical size and mtime, restore them, and change permissions. A constant empty-stream digest must fail; this does not prove host reclamation, concurrent writers or reboot persistence."
+ },
+ {
+  "id": "packaging.ort-loader-unrelated-fork-child",
+  "target": "shared/python/verify_ort_loader_trace.py",
+  "find": "name = selected_library(value, required)\n            if name is not None:",
+  "replace": "name = selected_library(value, required)\n            if expected_pid is not None and not re.fullmatch(rf\"\\s*{expected_pid}:\\s*\", prefix):\n                raise ValueError(\"loader trace process differs from profile\")\n            if name is not None:",
+  "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
+  "why": "Unrelated HIP child records may share a parent trace without supplying required ORT/plugin evidence."
  }
 ]

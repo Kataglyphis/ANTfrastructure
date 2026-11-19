@@ -1073,8 +1073,12 @@ do not carry it: it is an image-root module a consumer registers by path.
 the actual package launch. Its profile mode preserves the profile bytes in a private
 temporary file, requires the canonical `verify_ort_profile.py` provider verdict and
 two complete sequential runs by default, then selects exactly `TRACE_PREFIX.PID`.
-Every init record in that trace must carry the profile's process ID. Every selected
-ORT or plugin path must belong to the caller's expected package directory.
+Every selected ORT or plugin init record in that trace must carry the profile's
+process ID and belong to the caller's expected package directory, including duplicates.
+An internal HIP probe can fork before loading its runtime and write unrelated library
+records under its child PID into that same trace. Those records do not supply required
+ORT/plugin evidence. A selected core or plugin under a foreign or malformed PID still
+fails, even when a correct parent record also exists.
 
 ```sh
 python3 -I shared/python/verify_ort_loader_trace.py \

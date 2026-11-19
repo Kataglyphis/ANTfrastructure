@@ -102,6 +102,32 @@ class LoaderTraceTest(unittest.TestCase):
         self.write_profile(pid=2)
         self.assert_refused(self.gpu_check())
 
+    def test_unrelated_child_libraries_do_not_change_selected_process(self) -> None:
+        with self.trace.open("a") as output:
+            output.write("2:\tcalling init: /opt/rocm/lib/libamdhip64.so.7\n")
+        result = self.gpu_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = json.loads(result.stdout)
+        self.assertEqual(record["profile_pid"], 1)
+        self.assertEqual(set(record["loaded"]), {"libonnxruntime.so", PLUGIN})
+
+    def test_foreign_or_malformed_selected_pid_fails_even_with_parent_records(self) -> None:
+        for library in (CORE, PLUGIN):
+            for prefix in ("2:", "", "1x:", "1: extra"):
+                with self.subTest(library=library, prefix=prefix):
+                    self.write_trace()
+                    with self.trace.open("a") as output:
+                        output.write(f"{prefix}\tcalling init: {self.bundle / library}\n")
+                    self.assert_refused(self.gpu_check())
+
+    def test_unrelated_child_cannot_replace_required_parent_library(self) -> None:
+        for library in (CORE, PLUGIN):
+            with self.subTest(library=library):
+                self.write_trace([str(self.bundle / library)])
+                with self.trace.open("a") as output:
+                    output.write("2:\tcalling init: /opt/rocm/lib/libamdhip64.so.7\n")
+                self.assert_refused(self.gpu_check())
+
     def test_profile_requires_every_sequential_run_on_requested_provider(self) -> None:
         self.write_profile("CPUExecutionProvider")
         self.assert_refused(self.gpu_check())

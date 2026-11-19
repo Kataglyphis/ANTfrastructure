@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-19 — retain ORT loader identity with internal HIP probes
+
+- Accept unrelated fork-child runtime records in a profiled process's loader trace. The current Rust CLI's internal HIP probe produces these records before the parent loads the MIGraphX plugin.
+- Keep every selected ORT core and requested plugin bound to the profile PID and package origin, including duplicate records. Add regressions for foreign and malformed selected PIDs and missing required libraries; this does not authenticate traces or prove loaded bytes, a single session, clean hosts or licences.
+
 ## 2026-11-19 — select an explicit mirror for isolated source proofs
 
 - Add an optional Ubuntu mirror URL to the isolated runner, record it and forward exactly one bootstrap value. Use the existing Ubuntu mirror rewriter before apt; the default retains the image's source configuration and signed metadata. Refuse malformed or credential-bearing URLs before output allocation.
