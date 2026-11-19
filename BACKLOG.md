@@ -702,32 +702,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       try a newer DirectML, and report it upstream. Done when an image check fails on this shape on
       that card, or a shipped DirectML passes it.
 
-- [ ] **CON218 — GenAI's default thread count ignores the CPU affinity mask** [S, ★★].
-      Found 2026-11-02 by `--perf-host` on an AMD Ryzen 9 5950X pinned to 8 CPUs: the shipped SmolLM2-135M
-      config gave about 92 tok/s and 143 ms to first token, with TTFT spread above 8 %. A copy fixed to 7
-      threads (`lib/genai-model-threads.py`) gave about 314 tok/s and 20 ms, and the perf baselines use that
-      copy, so their text figures are not the shipped default. Done when a shipped config respects the
-      mask, or the consumers set a bounded thread count, and a measurement quotes the unmodified model.
-      **Consumer half:** ObservANT's `llm_threads` (default 2) caps its in-process GenAI model at load since OxidANT
-      701476e (`OgaConfigOverlay`), and its `/ask` answers report the time to the first token and the decode rate.
-      The detector's side of the same cause is CON240.
-      **On a Pi 5, 2026-11-15** (4 CPUs in the CI image): SmolLM2-135M decoded 104 tokens per second on one thread
-      and 34 on seven, and a seven-thread description took the detector beside it from 238 ms to 1157 ms (one
-      thread: 570 ms); OrchestrANT's describe engine decodes on one thread since (owner decision). Both
-      `perf-host.sh` (OrchestrANT and AccelerANTgine) still build `smollm2-perf` with
-      `genai-model-threads.py --threads 7`, the Ryzen's choice, so a Pi baseline would record an oversubscribed
-      model. Since 2026-11-15 `genai-model-threads.py --threads auto` takes CON240's rule (7 on the Ryzen pinned to 8,
-      as the baselines used; 3 on a Pi 5). Measured there at 1, 2, 3 and 4 threads: 161, 92, 73 and 72 ms to the
-      first token, 109, 92, 80 and 71 tokens per second, so more threads speed the prefill and slow the decode, and
-      a 48-token reply is quickest on one or two. Left: OrchestrANT's, AccelerANTgine's and OxidANT's
-      `perf-host.sh` pass `--threads auto` at their next hub pin; whether a shipped text default follows the
-      detector's rule or a text rule of its own is the owner's call on these numbers.
-      **Owner decision 2026-11-17, revised the same day on a Pi 5 measurement:** a shipped text default takes half the
-      detector's pool, 1 to 4, and one thread beside a running detector ([`onnxruntime-single-source.md` § The text
-      thread rule](docs/onnxruntime-single-source.md#the-text-thread-rule)). In source: AccelerANTgine 41468fb,
-      OxidANT and OrchestrANT with their next push. Left: `genai-model-threads.py` learns `--threads text` and the
-      three `perf-host.sh` pass it, so a perf baseline records the shipped text default.
-
 - [ ] **CON219 — ORT reads a null scale pointer in 4-bit `MatMulNBits` on riscv64 RVV** [M, ★★★].
       Found 2026-11-02 with OxidANT's SmolLM2-135M contract test under QEMU, image index `7d4d4129`: a fault in
       `libonnxruntime.so.1.31.0` at `0x150150c` on `flw fa5, 0x0(s10)`, `s10=0x1f80`. In ORT v1.31.0's
