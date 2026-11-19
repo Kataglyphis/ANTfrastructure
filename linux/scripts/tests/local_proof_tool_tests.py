@@ -32,6 +32,81 @@ class ToolTests(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.symlink_to(Path(__file__).with_name('operational_systemd_fixture.py'))
 
+    def media_control_fixture(self) -> tuple[Path, Path, Path]:
+        root = self.work / 'media-root'
+        script = root / 'linux/scripts/local-proof/run-media-lane-controls.sh'
+        script.parent.mkdir(parents=True)
+        script.write_bytes((TOOLS / script.name).read_bytes())
+        core = root / 'linux/scripts/01-core'
+        core.mkdir()
+        core.joinpath('python-probe.sh').write_text(
+            'ci_image_python_require() { printf "bootstrap\\n" >> "$OPERATIONAL_BOOTSTRAP"; '
+            'PREFLIGHT_PYTHON="$OPERATIONAL_MEDIA_TOOLS/python"; }\n')
+        binary = self.work / 'media-bin'
+        for name in ['git', 'bash']:
+            self.fake_tool(binary / name)
+        trace = self.work / 'media-trace.jsonl'
+        self.env.update(PATH=str(binary) + os.pathsep + os.environ['PATH'], OPERATIONAL_SOURCE_TRACE=str(trace),
+                        OPERATIONAL_BOOTSTRAP=str(self.work / 'bootstrap.log'), OPERATIONAL_MEDIA_TOOLS=str(binary))
+        manifest = self.work / 'selected.json'
+        manifest.write_text('[{"id":"synthetic-control"}]\n')
+        return script, manifest, trace
+
+    def run_media_control(self, script: Path, proof: Path, manifest: Path) -> subprocess.CompletedProcess:
+        return subprocess.run(['/bin/bash', str(script), str(proof), str(manifest)], env=self.env,
+                              capture_output=True, text=True, timeout=30, check=False)
+
+    def test_media_controls_refuse_before_bootstrap_and_preserve_existing_patch(self) -> None:
+        script, manifest, _ = self.media_control_fixture()
+        for case in ['missing-directory', 'missing-manifest', 'existing-patch']:
+            with self.subTest(case=case):
+                (self.work / 'bootstrap.log').unlink(missing_ok=True)
+                proof = self.work / case
+                if case != 'missing-directory':
+                    proof.mkdir()
+                if case == 'existing-patch':
+                    (proof / 'as-tested-source.patch').write_text('preserved source patch')
+                result = self.run_media_control(script, proof, manifest if case != 'missing-manifest' else self.work / 'absent')
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertFalse((self.work / 'bootstrap.log').exists())
+                if case == 'existing-patch':
+                    self.assertEqual((proof / 'as-tested-source.patch').read_text(), 'preserved source patch')
+
+    def test_media_controls_keep_manifest_and_propagate_failed_source_phase(self) -> None:
+        script, manifest, trace = self.media_control_fixture()
+        for case in ['passed', 'existing-manifest', 'failed-phase']:
+            with self.subTest(case=case):
+                proof = self.work / case
+                proof.mkdir()
+                trace.write_text('')
+                self.env['OPERATIONAL_FAIL_SCRIPT'] = 'source-check.sh' if case == 'failed-phase' else ''
+                if case == 'existing-manifest':
+                    (proof / 'selected-mutations.json').write_text('preserved manifest')
+                result = self.run_media_control(script, proof, manifest)
+                self.assertEqual(result.returncode, {'passed':0, 'existing-manifest':1, 'failed-phase':47}[case], result.stderr)
+                calls = [row for row in map(json.loads, trace.read_text().splitlines())
+                         if row['program'] == 'bash' and Path(row['args'][0]).name == 'source-check.sh']
+                self.assertEqual(len(calls), 0 if case == 'existing-manifest' else 1)
+                if case == 'existing-manifest':
+                    self.assertEqual((proof / 'selected-mutations.json').read_text(), 'preserved manifest')
+                else:
+                    self.assertEqual((proof / 'selected-mutations.json').read_bytes(), manifest.read_bytes())
+                self.assertEqual('structural gates passed' in result.stdout, case == 'passed')
+
+    def test_media_controls_refuse_source_patch_index_and_worktree_drift(self) -> None:
+        script, manifest, trace = self.media_control_fixture()
+        for mode in ['patch', 'index', 'dirty', 'git-failure']:
+            with self.subTest(mode=mode):
+                proof = self.work / mode
+                proof.mkdir()
+                trace.write_text('')
+                self.env['OPERATIONAL_SOURCE_MODE'] = mode
+                result = self.run_media_control(script, proof, manifest)
+                self.assertEqual(result.returncode, 47 if mode == 'git-failure' else 1, result.stderr)
+                self.assertNotIn('structural gates passed', result.stdout)
+                calls = [json.loads(line) for line in trace.read_text().splitlines()]
+                self.assertTrue(any(row['program'] == 'bash' and Path(row['args'][0]).name == 'source-check.sh' for row in calls))
+
     def test_inventory_retains_every_canonical_file_and_machine_portability(self) -> None:
         inventory = json.loads((TOOLS / 'inventory.json').read_text())
         self.assertEqual(len({row['name'] for row in inventory['scripts']}), len(inventory['scripts']))

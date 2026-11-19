@@ -564,6 +564,18 @@
       "classification": "versioned",
       "canonical": "linux/scripts/local-proof/compiler_unique_profile.py",
       "reason": "Exact GNU_UNIQUE source, original compiler6 fingerprints and narrow LLVM input review; no build or cache acceptance."
+    },
+    {
+      "name": "run-media-lane-controls.sh",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/run-media-lane-controls.sh",
+      "original_sha256": "a7f7fd0ea74f8c0c995fc5ac93f4cec5ac0e2cdb661f6d1a7fbd3f27098ce0ee"
+    },
+    {
+      "name": "webgpu_media_lanes.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/webgpu_media_lanes.py",
+      "original_sha256": "a9d904f490d35463ce185bae3e9ca16c36904bec9debc073324e917fa8f218e0"
     }
   ],
   "new_canonical_files": [

@@ -55820,5 +55820,189 @@
   "replace": "parser.add_argument(\"--wasm-prefix\", type=Path)",
   "test": "bash linux/scripts/tests/test-onnx-webgpu-acceptance.sh",
   "why": "the combined entry cannot silently omit its WASM input"
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-domain",
+  "target": "linux/scripts/local-proof/webgpu_media_lanes.py",
+  "find": "    assert (variant, arch) in LANES, 'Unreviewed WebGPU Media lane'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-webgpu-media-lanes.sh",
+  "why": "Independent six-tuple command and actual stage-graph controls reject lost selection, bindings or scope. This does not prove parent ancestry, a build or hardware execution."
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-parent",
+  "target": "linux/scripts/local-proof/webgpu_media_lanes.py",
+  "find": "    assert parent_stage == expected_parent, 'Media parent stage differs from its variant'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-webgpu-media-lanes.sh",
+  "why": "Independent six-tuple command and actual stage-graph controls reject lost selection, bindings or scope. This does not prove parent ancestry, a build or hardware execution."
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-repository",
+  "target": "linux/scripts/local-proof/webgpu_media_lanes.py",
+  "find": "    assert re.fullmatch(r'ant-local/webgpu-[a-z0-9][a-z0-9._/-]*', repo), 'Local Media candidate repository required'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-webgpu-media-lanes.sh",
+  "why": "Independent six-tuple command and actual stage-graph controls reject lost selection, bindings or scope. This does not prove parent ancestry, a build or hardware execution."
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-digest",
+  "target": "linux/scripts/local-proof/webgpu_media_lanes.py",
+  "find": "    assert re.fullmatch(r'ant-local/webgpu-[a-z0-9][a-z0-9._/-]*@sha256:[0-9a-f]{64}', reference), 'Immutable local Media parent required'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-webgpu-media-lanes.sh",
+  "why": "Independent six-tuple command and actual stage-graph controls reject lost selection, bindings or scope. This does not prove parent ancestry, a build or hardware execution."
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-paths",
+  "target": "linux/scripts/local-proof/webgpu_media_lanes.py",
+  "find": "    assert all(path.is_absolute() for path in (source, output, context)), 'Media paths must be absolute'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-webgpu-media-lanes.sh",
+  "why": "Independent six-tuple command and actual stage-graph controls reject lost selection, bindings or scope. This does not prove parent ancestry, a build or hardware execution."
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-build-platform",
+  "target": "linux/scripts/local-proof/webgpu_media_lanes.py",
+  "find": "    environment += ['CROSS_BUILD_PLATFORM=linux/amd64']",
+  "replace": "    environment += ['CROSS_BUILD_PLATFORM=linux/arm64']",
+  "test": "bash linux/scripts/tests/test-webgpu-media-lanes.sh",
+  "why": "Independent six-tuple command and actual stage-graph controls reject lost selection, bindings or scope. This does not prove parent ancestry, a build or hardware execution."
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-sbsa",
+  "target": "linux/scripts/local-proof/webgpu_media_lanes.py",
+  "find": "    if (variant, arch) == ('nvidia', 'arm64'):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-webgpu-media-lanes.sh",
+  "why": "Independent six-tuple command and actual stage-graph controls reject lost selection, bindings or scope. This does not prove parent ancestry, a build or hardware execution."
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-no-ancestry-claim",
+  "target": "linux/scripts/local-proof/webgpu_media_lanes.py",
+  "find": "'parent_ancestry_verified':False",
+  "replace": "'parent_ancestry_verified':True",
+  "test": "bash linux/scripts/tests/test-webgpu-media-lanes.sh",
+  "why": "Independent six-tuple command and actual stage-graph controls reject lost selection, bindings or scope. This does not prove parent ancestry, a build or hardware execution."
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-no-launch-claim",
+  "target": "linux/scripts/local-proof/webgpu_media_lanes.py",
+  "find": "'launched':False",
+  "replace": "'launched':True",
+  "test": "bash linux/scripts/tests/test-webgpu-media-lanes.sh",
+  "why": "Independent six-tuple command and actual stage-graph controls reject lost selection, bindings or scope. This does not prove parent ancestry, a build or hardware execution."
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-ambient-tag-isolation",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "['env', '-u', 'ENABLE_AMD', '-u', 'ENABLE_NVIDIA', 'bash', '-euo', 'pipefail', '-c',",
+  "replace": "['bash', '-euo', 'pipefail', '-c',",
+  "test": "bash linux/scripts/tests/test-webgpu-media-lanes.sh",
+  "why": "Actual source command controls reject inherited accelerator selection and missing explicit profiles. No image build or parent/hardware proof."
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-explicit-accelerators",
+  "target": "linux/scripts/local-proof/webgpu_media_lanes.py",
+  "find": "    environment += ['ENABLE_AMD=' + ('true' if variant == 'rocm' else 'false'),\n                    'ENABLE_NVIDIA=' + ('true' if variant == 'nvidia' else 'false')]",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-webgpu-media-lanes.sh",
+  "why": "Actual source command controls reject inherited accelerator selection and missing explicit profiles. No image build or parent/hardware proof."
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-default-variant-clear",
+  "target": "linux/scripts/local-proof/webgpu_media_lanes.py",
+  "find": "        environment += ['CROSS_VARIANT=']",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-webgpu-media-lanes.sh",
+  "why": "Actual source command controls reject inherited accelerator selection and missing explicit profiles. No image build or parent/hardware proof."
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-native-cross-enabled",
+  "target": "linux/scripts/local-proof/webgpu_media_lanes.py",
+  "find": "    environment += ['ORT_ENABLE_WEBGPU=true', 'ORT_WEBGPU_ALLOW_CROSS=true']",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-webgpu-media-lanes.sh",
+  "why": "Every required Media profile forwards explicit enabled native and cross WebGPU flags through the canonical version argument builder; no compiled provider or hardware proof."
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-fake-uds-chain",
+  "target": "linux/scripts/tests/test-sccache-s3-level.sh",
+  "find": "SCCACHE_SERVER_UDS=\"${WORK}/no.sock\" env -u SCCACHE_MULTILEVEL_CHAIN bash -c",
+  "replace": "SCCACHE_SERVER_UDS=\"${WORK}/no.sock\" bash -c",
+  "test": "bash linux/scripts/tests/test-sccache-s3-level-environment.sh",
+  "why": "The original fake startup/fallback assertions must pass under an explicitly inherited cache chain. This does not configure a real compiler server or prove S3 uploads."
+ },
+ {
+  "id": "compiler-llvm-tools.media-lane-fake-tcp-chain",
+  "target": "linux/scripts/tests/test-sccache-s3-level.sh",
+  "find": "SCCACHE_S3_SECRET_FILE=\"${WORK}/secret\" env -u SCCACHE_MULTILEVEL_CHAIN bash -c",
+  "replace": "SCCACHE_S3_SECRET_FILE=\"${WORK}/secret\" bash -c",
+  "test": "bash linux/scripts/tests/test-sccache-s3-level-environment.sh",
+  "why": "The original fake startup/fallback assertions must pass under an explicitly inherited cache chain. This does not configure a real compiler server or prove S3 uploads."
+ },
+ {
+  "id": "compiler-llvm-tools.media-controls-proof-inputs",
+  "target": "linux/scripts/local-proof/run-media-lane-controls.sh",
+  "find": "test -d \"${proof_dir}\"\ntest -f \"${selected_manifest}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Isolated command fixtures require fresh inputs, original evidence, raw child failure and source drift refusal before success. They do not execute actual source suites, build images or qualify GPU hardware."
+ },
+ {
+  "id": "compiler-llvm-tools.media-controls-preserve-patch",
+  "target": "linux/scripts/local-proof/run-media-lane-controls.sh",
+  "find": "test ! -e \"${proof_dir}/as-tested-source.patch\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Isolated command fixtures require fresh inputs, original evidence, raw child failure and source drift refusal before success. They do not execute actual source suites, build images or qualify GPU hardware."
+ },
+ {
+  "id": "compiler-llvm-tools.media-controls-preserve-manifest",
+  "target": "linux/scripts/local-proof/run-media-lane-controls.sh",
+  "find": "test ! -e \"${proof_dir}/selected-mutations.json\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Isolated command fixtures require fresh inputs, original evidence, raw child failure and source drift refusal before success. They do not execute actual source suites, build images or qualify GPU hardware."
+ },
+ {
+  "id": "compiler-llvm-tools.media-controls-raw-phase-status",
+  "target": "linux/scripts/local-proof/run-media-lane-controls.sh",
+  "find": "set -euo pipefail",
+  "replace": "set -uo pipefail",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Isolated command fixtures require fresh inputs, original evidence, raw child failure and source drift refusal before success. They do not execute actual source suites, build images or qualify GPU hardware."
+ },
+ {
+  "id": "compiler-llvm-tools.media-controls-patch-drift",
+  "target": "linux/scripts/local-proof/run-media-lane-controls.sh",
+  "find": "cmp \"${proof_dir}/as-tested-source.patch\" \"${proof_dir}/source-after.patch\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Isolated command fixtures require fresh inputs, original evidence, raw child failure and source drift refusal before success. They do not execute actual source suites, build images or qualify GPU hardware."
+ },
+ {
+  "id": "compiler-llvm-tools.media-controls-index-drift",
+  "target": "linux/scripts/local-proof/run-media-lane-controls.sh",
+  "find": "cmp \"${proof_dir}/index-before.bin\" \"${proof_dir}/index-after.bin\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Isolated command fixtures require fresh inputs, original evidence, raw child failure and source drift refusal before success. They do not execute actual source suites, build images or qualify GPU hardware."
+ },
+ {
+  "id": "compiler-llvm-tools.media-controls-worktree-drift",
+  "target": "linux/scripts/local-proof/run-media-lane-controls.sh",
+  "find": "test -z \"${dirty_worktree}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Isolated command fixtures require fresh inputs, original evidence, raw child failure and source drift refusal before success. They do not execute actual source suites, build images or qualify GPU hardware."
+ },
+ {
+  "id": "compiler-llvm-tools.media-controls-raw-git-status",
+  "target": "linux/scripts/local-proof/run-media-lane-controls.sh",
+  "find": "dirty_worktree=\"$(git diff --name-only --ignore-submodules=all)\"",
+  "replace": "dirty_worktree=\"$(git diff --name-only --ignore-submodules=all || true)\"",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "A failing final Git probe must retain its raw47 status and cannot publish a success sentinel. Isolated command fixtures do not prove actual source or image acceptance."
  }
 ]

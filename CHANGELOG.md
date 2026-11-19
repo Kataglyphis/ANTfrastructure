@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-19 — prepare the six WebGPU Media command profiles
+
+- Share canonical stage argument construction while retaining the existing ordinary launcher's ROCm/amd64 refusals. Add explicit default amd64/arm64/riscv64, ROCm amd64 and NVIDIA amd64/SBSA arm64 Media profiles, immutable local parents and absolute paths.
+- Require the correct SDK/GPU parent selection, both WASM modes and the amd64 build platform. Check every profile against independent expected argv and the actual shell stage graph. Prepared commands do not launch builds, verify parent ancestry or establish image/hardware acceptance; the remaining owned launch and handoff profiles still need qualification.
+- Clear inherited accelerator flags during canonical tag lookup and select both accelerator toggles explicitly in prepared environments. This prevents a tool image's default AMD/NVIDIA setting from turning a default Media command into a different variant.
+- Reuse the existing source-check protocol for Media controls. Its fake S3 startup children clear an inherited cache-chain setting; an explicit inherited-environment regression retains the original fallback assertions without changing the real compiler-cache setup.
+- Preserve proof-driver input and source checks with isolated command fixtures and mutations. Refuse missing inputs before bootstrap, retain existing evidence, propagate raw child/Git failures and reject patch, index or worktree drift before success.
+
 ## 2026-11-19 — combine all WebGPU media factory proofs
 
 - Add a shared media acceptance entry requiring delivered enabled native/GIL/FT products and both compiled Asyncify/JSPI factory replays at one explicit ORT ref and Git revision. Preserve the narrower existing media replay and its CLI failure policy through shared parsing and dispatch.

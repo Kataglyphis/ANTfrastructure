@@ -78,6 +78,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Linux acceptance restores disposable rootful checkout ownership on every exit;
    failed container cleanup or ownership restoration cannot produce a passed receipt.
    Combined WebGPU media factory acceptance requires native/GIL/FT plus fresh Asyncify and JSPI replay at one exact ORT revision; partial receipts cannot stand for the combined result.
+   Six-lane Media command preparation keeps SDK parents for default targets and GPU parents for accelerators; NVIDIA arm64 requires SBSA. Prepared commands do not qualify parent ancestry or authorize a launch.
+   Fake sccache server startup tests clear inherited cache-chain settings in their child environments; retain the explicit inherited-setting regression and original fallback assertions.
    Local command seals preserve raw command/cache-capture status and owned cleanup identity; an existing exclusive cleanup must never run again, and marker matches do not confer artifact acceptance.
    Require a successful engine query to prove every consumer and ownership-helper container absent;
    retain both removal and query statuses and diagnostics, including already-auto-removed containers.

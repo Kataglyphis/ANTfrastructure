@@ -130,13 +130,9 @@ def launch_build(source: Path, output: Path, unit: str, image: str, arch: str, r
     return result.returncode
 
 
-def launch_stage(source: Path, output: Path, unit: str, repo: str, stage: str, arch: str,
-                 context: Path, reference: str, required_bytes: int, record: Json, variant: str = '') -> int:
-    assert stage in {'sdk', 'gpu', 'media', 'android'} and variant in {'', 'rocm'}, 'Unreviewed stage profile'
-    assert (stage in {'gpu', 'media', 'android'}) == bool(variant) and (stage == 'sdk' or arch == 'amd64'), 'Unreviewed GPU architecture'
-    assert repo.startswith('ant-local/webgpu-') and ':' not in repo and '@' not in repo, 'Local candidate repository required'
-    assert re.fullmatch(r'webgpu-normal-' + stage + '-' + arch + r'-[0-9-]+\.service', unit), 'Unexpected stage unit'
-    image = checked_run(['bash', '-euo', 'pipefail', '-c',
+def stage_inputs(source: Path, output: Path, repo: str, stage: str, arch: str,
+                 context: Path, reference: str, variant: str) -> tuple[str, list[str], list[str]]:
+    image = checked_run(['env', '-u', 'ENABLE_AMD', '-u', 'ENABLE_NVIDIA', 'bash', '-euo', 'pipefail', '-c',
                          '_TAG_NAMING_SH_LOADED=; source "$1"; IMAGE_REPO="$2"; CROSS_VARIANT="$3"; "$4" "$5"',
                          'normal-stage-tag', str(source / 'linux/scripts/01-core/tag-naming.sh'), repo, variant,
                          {'gpu':'cross_gpu_tag', 'sdk':'cross_sdk_tag', 'media':'cross_media_tag', 'android':'cross_android_tag'}[stage], arch]).stdout.strip()
@@ -147,4 +143,14 @@ def launch_stage(source: Path, output: Path, unit: str, repo: str, stage: str, a
         environment += ['ORT_WEB_REQUIRED=1', 'ORT_WASM_WEBGPU_FLAVORS=true']
     driver = ['/bin/bash', str(source / 'linux/scripts/build-cross-stage.sh'), '--stage', stage, '--arch', arch,
               '--image-repo', repo, '--log-dir', str(output / 'logs')]
+    return image, environment, driver
+
+
+def launch_stage(source: Path, output: Path, unit: str, repo: str, stage: str, arch: str,
+                 context: Path, reference: str, required_bytes: int, record: Json, variant: str = '') -> int:
+    assert stage in {'sdk', 'gpu', 'media', 'android'} and variant in {'', 'rocm'}, 'Unreviewed stage profile'
+    assert (stage in {'gpu', 'media', 'android'}) == bool(variant) and (stage == 'sdk' or arch == 'amd64'), 'Unreviewed GPU architecture'
+    assert repo.startswith('ant-local/webgpu-') and ':' not in repo and '@' not in repo, 'Local candidate repository required'
+    assert re.fullmatch(r'webgpu-normal-' + stage + '-' + arch + r'-[0-9-]+\.service', unit), 'Unexpected stage unit'
+    image, environment, driver = stage_inputs(source, output, repo, stage, arch, context, reference, variant)
     return launch_build(source, output, unit, image, arch, required_bytes, record, environment, driver)

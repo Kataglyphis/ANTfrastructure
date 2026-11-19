@@ -75,7 +75,7 @@ t_assert_fails bash -c 'source "$1"; sccache_s3_endpoint_reachable "http://127.0
 _start() {
   _fake_sccache "$1" '{}'
   _secret "${FULL[@]}"
-  PATH="${WORK}/bin:${PATH}" SCCACHE_S3_SECRET_FILE="${WORK}/secret" SCCACHE_SERVER_UDS="${WORK}/no.sock" bash -c \
+  PATH="${WORK}/bin:${PATH}" SCCACHE_S3_SECRET_FILE="${WORK}/secret" SCCACHE_SERVER_UDS="${WORK}/no.sock" env -u SCCACHE_MULTILEVEL_CHAIN bash -c \
     'source "$1"; sccache_s3_endpoint_reachable() { return 0; }; sccache_start_server; echo "shell key=${AWS_ACCESS_KEY_ID:-none}"' _ "${LIB}" 2>&1
 }
 
@@ -92,7 +92,7 @@ t_assert_eq "start key=GKtest chain=disk,s3|stop|start key=none chain=none" "$(p
 
 t_case "without a socket (sccache < 0.14's TCP mode) the S3 level is never tried"
 _fake_sccache ok '{}'
-PATH="${WORK}/bin:${PATH}" SCCACHE_S3_SECRET_FILE="${WORK}/secret" bash -c 'unset SCCACHE_SERVER_UDS; source "$1"; sccache_start_server' _ "${LIB}"
+PATH="${WORK}/bin:${PATH}" SCCACHE_S3_SECRET_FILE="${WORK}/secret" env -u SCCACHE_MULTILEVEL_CHAIN bash -c 'unset SCCACHE_SERVER_UDS; source "$1"; sccache_start_server' _ "${LIB}"
 t_assert_eq "start key=none chain=none" "$(cat "${WORK}/calls")"
 
 # _drain <json> [timeout]: the drain's stderr against a fake server whose socket exists.

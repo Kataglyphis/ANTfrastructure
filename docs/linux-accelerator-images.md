@@ -2424,6 +2424,30 @@ and precise negative controls, not WASM, devices, inference or final-image
 consumer acceptance. Stub-child regression and mutation controls cover transport;
 an actual media replay remains separate evidence.
 
+### Six WebGPU Media command profiles
+
+`local-proof/webgpu_media_lanes.py` prepares the six CON233 Media tuples through
+the same canonical stage argument builder used by ordinary launchers. Default
+amd64, arm64 and riscv64 use an SDK parent; ROCm amd64 and NVIDIA amd64/arm64 use
+a GPU parent. Every profile retains an explicit local repository, absolute paths,
+`repository@sha256` parent, `ORT_WEB_REQUIRED=1`, both WASM modes and
+`CROSS_BUILD_PLATFORM=linux/amd64`. Only NVIDIA arm64 adds
+`CROSS_NVIDIA_SBSA=1`; its canonical stage tag stays in the private stages package.
+Canonical tag lookup clears inherited accelerator toggles. Prepared environments
+select both toggles explicitly and clear the default variant, so an AMD- or
+NVIDIA-enabled tool image cannot silently select another Media profile.
+These required WebGPU profiles explicitly enable both `ORT_ENABLE_WEBGPU` and
+`ORT_WEBGPU_ALLOW_CROSS`; ordinary build opt-outs remain available separately.
+
+The returned command and environment are preparation data. They explicitly claim
+neither verified parent ancestry nor a launch. Before executing them, the owning
+launcher must qualify the exact parent OCI/source chain, apply normal idle-host,
+storage and cache admission, and register bounded unit/container cleanup. The
+existing `launch-normal-media.py` remains restricted to its reviewed ROCm amd64
+chain. The other owned launch/handoff profiles and every actual image acceptance
+remain open. Command tests compare all six profiles with independent expectations
+and the real shell stage graph; they do not build ORT or run a GPU.
+
 ### Combined media factory acceptance
 
 Use `runtime/ort_webgpu_acceptance.py` when the media proof must cover native,
