@@ -63,6 +63,10 @@ t_case "'log' must OPEN the line: the word in argument position is text"
 _check "${SUBJ}" "$(_subject 'printf "%s" "see the log file"')"
 t_assert_eq "0" "${rc}" "matching mid-line would flag every message that mentions a log"
 
+t_case "a one-line function is its own body, not the next function's"
+_check "${SUBJ}" "$(printf 'g() { printf %%s x; }\nh() {\n  log \"noise\"\n}\np=\$(g)')"
+t_assert_eq "0" "${rc}" "g's value is clean; the log line belongs to h, whose stdout nobody consumes: ${out}"
+
 t_case "the Windows lane is out of scope"
 _check linux/scripts/windows/subject.sh "$(_subject 'log "starting"' ':')" \
   linux/scripts/caller.sh "${CONSUMER}"

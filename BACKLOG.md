@@ -2416,11 +2416,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       file or a test output in the tree would be committed. Low today: the four AI consumers do not run the
       loop, and the 19 MB core file of that week came from an agent session that ran `git add -A` by hand.
       Due before a consumer adopts the loop.
-      1. Both twins read git's exit code. A refused commit is a failed phase, and the log says what happened.
-         The Bash twin's comment, "a commit error never fails the loop", changes with it.
-      2. Stage with `git add -u` plus new text files under the large-files limit (`LIMIT_KIB`, 500, in
-         `linux/scripts/verify_large_files.py`), and log what was left out. The prompt says "stage the files
-         you changed by name".
+      1. and 2. Done 2026-11-19: both twins read git's exit code (a refused commit stops the queue with exit 1
+         and says why) and stage `git add -u` plus new text files of at most 500 KiB, logging what they leave out;
+         the executor prompt names files.
       3. A commit gate from a config key runs before the commit; a consumer sets its
          `bash scripts/linux/run-lint-gates.sh`. Its failures are capped like `maxConsecutiveBuildFailures`.
 

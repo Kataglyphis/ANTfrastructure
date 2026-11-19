@@ -285,7 +285,7 @@ and both loops pick it up.
 | `Get-BlockedTaskCount [-BacklogPath <path>]` | Count blocked `- [b]` lines in BACKLOG.md. |
 | `Remove-CheckedBacklogTasks [-BacklogPath <path>]` | Delete completed `- [x]` task blocks (title line plus indented body); returns how many. Bash counterpart: `remove_checked_tasks [backlog]`. |
 | `Get-UsageLimitWaitSeconds -Output <string>` | Detect a Claude usage/session-limit failure and return seconds to sleep until the stated reset (0 = not a limit failure). |
-| `Invoke-GitAutoCommit -Message <string> [-RepoRoot <path>] [-Enabled <bool>]` | `git add -A && git commit` with a message. Bash counterpart: `invoke_git_auto_commit <message> [repo_root] [enabled]`. |
+| `Invoke-GitAutoCommit -Message <string> [-RepoRoot <path>] [-Enabled <bool>]` | Stages tracked changes (`git add -u`) and new text files of at most 500 KiB, logs each file it leaves out, and commits. Returns `$false` when git refuses, and the loop stops with exit code 1 before the build; nothing to commit is no failure. Bash counterpart: `invoke_git_auto_commit <message> [repo_root] [enabled]`, exit 1. |
 
 ### Build / Test / Quality Wrappers
 

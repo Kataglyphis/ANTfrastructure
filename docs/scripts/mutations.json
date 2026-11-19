@@ -3530,8 +3530,8 @@
  {
   "id": "stdout-returns.unconsumed-not-a-finding",
   "target": "linux/scripts/verify_stdout_returns.py",
-  "find": "            if name not in consumed:",
-  "replace": "            if False:",
+  "find": "        if name not in consumed or STDOUT_LOGGERS.match(name + \" \"):",
+  "replace": "        if STDOUT_LOGGERS.match(name + \" \"):",
   "test": "bash linux/scripts/tests/test-stdout-returns.sh",
   "why": "only a function whose stdout is someone's return value can leak a log line into it"
  },
@@ -8530,6 +8530,14 @@
   "replace": "        root = ROOT",
   "test": "bash linux/scripts/tests/test-stdout-returns.sh",
   "why": "the argument is the only thing that puts a consumer's tree in front of this gate; ignoring it grades ANTfrastructure -- which is clean and frozen -- and reports that verdict as the consumer's, which is a green run over a tree nobody looked at"
+ },
+ {
+  "id": "stdout-returns.one-line-function-body",
+  "target": "linux/scripts/verify_stdout_returns.py",
+  "find": "(?:([^\\n]*)\\}[ \\t]*$|(.*?)^\\})",
+  "replace": "(?:()(?!)|(.*?)^\\})",
+  "test": "bash linux/scripts/tests/test-stdout-returns.sh",
+  "why": "a one-line function read to the next column-0 brace takes a later function's log lines as its own"
  },
  {
   "id": "shellcheck-warnings.root-argument-is-the-tree",
@@ -33623,6 +33631,38 @@
   "replace": " // empty",
   "test": "bash linux/scripts/tests/test-agentic-loop.sh",
   "why": "older loop configs list buildConfigurations only; their entries would lose their names"
+ },
+ {
+  "id": "lib.agentic-commit-refusal-read",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "    if ! out=\"$(git -C \"$repo_root\" commit -q -m \"$message\" 2>&1)\"; then",
+  "replace": "    if ! out=\"$(git -C \"$repo_root\" commit -q -m \"$message\" 2>&1 || true)\"; then",
+  "test": "bash linux/scripts/tests/test-agentic-phases.sh",
+  "why": "a refused commit read as success lets every later task pile onto it, silently"
+ },
+ {
+  "id": "lib.agentic-binary-left-out",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "        if [[ \"$nuls\" -gt 0 || \"$kib\" -gt \"$AGENTIC_STAGE_MAX_KIB\" ]]; then",
+  "replace": "        if [[ \"$kib\" -gt \"$AGENTIC_STAGE_MAX_KIB\" ]]; then",
+  "test": "bash linux/scripts/tests/test-agentic-phases.sh",
+  "why": "a core file or a binary test output must not be committed by the loop"
+ },
+ {
+  "id": "lib.agentic-large-left-out",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "        if [[ \"$nuls\" -gt 0 || \"$kib\" -gt \"$AGENTIC_STAGE_MAX_KIB\" ]]; then",
+  "replace": "        if [[ \"$nuls\" -gt 0 ]]; then",
+  "test": "bash linux/scripts/tests/test-agentic-phases.sh",
+  "why": "a new file over the large-files limit stops the next push; the loop must not commit it"
+ },
+ {
+  "id": "lib.agentic-refusal-stops-drain",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "            if ! _agentic_after_task_phases \"$matrix_count\"; then",
+  "replace": "            if ! _agentic_after_task_phases \"$matrix_count\" && false; then",
+  "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+  "why": "a refused commit must stop the queue drain with exit 1, not run the next task"
  },
  {
   "id": "packaging.parity-files-normalised",

@@ -1080,7 +1080,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5088 entries** over **662 distinct test commands**; both digits are
+manifest holds **5093 entries** over **662 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -3406,7 +3406,7 @@ mid-line would flag every message that merely mentions a log file.
 
 **Proof (2026-09-04).** `tests/test-stdout-returns.sh`, over
 throwaway trees at the gate's own depth (it derives its root from `parents[2]`),
-plus 5 mutations (`stdout-returns.*`), every one proven to bite (the fifth,
+plus 6 mutations (`stdout-returns.*`), every one proven to bite (the fifth,
 `root-argument-is-the-tree`, arrived 2026-09-15 with `--root`). This was the
 first of the fourteen `gate-proofs.allow` slugs to be closed rather than
 re-frozen; the shape generalised to the tree-consistency checkers listed above,

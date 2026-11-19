@@ -68,9 +68,10 @@ Therefore:
 9. **Commit** with a descriptive message summarising what was done (this
    replaces the old in-backlog summary):
    ```
-   git add -A
+   git add <each file you changed, by name>
    git commit -m "task: <short description of what was implemented>"
    ```
+   Never `git add -A`: it takes a core dump, a test output or a build artefact with it.
 
 ## Critical Rules
 
