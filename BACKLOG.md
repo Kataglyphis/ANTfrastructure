@@ -2325,7 +2325,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       change: a sensor for each, so a silent fall back to tract shows (not double-checked).
       **In source 2026-11-19:** three sensors per cam, the day and week medians and `catcam_model_time_rise` in
       `packages/catcam_performance.yaml`, `model_ms` in the 21:00 summary, the README rows; Home Assistant's
-      `check_config` passes it. Left, on the live instance, which agents do not touch: deploy it, keep a week of
-      `model_ms` per camera, and fire the alert once on a test value.
+      `check_config` passes it. Deployed to the live instance on 2026-11-19 (owner's leave that day, applied as a
+      patch over its uncommitted lines; all 16 entities registered). Left: from 2026-11-26, a week of `model_ms` per
+      camera, then fire `catcam_model_time_rise` once with a test value (Developer tools, set a day median).
       Done when `linux/homeassistant/README.md` lists the sensors under "The cat cams", the live instance has
       kept a week of `model_ms` for each camera, and the alert has fired once on a test value.
