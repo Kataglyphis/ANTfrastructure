@@ -21,6 +21,8 @@
   Python, and an `error:` line failed Python's and was ignored by Rust. `shared/contracts/openai-stream-lines.json`
   holds eleven cases with their events or error; owner decision 2026-11-19: both fail the stream.
   `test-openai-stream-lines.sh` holds its shape.
+- OxidANT 2afd994 reads an `error:` line as the server's error and OrchestrANT 985c0d6 fails a chunk that is no JSON;
+  both replay all eleven cases.
 
 ## 2026-11-19 — Home Assistant keeps the cat cams' model time (CON253, in source)
 
