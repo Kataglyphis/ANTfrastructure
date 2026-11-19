@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-19 — combine all WebGPU media factory proofs
+
+- Add a shared media acceptance entry requiring delivered enabled native/GIL/FT products and both compiled Asyncify/JSPI factory replays at one explicit ORT ref and Git revision. Preserve the narrower existing media replay and its CLI failure policy through shared parsing and dispatch.
+- Reject missing flavors, disabled products, mismatched source/configuration, failed or duplicate fresh replay verdicts and changed input receipts. Keep native partial evidence and raw child statuses without publishing an overall receipt on failure. Synthetic fixtures and mutations test these refusals; actual image builds, device inference and final consumer acceptance remain separate requirements.
+
 ## 2026-11-19 — preserve append-only operational memory updates
 
 - Add one repository-owned memory appender with explicit expected bytes/SHA256, live-controller refusals, nonblocking file locking, append-only writes and exclusive original-prefix/append backups. Changed prefixes, file identities, unknown observations or failed I/O cannot produce a passed receipt.

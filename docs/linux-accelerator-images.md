@@ -2424,6 +2424,44 @@ and precise negative controls, not WASM, devices, inference or final-image
 consumer acceptance. Stub-child regression and mutation controls cover transport;
 an actual media replay remains separate evidence.
 
+### Combined media factory acceptance
+
+Use `runtime/ort_webgpu_acceptance.py` when the media proof must cover native,
+GIL, free-threaded, Asyncify and JSPI together. It shares the existing media
+parser, isolated native/Python replay and raw failure handling. Every selected
+native prefix must have completed wheel delivery and all static WebGPU flags
+enabled. The explicit expected ORT ref and full Git revision must match every
+native/Python build receipt and the complete two-flavor WASM receipt before any
+child starts. The WASM build configuration remains explicit.
+
+```bash
+python3 -I linux/scripts/03-media/runtime/ort_webgpu_acceptance.py \
+  --prefix /usr/local/lib/onnxruntime-cpu --source-ref "$ONNXRUNTIME_VERSION" \
+  --source-revision "$checked_ort_revision" \
+  --gil-python /usr/local/bin/python3.15 --ft-python /usr/local/bin/python3.15t \
+  --numpy-version "$PY_NUMPY_VERSION" --wasm-prefix /path/to/compiled-wasm \
+  --wasm-config Release --work-dir /proof/all-media-factories
+```
+
+Use the actual preserved WASM install prefix and checked upstream revision;
+neither path nor revision is inferred from a version label. Repeat `--prefix`
+for every selected CPU/NVIDIA product. The existing offline NumPy policy applies.
+After native/GIL/FT succeeds, the canonical WASM replay must freshly report exactly
+Asyncify and JSPI, with valid factory controls and unchanged compiled products.
+The entry retains WASM argv, stdout and stderr, checks the input receipts again,
+then writes its overall `receipt.json`. A failure keeps the native subreceipt and
+raw logs but cannot produce an overall receipt. Existing output is preserved.
+
+Copy this entry with `ort_webgpu_media.py` and its runtime/delivery companions,
+the canonical WASM/build proof scripts, WASM runtime helper and complete
+`webgpu-factory-probe/` tree in their repository layout. Node must support JSPI.
+Run in a bounded owned container inside each actual selected media image; a
+successful replay of one image does not cover the other five target/variant
+lanes. This proves factory registration and negative controls for the checked
+products, not adapters, browser operation, inference, licences or final consumers.
+The regression fixture uses synthetic ELF/WASM and a fake Node, so it supplies no
+actual compiled-provider or image acceptance evidence.
+
 The local default-amd64 media replay on 2026-11-12 passed all three factory
 phases, including the GIL-disabled FT checks, against image index
 `sha256:b6b654b62f92e5448c71a293327651016d0b915cdc4a2a6baec4006db5b82d4f`.

@@ -7,6 +7,7 @@ import json
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -101,7 +102,7 @@ def prove_media(args: argparse.Namespace) -> dict:
     return result
 
 
-def arguments() -> argparse.Namespace:
+def argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prefix", action="append", type=Path, required=True)
     parser.add_argument("--gil-python", type=Path, required=True)
@@ -114,20 +115,28 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--uv", default="uv")
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--allow-network", action="store_true")
-    return parser.parse_args()
+    return parser
+
+
+def arguments() -> argparse.Namespace:
+    return argument_parser().parse_args()
+
+
+def run_cli(action: Callable[[], dict], marker: str) -> int:
+    try:
+        result = action()
+    except subprocess.CalledProcessError as error:
+        print(f"{marker} FAIL: child status {error.returncode}", file=sys.stderr)
+        return error.returncode if error.returncode > 0 else 128 - error.returncode
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
+        print(f"{marker} FAIL: {error}", file=sys.stderr)
+        return 1
+    print(marker + " OK: " + json.dumps(result, sort_keys=True))
+    return 0
 
 
 def main() -> int:
-    try:
-        result = prove_media(arguments())
-    except subprocess.CalledProcessError as error:
-        print(f"WEBGPU-MEDIA FAIL: child status {error.returncode}", file=sys.stderr)
-        return error.returncode if error.returncode > 0 else 128 - error.returncode
-    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
-        print(f"WEBGPU-MEDIA FAIL: {error}", file=sys.stderr)
-        return 1
-    print("WEBGPU-MEDIA OK: " + json.dumps(result, sort_keys=True))
-    return 0
+    return run_cli(lambda: prove_media(arguments()), "WEBGPU-MEDIA")
 
 
 if __name__ == "__main__":

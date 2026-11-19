@@ -55740,5 +55740,85 @@
   "replace": "        require(after == before + addition, 'Memory changed during the append')\n",
   "test": "bash linux/scripts/tests/test-operational-memory.sh",
   "why": "Both snapshots must remain exact at this phase; missing pre-write checks must not modify memory and missing post-write checks must not produce a passed receipt."
+ },
+ {
+  "id": "lib.webgpu-media-acceptance-exact-native-revision",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_acceptance.py",
+  "find": "if receipt[\"source\"] != source:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-acceptance.sh",
+  "why": "same ref with a different native revision must refuse before any child"
+ },
+ {
+  "id": "lib.webgpu-media-acceptance-enabled-static-native",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_acceptance.py",
+  "find": "or receipt[\"phases\"][phase][\"configured_flags\"] != dict.fromkeys(build.FLAGS, \"ON\")):",
+  "replace": "or False):",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-acceptance.sh",
+  "why": "a valid disabled delivery cannot stand for enabled static WebGPU"
+ },
+ {
+  "id": "lib.webgpu-media-acceptance-both-native-python-deliveries",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_acceptance.py",
+  "find": "for phase in (\"gil\", \"free-threaded\"):",
+  "replace": "for phase in (\"gil\",):",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-acceptance.sh",
+  "why": "a changed free-threaded manifest must refuse before any native work, independently of global pending checks"
+ },
+ {
+  "id": "lib.webgpu-media-acceptance-complete-wasm-before-native",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_acceptance.py",
+  "find": "compiled = wasm.checked_receipt(wasm_arguments(args), True)",
+  "replace": "compiled = wasm.checked_receipt(wasm_arguments(args), False)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-acceptance.sh",
+  "why": "missing JSPI must refuse before native children start"
+ },
+ {
+  "id": "lib.webgpu-media-acceptance-fresh-flavor-cardinality",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_acceptance.py",
+  "find": "if tuple(row.get(\"flavor\") for row in results) != wasm.FLAVORS:",
+  "replace": "if tuple(row.get(\"flavor\") for row in results) == wasm.FLAVORS:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-acceptance.sh",
+  "why": "both fresh flavors must pass the cardinality gate"
+ },
+ {
+  "id": "lib.webgpu-media-acceptance-fresh-runtime-verdicts",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_acceptance.py",
+  "find": "for flavor, result in zip(wasm.FLAVORS, results, strict=True):",
+  "replace": "for flavor, result in ():",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-acceptance.sh",
+  "why": "zero transport status cannot hide a failed WASM factory verdict"
+ },
+ {
+  "id": "lib.webgpu-media-acceptance-post-replay-input-binding",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_acceptance.py",
+  "find": "if source_bindings(args, wasm) != (before, compiled):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-acceptance.sh",
+  "why": "a changed valid native receipt cannot produce an overall receipt"
+ },
+ {
+  "id": "lib.webgpu-media-acceptance-execute-native-phases",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_acceptance.py",
+  "find": "native = media.prove_media(native_args)",
+  "replace": "native = {\"phases\": []}",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-acceptance.sh",
+  "why": "combined success requires actual native/GIL/FT dispatch"
+ },
+ {
+  "id": "lib.webgpu-media-acceptance-raw-status",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_acceptance.py",
+  "find": "return media.run_cli(lambda: prove_acceptance(arguments()), \"WEBGPU-MEDIA-ACCEPTANCE\")",
+  "replace": "return 0",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-acceptance.sh",
+  "why": "failed fresh WASM children retain their raw outer status"
+ },
+ {
+  "id": "lib.webgpu-media-acceptance-required-wasm-prefix",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_acceptance.py",
+  "find": "parser.add_argument(\"--wasm-prefix\", required=True, type=Path)",
+  "replace": "parser.add_argument(\"--wasm-prefix\", type=Path)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-acceptance.sh",
+  "why": "the combined entry cannot silently omit its WASM input"
  }
 ]
