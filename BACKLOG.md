@@ -2408,19 +2408,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       with a mutation recipe: a planted untracked 1 MB binary is not committed, a failing gate stops the
       commit and returns non-zero, and a failing `git commit` is reported as failed.
 
-- [ ] **CON249 — a read-only doctor says when the checkout, the local image or the tools are stale** [M, ★★].
-      Found by the audit of 2026-11-12: a month-old local image, a uv older than the lock format and a tree
-      about 100 commits behind each cost an hour of wrong debugging, and nothing said so. The hub has no
-      doctor for consumers (`linux/scripts/01-core/cross-env-doctor.sh` is for cross builds).
-      First step: `linux/scripts/dev-doctor.sh <repo-root>`, one line per finding, exit 1 on any, writing
-      nothing:
-      - commits behind `origin/develop`, from `git ls-remote` on the public https URL against the local refs
-        (a fetch writes refs, and fails without a loaded key; `git-sync-branches.sh --dry-run` prints the
-        count too, but it fetches);
-      - submodules at their recorded gitlinks, and `core.hooksPath` set;
-      - the local CI image's creation date, with a warning above 7 days;
-      - uv and the lint tools against `versions.env` (`UV_VERSION` is 0.13.7; the dev host had 0.11.3).
-
       Offline, each remote check prints `could not check` and does not fail; the doctor never pulls.
       Also: a row in `docs/scripts/consumer_pins.py` that holds a repo's `[tool.uv]` `required-version`,
       written as a lower bound, at or below `UV_VERSION`.

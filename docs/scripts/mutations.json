@@ -40281,6 +40281,54 @@
   "why": "The original raw registry must prove leak detection is active."
  },
  {
+  "id": "lib.dev-doctor-unfetched-tip",
+  "target": "linux/scripts/dev-doctor.sh",
+  "find": "    _finding \"origin's develop is at ${tip:0:10}, a commit this clone does not have: fetch, then fast-forward\"",
+  "replace": "    _ok \"origin's develop is at ${tip:0:10}\"",
+  "test": "bash linux/scripts/tests/test-dev-doctor.sh",
+  "why": "a tree 100 commits behind cost an hour of wrong debugging; a tip the clone lacks must be named"
+ },
+ {
+  "id": "lib.dev-doctor-behind-counted",
+  "target": "linux/scripts/dev-doctor.sh",
+  "find": "  if [ \"${behind}\" -gt 0 ]; then _finding",
+  "replace": "  if false; then _finding",
+  "test": "bash linux/scripts/tests/test-dev-doctor.sh",
+  "why": "a fetched but not merged origin is still behind, and the count says by how much"
+ },
+ {
+  "id": "lib.dev-doctor-hooks-unset",
+  "target": "linux/scripts/dev-doctor.sh",
+  "find": "    '') _finding \"core.hooksPath is unset",
+  "replace": "    '') _ok \"core.hooksPath is unset",
+  "test": "bash linux/scripts/tests/test-dev-doctor.sh",
+  "why": "a clone without hooks runs the gates only when someone remembers"
+ },
+ {
+  "id": "lib.dev-doctor-old-image",
+  "target": "linux/scripts/dev-doctor.sh",
+  "find": "  if [ \"${age_days}\" -gt \"${DOCTOR_IMAGE_MAX_DAYS}\" ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-dev-doctor.sh",
+  "why": "a month-old local image reads as broken code; over a week is named"
+ },
+ {
+  "id": "lib.dev-doctor-uv-pin",
+  "target": "linux/scripts/dev-doctor.sh",
+  "find": "  elif [ \"${have}\" != \"${uv_pin}\" ]; then",
+  "replace": "  elif false; then",
+  "test": "bash linux/scripts/tests/test-dev-doctor.sh",
+  "why": "a uv older than the lock format fails as a broken lock, so a pin mismatch is a finding"
+ },
+ {
+  "id": "lib.dev-doctor-exit-on-finding",
+  "target": "linux/scripts/dev-doctor.sh",
+  "find": "    printf 'dev-doctor: %d stale item(s); nothing was changed\\n' \"${DOCTOR_FINDINGS}\"\n    exit 1\n",
+  "replace": "    printf 'dev-doctor: %d stale item(s); nothing was changed\\n' \"${DOCTOR_FINDINGS}\"\n    exit 0\n",
+  "test": "bash linux/scripts/tests/test-dev-doctor.sh",
+  "why": "a doctor that lists findings and exits 0 reads as clean to any caller"
+ },
+ {
   "id": "amd64-v3.gcc-arch-default",
   "target": "linux/scripts/02-toolchain/build-gcc.sh",
   "find": "_gcc_config_opt \"--with-arch=\" \"${X86_64_GCC_ARCH-x86-64-v3}\"",

@@ -683,6 +683,29 @@ desktop entry. Measured 2026-10-06 in `:latest`, OxidANT's release `kataglyphis_
   `flatpak run --command=oxidant` runs, with its desktop entry and 128×128 icon
   exported.
 
+## `dev-doctor.sh` — what is stale in a dev checkout
+
+```bash
+bash third_party/ANTfrastructure/linux/scripts/dev-doctor.sh "$PWD"
+```
+
+Read-only: it fetches nothing and writes nothing. One line per item, `STALE` for a finding, `ok` for a
+pass and `note` for what this host cannot answer or what no gate depends on. Exit 1 on any finding,
+2 for a root that is no git checkout. A month-old image, a uv older than the lock format and a tree
+about 100 commits behind each cost an hour of wrong debugging on 2026-11-12, and nothing said so.
+
+| Check | STALE when |
+| --- | --- |
+| origin's `develop` | its tip, read with `git ls-remote` on the public https URL, is not in the clone, or HEAD lacks commits of it |
+| submodules | one is not checked out, not at its recorded commit, or in conflict |
+| `core.hooksPath` | unset, or relative ([the git hooks](adopting-in-a-new-project.md#the-git-hooks-by-reference)) |
+| the CI image | no local copy, or one older than `DOCTOR_IMAGE_MAX_DAYS` (7) days |
+| uv | the one on PATH differs from `UV_VERSION` in `versions.env` |
+
+shellcheck, actionlint, gitleaks and ruff on PATH against `tool-pins.env` are notes: the gates fetch their
+pinned copies, and only a run by hand takes the PATH one. `DOCTOR_ENGINE` names the container engine
+(default `nerdctl`, else `docker`). `tests/test-dev-doctor.sh` covers each line on fixture clones.
+
 ## `ctest-run.sh` — run a CMake project's test suite in a container
 
 The twin of `cmake-build.sh` for the test phase, and **deliberately a separate
