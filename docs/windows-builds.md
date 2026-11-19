@@ -3014,6 +3014,17 @@ tag remains first. Only a failed clone permits fetching the exact
 the full commit and version must match before source patches or configuration.
 The compile-only pin belongs to the GenAI stage and never enters the merge.
 
+GenAI's extensions are also source-built: read the unique upstream
+`cmake/deps.txt` row, require its original repository and complete lowercase
+commit, then fetch that same commit recursively before CMake. The Microsoft
+clone retains its bounded retries; only clone failure permits the CodeLinaro
+fork. A mismatched successful primary checkout refuses without fallback.
+`FETCHCONTENT_SOURCE_DIR_ONNXRUNTIME_EXTENSIONS` points to that verified tree;
+no dependency is omitted and no runtime binary is substituted. Version 0.19.0
+pins `e2e119c08b4379d038bcb5c75d9111328a9b86c1`; a real shallow recursive fetch
+and Git object check passed on 2026-11-19. Disposable Git and metadata tests
+do not establish CMake compilation, a complete lane or inference acceptance.
+
 Version 0.19.0 retains original commit
 `d01b2441a72d4e3223415b9b08474c6e65fbc028`, recorded by the
 [Microsoft NuGet release](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntimeGenAI/0.19.0).

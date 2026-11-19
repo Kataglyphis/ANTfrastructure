@@ -1,5 +1,7 @@
 # Backlog — image gaps
 
+**Windows GenAI extensions transport, 2026-11-19:** the full 82c0d0b5 NVIDIA run completed nine phases through Hailo before CMake's extensions clone failed. The exact upstream extensions commit loads through CodeLinaro with a successful object check. Its explicit FetchContent source is being qualified; final-source full builds, typed CUDA repeat, hosted CI and device/publication acceptance remain open. Earlier 82 local QA remains dated to that commit; CON228 stays OPEN/DRAFT.
+
 **Windows CPack mutation targets, 2026-11-18:** the dfbe full native run exposed four recipes targeting a Pester suite, which Linux mutation shards do not install. The cases move to the portable harness with a real export check; all other CMake Pester cases remain. The strict no-Pester registry guard is unchanged. Complete final-source qualification and G1-G5 acceptance remain required; CON228 stays OPEN/DRAFT.
 
 Every known gap in the images this hub publishes (`:latest`, `:winamd64`, the

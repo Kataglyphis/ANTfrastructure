@@ -17,6 +17,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — retain GenAI extensions when the primary source is unavailable
+
+- Fetch GenAI's exact upstream extensions commit before CMake, retaining primary retries, recursive checkout and fatal commit checks through the shared clone implementation.
+- Route FetchContent to that verified tree; metadata and disposable Git regressions cover refusal paths. Full final-source quality, producer and device acceptance remain required.
+
 ## 2026-11-18 — preserve CPython zlib-ng ISA dispatch under ClangCL
 
 - Apply CPython instruction floors after MSBuild per-file metadata: ordinary x64 stays v3; existing AVX-512 files use v4 and retain VNNI/VPCLMUL options. ARM64 is unchanged.

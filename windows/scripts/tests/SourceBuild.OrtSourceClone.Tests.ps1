@@ -29,24 +29,22 @@ Describe 'Pinned ONNX source clone' {
     }
 
     It 'uses the primary release and never needs the invalid fallback' {
-        Invoke-OrtSourceVariantFixture {
+        Invoke-OrtSourceVariantFixture -IncludePinnedOnly {
             param($fixture)
             $fixture.Options.FallbackRepoUrl = Join-Path $fixture.Directory 'must not be used'
             $expectedFile = if ($fixture.Options.Version -eq '0.19.0') { 'VERSION_INFO' } else { 'VERSION_NUMBER' }
             Assert-Equal $expectedFile $fixture.Options.VersionFile 'release-specific version file reaches the fixture'
             Assert-Equal $true (Invoke-OrtFixtureClone -Fixture $fixture) 'primary source accepted'
-            Assert-Equal 'pinned payload' (Get-Content -LiteralPath (Join-Path $fixture.Options.SourceDir 'payload.txt') -Raw) 'original content'
+            Assert-OrtSourceFixtureCheckout -Fixture $fixture
         }
     }
     It 'recovers the exact commit without requiring a mirror tag or full history' {
-        Invoke-OrtSourceVariantFixture {
+        Invoke-OrtSourceVariantFixture -IncludePinnedOnly {
             param($fixture)
             $fixture.Options.RepoUrl = Join-Path $fixture.Directory 'missing primary'
             $null = Invoke-TestGitCommand -Path $fixture.Repo -ArgumentList @('tag', '-d', "v$($fixture.Options.Version)")
             Assert-Equal $true (Invoke-OrtFixtureClone -Fixture $fixture) 'fallback source accepted'
-            $actual = @(Invoke-TestGitCommand -Path $fixture.Options.SourceDir -ArgumentList @('rev-parse', 'HEAD'))[-1]
-            Assert-Equal $fixture.Commit $actual 'full original commit'
-            Assert-Equal 'true' (@(Invoke-TestGitCommand -Path $fixture.Options.SourceDir -ArgumentList @('rev-parse', '--is-shallow-repository'))[-1]) 'bounded history'
+            Assert-OrtSourceFixtureCheckout -Fixture $fixture -Shallow
         }
     }
     It 'retains three primary attempts before using the pinned fallback' {
@@ -62,7 +60,7 @@ Describe 'Pinned ONNX source clone' {
         }
     }
     It 'refuses invalid commit, release and version-file selectors before changing an existing destination' {
-        Invoke-OrtSourceFixture -Payload '1.31.1' -Exercise {
+        Invoke-OrtSourceVariantFixture -IncludePinnedOnly -Payload '1.31.1' -Exercise {
             param($fixture)
             Write-TestFileTree -Root $fixture.Options.SourceDir -Files @{ 'keep.txt' = 'unchanged' }
             $invalid = @(
@@ -70,6 +68,7 @@ Describe 'Pinned ONNX source clone' {
                 @{ Name = 'Version'; Values = @('v1.31.1') },
                 @{ Name = 'VersionFile'; Values = @('payload.txt') }
             )
+            if ($fixture.PinnedOnly) { $invalid = @($invalid | Where-Object Name -EQ 'ExpectedCommit') }
             foreach ($option in $invalid) {
                 $original = $fixture.Options[$option.Name]
                 foreach ($value in $option.Values) {
@@ -86,14 +85,14 @@ Describe 'Pinned ONNX source clone' {
         }
     }
     It 'refuses a primary tag whose commit differs from the pin' {
-        Invoke-OrtSourceFixture {
+        Invoke-OrtSourceVariantFixture -IncludePinnedOnly {
             param($fixture)
             $fixture.Options.ExpectedCommit = '0' * 40
             Assert-Throws { Invoke-OrtFixtureClone -Fixture $fixture } -MessagePattern 'ONNX source commit mismatch'
         }
     }
     It 'retains a failed fallback fetch instead of reporting a clone' {
-        Invoke-OrtSourceFixture {
+        Invoke-OrtSourceVariantFixture -IncludePinnedOnly {
             param($fixture)
             $fixture.Options.RepoUrl = Join-Path $fixture.Directory 'missing primary'
             $fixture.Options.ExpectedCommit = '0' * 40
@@ -107,7 +106,7 @@ Describe 'Pinned ONNX source clone' {
         }
     }
     It 'stages the actual pinned submodule through the fallback' {
-        Invoke-OrtSourceFixture {
+        Invoke-OrtSourceVariantFixture -IncludePinnedOnly {
             param($fixture)
             Add-OrtSourceFixtureSubmodule -Fixture $fixture
             Assert-Equal $true (Invoke-OrtFixtureClone -Fixture $fixture) 'recursive source accepted'
@@ -115,7 +114,7 @@ Describe 'Pinned ONNX source clone' {
         }
     }
     It 'refuses a submodule fetch failure even when the root commit matches' {
-        Invoke-OrtSourceFixture {
+        Invoke-OrtSourceVariantFixture -IncludePinnedOnly {
             param($fixture)
             Add-OrtSourceFixtureSubmodule -Fixture $fixture -Missing
             Assert-Throws { Invoke-OrtFixtureClone -Fixture $fixture } -MessagePattern 'Pinned ONNX fallback failed'

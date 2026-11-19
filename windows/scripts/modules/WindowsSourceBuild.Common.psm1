@@ -204,17 +204,48 @@ function Get-GitPinnedFetchResult {
     return [pscustomobject]@{ ExitCode = $code; Output = $output.ToArray() }
 }
 
+function Assert-GitCommitPin {
+    param([AllowEmptyString()][string]$ExpectedCommit)
+    if ($ExpectedCommit -cnotmatch '^[0-9a-f]{40}$') { throw 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT must be a full lowercase Git commit.' }
+}
+
+function Assert-GitSourceCommit {
+    param([string]$SourceDir, [string]$ExpectedCommit)
+    $actual = @(& git -C $SourceDir rev-parse --verify HEAD 2>&1)
+    if ($LASTEXITCODE -ne 0 -or $actual.Count -ne 1 -or $actual[0] -cne $ExpectedCommit) { throw "ONNX source commit mismatch: expected $ExpectedCommit, got $($actual -join ' ')." }
+}
+
+function Invoke-PinnedSourceClone {
+    param([Parameter(Mandatory)][string]$SourceDir, [Parameter(Mandatory)][string]$RepoUrl,
+        [Parameter(Mandatory)][string]$FallbackRepoUrl, [Parameter(Mandatory)][string]$Ref,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$ExpectedCommit,
+        [Parameter(Mandatory)][int]$MaxAttempts, [Parameter(Mandatory)][int]$InitialDelaySeconds)
+    Assert-GitCommitPin -ExpectedCommit $ExpectedCommit
+    try {
+        $null = Invoke-GitClone -RepoUrl $RepoUrl -Tag $Ref -SourceDir $SourceDir -Recursive `
+            -MaxAttempts $MaxAttempts -InitialDelaySeconds $InitialDelaySeconds
+    } catch {
+        Write-Warning "Primary ONNX clone failed; fetching the pinned commit from $FallbackRepoUrl. Original failure: $($_.Exception.Message)"
+        Reset-SourceBuildDirectory -Path $SourceDir
+        $fallback = Get-GitPinnedFetchResult -RepoUrl $FallbackRepoUrl -SourceDir $SourceDir -Commit $ExpectedCommit -Recursive
+        if ($fallback.ExitCode -ne 0) {
+            throw "Pinned ONNX fallback failed (exit $($fallback.ExitCode)): $(($fallback.Output | Select-Object -Last 10) -join [Environment]::NewLine)"
+        }
+    }
+    Assert-GitSourceCommit -SourceDir $SourceDir -ExpectedCommit $ExpectedCommit
+    return $true
+}
+
 function Assert-OrtSourcePin {
     param([string]$Version, [AllowEmptyString()][string]$ExpectedCommit)
-    if ($ExpectedCommit -cnotmatch '^[0-9a-f]{40}$') { throw 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT must be a full lowercase Git commit.' }
+    Assert-GitCommitPin -ExpectedCommit $ExpectedCommit
     if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'ONNX source version must be a release version.' }
 }
 
 function Assert-OrtSourceIdentity {
     param([string]$SourceDir, [string]$Version, [string]$ExpectedCommit,
         [ValidateSet('VERSION_NUMBER', 'VERSION_INFO')][string]$VersionFile = 'VERSION_NUMBER')
-    $actual = @(& git -C $SourceDir rev-parse --verify HEAD 2>&1)
-    if ($LASTEXITCODE -ne 0 -or $actual.Count -ne 1 -or $actual[0] -cne $ExpectedCommit) { throw "ONNX source commit mismatch: expected $ExpectedCommit, got $($actual -join ' ')." }
+    Assert-GitSourceCommit -SourceDir $SourceDir -ExpectedCommit $ExpectedCommit
     $actualVersion = (Get-Content -LiteralPath (Join-Path $SourceDir $VersionFile) -Raw -ErrorAction Stop).Trim()
     if ($actualVersion -cne $Version) { throw "ONNX source version mismatch: expected $Version, got $actualVersion." }
 }
@@ -230,17 +261,8 @@ function Invoke-OrtSourceClone {
         [int]$MaxAttempts = 3, [int]$InitialDelaySeconds = 10
     )
     Assert-OrtSourcePin -Version $Version -ExpectedCommit $ExpectedCommit
-    try {
-        $null = Invoke-GitClone -RepoUrl $RepoUrl -Tag "v$Version" -SourceDir $SourceDir -Recursive `
-            -MaxAttempts $MaxAttempts -InitialDelaySeconds $InitialDelaySeconds
-    } catch {
-        Write-Warning "Primary ONNX clone failed; fetching the pinned commit from $FallbackRepoUrl. Original failure: $($_.Exception.Message)"
-        Reset-SourceBuildDirectory -Path $SourceDir
-        $fallback = Get-GitPinnedFetchResult -RepoUrl $FallbackRepoUrl -SourceDir $SourceDir -Commit $ExpectedCommit -Recursive
-        if ($fallback.ExitCode -ne 0) {
-            throw "Pinned ONNX fallback failed (exit $($fallback.ExitCode)): $(($fallback.Output | Select-Object -Last 10) -join [Environment]::NewLine)"
-        }
-    }
+    $null = Invoke-PinnedSourceClone -SourceDir $SourceDir -RepoUrl $RepoUrl -FallbackRepoUrl $FallbackRepoUrl `
+        -Ref "v$Version" -ExpectedCommit $ExpectedCommit -MaxAttempts $MaxAttempts -InitialDelaySeconds $InitialDelaySeconds
     Assert-OrtSourceIdentity -SourceDir $SourceDir -Version $Version -ExpectedCommit $ExpectedCommit -VersionFile $VersionFile
     return $true
 }
@@ -2946,6 +2968,7 @@ Export-ModuleMember -Function @(
     'Invoke-ShieldedNative',
     'Invoke-GitClone',
     'Invoke-OrtSourceClone',
+    'Invoke-PinnedSourceClone',
     'Assert-OrtSourcePin',
     'Assert-OrtSourceIdentity',
     'Reset-SourceBuildDirectory',

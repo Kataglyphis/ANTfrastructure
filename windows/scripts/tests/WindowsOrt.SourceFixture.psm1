@@ -15,7 +15,7 @@ function New-OrtSourceFixture {
     $commit = Add-TestGitCommit -Path $repo -Files @{ $VersionFile = $ActualVersion; $PayloadPath = $Payload } -Message 'release' -PassThru
     $null = Invoke-TestGitCommand -Path $repo -ArgumentList @('tag', "v$Version")
     return [pscustomobject]@{
-        Directory = $Directory; Repo = $repo; Commit = $commit
+        Directory = $Directory; Repo = $repo; Commit = $commit; PinnedOnly = $false; Payload = $Payload; PayloadPath = $PayloadPath
         Options = @{ SourceDir = Join-Path $Directory 'checkout with spaces'; Version = $Version; VersionFile = $VersionFile; ExpectedCommit = $commit
             RepoUrl = $repo; FallbackRepoUrl = $repo; MaxAttempts = 1; InitialDelaySeconds = 0 }
     }
@@ -24,12 +24,13 @@ function New-OrtSourceFixture {
 function Invoke-OrtSourceFixture {
     param([Parameter(Mandatory)][scriptblock]$Exercise, [string]$ActualVersion = '1.31.1',
         [string]$Payload = 'pinned payload', [string]$PayloadPath = 'payload.txt',
-        [string]$VersionFile = 'VERSION_NUMBER', [string]$Version = '1.31.1')
+        [string]$VersionFile = 'VERSION_NUMBER', [string]$Version = '1.31.1', [switch]$PinnedOnly)
     $factory = Get-Command New-OrtSourceFixture -CommandType Function
-    Invoke-InTestDir -FixtureArgumentList @($factory, $Exercise, $ActualVersion, $Payload, $PayloadPath, $VersionFile, $Version) -Body {
-        param($dir, $createFixture, $fixtureExercise, $fixtureVersion, $fixturePayload, $fixturePayloadPath, $fixtureVersionFile, $fixtureRelease)
+    Invoke-InTestDir -FixtureArgumentList @($factory, $Exercise, $ActualVersion, $Payload, $PayloadPath, $VersionFile, $Version, $PinnedOnly.IsPresent) -Body {
+        param($dir, $createFixture, $fixtureExercise, $fixtureVersion, $fixturePayload, $fixturePayloadPath, $fixtureVersionFile, $fixtureRelease, $fixturePinnedOnly)
         Invoke-WithEnv @{ GIT_ALLOW_PROTOCOL = 'file'; GIT_TERMINAL_PROMPT = '0' } {
             $fixture = & $createFixture -Directory $dir -ActualVersion $fixtureVersion -Payload $fixturePayload -PayloadPath $fixturePayloadPath -VersionFile $fixtureVersionFile -Version $fixtureRelease
+            $fixture.PinnedOnly = $fixturePinnedOnly
             & $fixtureExercise $fixture
         }.GetNewClosure()
     }
@@ -51,7 +52,13 @@ function Add-OrtSourceFixtureSubmodule {
 
 function Invoke-OrtFixtureClone {
     param($Fixture)
-    $cloneArguments = $Fixture.Options
+    $cloneArguments = $Fixture.Options.Clone()
+    if ($Fixture.PinnedOnly) {
+        $cloneArguments.Remove('Version')
+        $cloneArguments.Remove('VersionFile')
+        $cloneArguments.Ref = $Fixture.Commit
+        return Invoke-PinnedSourceClone @cloneArguments 3>$null
+    }
     Invoke-OrtSourceClone @cloneArguments 3>$null
 }
 
@@ -65,11 +72,20 @@ function Get-OrtSourceFixtureRelease {
 }
 
 function Invoke-OrtSourceVariantFixture {
-    param([Parameter(Mandatory)][scriptblock]$Exercise, [switch]$WrongVersion)
+    param([Parameter(Mandatory)][scriptblock]$Exercise, [switch]$WrongVersion, [switch]$IncludePinnedOnly, [string]$Payload = 'pinned payload')
     foreach ($release in Get-OrtSourceFixtureRelease) {
         $actualVersion = if ($WrongVersion) { '0.0.0' } else { $release.Version }
-        Invoke-OrtSourceFixture -VersionFile $release.VersionFile -Version $release.Version -ActualVersion $actualVersion -Exercise $Exercise
+        Invoke-OrtSourceFixture -VersionFile $release.VersionFile -Version $release.Version -ActualVersion $actualVersion -Payload $Payload -Exercise $Exercise
     }
+    if ($IncludePinnedOnly) { Invoke-OrtSourceFixture -PinnedOnly -Payload $Payload -Exercise $Exercise }
 }
 
-Export-ModuleMember -Function Get-OrtSourceFixtureRelease, Invoke-OrtSourceVariantFixture, New-OrtSourceFixture, Invoke-OrtSourceFixture, Add-OrtSourceFixtureSubmodule, Invoke-OrtFixtureClone
+function Assert-OrtSourceFixtureCheckout {
+    param($Fixture, [string]$Path = '', [switch]$Shallow)
+    if (-not $Path) { $Path = $Fixture.Options.SourceDir }
+    Assert-Equal $Fixture.Options.ExpectedCommit (@(Invoke-TestGitCommand -Path $Path -ArgumentList @('rev-parse', 'HEAD'))[-1]) 'full original commit'
+    Assert-Equal $Fixture.Payload (Get-Content -LiteralPath (Join-Path $Path $Fixture.PayloadPath) -Raw) 'original payload'
+    if ($Shallow) { Assert-Equal 'true' (@(Invoke-TestGitCommand -Path $Path -ArgumentList @('rev-parse', '--is-shallow-repository'))[-1]) 'bounded history' }
+}
+
+Export-ModuleMember -Function Assert-OrtSourceFixtureCheckout, Get-OrtSourceFixtureRelease, Invoke-OrtSourceVariantFixture, New-OrtSourceFixture, Invoke-OrtSourceFixture, Add-OrtSourceFixtureSubmodule, Invoke-OrtFixtureClone

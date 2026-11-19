@@ -2881,6 +2881,18 @@ riscv64-only opencv-freetype warning, and after a green rebuild
 that warning's "expected on riscv64" status is STALE (parity
 follow-up for the orchestrator).
 
+### GenAI extensions clone fails while the root source is available
+
+The 82c0d0b5 NVIDIA run on 2026-11-19 passed ONNX, FFmpeg, OpenCV and
+Hailo, then CMake failed to clone `microsoft/onnxruntime-extensions` with
+terminal prompts disabled. Host GitHub reads returned 404 too. Recovering
+the GenAI root alone does not recover this nested FetchContent dependency.
+The builder now fetches the exact extensions commit from upstream deps.txt,
+tries the original repository first and uses the same commit in CodeLinaro
+only after clone failure. Its explicit FetchContent source keeps the normal
+extensions build. Wrong or ambiguous pins and failed recursive fetches fail.
+See [the source contract](windows-builds.md#genai-source-recovery-without-a-version-change).
+
 ### A half-fetched dependency that every retry inherits
 
 `ONNX Runtime CPU build failed after 3 attempts` on media-riscv64, 2026-09-02,

@@ -41919,5 +41919,77 @@
   "replace": "'%(ClCompile.EnableEnhancedInstructionSet)' != 'AdvancedVectorExtensions512'",
   "test": "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','SourceBuild.CpythonIsa.Tests.ps1','-ResultFile','logs/code-quality/cpython-isa.json'],check=True); d=json.load(open('logs/code-quality/cpython-isa.json',encoding='utf-8-sig')); assert d['Total']==5 and d['Passed']==5 and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"",
   "why": "higher ISA must follow upstream per-file metadata"
+ },
+ {
+  "id": "windows-lane.genai-extensions-row-cardinality",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "if ($rows.Count -ne 1) { throw 'GenAI extensions",
+  "replace": "if ($false) { throw 'GenAI extensions",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.GenaiExtensions.Tests.ps1",
+  "why": "Duplicate dependency rows must refuse rather than choose the first."
+ },
+ {
+  "id": "windows-lane.genai-extensions-row-identity",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "$rows[0] -cnotmatch '^onnxruntime_extensions;",
+  "replace": "$rows[0] -notmatch '^onnxruntime_extensions;",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.GenaiExtensions.Tests.ps1",
+  "why": "Uppercase pins must not bypass the reviewed lowercase source identity."
+ },
+ {
+  "id": "windows-lane.genai-extensions-upstream-commit",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "return $Matches['Commit']",
+  "replace": "return ('0' * 40)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.GenaiExtensions.Tests.ps1",
+  "why": "The dependency commit must come from the upstream row without substitution."
+ },
+ {
+  "id": "windows-lane.genai-extensions-clone-identity",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "-Ref $commit -ExpectedCommit $commit -MaxAttempts 3 -InitialDelaySeconds 10",
+  "replace": "-Ref $commit -ExpectedCommit ('0' * 40) -MaxAttempts 3 -InitialDelaySeconds 10",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.GenaiExtensions.Tests.ps1",
+  "why": "The real checkout must be checked against the dependency commit before its CMake path is returned."
+ },
+ {
+  "id": "windows-lane.genai-extensions-cmake-source-name",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "return \"-DFETCHCONTENT_SOURCE_DIR_ONNXRUNTIME_EXTENSIONS:PATH=",
+  "replace": "return \"-DFETCHCONTENT_SOURCE_DIR_WRONG_EXTENSIONS:PATH=",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.GenaiExtensions.Tests.ps1",
+  "why": "CMake must use the checked source instead of fetching the unavailable default repository."
+ },
+ {
+  "id": "windows-lane.genai-extensions-append-arguments",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "$cmakeExtraGenAi += Get-GenaiExtensionsCmakeArgs -SourceDir $SourceDir",
+  "replace": "$cmakeExtraGenAi = Get-GenaiExtensionsCmakeArgs -SourceDir $SourceDir",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.GenaiExtensions.Tests.ps1",
+  "why": "Adding the source must retain all existing ORT, target and feature arguments."
+ },
+ {
+  "id": "windows-lane.genai-extensions-unconditional-source",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "$cmakeExtraGenAi += Get-GenaiExtensionsCmakeArgs -SourceDir $SourceDir",
+  "replace": "if ($false) { $cmakeExtraGenAi += Get-GenaiExtensionsCmakeArgs -SourceDir $SourceDir }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.GenaiExtensions.Tests.ps1",
+  "why": "Every GenAI lane must prepare its required extensions before configuration."
+ },
+ {
+  "id": "windows-lane.genai-extensions-pin-before-write",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "$InitialDelaySeconds)\n    Assert-GitCommitPin -ExpectedCommit $ExpectedCommit\n",
+  "replace": "$InitialDelaySeconds)\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "The shared generic clone must validate malformed pins before replacing an existing destination."
+ },
+ {
+  "id": "windows-lane.genai-extensions-generic-identity",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "    Assert-GitSourceCommit -SourceDir $SourceDir -ExpectedCommit $ExpectedCommit\n    return $true\n",
+  "replace": "    return $true\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1",
+  "why": "A successful primary checkout at a different commit must refuse before fallback or build."
  }
 ]
