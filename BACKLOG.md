@@ -2371,20 +2371,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
          the downloaded linters inside `test-lint-gates.sh`.
       4. Done 2026-11-18: `verify_large_files.py` sniffs the blob (`git cat-file blob`), so an unstaged
          deletion no longer stops every commit and the index is what is graded.
-      5. The config line is relative, so a linked worktree whose hub submodule is not checked out has
-         no hook: in a scratch clone of OxidANT a 1 MB binary was committed there without one line of
-         output, and the `core.hooksPath` warning stays silent because the setting is not empty.
-         An absolute path fails such a commit with the bootstrap's `git submodule update` hint.
-         The aggregator cannot warn there, it is in the missing submodule. First step: decide between
-         the absolute path per clone and a check in the copied bootstrap `antfrastructure.sh`.
+      5. Done 2026-11-19 (owner decision: the absolute path per clone): the adoption page's line is absolute,
+         and `run-lint-gates.sh` names a clone that still has the relative one.
 
       Done when a staged CRLF shell script stops a commit
       in `test-consumer-hooks.sh`, a default `lint-shell.sh` run lists both hook files, a commit passes
       beside an unstaged deletion, and a commit in a worktree without the submodule is stopped or named.
-
-      File size and complexity for these languages stay report-only. Done when `test-quality-report.sh`
-      shows a planted 81-line Rust function as `regressed` on a fixture, `test-lang-units.sh` covers the
-      test-body rule, and the page says which extra-language number is graded.
 
 - [ ] **CON247 — fleet-health shows lane debt, reruns, contract drift and pin lag** [M, ★★]. Found by the audit
       of 2026-11-12. None of these rows exists in `linux/scripts/fleet_health_github.py` or

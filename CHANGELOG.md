@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — the consumer hooks path is absolute (CON269 item 5)
+
+- A relative `core.hooksPath` resolves inside each working tree, so a linked worktree without the hub submodule ran
+  no hook and git said nothing; a 1 MB binary went in that way. Owner decision: the adoption page's line is absolute
+  (`"$PWD/third_party/ANTfrastructure/shared/linux/templates/git-hooks"`), and every local gate run warns a clone
+  that still has the relative line, naming the absolute one.
+
 ## 2026-11-19 — a consumer's shell line endings are a gate (CON269 item 1)
 
 - The hub's `crlf-guard` was a function of `preflight.sh` over the hub's own files, so no consumer hook checked line

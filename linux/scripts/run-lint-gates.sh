@@ -520,16 +520,22 @@ _lint_gates_staged_secrets() {
 
 # One line and never a verdict: without a hook these gates run only when someone remembers them.
 _lint_gates_hook_notice() {
-  local hub line
+  local hub line set_to
   [ -z "${CI:-}" ] || return 0
   git -C "${_LINT_GATES_ROOT}" rev-parse --git-dir >/dev/null 2>&1 || return 0
-  [ -z "$(git -C "${_LINT_GATES_ROOT}" config --get core.hooksPath 2>/dev/null)" ] || return 0
+  set_to="$(git -C "${_LINT_GATES_ROOT}" config --get core.hooksPath 2>/dev/null)"
   hub="$(cd "${_LINT_GATES_DIR}/../.." && pwd)"
-  line="git config core.hooksPath ${hub#"${_LINT_GATES_ROOT}/"}/shared/linux/templates/git-hooks"
+  line="git config core.hooksPath ${hub}/shared/linux/templates/git-hooks"
   # The hub's own pair is the other one, and make hooks sets it.
   [ "${hub}" != "${_LINT_GATES_ROOT}" ] || line="make hooks"
-  printf 'run-lint-gates.sh: WARNING: core.hooksPath is unset in %s, so no git hook runs these gates; set it once: %s\n' \
-    "${_LINT_GATES_ROOT}" "${line}" >&2
+  if [ -z "${set_to}" ]; then
+    printf 'run-lint-gates.sh: WARNING: core.hooksPath is unset in %s, so no git hook runs these gates; set it once: %s\n' \
+      "${_LINT_GATES_ROOT}" "${line}" >&2
+  elif [ "${set_to}" = "${hub#"${_LINT_GATES_ROOT}/"}/shared/linux/templates/git-hooks" ]; then
+    # Relative to each worktree: one without the hub submodule finds no hooks directory, and git says nothing.
+    printf 'run-lint-gates.sh: WARNING: core.hooksPath is relative in %s, so a linked worktree without the hub runs no hook; set it absolute: %s\n' \
+      "${_LINT_GATES_ROOT}" "${line}" >&2
+  fi
 }
 
 # The commit hook's half; --index is this commit's index, which `git commit -a` keeps in a lock file.

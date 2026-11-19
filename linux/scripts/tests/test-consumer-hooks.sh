@@ -107,7 +107,7 @@ WRAPPER
     git -C "${d}" add -A
     git -C "${d}" commit -qm base
     git -C "${d}" push -q origin develop
-    git -C "${d}" config core.hooksPath "${HOOKS_REL}"
+    git -C "${d}" config core.hooksPath "${d}/${HOOKS_REL}"
   } >/dev/null 2>&1
   printf '%s' "${d}"
 }
@@ -380,7 +380,7 @@ _section_notice() {
   out="$(cd "${d}" && bash scripts/linux/run-lint-gates.sh 2>&1)"
   t_assert_eq 0 "$?" "a warning is not a verdict: ${out}"
   t_assert_eq 1 "$(printf '%s\n' "${out}" | grep -c -e 'core.hooksPath is unset')" "${out}"
-  t_assert_contains "${out}" "set it once: git config core.hooksPath ${HOOKS_REL}"
+  t_assert_contains "${out}" "set it once: git config core.hooksPath ${d}/${HOOKS_REL}"
   t_assert_eq "LINT GATES OK (11 gate(s))" "$(printf '%s\n' "${out}" | tail -n 1)" "the verdict stays the last line"
   t_assert_contains "$(cd "${d}" && bash scripts/linux/run-lint-gates.sh --staged 2>&1)" "core.hooksPath is unset" \
     "the staged checks run by hand say it too"
@@ -390,9 +390,16 @@ _section_notice() {
   t_assert_contains "${out}" "LINT GATES OK"
   t_assert_eq 0 "$(printf '%s\n' "${out}" | grep -c -e 'hooksPath')" "${out}"
 
-  t_case "a clone with any hooks path set gets no such line"
+  t_case "a clone with its own or an absolute hooks path gets no such line"
   git -C "${d}" config core.hooksPath scripts/git-hooks
   t_assert_eq "" "$(_notice "${d}" "${gates}")" "a repo's own hook directory is a decision, not a gap"
+  git -C "${d}" config core.hooksPath "${d}/${HOOKS_REL}"
+  t_assert_eq "" "$(_notice "${d}" "${gates}")" "the adoption page's absolute line"
+
+  t_case "the hub's hooks by a relative path are named: a worktree without the submodule runs none"
+  git -C "${d}" config core.hooksPath "${HOOKS_REL}"
+  t_assert_contains "$(_notice "${d}" "${gates}")" "core.hooksPath is relative in ${d}"
+  t_assert_contains "$(_notice "${d}" "${gates}")" "set it absolute: git config core.hooksPath ${d}/${HOOKS_REL}"
   git -C "${d}" config --unset core.hooksPath
   t_assert_contains "$(_notice "${d}" "${gates}")" "core.hooksPath is unset"
 

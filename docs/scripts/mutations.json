@@ -15004,6 +15004,14 @@
   "why": "the commit hook is where a CR is cheapest to stop; without the staged gate it reaches the push"
  },
  {
+  "id": "lint-gates.relative-hooks-path-named",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  elif [ \"${set_to}\" = ",
+  "replace": "  elif false && [ \"${set_to}\" = ",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh",
+  "why": "a relative hooks path runs no hook in a worktree without the hub, and git says nothing; only this line names it"
+ },
+ {
   "id": "lib.dartdoc-guides-anchor-kept",
   "target": "linux/scripts/lib/dartdoc-guides.py",
   "find": "        path, sep, fragment = href.partition(\"#\")",
@@ -37651,8 +37659,8 @@
  {
   "id": "lint-gates.hook-notice-only-when-unset",
   "target": "linux/scripts/run-lint-gates.sh",
-  "find": "  [ -z \"$(git -C \"${_LINT_GATES_ROOT}\" config --get core.hooksPath 2>/dev/null)\" ] || return 0\n",
-  "replace": "",
+  "find": "  if [ -z \"${set_to}\" ]; then\n",
+  "replace": "  if true; then\n",
   "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k notice",
   "why": "a clone with hooks, the template's or its own, must not be told to set them"
  },
