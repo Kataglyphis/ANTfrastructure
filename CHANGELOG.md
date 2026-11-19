@@ -15,6 +15,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — the Cargo license stager gates the crate graph it stages (BeschleunigerBallett X4)
+
+- Only a comment in a manifest kept wgpu out of BeschleunigerBallett's C++ bridge. `stage-cargo-licenses.py` gains
+  `--forbid-package PATTERN`, a repeatable case-sensitive glob over the selected graph's names that fails with each
+  match's shortest dependency path, and `--max-runtime-packages N`, which counts live `cargo tree --edges normal` and
+  fails above N with the count. Both run before staging and stay off by default. On 2026-11-19 OxidANT's
+  `kataglyphis_cxx_bridge` staged 129 to 130 packages and held 55 in its normal tree on all three of its targets. See
+  [`third-party-licenses.md`](docs/third-party-licenses.md#checking-delivered-package-licences).
+
 ## 2026-11-19 — one file of OpenAI stream lines for every binding (CON237 item 3)
 
 - Rust and Python read stream lines differently: a chunk that is no JSON failed Rust's stream and was skipped by

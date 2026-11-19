@@ -93,7 +93,11 @@ def resolve_tree(
 
 
 def live_tree(
-    workspace: Path, target: str, root_name: str, feature_args: list[str]
+    workspace: Path,
+    target: str,
+    root_name: str,
+    feature_args: list[str],
+    edges: str = "normal,build",
 ) -> str:
     command = [
         "cargo",
@@ -105,7 +109,7 @@ def live_tree(
         "--package",
         root_name,
         "--edges",
-        "normal,build",
+        edges,
         "--prefix",
         "none",
         "--format",

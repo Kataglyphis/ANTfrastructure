@@ -41015,5 +41015,37 @@
   "replace": "    :\n",
   "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
   "why": "An extra tree measured and never gated is the benchmarks/ floor that does not exist."
+ },
+ {
+  "id": "rust.cargo-license-forbidden-package",
+  "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
+  "find": "        if not hits:\n            continue\n",
+  "replace": "        if True:\n            continue\n",
+  "test": "bash linux/scripts/tests/test-stage-cargo-licenses.sh",
+  "why": "A forbidden package in the staged graph must fail before staging and name its dependency path."
+ },
+ {
+  "id": "rust.cargo-license-runtime-budget",
+  "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
+  "find": "        if runtime > args.max_runtime_packages:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-stage-cargo-licenses.sh",
+  "why": "A runtime graph over its package budget must fail with the count."
+ },
+ {
+  "id": "rust.cargo-license-runtime-normal-edges",
+  "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
+  "find": "workspace, args.target, args.root_package, feature_args, \"normal\"\n",
+  "replace": "workspace, args.target, args.root_package, feature_args\n",
+  "test": "bash linux/scripts/tests/test-stage-cargo-licenses.sh",
+  "why": "The budget counts the live normal-edge tree; build dependencies never ship in the binary."
+ },
+ {
+  "id": "rust.cargo-license-forbidden-build-path",
+  "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
+  "find": "kinds = {None, \"build\"} if args.graph_scope",
+  "replace": "kinds = {None} if args.graph_scope",
+  "test": "bash linux/scripts/tests/test-stage-cargo-licenses.sh",
+  "why": "A forbidden build dependency in the tree scope must print the build edge that reaches it."
  }
 ]

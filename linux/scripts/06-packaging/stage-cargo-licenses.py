@@ -7,13 +7,15 @@ The target-filtered normal dependency graph is conservative. Explicit policy ent
 resolve missing, workspace and nested sources with a SHA-256 and source provenance.
 The optional live Cargo tree includes normal and build dependencies. Neither selection
 proves binary linkage; development dependencies, native libraries and corresponding-source
-duties need separate inventories.
+duties need separate inventories. The optional graph gates refuse forbidden package names
+and a runtime graph over budget before anything is staged.
 """
 
 from __future__ import annotations
 
 import argparse
 import ctypes
+import fnmatch
 import hashlib
 import json
 import os
@@ -21,6 +23,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +38,7 @@ MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_TOTAL_BYTES = 64 * 1024 * 1024
 COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]*$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+PACKAGE_PATTERN = re.compile(r"^[A-Za-z0-9_.+*?\[\]!-]+$")
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -67,20 +71,24 @@ def cargo_metadata(
     return metadata
 
 
-def normal_graph(metadata: dict[str, Any], root_name: str) -> list[dict[str, Any]]:
-    packages = {package["id"]: package for package in metadata["packages"]}
+def workspace_root(metadata: dict[str, Any], root_name: str) -> dict[str, Any]:
     members = set(metadata["workspace_members"])
     roots = [
         item
-        for item in packages.values()
+        for item in metadata["packages"]
         if item["name"] == root_name and item["id"] in members
     ]
     if len(roots) != 1:
         raise ValueError(
             f"expected exactly one workspace package named {root_name}, found {len(roots)}"
         )
+    return roots[0]
+
+
+def normal_graph(metadata: dict[str, Any], root_name: str) -> list[dict[str, Any]]:
+    packages = {package["id"]: package for package in metadata["packages"]}
     nodes = {node["id"]: node for node in metadata["resolve"]["nodes"]}
-    pending = [roots[0]["id"]]
+    pending = [workspace_root(metadata, root_name)["id"]]
     seen: set[str] = set()
     while pending:
         current = pending.pop()
@@ -105,6 +113,83 @@ def normal_graph(metadata: dict[str, Any], root_name: str) -> list[dict[str, Any
             "multiple Cargo sources share a name and version; policy keys would be ambiguous"
         )
     return result
+
+
+def shortest_paths(
+    metadata: dict[str, Any], root_id: str, within: set[str], kinds: set[str | None]
+) -> dict[str, list[str]]:
+    """Breadth-first root-to-package ID paths over the given dependency kinds, inside `within`."""
+    edges = {
+        node["id"]: sorted(
+            dependency["pkg"]
+            for dependency in node["deps"]
+            if dependency["pkg"] in within
+            and any(kind["kind"] in kinds for kind in dependency["dep_kinds"])
+        )
+        for node in metadata["resolve"]["nodes"]
+        if node["id"] in within
+    }
+    paths = {root_id: [root_id]} if root_id in within else {}
+    pending = deque(paths)
+    while pending:
+        current = pending.popleft()
+        for dependency in edges.get(current, []):
+            if dependency not in paths:
+                paths[dependency] = [*paths[current], dependency]
+                pending.append(dependency)
+    return paths
+
+
+def forbidden_paths(
+    metadata: dict[str, Any],
+    root_name: str,
+    selected: list[dict[str, Any]],
+    kinds: set[str | None],
+    forbidden: list[str],
+) -> list[str]:
+    """One line per selected package whose name matches a forbidden glob, with its shortest path."""
+    by_id = {package["id"]: package for package in selected}
+    root_id = workspace_root(metadata, root_name)["id"]
+    paths = shortest_paths(metadata, root_id, set(by_id), kinds)
+    errors = []
+    for package in selected:
+        hits = [p for p in forbidden if fnmatch.fnmatchcase(package["name"], p)]
+        if not hits:
+            continue
+        route = paths.get(package["id"], [])
+        via = " -> ".join(package_key(by_id[i]) for i in route)
+        errors.append(
+            f"forbidden Cargo package {package_key(package)} ({hits[0]}): "
+            + (via or "no path in the Cargo metadata graph")
+        )
+    return errors
+
+
+def graph_gates(
+    args: argparse.Namespace,
+    workspace: Path,
+    feature_args: list[str],
+    metadata: dict[str, Any],
+    selected: list[dict[str, Any]],
+) -> int | None:
+    """Refuse forbidden packages and a live normal-edge graph over budget; return its count when budgeted."""
+    kinds = {None, "build"} if args.graph_scope == "tree-normal-build" else {None}
+    errors = forbidden_paths(
+        metadata, args.root_package, selected, kinds, args.forbid_package
+    )
+    runtime = None
+    if args.max_runtime_packages is not None:
+        tree = live_tree(
+            workspace, args.target, args.root_package, feature_args, "normal"
+        )
+        runtime = len(resolve_tree(metadata, tree, args.root_package))
+        if runtime > args.max_runtime_packages:
+            errors.append(
+                f"{runtime} runtime Cargo packages exceed the budget of {args.max_runtime_packages}"
+            )
+    if errors:
+        raise ValueError("Cargo graph gate:\n  " + "\n  ".join(errors))
+    return runtime
 
 
 def package_key(package: dict[str, Any]) -> str:
@@ -360,7 +445,7 @@ def stage_inventory(
         publish_directory(staging, output)
 
 
-def main() -> int:
+def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", required=True, type=Path)
     parser.add_argument("--root-package", required=True)
@@ -385,8 +470,66 @@ def main() -> int:
         type=Path,
         help="read precomputed target-filtered metadata for offline fixtures",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--forbid-package",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help="fail when a selected package name matches this case-sensitive glob; repeat for more",
+    )
+    parser.add_argument(
+        "--max-runtime-packages",
+        type=int,
+        metavar="N",
+        help="fail when the live normal-edge Cargo tree of the root lists more than N packages, the root included",
+    )
+    return parser.parse_args()
+
+
+def select_graph(
+    args: argparse.Namespace, workspace: Path, feature_args: list[str]
+) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
+    if args.metadata and (args.graph_scope != "metadata-normal" or feature_args):
+        raise ValueError(
+            "precomputed metadata is only supported for the default fixture scope and feature selection"
+        )
+    if args.metadata and args.max_runtime_packages is not None:
+        raise ValueError("--max-runtime-packages counts the live Cargo tree, not --metadata")
+    metadata = (
+        load_json(args.metadata)
+        if args.metadata
+        else cargo_metadata(workspace, args.target, feature_args)
+    )
+    if Path(metadata["workspace_root"]).resolve() != workspace:
+        raise ValueError("Cargo metadata belongs to a different workspace")
+    normal = normal_graph(metadata, args.root_package)
+    selected = normal
+    if args.graph_scope == "tree-normal-build":
+        tree = live_tree(workspace, args.target, args.root_package, feature_args)
+        selected = resolve_tree(metadata, tree, args.root_package)
+    selection = {
+        "mode": args.graph_scope,
+        "toolchain": live_toolchain()
+        if not args.metadata
+        else {"evidence": "fixture", "cargo_version": None, "rustc_host": None},
+        "feature_arguments": feature_args,
+        "edge_kinds": ["normal", "build"]
+        if args.graph_scope == "tree-normal-build"
+        else ["normal"],
+        "metadata_normal_ids": [package["id"] for package in normal],
+        "selected_ids": [package["id"] for package in selected],
+    }
+    return metadata, selected, selection
+
+
+def main() -> int:
+    args = parse_arguments()
     try:
+        bad = [p for p in args.forbid_package if not PACKAGE_PATTERN.fullmatch(p)]
+        if bad:
+            raise ValueError(f"invalid --forbid-package pattern: {bad[0]!r}")
+        if args.max_runtime_packages is not None and args.max_runtime_packages < 1:
+            raise ValueError("--max-runtime-packages counts the root, so it needs at least 1")
         workspace = args.workspace.resolve(strict=True)
         policy = load_json(args.policy)
         if policy.get("version") != 1 or not isinstance(policy.get("packages"), dict):
@@ -394,34 +537,8 @@ def main() -> int:
         feature_args = feature_arguments(
             args.features, args.all_features, args.no_default_features
         )
-        if args.metadata and (args.graph_scope != "metadata-normal" or feature_args):
-            raise ValueError(
-                "precomputed metadata is only supported for the default fixture scope and feature selection"
-            )
-        metadata = (
-            load_json(args.metadata)
-            if args.metadata
-            else cargo_metadata(workspace, args.target, feature_args)
-        )
-        if Path(metadata["workspace_root"]).resolve() != workspace:
-            raise ValueError("Cargo metadata belongs to a different workspace")
-        normal = normal_graph(metadata, args.root_package)
-        selected = normal
-        if args.graph_scope == "tree-normal-build":
-            tree = live_tree(workspace, args.target, args.root_package, feature_args)
-            selected = resolve_tree(metadata, tree, args.root_package)
-        selection = {
-            "mode": args.graph_scope,
-            "toolchain": live_toolchain()
-            if not args.metadata
-            else {"evidence": "fixture", "cargo_version": None, "rustc_host": None},
-            "feature_arguments": feature_args,
-            "edge_kinds": ["normal", "build"]
-            if args.graph_scope == "tree-normal-build"
-            else ["normal"],
-            "metadata_normal_ids": [package["id"] for package in normal],
-            "selected_ids": [package["id"] for package in selected],
-        }
+        metadata, selected, selection = select_graph(args, workspace, feature_args)
+        runtime = graph_gates(args, workspace, feature_args, metadata, selected)
         inventory = collect_sources(selected, workspace, policy["packages"])
         stage_inventory(
             inventory, args.output_dir, args.target, args.root_package, selection
@@ -439,6 +556,10 @@ def main() -> int:
     print(
         f"PASS: staged original license files for {len(inventory)} Cargo packages in {args.output_dir}"
     )
+    if args.max_runtime_packages is not None:
+        print(
+            f"PASS: {runtime} runtime Cargo packages, within the budget of {args.max_runtime_packages}"
+        )
     return 0
 
 

@@ -158,6 +158,33 @@ class CargoTreeTests(unittest.TestCase):
             len(selection["selected_ids"]), len(selection["metadata_normal_ids"])
         )
 
+    def test_real_graph_gates_budget_normal_edges_and_print_forbidden_paths(
+        self,
+    ) -> None:
+        result = self.run_collector("budget", "--max-runtime-packages", "4")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PASS: 4 runtime Cargo packages, within the budget of 4", result.stdout)
+        result = self.run_collector(
+            "budget-lean", "--no-default-features", "--max-runtime-packages", "3"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PASS: 3 runtime Cargo packages", result.stdout)
+        for name, args, message in (
+            ("refused-over", ("--max-runtime-packages", "3"), "4 runtime Cargo packages exceed the budget of 3"),
+            ("refused-helper", ("--forbid-package", "help*"), "helper@0.1.0 (help*): app@0.1.0 -> helper@0.1.0"),
+            (
+                "refused-builder",
+                ("--graph-scope", "tree-normal-build", "--forbid-package", "builder"),
+                "builder@0.1.0 (builder): app@0.1.0 -> builder@0.1.0",
+            ),
+        ):
+            result = self.run_collector(name, *args)
+            self.assertEqual(result.returncode, 1, result.stdout)
+            self.assertIn(message, result.stderr)
+            self.assertFalse((self.root / name).exists())
+        result = self.run_collector("unselected", "--forbid-package", "builder")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_invalid_features_and_untrusted_metadata_fail_without_output(self) -> None:
         for i, args in enumerate(
             (
