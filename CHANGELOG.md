@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — one file of OpenAI stream lines for every binding (CON237 item 3)
+
+- Rust and Python read stream lines differently: a chunk that is no JSON failed Rust's stream and was skipped by
+  Python, and an `error:` line failed Python's and was ignored by Rust. `shared/contracts/openai-stream-lines.json`
+  holds eleven cases with their events or error; owner decision 2026-11-19: both fail the stream.
+  `test-openai-stream-lines.sh` holds its shape.
+
 ## 2026-11-19 — Home Assistant keeps the cat cams' model time (CON253, in source)
 
 - `configuration.yaml` reads each cam's `/healthz` `stats` as Modellzeit, Bildrate and CPU sensors with

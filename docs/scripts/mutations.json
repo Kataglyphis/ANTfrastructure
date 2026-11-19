@@ -40457,6 +40457,14 @@
   "why": "a doctor that lists findings and exits 0 reads as clean to any caller"
  },
  {
+  "id": "lib.openai-stream-lines-shape",
+  "target": "shared/contracts/openai-stream-lines.json",
+  "find": "\"expect\": {\"text\": \"cut\", \"thinking\": \"\", \"finish\": \"length\"",
+  "replace": "\"expect\": {\"text\": \"cut\", \"thinking\": \"\", \"finish\": \"truncated\"",
+  "test": "bash linux/scripts/tests/test-openai-stream-lines.sh",
+  "why": "two readers in two languages replay this file; a finish reason neither knows must fail here, not as a skipped case there"
+ },
+ {
   "id": "amd64-v3.gcc-arch-default",
   "target": "linux/scripts/02-toolchain/build-gcc.sh",
   "find": "_gcc_config_opt \"--with-arch=\" \"${X86_64_GCC_ARCH-x86-64-v3}\"",

@@ -47,6 +47,13 @@ Each binding offers the same calls against the backends it has:
 | C++, C | AccelerANTgine | `Src/text_generation.cpp` | none |
 | Dart | OmniAccelerANT | through OxidANT's bridge (`lib/src/rust/api/text.dart`) | the playground's `endpoint_chat.dart` |
 
+**The stream lines.** [`shared/contracts/openai-stream-lines.json`](../shared/contracts/openai-stream-lines.json)
+holds OpenAI chat stream lines with what a reader makes of them: text and thinking deltas, the finish reason,
+usage and whether `[DONE]` arrived, or the error. `data:` without a space, a usage-only chunk, keep-alives, a stream
+cut before `[DONE]`, reasoning under either name, an error object, a plain-text error, an `error:` line and a chunk
+that is no JSON are its cases. Owner decision 2026-11-19: a chunk that is no JSON fails the stream, and an `error:`
+line is the server's error. OxidANT's `endpoint.rs` and OrchestrANT's `answers.py` replay every case.
+
 | Call | Contract |
 |---|---|
 | generate | Messages (`system`, `user`, `assistant`, `tool`) and options in; text deltas out through a callback or a stream. The chat template is the model's own. |
