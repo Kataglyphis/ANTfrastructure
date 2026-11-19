@@ -201,8 +201,9 @@ def contract_sha(co: Checkout, name: str) -> tuple[str, str] | None:
                     return cols[0], rel
     copies = git(co.path, "ls-files", "--", f":(glob)**/{name}", ":(exclude)third_party").stdout.split()
     if copies:
-        with open(os.path.join(co.path, sorted(copies)[0]), "rb") as fh:
-            return hashlib.sha256(fh.read()).hexdigest(), sorted(copies)[0]
+        first = min(copies)
+        with open(os.path.join(co.path, first), "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest(), first
     pin = git(co.path, "ls-tree", "HEAD", MODELANT_GITLINK).stdout.split()
     if len(pin) >= 3:
         blob = subprocess.run(["git", "-C", os.path.join(co.path, MODELANT_GITLINK), "cat-file", "blob",
