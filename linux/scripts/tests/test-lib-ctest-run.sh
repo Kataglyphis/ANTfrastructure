@@ -20,24 +20,36 @@ t_case "ctest_run_main marks the workspace safe, enters the build tree and runs 
 lc_call out rc "${LIB}" 'ctest_run_main'
 t_assert_eq "0" "${rc}"
 t_assert_eq "${SAFE}
-ctest -C Debug ${FLAGS}
+ctest -C Debug ${FLAGS} --timeout 1500
 cwd build" "$(lc_argv)"
 t_assert_contains "${out}" "Changing to build directory: build"
-t_assert_contains "${out}" "Executing: ctest -C Debug ${FLAGS}"
+t_assert_contains "${out}" "Executing: ctest -C Debug ${FLAGS} --timeout 1500"
 
 t_case "flags pick the tree, configuration and exclusion; everything after -- is passed on"
 lc_reset
 lc_call out rc "${LIB}" 'ctest_run_main --build-dir tree --build-type Release --ctest-exclude slow -- -R unit -j4'
 t_assert_eq "${SAFE}
-ctest -C Release ${FLAGS} -E slow -R unit -j4
+ctest -C Release ${FLAGS} -E slow --timeout 1500 -R unit -j4
 cwd tree" "$(lc_argv)"
 t_assert_contains "${out}" "Excluding tests matching: slow"
 
 t_case "the environment and caller defaults sit below the flags"
 lc_reset
 lc_call out rc "${LIB}" 'CTEST_RUN_DEFAULT_ARGS=(--no-tests=error); BUILD_TYPE=RelWithDebInfo CTEST_RUN_SAFE_DIRECTORY= ctest_run_main'
-t_assert_eq "ctest -C RelWithDebInfo --no-tests=error
-cwd build" "$(lc_argv)" "CTEST_RUN_DEFAULT_ARGS replaces the built-ins; an empty safe directory skips git"
+t_assert_eq "ctest -C RelWithDebInfo --no-tests=error --timeout 1500
+cwd build" "$(lc_argv)" "CTEST_RUN_DEFAULT_ARGS replaces the built-ins, not the per-test limit; an empty safe directory skips git"
+
+t_case "a hung test ends named: the per-test limit has a default, and a caller's own value replaces it"
+lc_reset
+lc_call out rc "${LIB}" 'ctest_run_main --timeout 90'
+t_assert_eq "ctest -C Debug ${FLAGS} --timeout 90" "$(lc_argv | grep -e '^ctest')"
+lc_reset
+lc_call out rc "${LIB}" 'CTEST_RUN_DEFAULT_TIMEOUT=600 ctest_run_main -- --timeout 30'
+t_assert_eq "ctest -C Debug ${FLAGS} --timeout 30" "$(lc_argv | grep -e '^ctest')" "one --timeout, the caller's"
+lc_reset
+lc_call out rc "${LIB}" 'ctest_run_main --timeout 0'
+t_assert_eq "ctest -C Debug ${FLAGS}" "$(lc_argv | grep -e '^ctest')" "0 sets none"
+lc_expect 1 "--timeout needs whole seconds, got: soon" "${LIB}" 'ctest_run_main --timeout soon'
 
 t_case "ctest's status is the function's, and a missing tree or unknown flag fails first"
 lc_fail ctest 8

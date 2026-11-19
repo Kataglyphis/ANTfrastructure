@@ -33521,6 +33521,22 @@
   "why": "without the safe.directory step git refuses the bind-mounted tree and tests that call git fail"
  },
  {
+  "id": "lib.ctest-run-default-timeout",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "  CTEST_TIMEOUT=\"${CTEST_TIMEOUT:-${CTEST_RUN_DEFAULT_TIMEOUT:-1500}}\"",
+  "replace": "  CTEST_TIMEOUT=\"${CTEST_TIMEOUT:-${CTEST_RUN_DEFAULT_TIMEOUT:-0}}\"",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "without a default a hung C++ test ends at the lane's 60 to 150 minute limit, without its name"
+ },
+ {
+  "id": "lib.ctest-run-caller-timeout-wins",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": " && \" ${CTEST_RUN_PASSTHROUGH[*]:-} \" != *\" --timeout \"* ]]; then",
+  "replace": " ]]; then",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "a caller's own --timeout after -- must be the one ctest applies, not a second competing one"
+ },
+ {
   "id": "lib.docs-main-stages-svg",
   "target": "linux/scripts/lib/docs-build.sh",
   "find": "  docs_build_copy_static_svg || return $?\n  docs_build_run_generator || return $?\n",

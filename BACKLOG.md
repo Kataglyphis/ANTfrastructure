@@ -2430,9 +2430,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 - [ ] **CON250 — the shared test runners name a hang and report per test** [M, ★★]. Found by the audit of
       2026-11-12, each read in the hub's code:
-      1. `linux/scripts/lib/ctest-run.sh` sets no `--timeout` (a caller can pass one after `--`), so a hung
-         C++ test ends at the lane's limit of 60 to 150 minutes without a test name. Add a default that a
-         caller's own value replaces.
+      1. Done 2026-11-19: `ctest-run.sh` passes `--timeout 1500` unless the caller sets `--timeout`
+         (flag, env, caller default or after `--`). AccelerANTgine's main lane keeps its 300 s; its riscv64
+         lane, which set none, gets 1500 s at its next pin bump.
       2. `linux/scripts/02-toolchain/rust/cargo_test.sh` runs `cargo test --all --verbose` and writes no
          result file, so OxidANT's test counts and durations are recorded nowhere. Write per-test JUnit from
          the output, for every Rust consumer, with no new tool in the image.

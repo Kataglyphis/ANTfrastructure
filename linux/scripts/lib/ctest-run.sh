@@ -28,6 +28,7 @@ ${CTEST_RUN_USAGE_INTRO:-Runs the ctest suite of a CMake project.} Options:
   --build-dir DIR          build tree to run ctest in (default: ${CTEST_RUN_DEFAULT_BUILD_DIR:-build})
   --build-type CONFIG      value for ctest -C (default: ${CTEST_RUN_DEFAULT_BUILD_TYPE:-Debug})
   --ctest-exclude REGEX    value for ctest -E (default: ${CTEST_RUN_DEFAULT_EXCLUDE:-<none>})
+  --timeout SECONDS        per-test limit, ctest --timeout; 0 sets none (default: ${CTEST_RUN_DEFAULT_TIMEOUT:-1500})
 EOF
   vulkan_env_cli_usage
   cat <<EOF
@@ -58,6 +59,7 @@ ctest_run_parse_args() {
     [--build-dir]=BUILD_DIR
     [--build-type]=BUILD_TYPE
     [--ctest-exclude]=CTEST_EXCLUDE
+    [--timeout]=CTEST_TIMEOUT
   )
   parse_cli_value_options _value_options CTEST_RUN_PASSTHROUGH _ctest_run_other_arg "$@"
 
@@ -65,6 +67,9 @@ ctest_run_parse_args() {
   BUILD_DIR="${BUILD_DIR:-${BUILD_DIR_DEFAULT:-${CTEST_RUN_DEFAULT_BUILD_DIR-build}}}"
   BUILD_TYPE="${BUILD_TYPE:-${BUILD_TYPE_DEFAULT:-${CTEST_RUN_DEFAULT_BUILD_TYPE:-Debug}}}"
   CTEST_EXCLUDE="${CTEST_EXCLUDE:-${CTEST_EXCLUDE_DEFAULT:-${CTEST_RUN_DEFAULT_EXCLUDE:-}}}"
+  # CTest's own DART_TESTING_TIMEOUT: a hung test ends named, not at the lane's 60 to 150 minute limit.
+  CTEST_TIMEOUT="${CTEST_TIMEOUT:-${CTEST_RUN_DEFAULT_TIMEOUT:-1500}}"
+  [[ "${CTEST_TIMEOUT}" =~ ^[0-9]+$ ]] || err "--timeout needs whole seconds, got: ${CTEST_TIMEOUT}"
 }
 
 # Environment preparation: git refuses a host-owned bind mount until it is marked safe.
@@ -86,6 +91,11 @@ ctest_run_build_command() {
   if [[ -n "${CTEST_EXCLUDE}" ]]; then
     info "Excluding tests matching: ${CTEST_EXCLUDE}"
     CTEST_CMD+=(-E "${CTEST_EXCLUDE}")
+  fi
+
+  # A --timeout the caller passes after -- is the one ctest applies.
+  if [[ "${CTEST_TIMEOUT}" != 0 && " ${CTEST_RUN_PASSTHROUGH[*]:-} " != *" --timeout "* ]]; then
+    CTEST_CMD+=(--timeout "${CTEST_TIMEOUT}")
   fi
 
   CTEST_CMD+=("${CTEST_RUN_PASSTHROUGH[@]:+${CTEST_RUN_PASSTHROUGH[@]}}")

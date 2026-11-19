@@ -697,6 +697,7 @@ uses.
 | `CTEST_RUN_DEFAULT_BUILD_DIR` | build tree to `cd` into; empty means "stay here" | `build` |
 | `CTEST_RUN_DEFAULT_BUILD_TYPE` | value for `ctest -C` | `Debug` |
 | `CTEST_RUN_DEFAULT_EXCLUDE` | default `ctest -E` regex | none |
+| `CTEST_RUN_DEFAULT_TIMEOUT` | per-test `ctest --timeout` in seconds (`--timeout`, env `CTEST_TIMEOUT`); `0` sets none, and a `--timeout` after `--` replaces it. A test's own `TIMEOUT` property wins over both | `1500`, CTest's own `DART_TESTING_TIMEOUT`: a hung test ends named, not at the lane's limit |
 | `CTEST_RUN_DEFAULT_ARGS` | ctest flags when the caller does not override them | maximally loud on purpose — a container test run is only debuggable through its log |
 | `CTEST_RUN_SAFE_DIRECTORY` | git `safe.directory`; empty disables | `/workspace` |
 | `CTEST_RUN_USAGE_INTRO` | one-line description shown in `--help` | — |
