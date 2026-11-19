@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-19 — select an explicit mirror for isolated source proofs
+
+- Add an optional Ubuntu mirror URL to the isolated runner, record it and forward exactly one bootstrap value. Use the existing Ubuntu mirror rewriter before apt; the default retains the image's source configuration and signed metadata. Refuse malformed or credential-bearing URLs before output allocation.
+- Retain closed, ignored quality environments on existing tmpfs through a repository-owned relocation helper. Preserve canonical GNU tar bytes, refuse shared cache inodes and retain an empty original mountpoint. This does not preserve volatile tools across reboots or qualify builds; sources, locks, persistent caches and original outputs remain separate.
+- Add actual prefix/command fixtures for mirror ordering, defaults and raw failure, plus isolated environment-retention controls and mutations. The Media control driver includes these preserved suites; they do not replace a full preflight or image/hardware acceptance.
+
 ## 2026-11-19 — prepare the six WebGPU Media command profiles
 
 - Share canonical stage argument construction while retaining the existing ordinary launcher's ROCm/amd64 refusals. Add explicit default amd64/arm64/riscv64, ROCm amd64 and NVIDIA amd64/SBSA arm64 Media profiles, immutable local parents and absolute paths.

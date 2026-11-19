@@ -98,6 +98,27 @@ owns this workflow; cleanup does not create source, image or hardware acceptance
 
 ## Media profile source controls
 
+The isolated `run-isolated-preflight.py` runner accepts
+`--fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/` when an operator
+has checked the endpoint. It records the exact URL and uses the existing shared
+Ubuntu source rewriter before package bootstrap. The default sends an empty
+bootstrap value and keeps the image's original APT sources. URL validation refuses
+non-HTTP(S), credentials, malformed ports, whitespace, queries and fragments.
+The rewrite retains suites, components and `Signed-By`; APT still verifies its
+normal metadata. Changing mirrors does not qualify packages or a source run.
+
+For a closed disposable `quality/.venv`, use
+`linux/host-config/relocate-quality-venv.py --environment PATH --target TMPFS_PATH
+--directory FRESH_PROOF`. The environment must be unversioned and ignored by its
+owning Git repository; the target must be a fresh `ant-quality-venv-*` directory
+on a different existing tmpfs. Hardlinks shared with a cache and special files
+are refused. Canonical GNU tar hashes compare contents, names, links and archive
+metadata before and after the move. The original directory becomes an empty
+container mountpoint; bind the retained environment there in matching tool
+images. This assumes the environment is closed and has no concurrent writer.
+Keep its lock and persistent download cache. Volatile environments need recreation
+after reboot and supply no source, build or runtime acceptance.
+
 Run `local-proof/run-media-lane-controls.sh PROOF_DIRECTORY SELECTED_MUTATIONS`
 inside the selected family tool image. The proof directory must exist, the
 selected manifest must be a file, and neither the captured source patch nor the

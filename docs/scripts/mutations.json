@@ -56004,5 +56004,229 @@
   "replace": "dirty_worktree=\"$(git diff --name-only --ignore-submodules=all || true)\"",
   "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
   "why": "A failing final Git probe must retain its raw47 status and cannot publish a success sentinel. Isolated command fixtures do not prove actual source or image acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.preflight-mirror-url-type",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "type=mirror_url, help=",
+  "replace": "help=",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.preflight-mirror-port",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "        _ = parsed.port",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.preflight-mirror-url-refusal",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "    if (parsed.scheme not in {\"http\", \"https\"} or not parsed.hostname or parsed.username is not None\n            or parsed.password is not None or parsed.query or parsed.fragment or any(char.isspace() for char in value)):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.preflight-mirror-forward",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "{args.fast_ubuntu_mirror_url or ''}",
+  "replace": "{''}",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.preflight-mirror-default-clear",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "            \"--env\", f\"ISOLATED_PREFLIGHT_UBUNTU_MIRROR_URL={args.fast_ubuntu_mirror_url or ''}\",\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.preflight-mirror-record",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "\"fast_ubuntu_mirror_url\": args.fast_ubuntu_mirror_url,",
+  "replace": "\"fast_ubuntu_mirror_url\": None,",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.preflight-mirror-bootstrap-enabled",
+  "target": "linux/scripts/isolated-preflight/bootstrap.sh",
+  "find": "if [ -n \"${ISOLATED_PREFLIGHT_UBUNTU_MIRROR_URL:-}\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.preflight-mirror-bootstrap-optin",
+  "target": "linux/scripts/isolated-preflight/bootstrap.sh",
+  "find": "USE_FAST_UBUNTU_MIRROR=true",
+  "replace": "USE_FAST_UBUNTU_MIRROR=false",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.preflight-mirror-bootstrap-order",
+  "target": "linux/scripts/isolated-preflight/bootstrap.sh",
+  "find": "configure_preflight_mirror /source/linux/scripts\napt-get update",
+  "replace": "apt-get update\nconfigure_preflight_mirror /source/linux/scripts",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.preflight-mirror-bootstrap-raw-failure",
+  "target": "linux/scripts/isolated-preflight/bootstrap.sh",
+  "find": "      bash \"$1/01-core/use-fast-ubuntu-mirror.sh\"",
+  "replace": "      bash \"$1/01-core/use-fast-ubuntu-mirror.sh\" || true",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-admission-01",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "    assert source.is_absolute() and source == source.resolve(strict=True) and not source.is_symlink(), 'Environment path must be literal and absolute'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-admission-02",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "    assert source.name == '.venv' and source.parent.name == 'quality' and (source / 'pyvenv.cfg').is_file(), 'Select only a quality virtual environment'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-admission-03",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "    assert (repo / 'AGENTS.md').is_file() and (repo / 'quality/uv.lock').is_file(), 'Owning source and lock are required'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-admission-04",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "    assert not tracked, 'Never relocate versioned files'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-admission-05",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "    assert target.is_absolute() and target.parent == target.parent.resolve(strict=True), 'Destination parent must be literal and absolute'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-admission-06",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "    assert target.name.startswith('ant-quality-venv-') and not target.exists() and not target.is_symlink(), 'Preserve existing destinations'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-admission-07",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "    assert not output.exists() and not output.is_symlink(), 'Preserve existing relocation evidence'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-admission-08",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "    assert kinds == {'tmpfs'} and source.stat().st_dev != device, 'Select a different existing tmpfs filesystem'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-admission-09",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "                assert entry.st_nlink == 1, 'Preserve shared cache inodes'",
+  "replace": "                pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-admission-10",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "                assert stat.S_ISDIR(entry.st_mode) or stat.S_ISLNK(entry.st_mode), 'Only directories, regular files and links are supported'",
+  "replace": "                pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-admission-11",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "    assert free.f_bavail * free.f_frsize >= allocated + 1024**3, 'Retain one GiB of tmpfs headroom'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-admission-12",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "    assert not source.exists() and target.is_dir() and not target.is_symlink(), 'Relocation did not complete'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-admission-13",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "    assert tree_digest(target) == before, 'Retained environment bytes or metadata differ'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-ignore-policy",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "'quality/.venv'], check=True, timeout=20)",
+  "replace": "'quality/.venv'], check=False, timeout=20)",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-archive-raw-failure",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "        if status:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.media-controls-mirror-suite",
+  "target": "linux/scripts/local-proof/run-media-lane-controls.sh",
+  "find": " proof-workflows relocate-quality-venv; do",
+  "replace": " relocate-quality-venv; do",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.media-controls-relocation-suite",
+  "target": "linux/scripts/local-proof/run-media-lane-controls.sh",
+  "find": " proof-workflows relocate-quality-venv; do",
+  "replace": " proof-workflows; do",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Synthetic refusal and transport controls must fail when the guarded rule is removed; no network availability, host reclamation, image acceptance or hardware inference is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.quality-venv-archive-content-hash",
+  "target": "linux/host-config/relocate-quality-venv.py",
+  "find": "            digest.update(chunk)",
+  "replace": "            pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Real GNU tar controls change file bytes with identical size and mtime, restore them, and change permissions. A constant empty-stream digest must fail; this does not prove host reclamation, concurrent writers or reboot persistence."
  }
 ]

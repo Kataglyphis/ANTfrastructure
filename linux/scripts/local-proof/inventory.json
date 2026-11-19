@@ -569,13 +569,19 @@
       "name": "run-media-lane-controls.sh",
       "classification": "versioned",
       "canonical": "linux/scripts/local-proof/run-media-lane-controls.sh",
-      "original_sha256": "a7f7fd0ea74f8c0c995fc5ac93f4cec5ac0e2cdb661f6d1a7fbd3f27098ce0ee"
+      "original_sha256": "ca568c8fa19fbd603f120d50a542168e3eb5b6e664f5e3906fb914d42250c44f"
     },
     {
       "name": "webgpu_media_lanes.py",
       "classification": "versioned",
       "canonical": "linux/scripts/local-proof/webgpu_media_lanes.py",
       "original_sha256": "a9d904f490d35463ce185bae3e9ca16c36904bec9debc073324e917fa8f218e0"
+    },
+    {
+      "name": "relocate-quality-venv.py",
+      "classification": "versioned",
+      "canonical": "linux/host-config/relocate-quality-venv.py",
+      "original_sha256": "1714712d6428b52a6fedf1112695a9c4208a45be6c98402832ef9809720a7044"
     }
   ],
   "new_canonical_files": [

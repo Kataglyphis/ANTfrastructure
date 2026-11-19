@@ -12,6 +12,7 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from host_commands import checked_output, run_logged
 from owned_containers import OwnedContainers
@@ -19,6 +20,18 @@ from owned_containers import OwnedContainers
 ROOT = Path(__file__).resolve().parents[2]
 BOOTSTRAP = Path("linux/scripts/isolated-preflight/bootstrap.sh")
 OWNER_LABEL = "org.kataglyphis.isolated-preflight"
+
+
+def mirror_url(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+        _ = parsed.port
+    except ValueError:
+        raise argparse.ArgumentTypeError("mirror must be an absolute HTTP(S) URL without credentials") from None
+    if (parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username is not None
+            or parsed.password is not None or parsed.query or parsed.fragment or any(char.isspace() for char in value)):
+        raise argparse.ArgumentTypeError("mirror must be an absolute HTTP(S) URL without credentials, query or fragment")
+    return value
 
 
 def arguments() -> argparse.Namespace:
@@ -31,6 +44,7 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--memory", default="12g")
     parser.add_argument("--image", help="explicit tool image instead of the pinned Ubuntu base")
     parser.add_argument("--native-tools-cache", type=Path, help="read-only pinned Flutter/Dart cache prefix")
+    parser.add_argument("--fast-ubuntu-mirror-url", type=mirror_url, help="explicit Ubuntu archive/security mirror for package bootstrap")
     parser.add_argument("--engine", default=shutil.which("nerdctl") or shutil.which("docker") or "nerdctl")
     args = parser.parse_args()
     if args.jobs < 1 or not re.fullmatch(r"[1-9][0-9]*[kmg]", args.memory):
@@ -84,6 +98,7 @@ def container_args(args: argparse.Namespace, source: Path, reports: Path, sha: s
             "--cpus", str(args.jobs), "--memory", args.memory, "--shm-size", "1g", "--user", "0:0",
             "--entrypoint", "/bin/bash", "--env", f"ISOLATED_PREFLIGHT_REVISION={sha}",
             "--env", f"ISOLATED_PREFLIGHT_JOBS={args.jobs}",
+            "--env", f"ISOLATED_PREFLIGHT_UBUNTU_MIRROR_URL={args.fast_ubuntu_mirror_url or ''}",
             "-v", f"{source}:/source:ro", "-v", f"{reports}:/evidence", *mounts, image, f"/source/{BOOTSTRAP}"]
 
 
@@ -109,6 +124,7 @@ def run(args: argparse.Namespace) -> int:
               "image": image, "container": args.name, "owner_run_id": run_id, "jobs": args.jobs, "memory": args.memory,
               "image_selection": "explicit" if args.image else "pinned-ubuntu",
               "native_tools_cache": str(args.native_tools_cache) if args.native_tools_cache else None,
+              "fast_ubuntu_mirror_url": args.fast_ubuntu_mirror_url,
               "started_at": datetime.datetime.now(datetime.UTC).isoformat(),
               "bootstrap_sha256": hashlib.sha256((source / BOOTSTRAP).read_bytes()).hexdigest()}
     metadata = args.output / "run.json"

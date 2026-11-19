@@ -3,6 +3,14 @@
 set -euo pipefail
 task_source=/tmp/isolated-preflight-source
 export DEBIAN_FRONTEND=noninteractive
+: "${ISOLATED_PREFLIGHT_UBUNTU_MIRROR_URL:=}"
+configure_preflight_mirror() {
+  if [ -n "${ISOLATED_PREFLIGHT_UBUNTU_MIRROR_URL:-}" ]; then
+    USE_FAST_UBUNTU_MIRROR=true FAST_UBUNTU_MIRROR_URL="${ISOLATED_PREFLIGHT_UBUNTU_MIRROR_URL}" \
+      bash "$1/01-core/use-fast-ubuntu-mirror.sh"
+  fi
+}
+configure_preflight_mirror /source/linux/scripts
 apt-get update
 apt-get install -y --no-install-recommends ca-certificates curl git make build-essential binutils \
   patchelf file xz-utils zip unzip pkg-config python3 python3-venv sudo util-linux \

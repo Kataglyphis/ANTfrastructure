@@ -84,6 +84,9 @@ class ToolTests(unittest.TestCase):
                     (proof / 'selected-mutations.json').write_text('preserved manifest')
                 result = self.run_media_control(script, proof, manifest)
                 self.assertEqual(result.returncode, {'passed':0, 'existing-manifest':1, 'failed-phase':47}[case], result.stderr)
+                suite_calls = {Path(row['args'][0]).name for row in map(json.loads, trace.read_text().splitlines())
+                               if row['program'] == 'bash'}
+                self.assertTrue({'test-proof-workflows.sh', 'test-relocate-quality-venv.sh'} <= suite_calls)
                 calls = [row for row in map(json.loads, trace.read_text().splitlines())
                          if row['program'] == 'bash' and Path(row['args'][0]).name == 'source-check.sh']
                 self.assertEqual(len(calls), 0 if case == 'existing-manifest' else 1)

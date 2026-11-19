@@ -16,7 +16,7 @@ bash linux/scripts/tests/test-doc-numbers.sh --update > "${proof_dir}/doc-number
 git add -- AGENTS.md docs/code-quality-tooling.md docs/cross-build-verification.md
 git diff --cached --full-index --binary > "${proof_dir}/as-tested-source.patch"
 git ls-files --stage -z > "${proof_dir}/index-before.bin"
-for suite in webgpu-media-lanes normal-stage-launch gpu-handoff media-handoff sccache-s3-level-environment; do
+for suite in webgpu-media-lanes normal-stage-launch gpu-handoff media-handoff sccache-s3-level-environment proof-workflows relocate-quality-venv; do
   bash "linux/scripts/tests/test-${suite}.sh" > "${proof_dir}/${suite}.log" 2>&1
 done
 test ! -e "${proof_dir}/selected-mutations.json"

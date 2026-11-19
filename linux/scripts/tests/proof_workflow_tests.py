@@ -5,6 +5,7 @@ import argparse
 import importlib.util
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -60,7 +61,8 @@ class EngineFixture(unittest.TestCase):
 class RunnerTests(EngineFixture):
     def runner_args(self) -> argparse.Namespace:
         return argparse.Namespace(revision=REVISION, output=self.output, name="a-retained-run",
-                                  jobs=4, memory="12g", engine=str(self.engine), image=None, native_tools_cache=None, run_id="1" * 32)
+                                  jobs=4, memory="12g", engine=str(self.engine), image=None, native_tools_cache=None,
+                                  fast_ubuntu_mirror_url=None, run_id="1" * 32)
 
     def run_fixture(self, mode: str, args: argparse.Namespace | None = None) -> tuple[int, dict[str, object], list[list[str]]]:
         args = args or self.runner_args()
@@ -86,6 +88,69 @@ class RunnerTests(EngineFixture):
         self.assertIn(f"{self.output / 'reports'}:/evidence", run)
         self.assertNotIn(f"{self.output}:/evidence", run)
         self.assertIn(["rm", "--force", "a" * 64], commands)
+        self.assertIn('ISOLATED_PREFLIGHT_UBUNTU_MIRROR_URL=', run)
+        self.assertIsNone(record['fast_ubuntu_mirror_url'])
+
+    def test_explicit_mirror_reaches_one_container_environment_and_receipt(self) -> None:
+        args = self.runner_args()
+        args.fast_ubuntu_mirror_url = 'http://de.archive.ubuntu.com/ubuntu/'
+        status, record, commands = self.run_fixture('success', args)
+        self.assertEqual(status, 0)
+        self.assertEqual(record['fast_ubuntu_mirror_url'], args.fast_ubuntu_mirror_url)
+        run = next(argv for argv in commands if argv[0] == 'run')
+        values = [value for value in run if value.startswith('ISOLATED_PREFLIGHT_UBUNTU_MIRROR_URL=')]
+        self.assertEqual(values, ['ISOLATED_PREFLIGHT_UBUNTU_MIRROR_URL=' + args.fast_ubuntu_mirror_url])
+
+    def test_mirror_argument_refusals_precede_output_allocation(self) -> None:
+        base = ['runner', '--output', str(self.output), '--name', 'fixture', '--fast-ubuntu-mirror-url']
+        for value in ['file:///tmp/mirror', 'http://', 'http://user:password@mirror.invalid/ubuntu/',
+                      'http://mirror.invalid/ubuntu/?key=value', 'http://mirror.invalid/ubuntu/#part',
+                      'http://mirror.invalid/with space', 'http://[broken', 'http://mirror.invalid:bad/ubuntu/']:
+            with self.subTest(value=value), patch.object(sys, 'argv', [*base, value]), self.assertRaises(SystemExit) as error:
+                RUNNER.arguments()
+            self.assertEqual(error.exception.code, 2)
+            self.assertFalse(self.output.exists())
+        for value in ['http://de.archive.ubuntu.com/ubuntu/', 'https://mirror.invalid/ubuntu/']:
+            with self.subTest(value=value), patch.object(sys, 'argv', [*base, value]):
+                self.assertEqual(RUNNER.arguments().fast_ubuntu_mirror_url, value)
+
+    def test_bootstrap_mirror_precedes_apt_preserves_sources_and_raw_failure(self) -> None:
+        text = (SCRIPTS / 'isolated-preflight/bootstrap.sh').read_text()
+        prefix = text.split('apt-get install', 1)[0]
+        anchor = 'configure_preflight_mirror /source/linux/scripts'
+        self.assertEqual(prefix.count(anchor), 1)
+        for mode in ['disabled', 'enabled', 'failed']:
+            with self.subTest(mode=mode):
+                root = self.root / mode
+                core = root / 'scripts/01-core'
+                core.mkdir(parents=True)
+                for name in ['use-fast-ubuntu-mirror.sh', 'ubuntu-mirror.sh', 'platform.sh']:
+                    shutil.copy2(SCRIPTS / '01-core' / name, core / name)
+                if mode == 'failed':
+                    (core / 'use-fast-ubuntu-mirror.sh').write_text('#!/bin/bash\nexit 47\n')
+                sources = root / 'etc/apt/sources.list.d/ubuntu.sources'
+                sources.parent.mkdir(parents=True)
+                original = ('Types: deb\nURIs: http://archive.ubuntu.com/ubuntu/ http://security.ubuntu.com/ubuntu/\n'
+                            'Suites: resolute resolute-updates resolute-security\nComponents: main\n'
+                            'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n')
+                sources.write_text(original)
+                apt = root / 'apt-get'
+                apt.write_text('#!/bin/bash\ncat "$UBUNTU_SOURCES_ROOT/etc/apt/sources.list.d/ubuntu.sources" > "$APT_TRACE"\n')
+                apt.chmod(0o755)
+                trace = root / 'apt-trace'
+                script = root / 'bootstrap-prefix.sh'
+                script.write_text(prefix.replace(anchor, 'configure_preflight_mirror ' + shlex.quote(str(root / 'scripts'))))
+                environment = dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'],
+                                   UBUNTU_SOURCES_ROOT=str(root), APT_TRACE=str(trace),
+                                   ISOLATED_PREFLIGHT_UBUNTU_MIRROR_URL='' if mode == 'disabled' else 'http://de.archive.ubuntu.com/ubuntu/')
+                result = subprocess.run(['bash', str(script)], env=environment, capture_output=True, text=True, timeout=30, check=False)
+                self.assertEqual(result.returncode, 47 if mode == 'failed' else 0, result.stderr)
+                if mode == 'failed':
+                    self.assertFalse(trace.exists())
+                else:
+                    expected = original if mode == 'disabled' else original.replace('http://archive.ubuntu.com/ubuntu/', 'http://de.archive.ubuntu.com/ubuntu/').replace('http://security.ubuntu.com/ubuntu/', 'http://de.archive.ubuntu.com/ubuntu/')
+                    self.assertEqual(trace.read_text(), expected)
+                    self.assertEqual(sources.read_text(), expected)
 
     def test_explicit_image_and_readonly_native_cache_reach_the_canonical_runner(self) -> None:
         args = self.runner_args()
