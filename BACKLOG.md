@@ -608,7 +608,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Item 3 done 2026-11-19: `shared/contracts/openai-stream-lines.json` (owner decisions that day: a chunk that is no
       JSON fails the stream, an `error:` line is the server's error), replayed by OxidANT 2afd994
       (`crates/text/tests/stream_lines.rs`) and OrchestrANT 985c0d6 (`test_stream_lines_contract.py`); Dart later.
-      Left: item 4.
+      Item 4 in the hub 2026-11-20 (owner: all three bindings at once): `fixture.json`'s `cases`, seven of them;
+      left: AccelerANTgine, OxidANT and OrchestrANT replay them at their pin bump.
       Items 1 and 2 done 2026-11-19: the page names each binding's backends and says `:winamd64` ships
       llguidance; `fixture.json` carries `schema_case`, which the image smoke replays (`genai-guidance-schema-ok 7`
       in `:latest` too). Left: items 3 and 4, which need OxidANT's and OrchestrANT's stream tests.

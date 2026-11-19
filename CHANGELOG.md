@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — the test model's `fixture.json` lists its cases (CON237 item 4)
+
+- `tiny-genai-model.py` writes `cases`: seven requests with their answer or their error kind (`invalid_options`,
+  `generation_failed`), measured on the image's GenAI: greedy to the budget (`defg`, `length`), the schema case
+  (`7`, `stop`), a schema that is an array or a number, an object the grammar compiler refuses, no messages and no
+  budget. Owner decision 2026-11-20: all three bindings replay it.
+
 ## 2026-11-19 — `ctest-run.sh --fail-on-skipped REGEX`: a skip is not a pass (BeschleunigerBallett X2)
 
 - BeschleunigerBallett's llvmpipe lane counted its hardware ray-tracing `GTEST_SKIP`s as passes. After ctest,

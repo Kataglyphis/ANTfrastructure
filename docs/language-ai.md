@@ -136,7 +136,12 @@ export, so today they reach an app through an endpoint only.
   decoding of `abc` with `max_length` 7 therefore yields `defg`, token ids 100 to 103.
 - **The oracle:** `fixture.json` holds the prompt, its ids, the continuation and `max_length`, and
   `schema_case`: a JSON schema whose one legal answer the successor rule never predicts, with that
-  answer, so only a live guidance mask produces it. The image smoke reads it from there.
+  answer, so only a live guidance mask produces it. The image smoke reads it from there. `cases` lists
+  requests (messages and options) with their answer (`text`, maybe `ids`, `finish`) or their error kind,
+  `invalid_options` or `generation_failed` in the contract's words, each measured on the image's GenAI:
+  greedy to the budget, the schema case, two schemas that are no object, one object the grammar compiler
+  refuses, no messages and no budget. AccelerANTgine (C++ and Python), OxidANT and OrchestrANT replay
+  every case; a binding maps the kind to its own error type.
   A binding test reads it instead of retyping the numbers.
 - **The cache:** one layer whose `present` outputs concatenate the past with one embedding per
   token, so GenAI exercises its KV-cache loop exactly as with a real decoder.
