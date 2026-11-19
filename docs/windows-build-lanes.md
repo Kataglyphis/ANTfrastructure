@@ -826,7 +826,10 @@ steps; the remaining work is the Dockerfile surgery):
   Shared + SourceBuild.Patches + SourceBuild.Cuda + Native.Common (plus
   Installer.Common for GStreamer; today's lists are the `buildmods` and
   `tvmmods` stages of `Dockerfile.media-builder` and the merge builder's module
-  COPY) — a whole-dir `modules/` mount lets edits to
+  COPY). Both LiteRT compile and wheel RUNs directly mount those seven shared
+  module files: a cached COPY plus view remained unreadable on 2026-11-19.
+  Other consumers retain the [copied-module source views](windows-build-invariants.md#copied-module-stages-need-a-readable-view).
+  A whole-dir `modules/` mount lets edits to
   the ~24 host-only modules (BuildDriver, BuildKit, Flutter, …) bust every
   compile RUN it feeds. The last one survived in `Dockerfile.toolchain-builder`'s
   `patched-llvm` RUN — the DEFAULT toolchain target — until 2026-08-31, so until

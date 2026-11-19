@@ -866,8 +866,11 @@ empty mount lists cleanly and exits 0, so a bare listing proves nothing.
 
 End every stage that copies a narrow module closure into `C:\bkmods` with
 `RUN cmd /c exit 0`, after its last `COPY`. This includes shared media,
-TVM-private, merge, MIGraphX and llama module stages. Their consumers bind
-the view. An external-image module stage still redeclares
+TVM-private, merge, MIGraphX and llama module stages. Consumers normally bind
+the view; both LiteRT build RUNs instead mount the same seven shared modules
+as individual files from the checkout. Do not replace their direct delivery
+with a cached directory view or a whole host module-directory mount.
+An external-image module stage still redeclares
 `ARG WINDOWS_TARGET_ARCH=amd64` before its view `RUN`; the TVM-private stage
 inherits that scope from the shared module stage. Product stages retain their
 existing parents, so these intermediate
@@ -886,6 +889,16 @@ executes the view mutations on Linux and Windows; the Pester module-closure
 suite remains part of the complete Windows run. ROCm structure checks read
 module COPYs from their named source stage and pin defaults from the compiling
 stage; arguments or comments between FROM and COPY do not end a closure.
+
+On 2026-11-19 the complete NVIDIA run failed before LiteRT compilation even
+with the cached COPY and final view RUN present. An engine control reproduced
+the unreadable view on the actual pinned toolchain. Delivering the identical
+seven modules per file allowed reads and imports, including in an inherited
+RUN. Both `Build-LitertAll.ps1` and `Build-LitertWheelBazel.ps1` therefore use
+direct file mounts at `C:\bkmnt\modules`; all other source views remain.
+The portable harness checks both complete closures and rejects the cached
+directory form. These structural and read/import controls do not prove a
+complete LiteRT build, all architectures or a kernel cause.
 The portable `Rocm.Structure.Tests.ps1` and full Windows ROCm suites call the
 same structural helpers; real Windows DLL tests remain in the full suites.
 

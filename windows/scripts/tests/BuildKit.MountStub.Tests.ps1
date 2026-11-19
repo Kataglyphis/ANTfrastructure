@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Stub checks grade only base-stage C:\temp\scripts paths; view structure proves neither mounted reads nor compiled architecture.
+# Stub checks grade only base-stage C:\temp\scripts paths; module delivery and view structure prove neither mounted reads nor compiled architecture.
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -DisableNameChecking
 
@@ -77,5 +77,24 @@ Describe 'BuildKit copied-module source views' {
             }
         }
         Assert-Equal 5 $checked 'shared, TVM-private, merge and both ROCm module closures must be checked'
+    }
+}
+
+Describe 'LiteRT direct module delivery' {
+    It 'mounts the same complete narrow module closure per file in both LiteRT RUNs' {
+        $path = Join-Path (Get-RepoRoot) 'windows/Dockerfile.media-builder'
+        $stages = Get-TestDockerfileStageFacts -Path $path
+        $modules = @($stages['buildmods'].MountedModules)
+        Assert-Equal 7 $modules.Count 'the current shared module closure must remain complete'
+        $runs = @(Get-TestDockerfileRun -Path $path -Stage 'media-litert-built')
+        Assert-Equal 2 $runs.Count 'both LiteRT and wheel build RUNs must be checked'
+        foreach ($run in $runs) {
+            foreach ($module in $modules) {
+                $leaf = $module + '.psm1'
+                $mount = "--mount=type=bind,source=windows/scripts/modules/$leaf,target=C:\bkmnt\modules\$leaf"
+                Assert-True $run.Contains($mount) "required direct LiteRT module mount: $leaf"
+            }
+            Assert-False $run.Contains('from=buildmods,source=/bkmods,target=C:\bkmnt\modules') 'LiteRT must not consume a cached module-directory view'
+        }
     }
 }

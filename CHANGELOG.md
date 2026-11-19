@@ -17,6 +17,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — deliver LiteRT modules through direct file mounts
+
+- Preserve the same seven-module closure in both LiteRT build RUNs while avoiding a cached module view that the actual NVIDIA toolchain could list but not read. Other source views and compiler caches remain intact.
+- Add portable closure checks and mutation proofs for both RUNs and every module. Actual engine controls prove reads and imports, including an inherited RUN; full new-source quality and four-lane acceptance remain required.
+
 ## 2026-11-19 — preserve IREE dispatched AVX512 under the Windows ISA floor
 
 - Give IREE's AVX512-base clang-cl branch explicit feature flags: a forwarded global `-march=x86-64-v3` overrides `/arch:AVX512`. GNU/MSVC options and the global baseline stay intact.

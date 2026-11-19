@@ -335,7 +335,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk --mount=type=cache,target=C:\qnn-sdk-cache,id=qnn-sdk-winamd64,sharing=shared `
     & 'C:\bkmnt\Build-MediaCoreAll.ps1' -ResumeFrom 'ONNX GenAI' -Until 'ONNX GenAI' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
-# litert: direct solve (bazel — never trips the defect), same mount pattern.
+# Direct module files avoid unreadable cached views without widening the closure.
 FROM media-litert-env AS media-litert-built
 # Every stage that mounts windows/qnn-sdk declares this, or Resolve-QnnSdk extracts unverified.
 ARG QNN_SDK_ZIP_SHA256="510b0067481c22d283a2db10cd520f0251df4aeea77a5afe4ff6428a4e40a7bc"
@@ -359,7 +359,13 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Export-LitertLmBridge.ps1,target=C:\bkmnt\Export-LitertLmBridge.ps1 `
     --mount=type=bind,source=windows/scripts/build/Debug-LitertlmLink.ps1,target=C:\bkmnt\Debug-LitertlmLink.ps1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsPythonWheel.Common.psm1,target=C:\bkmnt\modules\WindowsPythonWheel.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk --mount=type=cache,target=C:\qnn-sdk-cache,id=qnn-sdk-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/shims,target=C:\bkmnt\shims `
     --mount=type=bind,source=windows/scripts/patches/litert-lm,target=C:\bkmnt\patches\litert-lm `
@@ -386,7 +392,13 @@ RUN --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,shari
     --mount=type=bind,source=windows/scripts/build/Build-LitertWheelBazel.ps1,target=C:\bkmnt\Build-LitertWheelBazel.ps1 `
     --mount=type=bind,source=windows/scripts/build/litert-wheel-smoke.py,target=C:\bkmnt\litert-wheel-smoke.py `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsPythonWheel.Common.psm1,target=C:\bkmnt\modules\WindowsPythonWheel.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsBazel.Common.psm1,target=C:\bkmnt\bazelmods\WindowsBazel.Common.psm1 `
     --mount=type=bind,source=windows/scripts/patches/litert,target=C:\bkmnt\patches\litert `
     $env:UV_CACHE_DIR = 'C:\lw\ty-uv-cache'; $env:UV_TOOL_DIR = 'C:\lw\ty-uv-tools'; `

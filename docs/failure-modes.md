@@ -2196,6 +2196,13 @@ empty `RUN`. Keep the final COPY before that view, keep compiler-cache mounts
 and image tags intact, and validate actual reads separately from a directory
 listing or a cached probe. Do not infer a kernel cause from the cleanup timing.
 
+On 2026-11-19 LiteRT reproduced this failure despite an already-cached COPY
+and final empty RUN. The actual toolchain control could read and import the
+same seven modules through individual host-file mounts, also after inheriting
+the first consumer layer. Both LiteRT build RUNs now use that narrow file
+closure. Keep the other module views and compiler caches; neither a listing
+nor these read/import probes establish full product or architecture acceptance.
+
 ---
 
 ## Windows: container networking
