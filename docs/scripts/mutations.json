@@ -7505,6 +7505,22 @@
   "why": "OrchestrANT pins the SDK as flet[desktop]==; a row that cannot read the extras form reports it unpinned or skips it, and the client and SDK drift apart with nothing red"
  },
  {
+  "id": "version-snapshot.consumer-pins-uv-floor-above",
+  "target": "docs/scripts/consumer_pins.py",
+  "find": "    if not pinned or parts(match.group(1)) > parts(pinned):",
+  "replace": "    if not pinned:",
+  "test": "bash linux/scripts/tests/test-consumer-pins-toml.sh",
+  "why": "a required-version above the image's uv makes every uv command in the image refuse the project"
+ },
+ {
+  "id": "version-snapshot.consumer-pins-uv-floor-form",
+  "target": "docs/scripts/consumer_pins.py",
+  "find": "    match = re.fullmatch(r\">=\\s*(\\d+(?:\\.\\d+)*)\", str(floor).strip())",
+  "replace": "    match = re.search(r\"(\\d+(?:\\.\\d+)*)\", str(floor).strip())",
+  "test": "bash linux/scripts/tests/test-consumer-pins-toml.sh",
+  "why": "an exact uv pin breaks on the next image; only a lower bound passes"
+ },
+ {
   "id": "mutations.mirror-name-unset",
   "target": "docs/scripts/verify_mutations.py",
   "find": "    env = {**os.environ, \"MUTATION_MIRROR\": os.path.basename(os.path.normpath(root))}",

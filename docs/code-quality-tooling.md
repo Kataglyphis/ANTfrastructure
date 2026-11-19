@@ -1080,7 +1080,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5106 entries** over **664 distinct test commands**; both digits are
+manifest holds **5108 entries** over **664 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -4566,6 +4566,10 @@ The consumer pin gate parses `pyproject.toml` as TOML and inspects its string va
 dependency declaration and its contents are not pin candidates. A same-named real dependency
 or override is still checked; malformed TOML fails the gate. `test-consumer-pins-toml.sh`
 and `test-version-snapshot.sh` cover exclusions, actual pins and parser failure.
+
+**uv's own floor** is read by key, not as a string value: `[tool.uv] required-version` must be a lower bound,
+`>=X.Y.Z`, at or below `UV_VERSION` (CON249). An exact pin fails, as a newer image uv would refuse the
+project; a floor above the pin fails, as the image's uv refuses it today.
 
 **The eighth arrived unproven, and that is exactly the shape described above.**
 It shipped with nine mutations in the registry and none of them touching

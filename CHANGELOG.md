@@ -15,6 +15,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — what CON248 and CON249 had left: a real auto-commit suite and uv's floor
+
+- My BACKLOG removals of CON248 and CON249 had left their last paragraphs behind, and those named two parts not yet
+  built. `windows/scripts/tests/AgenticLoop.Commit.Tests.ps1` runs `Invoke-GitAutoCommit` against a real repository:
+  a 1 MB binary, a small binary and a 501 KiB file stay out and are logged, and a commit a hook refuses returns
+  `$false`, each with a fault control. `consumer_pins.py` reads `[tool.uv] required-version`: a lower bound at or
+  below `UV_VERSION`; an exact pin or a higher floor fails. OrchestrANT and AccelerANTgine (`>=0.11.3`) pass.
+
 ## 2026-11-19 — a consumer documents its local test step through `run-in-ci-image.sh` (CON242)
 
 - OrchestrANT's AGENTS.md names `run-in-ci-image.sh . --volume orchestrant-uv-cache:/root/.cache/uv -- bash

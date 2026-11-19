@@ -1091,7 +1091,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the cached digest does not establish the contents of today's mutable tags. A local
       AccelerANTgine package using this image cannot pass its required VP8 capability check.
 
-
 - [ ] **CON184 - provide provenance and license texts for Windows GStreamer runtime dependencies** [M].
       **In source 2026-11-04, unproved in an image.** `WindowsNativeProvenance.Common.psm1` writes
       `C:\runtime\share\native-provenance\gstreamer.json` from meson's records before cleanup, and the merge and smoke gates fail on a
@@ -1124,7 +1123,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       A prospective AccelerANTgine install from the NVIDIA image reached this notice gate and
       rejected all seven DLLs, so it produced no installer; see
       `_implementation/accelerant-win-prospective3-20261031-build.log`.
-
 
 - [ ] **CON185 - provide Windows GStreamer tensor inference elements** [M].
       **Mostly a consumer fix (checked 2026-11-04).** `tensor_transform` and `tensor_decoder` are NNStreamer's, and no `onnxruntime` element
@@ -1906,7 +1904,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 
 
-
 - [ ] **CON162 — step labels in the published images** [S, ★★]. In source since 2026-10-26: a
       `LABEL kataglyphis.step=<name>` before each of the 104 RUNs in `linux/Dockerfile.*`, graded by
       `verify_dockerfile_step_labels.py`, and `layer-audit.py` prints each layer's step. Done when
@@ -2396,16 +2393,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Not taken from the audit: a per-repo lane-to-path table, and a hook that stops a push without its
       `[ci <lane>]` token. A path hint, if it comes, is a warning in the lint lane's summary only.
 
-      Done when `test-agentic-loop.sh` and `WindowsAgenticLoop.Common.Tests.ps1` prove three new cases, each
-      with a mutation recipe: a planted untracked 1 MB binary is not committed, a failing gate stops the
-      commit and returns non-zero, and a failing `git commit` is reported as failed.
-
-      Offline, each remote check prints `could not check` and does not fail; the doctor never pulls.
-      Also: a row in `docs/scripts/consumer_pins.py` that holds a repo's `[tool.uv]` `required-version`,
-      written as a lower bound, at or below `UV_VERSION`.
-      Done when a new `test-dev-doctor.sh` passes on fixtures (a clone three commits behind, a recording
-      engine with an old image, an old uv on `PATH`) with a mutation recipe per check, and
-      `docs/shared-script-libraries.md` describes the script.
 
 - [ ] **CON253 — Home Assistant keeps the cameras' model time, and warns when it rises** [S, ★★]. Found by the
       audit of 2026-11-12: no performance budget covers the Pi-class boards the cameras run on, as the

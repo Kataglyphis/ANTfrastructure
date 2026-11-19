@@ -17,6 +17,7 @@ VERSIONS = {
     "TORCHVISION_VERSION": "v0.29.1",
     "ONNXRUNTIME_GENAI_VERSION": "v0.17.0",
     "FLET_VERSION": "1.0.5",
+    "UV_VERSION": "0.13.7",
 }
 
 
@@ -42,6 +43,10 @@ class ConsumerPinsTomlTest(unittest.TestCase):
             ("invalid", '[project\ndependencies = []\n', 1, "invalid TOML"),
             ("flet pins", '[project.optional-dependencies]\nui = ["flet[desktop]==1.0.5", "flet-web==1.0.5"]\n', 0, "2 compared"),
             ("flet-web behind", '[project.optional-dependencies]\nui = ["flet[desktop]==1.0.5", "flet-web==1.0.4"]\n', 1, "is 1.0.4"),
+            ("uv floor below the pin", '[tool.uv]\nrequired-version = ">=0.11.3"\n', 0, "1 compared"),
+            ("uv floor at the pin", '[tool.uv]\nrequired-version = ">= 0.13.7"\n', 0, "1 compared"),
+            ("uv floor above the pin", '[tool.uv]\nrequired-version = ">=0.14.0"\n', 1, "above versions.env UV_VERSION=0.13.7"),
+            ("uv exact pin", '[tool.uv]\nrequired-version = "==0.13.7"\n', 1, "write it as a lower bound"),
         )
         for name, manifest, expected, message in cases:
             with self.subTest(name=name):
