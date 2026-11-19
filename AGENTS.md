@@ -694,9 +694,9 @@ checkout calls default to `windows/scripts`. See [`windows-rocm.md`](docs/window
 Copied Windows module stages keep a no-op `RUN` after their last `COPY`, including
 the TVM-private and ROCm closures. External-image views redeclare `WINDOWS_TARGET_ARCH`
 before their `RUN`. Keep these source views outside delivered image
-ancestry and retain narrow per-file closures. Both LiteRT compile and wheel RUNs
-deliver the same seven shared modules as individual file mounts; a cached module
-view can remain unreadable. See the [readable module view rule](docs/windows-build-invariants.md#copied-module-stages-need-a-readable-view).
+ancestry and retain narrow per-file closures. Every media-core and LiteRT RUN
+delivers the same seven shared modules as individual file mounts; TVM adds only
+its private leaf module. A cached module view can remain unreadable. See the [readable module view rule](docs/windows-build-invariants.md#copied-module-stages-need-a-readable-view).
 
 The three most often regressed:
 

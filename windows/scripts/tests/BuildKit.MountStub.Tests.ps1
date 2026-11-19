@@ -80,21 +80,21 @@ Describe 'BuildKit copied-module source views' {
     }
 }
 
-Describe 'LiteRT direct module delivery' {
-    It 'mounts the same complete narrow module closure per file in both LiteRT RUNs' {
+Describe 'Media direct module delivery' {
+    It 'mounts the complete narrow closure per file in every media build RUN' {
         $path = Join-Path (Get-RepoRoot) 'windows/Dockerfile.media-builder'
         $stages = Get-TestDockerfileStageFacts -Path $path
         $modules = @($stages['buildmods'].MountedModules)
-        Assert-Equal 7 $modules.Count 'the current shared module closure must remain complete'
         $runs = @(Get-TestDockerfileRun -Path $path -Stage 'media-litert-built')
-        Assert-Equal 2 $runs.Count 'both LiteRT and wheel build RUNs must be checked'
-        foreach ($run in $runs) {
-            foreach ($module in $modules) {
-                $leaf = $module + '.psm1'
-                $mount = "--mount=type=bind,source=windows/scripts/modules/$leaf,target=C:\bkmnt\modules\$leaf"
-                Assert-True $run.Contains($mount) "required direct LiteRT module mount: $leaf"
-            }
-            Assert-False $run.Contains('from=buildmods,source=/bkmods,target=C:\bkmnt\modules') 'LiteRT must not consume a cached module-directory view'
+        Assert-TestDockerfileDirectModuleClosure -Runs $runs -Modules $modules -ExpectedModuleCount 7 -ExpectedRunCount 2
+        $coreStages = @('media-core-built-onnx', 'media-core-built-ffmpeg', 'media-core-built-opencv', 'media-core-built-hailo', 'media-core-built')
+        Assert-Equal 5 $coreStages.Count 'all five media-core consumers must be scanned'
+        foreach ($stage in $coreStages) {
+            $coreRuns = @(Get-TestDockerfileRun -Path $path -Stage $stage)
+            Assert-TestDockerfileDirectModuleClosure -Runs $coreRuns -Modules $modules -ExpectedModuleCount 7 -ExpectedRunCount 1
         }
+        $tvmModules = @($modules) + @($stages['tvmmods'].MountedModules)
+        $tvmRuns = @(Get-TestDockerfileRun -Path $path -Stage 'media-tvm-built')
+        Assert-TestDockerfileDirectModuleClosure -Runs $tvmRuns -Modules $tvmModules -ExpectedModuleCount 8 -ExpectedRunCount 1 -CachedStage tvmmods
     }
 }

@@ -866,10 +866,11 @@ empty mount lists cleanly and exits 0, so a bare listing proves nothing.
 
 End every stage that copies a narrow module closure into `C:\bkmods` with
 `RUN cmd /c exit 0`, after its last `COPY`. This includes shared media,
-TVM-private, merge, MIGraphX and llama module stages. Consumers normally bind
-the view; both LiteRT build RUNs instead mount the same seven shared modules
-as individual files from the checkout. Do not replace their direct delivery
-with a cached directory view or a whole host module-directory mount.
+TVM-private, merge, MIGraphX and llama module stages. Media-core and both LiteRT
+build RUNs mount the same seven shared modules as individual checkout files;
+TVM adds its private leaf module. Other consumers retain their source views.
+Do not replace direct delivery with a cached directory view or a whole host
+module-directory mount.
 An external-image module stage still redeclares
 `ARG WINDOWS_TARGET_ARCH=amd64` before its view `RUN`; the TVM-private stage
 inherits that scope from the shared module stage. Product stages retain their
@@ -901,6 +902,16 @@ directory form. These structural and read/import controls do not prove a
 complete LiteRT build, all architectures or a kernel cause.
 The portable `Rocm.Structure.Tests.ps1` and full Windows ROCm suites call the
 same structural helpers; real Windows DLL tests remain in the full suites.
+
+The later current `2c40a98d` CUDA diagnostic repeat failed before ONNX
+compilation on the same shared view. An isolated cached/direct comparison on
+its pinned NVIDIA toolchain found all seven directory-mounted modules unreadable
+and read, hashed and imported the identical seven per-file modules successfully.
+The comparison mounted no compiler caches. All five media-core RUNs now use
+that same direct closure, and TVM adds only `WindowsTvm.Common.psm1`.
+Product parents, pins, compiler settings and cache identities stay unchanged.
+The structural gate covers all eight media RUNs; read controls do not prove
+the new full products, TVM execution or typed CUDA cache hits.
 
 ### A whole-directory `modules` mount puts EVERY module in the cache key
 

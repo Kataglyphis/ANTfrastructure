@@ -91,3 +91,25 @@ function Assert-TestDockerfileModuleClosure {
 }
 
 Export-ModuleMember -Function Get-TestDockerfileArgDefault, Assert-TestDockerfileModuleClosure
+
+# Direct delivery keeps every selected consumer independent of an unreadable cached directory view.
+function Assert-TestDockerfileDirectModuleClosure {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Runs, [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Modules,
+        [Parameter(Mandatory)][int]$ExpectedRunCount, [Parameter(Mandatory)][int]$ExpectedModuleCount,
+        [string]$CachedStage = 'buildmods')
+    Assert-Equal $ExpectedModuleCount $Modules.Count 'the complete narrow module closure must be scanned'
+    Assert-Equal $ExpectedModuleCount @($Modules | Sort-Object -Unique).Count 'module names must remain unique'
+    Assert-Equal $ExpectedRunCount $Runs.Count 'every selected module consumer RUN must be checked'
+    foreach ($run in $Runs) {
+        $delivered = @([regex]::Matches($run, 'target=C:\\bkmnt\\modules\\[A-Za-z0-9._]+\.psm1(?:\s|,)'))
+        Assert-Equal $ExpectedModuleCount $delivered.Count 'only the selected module closure may reach this consumer'
+        foreach ($module in $Modules) {
+            $leaf = $module + '.psm1'
+            $mount = "--mount=type=bind,source=windows/scripts/modules/$leaf,target=C:\bkmnt\modules\$leaf"
+            Assert-True $run.Contains($mount) "required direct module mount: $leaf"
+        }
+        Assert-False $run.Contains("from=$CachedStage,source=/bkmods,target=C:\bkmnt\modules") 'direct consumers must not use a cached module-directory view'
+    }
+}
+
+Export-ModuleMember -Function Assert-TestDockerfileDirectModuleClosure

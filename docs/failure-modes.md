@@ -2203,6 +2203,14 @@ the first consumer layer. Both LiteRT build RUNs now use that narrow file
 closure. Keep the other module views and compiler caches; neither a listing
 nor these read/import probes establish full product or architecture acceptance.
 
+The later `2c40a98d` CUDA repeat stopped at the same required-module import
+before ONNX compilation. Its independent control could open none of the seven
+cached-directory modules and opened, hashed and imported the identical seven
+through direct file mounts. The media-core consumers now use that narrow
+delivery too; TVM adds only its private module. No compiler-cache reset,
+forced no-cache build or daemon restart is the repair. New-source full
+qualification, builds and typed CUDA hits remain separate requirements.
+
 ---
 
 ## Windows: container networking

@@ -17,6 +17,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — keep media module reads independent of cached directory views
+
+- Extend the existing narrow per-file delivery to the five media-core RUNs and TVM, preserving the same seven shared modules plus TVM's private leaf. The current NVIDIA CUDA repeat reproduced an unreadable cached view before ONNX compilation; isolated direct mounts read, hash and import those seven bytes correctly.
+- Share the structural closure assertion across all eight media RUNs and mutation-test missing modules, cached-directory regressions and scan coverage. Keep all copied source views, product parents, compiler caches and stage gates.
+- Preserve the successful `2c40a98d` NVIDIA producer and physical CUDA/TensorRT/DirectML evidence as exact-source results; its failed diagnostic repeat proves no CUDA cache hits. The successor still requires full qualification and current-source acceptance. CON228 remains OPEN/DRAFT.
+
 ## 2026-11-19 — deliver LiteRT modules through direct file mounts
 
 - Preserve the same seven-module closure in both LiteRT build RUNs while avoiding a cached module view that the actual NVIDIA toolchain could list but not read. Other source views and compiler caches remain intact.
