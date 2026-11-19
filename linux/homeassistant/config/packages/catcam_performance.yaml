@@ -1,0 +1,90 @@
+# The cat cams' model time watched in the field: the day's median against the week's, an alert at about +25 % (CON253).
+sensor:
+  - platform: statistics
+    name: Cat cam Modellzeit Median Tag
+    unique_id: catcam_model_ms_median_day
+    entity_id: sensor.cat_cam_modellzeit
+    state_characteristic: median
+    max_age: {hours: 24}
+    # /healthz is polled every 30 s: 2880 samples a day.
+    sampling_size: 3000
+  - platform: statistics
+    name: Cat cam Modellzeit Median Woche
+    unique_id: catcam_model_ms_median_week
+    entity_id: sensor.cat_cam_modellzeit
+    state_characteristic: median
+    max_age: {days: 7}
+    sampling_size: 21000
+  - platform: statistics
+    name: Cat cam Futtertrog Modellzeit Median Tag
+    unique_id: catcam_futtertrog_model_ms_median_day
+    entity_id: sensor.cat_cam_futtertrog_modellzeit
+    state_characteristic: median
+    max_age: {hours: 24}
+    sampling_size: 3000
+  - platform: statistics
+    name: Cat cam Futtertrog Modellzeit Median Woche
+    unique_id: catcam_futtertrog_model_ms_median_week
+    entity_id: sensor.cat_cam_futtertrog_modellzeit
+    state_characteristic: median
+    max_age: {days: 7}
+    sampling_size: 21000
+  - platform: statistics
+    name: Cat cam Wohnzimmer Modellzeit Median Tag
+    unique_id: catcam_mintberry_model_ms_median_day
+    entity_id: sensor.cat_cam_wohnzimmer_modellzeit
+    state_characteristic: median
+    max_age: {hours: 24}
+    sampling_size: 3000
+  - platform: statistics
+    name: Cat cam Wohnzimmer Modellzeit Median Woche
+    unique_id: catcam_mintberry_model_ms_median_week
+    entity_id: sensor.cat_cam_wohnzimmer_modellzeit
+    state_characteristic: median
+    max_age: {days: 7}
+    sampling_size: 21000
+
+automation:
+  - id: catcam_model_time_rise
+    alias: Cat cam Modellzeit gestiegen (Benachrichtigung)
+    description: >-
+      Tells the phone when a camera's median model time over the last day stays about 25 % above
+      its median over the last week for an hour: a slower release, a fallback to another backend,
+      or a board that throttles. One notification per camera and rise; it watches, it gates nothing.
+    mode: parallel
+    max: 3
+    triggers:
+      - trigger: template
+        id: Büro
+        value_template: >-
+          {{ states('sensor.cat_cam_modellzeit_median_tag') | float(0) >
+             1.25 * states('sensor.cat_cam_modellzeit_median_woche') | float(0) > 0 }}
+        for: "01:00:00"
+      - trigger: template
+        id: Futtertrog
+        value_template: >-
+          {{ states('sensor.cat_cam_futtertrog_modellzeit_median_tag') | float(0) >
+             1.25 * states('sensor.cat_cam_futtertrog_modellzeit_median_woche') | float(0) > 0 }}
+        for: "01:00:00"
+      - trigger: template
+        id: Wohnzimmer
+        value_template: >-
+          {{ states('sensor.cat_cam_wohnzimmer_modellzeit_median_tag') | float(0) >
+             1.25 * states('sensor.cat_cam_wohnzimmer_modellzeit_median_woche') | float(0) > 0 }}
+        for: "01:00:00"
+    variables:
+      stem: >-
+        {{ {'Büro': 'cat_cam', 'Futtertrog': 'cat_cam_futtertrog', 'Wohnzimmer': 'cat_cam_wohnzimmer'}[trigger.id] }}
+      day: "{{ states('sensor.' ~ stem ~ '_modellzeit_median_tag') | float(0) | round(0) }}"
+      week: "{{ states('sensor.' ~ stem ~ '_modellzeit_median_woche') | float(0) | round(0) }}"
+    actions:
+      - action: notify.mobile_app_le2123
+        continue_on_error: true
+        data:
+          title: "🐢 Cat cam {{ trigger.id }} langsamer"
+          message: >-
+            Die Erkennung braucht seit einer Stunde im Tagesmittel {{ day }} ms statt {{ week }} ms
+            in der Woche: eine langsamere Version, ein anderes Backend oder eine Drosselung.
+          data:
+            tag: "catcam-model-time-{{ trigger.id }}"
+            channel: Cat Cam

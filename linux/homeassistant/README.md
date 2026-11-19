@@ -143,8 +143,9 @@ own: the office's (on this host), the feeding trough's (`tabblscatcam`) and the 
 
 | File | What |
 | --- | --- |
-| `config/automations.yaml` | `catcam_arrival_notification` counts an arrival at 0.45 or more and sends it to the phone with its frame, then adds the clip and the stay to that notification; a midnight reset, a 21:00 summary and an offline alert |
-| `config/configuration.yaml` | each cam's `/healthz` as `rest` sensors (last seen, last stay, clip, detections, problem), the visit counters and `input_text` helpers, and the `Katzenbesuche` statistic |
+| `config/automations.yaml` | `catcam_arrival_notification` counts an arrival at 0.45 or more and sends it to the phone with its frame, then adds the clip and the stay to that notification; a midnight reset, a 21:00 summary (with each cam's median model time of the day) and an offline alert |
+| `config/configuration.yaml` | each cam's `/healthz` as `rest` sensors (last seen, last stay, clip, detections, problem), and its `stats` as **Modellzeit** (`model_ms`), **Bildrate** (`capture_fps`) and **CPU** (`cpu_percent`) with `state_class: measurement`, so the recorder keeps their long-term statistics; the visit counters and `input_text` helpers, and the `Katzenbesuche` statistic |
+| `config/packages/catcam_performance.yaml` | per cam the median model time of the last day and of the last week (`statistics`), and `catcam_model_time_rise`, which tells the phone when the day's median stays about 25 % above the week's for an hour: a slower release, another backend or a throttling board. It watches the field after the fact and gates nothing (CON253) |
 | `config/dashboards/katze.yaml` | the **Katze** page, registered under `lovelace: dashboards: katze-cam` |
 
 Each cam's own settings are in `/etc/omni-accelerant/observant.toml` on its host:

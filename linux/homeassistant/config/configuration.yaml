@@ -128,6 +128,28 @@ rest:
         icon: mdi:camera-off
         # The cat cam's own words when its camera delivers no picture, "ok" while it does.
         value_template: "{{ value_json.problem or 'ok' }}"
+      # Its /healthz stats; state_class makes the recorder keep long-term statistics (CON253).
+      - name: Cat cam Modellzeit
+        unique_id: catcam_model_ms
+        unit_of_measurement: ms
+        state_class: measurement
+        icon: mdi:timer-outline
+        availability: "{{ value_json.stats.model_ms is number }}"
+        value_template: "{{ value_json.stats.model_ms | round(1) }}"
+      - name: Cat cam Bildrate
+        unique_id: catcam_capture_fps
+        unit_of_measurement: fps
+        state_class: measurement
+        icon: mdi:camera-timer
+        availability: "{{ value_json.stats.capture_fps is number }}"
+        value_template: "{{ value_json.stats.capture_fps | round(1) }}"
+      - name: Cat cam CPU
+        unique_id: catcam_cpu_percent
+        unit_of_measurement: "%"
+        state_class: measurement
+        icon: mdi:cpu-64-bit
+        availability: "{{ value_json.stats.cpu_percent is number }}"
+        value_template: "{{ value_json.stats.cpu_percent | round(1) }}"
     binary_sensor:
       - name: Katze im Bild
         unique_id: catcam_cat_in_view
@@ -172,6 +194,28 @@ rest:
         icon: mdi:camera-off
         # The cat cam's own words when its camera delivers no picture, "ok" while it does.
         value_template: "{{ value_json.problem or 'ok' }}"
+      # Its /healthz stats; state_class makes the recorder keep long-term statistics (CON253).
+      - name: Cat cam Futtertrog Modellzeit
+        unique_id: catcam_futtertrog_model_ms
+        unit_of_measurement: ms
+        state_class: measurement
+        icon: mdi:timer-outline
+        availability: "{{ value_json.stats.model_ms is number }}"
+        value_template: "{{ value_json.stats.model_ms | round(1) }}"
+      - name: Cat cam Futtertrog Bildrate
+        unique_id: catcam_futtertrog_capture_fps
+        unit_of_measurement: fps
+        state_class: measurement
+        icon: mdi:camera-timer
+        availability: "{{ value_json.stats.capture_fps is number }}"
+        value_template: "{{ value_json.stats.capture_fps | round(1) }}"
+      - name: Cat cam Futtertrog CPU
+        unique_id: catcam_futtertrog_cpu_percent
+        unit_of_measurement: "%"
+        state_class: measurement
+        icon: mdi:cpu-64-bit
+        availability: "{{ value_json.stats.cpu_percent is number }}"
+        value_template: "{{ value_json.stats.cpu_percent | round(1) }}"
     binary_sensor:
       - name: Katze am Futtertrog
         unique_id: catcam_futtertrog_cat_in_view
@@ -214,6 +258,28 @@ rest:
         icon: mdi:camera-off
         # The cat cam's own words when its camera delivers no picture, "ok" while it does.
         value_template: "{{ value_json.problem or 'ok' }}"
+      # Its /healthz stats; state_class makes the recorder keep long-term statistics (CON253).
+      - name: Cat cam Wohnzimmer Modellzeit
+        unique_id: catcam_mintberry_model_ms
+        unit_of_measurement: ms
+        state_class: measurement
+        icon: mdi:timer-outline
+        availability: "{{ value_json.stats.model_ms is number }}"
+        value_template: "{{ value_json.stats.model_ms | round(1) }}"
+      - name: Cat cam Wohnzimmer Bildrate
+        unique_id: catcam_mintberry_capture_fps
+        unit_of_measurement: fps
+        state_class: measurement
+        icon: mdi:camera-timer
+        availability: "{{ value_json.stats.capture_fps is number }}"
+        value_template: "{{ value_json.stats.capture_fps | round(1) }}"
+      - name: Cat cam Wohnzimmer CPU
+        unique_id: catcam_mintberry_cpu_percent
+        unit_of_measurement: "%"
+        state_class: measurement
+        icon: mdi:cpu-64-bit
+        availability: "{{ value_json.stats.cpu_percent is number }}"
+        value_template: "{{ value_json.stats.cpu_percent | round(1) }}"
     binary_sensor:
       - name: Katze im Wohnzimmer
         unique_id: catcam_mintberry_cat_in_view

@@ -15,6 +15,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — Home Assistant keeps the cat cams' model time (CON253, in source)
+
+- `configuration.yaml` reads each cam's `/healthz` `stats` as Modellzeit, Bildrate and CPU sensors with
+  `state_class: measurement`; `packages/catcam_performance.yaml` adds each cam's median model time over a day and a
+  week and `catcam_model_time_rise`, which notifies when the day's median stays about 25 % above the week's for an
+  hour; the 21:00 summary names each cam's day median. `check_config` of `home-assistant:stable` passes. The live
+  instance takes it when its owner deploys it.
+
 ## 2026-11-19 — the three detectors' golden tests read the same pixels (CON234)
 
 - ModelANT bd4094a carries `contracts/fixtures/two_cats.png`, the lossless decode of `two_cats.jpg`, its digest in

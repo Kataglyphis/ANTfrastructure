@@ -139,6 +139,13 @@
   variables:
     count: "{{ states('counter.katzenbesuche_heute') | int(0) }}"
     times: "{{ states('input_text.katzenbesuche_zeiten') }}"
+    # The day's median model time per camera (CON253); a camera without a value is left out.
+    model: >-
+      {% set ns = namespace(parts=[]) %}
+      {% for label, stem in [('Büro', 'cat_cam'), ('Futtertrog', 'cat_cam_futtertrog'), ('Wohnzimmer', 'cat_cam_wohnzimmer')] %}
+      {% set v = states('sensor.' ~ stem ~ '_modellzeit_median_tag') %}
+      {% if is_number(v) %}{% set ns.parts = ns.parts + [label ~ ' ' ~ (v | float | round(0) | int) ~ ' ms'] %}{% endif %}
+      {% endfor %}{{ ns.parts | join(', ') }}
   actions:
     - repeat:
         count: 3
@@ -151,6 +158,7 @@
                 {% if count == 0 %}Heute keine Katze gesehen.
                 {%- elif count == 1 %}Heute 1 Katzenbesuch: {{ times }}.
                 {%- else %}Heute {{ count }} Katzenbesuche: {{ times }}.{% endif %}
+                {%- if model %} Modellzeit: {{ model }}.{% endif %}
               data:
                 tag: catcam-summary
                 alert_once: true
