@@ -61,6 +61,7 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/06-packaging/python-app-selftest.py' \
   'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \
   'linux/scripts/source-ci.py' 'linux/scripts/source_ci/*.py' \
+  'linux/scripts/append-operational-memory.py' 'linux/scripts/operational_memory*.py' \
   'linux/scripts/seal-mutation-unit.py' 'linux/scripts/audit-native-plugin-runtime.py' \
   'linux/scripts/owned_containers.py' 'linux/scripts/cleanup-owned-containers.py' \
   'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \
@@ -80,6 +81,8 @@ mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
   'linux/jetson-webcam/app.py' \
   'linux/ansible/scripts/ansible_run_status.py' \
   'linux/scripts/develop_red.py' 'linux/scripts/layer-audit.py' \
+  'linux/scripts/append-operational-memory.py' 'linux/scripts/operational_memory*.py' \
+  'linux/scripts/tests/operational_memory_tests.py' \
   'linux/scripts/renovate_audit.py' 'linux/scripts/renovate_cmake.py' 'linux/scripts/renovate_locator.py' \
   'linux/scripts/renovate_pep_git.py' 'linux/scripts/renovate_planner.py' 'linux/scripts/renovate_uv_exports.py' \
   'linux/scripts/verify_large_files.py' 'linux/scripts/verify_masked_assignments.py' \
@@ -201,7 +204,7 @@ windows_environment_checked_files=('windows/scripts/build/litert-wheel-smoke.py'
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#parameter_return_files[@]}" -eq 144 ] || { echo "Expected 144 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 148 ] || { echo "Expected 148 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
 jetson_dockerfile="${ROOT}/linux/Dockerfile.torch"
 [ -f "${jetson_dockerfile}" ] || { echo "Torch Dockerfile is missing for the Jetson type gate" >&2; exit 2; }
 grep -Fq 'source=linux/jetson-webcam/app.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro' "${jetson_dockerfile}" || {
@@ -244,6 +247,7 @@ done
 
 ty=(uvx "ty@${TY_VERSION}" check --python "${quality_python}" --python-version 3.14 --output-format concise)
 search=(--extra-search-path docs/scripts --extra-search-path linux/scripts --extra-search-path shared/python
+  --extra-search-path shared/python/tests
   --extra-search-path linux/scripts/03-media/runtime
   --extra-search-path linux/scripts/06-packaging
   --extra-search-path linux/scripts/tests

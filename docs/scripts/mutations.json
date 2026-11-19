@@ -55580,5 +55580,165 @@
   "find": "    path = PurePosixPath(posixpath.normpath(str(path)))",
   "replace": "    path = PurePosixPath(str(path))",
   "why": "A legitimate package origin with a parent segment must match its normalized expected directory only after input validation; raw evidence remains unchanged."
+ },
+ {
+  "id": "host.operational-memory-prefix",
+  "target": "linux/scripts/operational_memory.py",
+  "find": "require(len(before) == expected_bytes and digest(before) == expected_sha256, 'Memory prefix differs')",
+  "replace": "require(True, 'Memory prefix differs')",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "An unexpected size or SHA256 must refuse before any append."
+ },
+ {
+  "id": "host.operational-memory-terminal-state",
+  "target": "linux/scripts/operational_memory_guard.py",
+  "find": "terminal = {('inactive', 'dead'), ('failed', 'failed'), ('active', 'exited')}",
+  "replace": "terminal = {('inactive', 'dead'), ('failed', 'failed'), ('active', 'exited'), ('active', 'running')}",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "A running controller is not an idle terminal observation even if its listed PID is zero."
+ },
+ {
+  "id": "host.operational-memory-controller-PIDs",
+  "target": "linux/scripts/operational_memory_guard.py",
+  "find": "and state['MainPID'] == state['ControlPID'] == '0'",
+  "replace": "and True",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "Both controller PIDs must prove zero, including for a nominally terminal state."
+ },
+ {
+  "id": "host.operational-memory-process-refusal",
+  "target": "linux/scripts/operational_memory_guard.py",
+  "find": "require(not processes, 'Storage controller process IDs are live: '",
+  "replace": "require(True, 'Storage controller process IDs are live: '",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "A named live process, including an ancestor or underscore spelling, must refuse."
+ },
+ {
+  "id": "host.operational-memory-unreadable-proc",
+  "target": "linux/scripts/operational_memory_guard.py",
+  "find": "except FileNotFoundError:",
+  "replace": "except OSError:",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "An unreadable process is unknown, whereas an actually disappeared process may be skipped."
+ },
+ {
+  "id": "host.operational-memory-append-flag",
+  "target": "linux/scripts/operational_memory.py",
+  "find": "with opened(memory, os.O_RDWR | os.O_APPEND) as stream:",
+  "replace": "with opened(memory, os.O_RDWR) as stream:",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "A concurrent suffix must never be overwritten even when the final append verdict fails."
+ },
+ {
+  "id": "host.operational-memory-prefix-backup",
+  "target": "linux/scripts/operational_memory.py",
+  "find": "persist(directory / 'prefix-before.bin', before)",
+  "replace": "persist(directory / 'prefix-before.bin', before[:1])",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "The preserved prefix snapshot must contain every original byte."
+ },
+ {
+  "id": "host.operational-memory-recheck-prefix",
+  "target": "linux/scripts/operational_memory.py",
+  "find": "require(stream.read() == before, 'Memory changed before the append')",
+  "replace": "require(True, 'Memory changed before the append')",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "A prefix changed while backups are written must refuse before adding our suffix."
+ },
+ {
+  "id": "host.operational-memory-result-bytes",
+  "target": "linux/scripts/operational_memory.py",
+  "find": "require(after == before + addition, 'Memory changed during the append')",
+  "replace": "require(True, 'Memory changed during the append')",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "Another suffix cannot produce a passed exact-result receipt."
+ },
+ {
+  "id": "host.operational-memory-file-identity",
+  "target": "linux/scripts/operational_memory.py",
+  "find": "require((current.st_dev, current.st_ino) == (original.st_dev, original.st_ino), 'Memory file identity changed')",
+  "replace": "require(True, 'Memory file identity changed')",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "Replacing the visible memory path must not authenticate an append to the old inode."
+ },
+ {
+  "id": "host.operational-memory-single-link",
+  "target": "linux/scripts/operational_memory.py",
+  "find": "stat.S_ISREG(info.st_mode) and info.st_nlink == 1",
+  "replace": "stat.S_ISREG(info.st_mode)",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "Hardlinked inputs are refused before any memory mutation."
+ },
+ {
+  "id": "host.operational-memory-no-follow",
+  "target": "linux/scripts/operational_memory.py",
+  "find": "flags | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC",
+  "replace": "flags | os.O_NONBLOCK | os.O_CLOEXEC",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "A symlink append input must not be followed into a regular file."
+ },
+ {
+  "id": "host.operational-memory-short-writes",
+  "target": "linux/scripts/operational_memory.py",
+  "find": "        position += written\n",
+  "replace": "        position = len(data)\n",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "Partial appends must write the complete reviewed suffix."
+ },
+ {
+  "id": "host.operational-memory-write-progress",
+  "target": "linux/scripts/operational_memory.py",
+  "find": "require(0 < written <= len(data) - position, 'Append made no valid progress')",
+  "replace": "require(True, 'Append made no valid progress')",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "A zero write must fail immediately; the independent fixture bounds a faulty retry."
+ },
+ {
+  "id": "host.operational-memory-file-sync",
+  "target": "linux/scripts/operational_memory.py",
+  "find": "        position += written\n    os.fsync(descriptor)\n",
+  "replace": "        position += written\n",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "A failed memory synchronization must remain fatal after data was written."
+ },
+ {
+  "id": "python-types.operational-memory-strict",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/source-ci.py' 'linux/scripts/source_ci/*.py' \\\n  'linux/scripts/append-operational-memory.py' 'linux/scripts/operational_memory*.py' \\\n",
+  "replace": "  'linux/scripts/source-ci.py' 'linux/scripts/source_ci/*.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The appender and both companions must remain inside this enforced type scope."
+ },
+ {
+  "id": "python-types.operational-memory-annotations",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/layer-audit.py' \\\n  'linux/scripts/append-operational-memory.py' 'linux/scripts/operational_memory*.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/layer-audit.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The appender and both companions must remain inside this enforced type scope."
+ },
+ {
+  "id": "python-types.shared-test-sibling-root",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  --extra-search-path shared/python/tests\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The complete independent fixture import chain needs the shared Python test sibling root; a missing root must fail rather than suppress unresolved fixture imports."
+ },
+ {
+  "id": "host.operational-memory-prewrite-snapshots",
+  "target": "linux/scripts/operational_memory.py",
+  "find": "        sync_directory(directory.parent)\n        verify_snapshots(directory, before, addition)\n",
+  "replace": "        sync_directory(directory.parent)\n",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "Both snapshots must remain exact at this phase; missing pre-write checks must not modify memory and missing post-write checks must not produce a passed receipt."
+ },
+ {
+  "id": "host.operational-memory-postwrite-snapshots",
+  "target": "linux/scripts/operational_memory.py",
+  "find": "        require(after == before + addition, 'Memory changed during the append')\n        verify_snapshots(directory, before, addition)\n",
+  "replace": "        require(after == before + addition, 'Memory changed during the append')\n",
+  "test": "bash linux/scripts/tests/test-operational-memory.sh",
+  "why": "Both snapshots must remain exact at this phase; missing pre-write checks must not modify memory and missing post-write checks must not produce a passed receipt."
  }
 ]

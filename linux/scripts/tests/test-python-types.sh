@@ -42,9 +42,9 @@ _set_sibling_client() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (148 files)"
+  t_assert_contains "$1" "ty quality gate: clean (153 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
-  t_assert_contains "$1" "Linux Python report: clean (148 files)"
+  t_assert_contains "$1" "Linux Python report: clean (153 files)"
   t_assert_contains "$1" "Windows Python report: clean (2 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -188,6 +188,9 @@ printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scr
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/runtime_storage_guard.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/launch-runtime-storage-guard.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/launch-local-final.py"
+for target in append-operational-memory.py operational_memory.py operational_memory_guard.py tests/operational_memory_tests.py; do
+  printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/${target}"
+done
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/docs/scripts/verify_mutations.py"
 printf 'from markdown_it import MarkdownIt\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/lib/dartdoc-guides.py"
 printf 'VALUE = 1\n' > "${ROOT}/linux/scripts/gate_scope.py"
@@ -200,12 +203,14 @@ for target in owned_nerdctl_args.py owned-nerdctl.py; do
 done
 _set_answer "${ROOT}/linux/scripts/local-proof/proof_subject.py" 42
 _set_answer "${ROOT}/linux/scripts/local-proof/native-oci-handoff.py" 42
+_set_answer "${ROOT}/shared/python/tests/quality_shared_test_sibling.py" 42
 sibling_clients=(
   docs/scripts/subject.py:quality_search_sibling
   linux/scripts/03-media/runtime/quality_search_sibling.py:ort_census_probe
   linux/scripts/06-packaging/ort_census_probe.py:typed_subject
   linux/scripts/tests/typed_subject.py:gw_client
   linux/llm-stack/tests/gateway_e2e/gw_client.py:proof_subject
+  linux/scripts/local-proof/proof_subject.py:quality_shared_test_sibling
 )
 for sibling in "${sibling_clients[@]}"; do
   _set_sibling_client "${ROOT}/${sibling%%:*}" "${sibling#*:}"
@@ -222,9 +227,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-  t_assert_contains "${out}" "Ruff signature annotation gate: clean (155 files)"
-  t_assert_contains "${out}" "Ruff private return gate: clean (155 files)"
-  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (144 files)"
+  t_assert_contains "${out}" "Ruff signature annotation gate: clean (160 files)"
+  t_assert_contains "${out}" "Ruff private return gate: clean (160 files)"
+  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (148 files)"
 
 for sibling in "${sibling_clients[@]}"; do
   _set_answer "${ROOT}/${sibling%%:*}" 42
@@ -239,7 +244,7 @@ t_assert_contains "${out}" "invalid-return-type"
 t_assert_contains "${out}" "rc=1"
 _set_answer "${ROOT}/linux/scripts/image_acceptance_local.py" 42
 
-for storage_target in preserve-consumer-sources.py runtime_terminal_evidence.py runtime_storage_guard.py launch-runtime-storage-guard.py launch-local-final.py local-proof/proof_subject.py local-proof/native-oci-handoff.py; do
+for storage_target in preserve-consumer-sources.py runtime_terminal_evidence.py runtime_storage_guard.py launch-runtime-storage-guard.py launch-local-final.py local-proof/proof_subject.py local-proof/native-oci-handoff.py append-operational-memory.py operational_memory.py operational_memory_guard.py tests/operational_memory_tests.py; do
   t_case "operational helper stays in the strict type scope: ${storage_target}"
   _set_answer "${ROOT}/linux/scripts/${storage_target}" "'wrong'"
   out="$(_run)"
@@ -534,6 +539,9 @@ parameter_targets=(
   linux/scripts/runtime_storage_guard.py \
   linux/scripts/launch-runtime-storage-guard.py \
   linux/scripts/launch-local-final.py \
+  linux/scripts/append-operational-memory.py \
+  linux/scripts/operational_memory.py linux/scripts/operational_memory_guard.py \
+  linux/scripts/tests/operational_memory_tests.py \
   docs/scripts/verify_mutations.py
 )
 # One checker run must report both annotation rules for every selected file.

@@ -95,6 +95,8 @@ Compiler-tool fixtures normalize generated source/output basenames, independentl
 restores the old hard-coded prefix and must fail. This tests the argument recorder, not real cache hits.
 
 Regular operational drivers live under `linux/scripts/` and are versioned with their tests. The [operational toolkit](local-proof-workflows.md) also preserves full-preflight sealing, compiler/SDK qualification, cache diagnostics, checkpoints and authorized host cleanup; its inventory maps former session helpers to their canonical owners.
+The [operational memory appender](local-proof-workflows.md#operational-memory-appends) shares host transport and evidence utilities, checks controller absence and preserves exact prefix/append snapshots. Its entry, two companions and independent fixture belong to strict type and parameter/return scopes; the synthetic type fixture checks every added path. File locks and name observations do not exclude uncooperative writers or make file/proof updates crash-atomic.
+Shared Python test siblings also remain in the type checker's search roots. The independent synthetic import chain reaches that directory; removing the root must fail without suppressing unresolved fixture imports or reducing file coverage.
 Reuse these tools instead of reconstructing a scratch script on each session. Keep each run's
 inputs and evidence under ignored `logs/`; choose a new directory for a new attempt.
 
@@ -1237,7 +1239,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **6943 entries** over **816 distinct test commands**; both digits are
+manifest holds **6963 entries** over **817 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

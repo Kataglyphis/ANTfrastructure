@@ -537,6 +537,7 @@ Five of them are RULES and stay here:
   and native plugin probe are documented in [quality tooling](docs/code-quality-tooling.md#preserved-local-proof-workflows).
   Copied host proof tools carry `host_commands.py`; the watcher also carries `preflight-status.py`,
   and isolated preflight carries both scripts under `isolated-preflight/`.
+  Copied `append-operational-memory.py` carries both `operational_memory` modules, `host_commands.py` and `source_ci/common.py`; preserve controller refusals, exact prefix checks and exclusive backups.
   Isolated preflight requires the engine init to reap orphaned test children; group-disappearance checks stay strict.
   Cached-image replays use its explicit image and read-only native-tools-cache options; retain report writability and record the altered environment scope.
   Long isolated-preflight units pass one fresh run-id to both the driver and independent cleanup hook before launch.
