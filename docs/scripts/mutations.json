@@ -34577,6 +34577,54 @@
   "why": "the issue must close after the next run without a regression, or it outlives its cause"
  },
  {
+  "id": "fleet-health.lane-debt-from-newest-green",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "    green = next((r for r in runs if r[\"conclusion\"] == \"success\"), None)",
+  "replace": "    green = next((r for r in reversed(runs) if r[\"conclusion\"] == \"success\"), None)",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "the debt counts from the newest green head; an older one overstates what the lane has not run on"
+ },
+ {
+  "id": "fleet-health.lane-without-green-not-collected",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "    if green is None:\n        return gap(",
+  "replace": "    if False:\n        return gap(",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a lane with no green run has no head to count from; a value there is invented"
+ },
+ {
+  "id": "fleet-health.rerun-retry-actor-left-out",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "             and (r.get(\"triggering_actor\") or {}).get(\"login\") != RETRY_ACTOR]",
+  "replace": "]",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "the retry workflow reruns a disk refusal on purpose; counting it reads infrastructure as flakiness"
+ },
+ {
+  "id": "fleet-health.contract-digest-drift-counted",
+  "target": "linux/scripts/fleet_health_tree.py",
+  "find": "        metrics[name] = {**rec(len(digests) - 1, \"digests\", LOWER, CODE, source),",
+  "replace": "        metrics[name] = {**rec(0, \"digests\", LOWER, CODE, source),",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "two repos testing against different contract files is the drift this row exists to show"
+ },
+ {
+  "id": "fleet-health.contract-absent-not-collected",
+  "target": "linux/scripts/fleet_health_tree.py",
+  "find": "        if unmeasured or absent:",
+  "replace": "        if unmeasured:",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a repo without the contract is not a repo that agrees; it must not read as 0"
+ },
+ {
+  "id": "fleet-health.contract-lock-row-read",
+  "target": "linux/scripts/fleet_health_tree.py",
+  "find": "                if len(cols) >= 2 and not cols[0].startswith(\"#\") and cols[1] == name:",
+  "replace": "                if False:",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "OrchestrANT holds the contracts as lock rows only; without them it reads as absent"
+ },
+ {
   "id": "python.static-ty-uses-quality-environment",
   "target": "linux/scripts/python-static.sh",
   "find": "  ty_env_flags=(--extra-search-path \"$site\")",

@@ -2370,6 +2370,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON247 — fleet-health shows lane debt, reruns, contract drift and pin lag** [M, ★★]. Found by the audit
       of 2026-11-12. None of these rows exists in `linux/scripts/fleet_health_github.py` or
       `fleet_health_tree.py` today. In order of value:
+      Items 1 to 3 done 2026-11-19 (`lane.<workflow>.commits_since_green`, `ci.<workflow>.rerun_rate`, the two
+      `shared_facts.contract_*` rows; the three repos agree on both contracts that day).
       1. `lane.<workflow>.commits_since_green`: develop commits after the head commit of that workflow's last
          green develop run. It needs no path map and also shows debt from portable code. Measured since
          2026-10-16: a Windows-path commit waited a median of 21 to 23 hours for a Windows run in

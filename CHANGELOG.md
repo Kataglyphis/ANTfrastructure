@@ -15,6 +15,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — fleet-health shows lane debt, reruns and contract drift (CON247 items 1 to 3)
+
+- `lane.<workflow>.commits_since_green`: develop commits after the head of each workflow's newest green develop run,
+  so debt from a lane that runs on request shows. `ci.<workflow>.rerun_rate`: the share of the last 20 runs that
+  needed a second attempt, without the reruns `retry-disk-refusal.yml` starts on purpose.
+- `shared_facts.contract_inference_v1` and `shared_facts.contract_text_generation_v1`: ModelANT's two contracts as
+  OxidANT, AccelerANTgine and OrchestrANT see them (lock row, tracked copy or gitlink blob), distinct digests minus
+  one. All three agreed on 2026-11-19.
+
 ## 2026-11-19 — what CON248 and CON249 had left: a real auto-commit suite and uv's floor
 
 - My BACKLOG removals of CON248 and CON249 had left their last paragraphs behind, and those named two parts not yet

@@ -180,6 +180,24 @@ class FleetHealthTests(unittest.TestCase):
         self.assertEqual(self.metric(record, "OrchestrANT", "agents_md_lines")["grade"], "moved")
         self.assertNotIn("REGRESSED", out)
 
+    def test_lane_debt_and_reruns_are_recorded_per_workflow(self) -> None:
+        rc, out, record = self.run_main("--repos", "OrchestrANT")
+        self.assertEqual(rc, 0, out)
+        debt = self.metric(record, "OrchestrANT", "lane.linux-x64.yml.commits_since_green")
+        self.assertEqual((debt["value"], debt["class"]), (3, "external"), "develop commits after the newest green head")
+        self.assertIn("head 9060000000", debt["source"])
+        rerun = self.metric(record, "OrchestrANT", "ci.linux-x64.yml.rerun_rate")
+        self.assertEqual(rerun["value"], 25.0, "one of four decisive runs, the retry workflow's own rerun left out")
+
+    def test_a_lane_with_no_green_run_has_no_debt_value(self) -> None:
+        def red(answers: dict[str, Any]) -> None:
+            for row in answers["/repos/Kataglyphis/OrchestrANT/actions/workflows/11/runs"
+                               "?branch=develop&status=completed&per_page=100"]["workflow_runs"]:
+                row["conclusion"] = "failure"
+        _rc, out, record = self.run_main("--repos", "OrchestrANT", change=red)
+        debt = self.metric(record, "OrchestrANT", "lane.linux-x64.yml.commits_since_green")
+        self.assertEqual((debt["value"], debt["status"]), (None, "not-collected"), out)
+
     def test_a_first_run_has_no_previous_artifact(self) -> None:
         rc, out, record = self.run_main("--repos", "OrchestrANT", "--compare", "previous-run")
         self.assertEqual(rc, 0, out)
@@ -387,6 +405,48 @@ class FleetHealthTests(unittest.TestCase):
             self.assertIn(needle, text)
         self.assertIn("1) grep -q '^fleet-health: verdict=regressed '", text)
         self.assertNotIn("develop-red", text)
+
+
+class SharedContractTests(unittest.TestCase):
+    """contract_sha and shared_contracts over small repos: a lock row, a tracked copy, a ModelANT gitlink, none."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name)
+        self.env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
+                    "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
+
+    def repo(self, name: str, files: dict[str, bytes]) -> Any:
+        path = self.base / name
+        path.mkdir()
+        for rel, body in files.items():
+            (path / rel).parent.mkdir(parents=True, exist_ok=True)
+            (path / rel).write_bytes(body)
+        subprocess.run(["git", "init", "-q", str(path)], check=True)
+        subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(path), "commit", "-qm", "base"], check=True, env={**os.environ, **self.env})
+        return fleet.tree.Checkout(repo=name, path=str(path))
+
+    def test_each_source_is_read_and_a_drift_counts(self) -> None:
+        import hashlib
+        body = b'{"schema": 1}\n'
+        digest = hashlib.sha256(body).hexdigest()
+        locked = self.repo("OrchestrANT", {"scripts/ai.lock": f"{digest}  inference-v1.json  https://x/\n".encode(),
+                                           "text-generation-v1.json": b"t"})
+        copied = self.repo("OxidANT", {"tests/inference-v1.json": body, "a/text-generation-v1.json": b"t"})
+        other = self.repo("AccelerANTgine", {"inference-v1.json": b'{"schema": 2}\n', "text-generation-v1.json": b"t"})
+        self.assertEqual(fleet.tree.contract_sha(locked, "inference-v1.json"), (digest, "scripts/ai.lock"))
+        self.assertEqual(fleet.tree.contract_sha(copied, "inference-v1.json"), (digest, "tests/inference-v1.json"))
+        facts = fleet.tree.shared_contracts({"OrchestrANT": locked, "OxidANT": copied, "AccelerANTgine": other})
+        self.assertEqual(facts["shared_facts.contract_inference_v1"]["value"], 1, "one repo sees another file")
+        self.assertEqual(facts["shared_facts.contract_text_generation_v1"]["value"], 0)
+
+    def test_a_repo_without_the_contract_is_not_collected(self) -> None:
+        bare = {r: self.repo(r, {"README.md": b"x"}) for r in ("OrchestrANT", "OxidANT", "AccelerANTgine")}
+        row = fleet.tree.shared_contracts(bare)["shared_facts.contract_inference_v1"]
+        self.assertEqual((row["value"], row["status"]), (None, "not-collected"))
+        self.assertIn("no copy, lock row or gitlink", row["reason"])
 
 
 if __name__ == "__main__":

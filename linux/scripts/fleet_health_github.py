@@ -111,6 +111,27 @@ def minutes(run: dict[str, Any]) -> float:
     return (dt.datetime.fromisoformat(run["updated_at"]) - start).total_seconds() / 60
 
 
+# The retry workflow reruns a run whose first attempt hit the runner's disk refusal; that rerun is on purpose.
+RETRY_ACTOR = "github-actions[bot]"
+
+
+def rerun_rate(runs: list[dict[str, Any]]) -> float:
+    """Share of runs that needed a second attempt, without the ones retry-disk-refusal.yml reran on purpose."""
+    reran = [r for r in runs if int(r.get("run_attempt", 1)) > 1
+             and (r.get("triggering_actor") or {}).get("login") != RETRY_ACTOR]
+    return round(100 * len(reran) / len(runs), 1)
+
+
+def commits_since_green(client: develop_red.Client, repo: str, runs: list[dict[str, Any]],
+                        source: str) -> dict[str, Any]:
+    """Develop commits after the head of the newest green run: the debt the lane has not yet run on."""
+    green = next((r for r in runs if r["conclusion"] == "success"), None)
+    if green is None:
+        return gap(NOT_COLLECTED, "commits", LOWER, EXTERNAL, source, f"no green run in the {source}")
+    ahead = get(client, f"/repos/{OWNER}/{repo}/compare/{green['head_sha']}...develop")["ahead_by"]
+    return rec(int(ahead), "commits", LOWER, EXTERNAL, f"{source}; head {green['head_sha'][:10]}")
+
+
 def ci_runs(client: develop_red.Client, repo: str) -> Metrics:
     """Success rate and median minutes of each active workflow's last 20 decisive develop runs."""
     def collect() -> Metrics:
@@ -128,6 +149,8 @@ def ci_runs(client: develop_red.Client, repo: str) -> Metrics:
             found[f"ci.{name}.success_rate"] = rec(round(rate, 1), "%", HIGHER, EXTERNAL, source)
             found[f"ci.{name}.median_minutes"] = rec(
                 round(statistics.median(minutes(r) for r in runs), 1), "min", LOWER, EXTERNAL, source)
+            found[f"ci.{name}.rerun_rate"] = rec(rerun_rate(runs), "%", LOWER, EXTERNAL, source)
+            found[f"lane.{name}.commits_since_green"] = commits_since_green(client, repo, runs, source)
         return found
     return guarded({"ci": ("runs", HIGHER, EXTERNAL)}, "actions/workflows", collect)
 

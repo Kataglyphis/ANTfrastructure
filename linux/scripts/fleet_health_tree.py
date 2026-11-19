@@ -5,6 +5,7 @@ It measures the tree it is given and does not build or test it; see docs/fleet-h
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -28,6 +29,12 @@ HUB_GITLINK = "third_party/ANTfrastructure"
 QUALITY_TIMEOUT = 1800
 CLONE_URL = "https://github.com/Kataglyphis/{repo}.git"
 SHARED_REPOS = ("OxidANT", "AccelerANTgine", "OrchestrANT")
+# ModelANT's two contracts, read as each repo sees them; the metric counts distinct digests beyond one.
+SHARED_CONTRACTS = (
+    ("shared_facts.contract_inference_v1", "inference-v1.json"),
+    ("shared_facts.contract_text_generation_v1", "text-generation-v1.json"),
+)
+MODELANT_GITLINK = "third_party/ModelANT"
 SHARED_LOCKS = (
     ("shared_facts.models_lock_deim", "models.lock", "DEIM", lambda name: name.startswith("deim_")),
     ("shared_facts.llm_lock_smollm2", "llm.lock", "SmolLM2", lambda name: "smollm2" in name.lower()),
@@ -183,6 +190,46 @@ def lock_rows(co: Checkout, lock: str, wanted: Any) -> list[str] | None:
     return sorted(rows)
 
 
+def contract_sha(co: Checkout, name: str) -> tuple[str, str] | None:
+    """(SHA-256, where) of a contract: a lock row naming it, a tracked copy, or the ModelANT gitlink's blob."""
+    locks = git(co.path, "ls-files", "--", ":(glob)**/*.lock", ":(exclude)third_party").stdout.split()
+    for rel in sorted(locks):
+        with open(os.path.join(co.path, rel), encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                cols = line.split()
+                if len(cols) >= 2 and not cols[0].startswith("#") and cols[1] == name:
+                    return cols[0], rel
+    copies = git(co.path, "ls-files", "--", f":(glob)**/{name}", ":(exclude)third_party").stdout.split()
+    if copies:
+        with open(os.path.join(co.path, sorted(copies)[0]), "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest(), sorted(copies)[0]
+    pin = git(co.path, "ls-tree", "HEAD", MODELANT_GITLINK).stdout.split()
+    if len(pin) >= 3:
+        blob = subprocess.run(["git", "-C", os.path.join(co.path, MODELANT_GITLINK), "cat-file", "blob",
+                               f"{pin[2]}:contracts/{name}"], capture_output=True, check=False)
+        if blob.returncode == 0:
+            return hashlib.sha256(blob.stdout).hexdigest(), f"{MODELANT_GITLINK} at {pin[2][:10]}"
+    return None
+
+
+def shared_contracts(checkouts: dict[str, Checkout]) -> Metrics:
+    """Distinct contract digests beyond one across the three repos; 0 means each sees the same file."""
+    metrics: Metrics = {}
+    for name, file in SHARED_CONTRACTS:
+        source = f"ModelANT's contracts/{file} in {', '.join(SHARED_REPOS)}"
+        unmeasured = [r for r in SHARED_REPOS if r not in checkouts or checkouts[r].error]
+        found = {r: contract_sha(checkouts[r], file) for r in SHARED_REPOS if r not in unmeasured}
+        absent = [r for r, seen in found.items() if seen is None]
+        if unmeasured or absent:
+            why = f"not measured: {', '.join(unmeasured)}" if unmeasured else f"no copy, lock row or gitlink: {', '.join(absent)}"
+            metrics[name] = gap(NOT_COLLECTED, "digests", LOWER, CODE, source, why)
+            continue
+        digests = {seen[0] for seen in found.values() if seen}
+        metrics[name] = {**rec(len(digests) - 1, "digests", LOWER, CODE, source),
+                         "detail": {r: f"{seen[0][:12]} ({seen[1]})" for r, seen in found.items() if seen}}
+    return metrics
+
+
 def shared_facts(checkouts: dict[str, Checkout]) -> Metrics:
     """How many row sets beyond one the shared model rows take across the three repos; 0 means they agree."""
     metrics: Metrics = {}
@@ -203,4 +250,4 @@ def shared_facts(checkouts: dict[str, Checkout]) -> Metrics:
         variants = {tuple(rows or []) for rows in found.values()}
         metrics[name] = {**rec(len(variants) - 1, "row sets", LOWER, CODE, source),
                          "detail": {r: rows for r, rows in found.items()}}
-    return metrics
+    return {**metrics, **shared_contracts(checkouts)}

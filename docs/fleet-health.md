@@ -51,6 +51,8 @@ Per repo, under `repos.<repo>.metrics`:
 | Every metric of the repo's `measurements.json` | as recorded (`code` or `report`) | the checkout's `scripts/linux/quality-report.sh --offline` |
 | Artifact metrics (`tests_passed.*`, `line_coverage.*`, `mutations_caught.*`, …) | `code` | the `code-quality-measurements` artifact of a run at the same SHA; else not collected |
 | `ci.<workflow>.success_rate`, `ci.<workflow>.median_minutes` | external | the last 20 completed develop runs of each active workflow from push, dispatch or schedule, conclusion success or failure |
+| `ci.<workflow>.rerun_rate` | external | the share of those runs with a second attempt; a rerun `github-actions[bot]` started (`retry-disk-refusal.yml`, on purpose) is left out |
+| `lane.<workflow>.commits_since_green` | external | develop commits after the head of the newest green run among them (`compare/<head>...develop`): the debt that lane has not run on, portable code included; not collected without a green run |
 | `dependabot.open.<severity>` | external | open Dependabot alerts (a 100th alert makes it not collected: cursor pages are not followed) |
 | `dependabot.high_critical_ids` | advisory | the GHSA ids of the HIGH and CRITICAL ones |
 | `code_scanning.open.<severity>` | external | open code-scanning alerts by security severity, `other` when the rule has none |
@@ -70,6 +72,11 @@ compares the DEIM rows of each repo's tracked `models.lock`, and
 AccelerANTgine and OrchestrANT. The value is the number of distinct row sets minus one, so 0
 means they agree. When a repo is not in the run, or a file is absent, the metric is not
 collected and the reason names what exists.
+
+`shared_facts.contract_inference_v1` and `shared_facts.contract_text_generation_v1` do the same for
+ModelANT's two contracts, as each of the three repos sees them: a tracked lock row naming the file,
+else a tracked copy, else the blob at the `third_party/ModelANT` gitlink. The value is the number of
+distinct SHA-256 digests minus one, and `detail` names each repo's digest and source.
 
 ## Grades and verdict
 
