@@ -2352,14 +2352,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       953d6f6, `Invoke-DartChecks.ps1 -Engine wslc`, analyze 146 s against nerdctl's
       371 s, format + test 23 s against 32 s (2026-10-06).
 
-- [ ] **CON242 — one consumer runs its Linux test step through `run-in-ci-image.sh` on a named volume** [S, ★★].
-      The helper takes `--volume NAME:/PATH`, `--env NAME=VALUE` and `--privileged` since 2026-11-13, runs as root by
-      itself under a rootless engine on Linux and names the local image's creation date
-      ([`shared-script-libraries.md` § `run-in-ci-image.sh`](docs/shared-script-libraries.md#run-in-ci-imagesh--run-a-command-in-the-ci-image)).
-      Left: no consumer page gives its local test run through it yet; AccelerANTgine's pages gave no local container
-      command at all. Each consumer takes it at the pin bump that brings the options.
-      Done when one consumer's documented Linux test command is this helper with a named volume, and it was run once.
-
 - [ ] **CON269 — what the consumer hook pair and the staleness gate leave open** [S, ★★]. Found 2026-11-12
       while CON243 and CON244 were built; what is built is in `CHANGELOG.md` and
       [`adopting-in-a-new-project.md` § The git hooks, by reference](docs/adopting-in-a-new-project.md#the-git-hooks-by-reference).

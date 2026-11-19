@@ -15,6 +15,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — a consumer documents its local test step through `run-in-ci-image.sh` (CON242)
+
+- OrchestrANT's AGENTS.md names `run-in-ci-image.sh . --volume orchestrant-uv-cache:/root/.cache/uv -- bash
+  scripts/linux/ci_tests.sh` (a0cff92) in place of a commented `nerdctl run`. It ran once on 2026-11-19 in the same
+  image and volume, through the Raspberry Pi's capped runner: 3410 passed, 37 skipped, 579 s.
+
 ## 2026-11-19 — a read-only doctor names what is stale in a dev checkout (CON249)
 
 - A month-old local image, a uv older than the lock format and a tree about 100 commits behind each cost an hour of
