@@ -34673,6 +34673,14 @@
   "why": "without read:packages there are no dates; 0 lanes would read as all lanes current"
  },
  {
+  "id": "fleet-health.lane-debt-refusal-stays-in-its-row",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "    except NotCollected as exc:\n        # A head from before a history rewrite",
+  "replace": "    except KeyError as exc:\n        # A head from before a history rewrite",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a 404 for one compare took every ci row of three repos down on 2026-11-19; it must stay in the debt row"
+ },
+ {
   "id": "python.static-ty-uses-quality-environment",
   "target": "linux/scripts/python-static.sh",
   "find": "  ty_env_flags=(--extra-search-path \"$site\")",

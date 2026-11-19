@@ -128,7 +128,11 @@ def commits_since_green(client: develop_red.Client, repo: str, runs: list[dict[s
     green = next((r for r in runs if r["conclusion"] == "success"), None)
     if green is None:
         return gap(NOT_COLLECTED, "commits", LOWER, EXTERNAL, source, f"no green run in the {source}")
-    ahead = get(client, f"/repos/{OWNER}/{repo}/compare/{green['head_sha']}...develop")["ahead_by"]
+    try:
+        ahead = get(client, f"/repos/{OWNER}/{repo}/compare/{green['head_sha']}...develop")["ahead_by"]
+    except NotCollected as exc:
+        # A head from before a history rewrite has no common ancestor with develop; the other ci rows still stand.
+        return gap(NOT_COLLECTED, "commits", LOWER, EXTERNAL, source, f"head {green['head_sha'][:10]}: {exc}")
     return rec(int(ahead), "commits", LOWER, EXTERNAL, f"{source}; head {green['head_sha'][:10]}")
 
 

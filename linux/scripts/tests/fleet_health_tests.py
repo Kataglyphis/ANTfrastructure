@@ -203,6 +203,18 @@ class FleetHealthTests(unittest.TestCase):
         self.assertEqual((row["value"], row["status"]), (None, "not-collected"))
         self.assertIn("read:packages", row["reason"])
 
+    def test_a_green_head_outside_develop_leaves_the_other_ci_rows_standing(self) -> None:
+        def orphan(answers: dict[str, Any]) -> None:
+            answers.pop("/repos/Kataglyphis/OrchestrANT/compare/9060000000000000000000000000000000000000...develop")
+            answers["/repos/Kataglyphis/OrchestrANT/compare/9060000000000000000000000000000000000000...develop"] = {
+                "http_errors": [404], "answer": {}}
+        rc, out, record = self.run_main("--repos", "OrchestrANT", change=orphan)
+        self.assertEqual(rc, 0, out)
+        debt = self.metric(record, "OrchestrANT", "lane.linux-x64.yml.commits_since_green")
+        self.assertEqual((debt["value"], debt["status"]), (None, "not-collected"))
+        self.assertEqual(self.metric(record, "OrchestrANT", "ci.linux-x64.yml.success_rate")["value"], 75.0,
+                         "a history rewrite must not take the success rate down with the debt row")
+
     def test_a_lane_with_no_green_run_has_no_debt_value(self) -> None:
         def red(answers: dict[str, Any]) -> None:
             for row in answers["/repos/Kataglyphis/OrchestrANT/actions/workflows/11/runs"

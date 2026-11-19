@@ -47,6 +47,9 @@
   `bench_history.<artifact>.days_since_sample`, `stale` above 14 days; and `image_lag.lanes_without_run`, the lanes
   whose newest develop run is older than the image tag they pull, from the package versions (`fleet-health.yml`
   gains `packages: read`). CON247 is done.
+- Found by the first record with these rows (run 44558849413): in OxidANT, AccelerANTgine and OrchestrANT the newest
+  green run's head comes from before a history rewrite, so `compare` answered 404 and took every `ci.*` row of the
+  repo with it. The refusal stays in that lane's debt row now, not collected, and the other rows stand.
 
 ## 2026-11-19 — what CON248 and CON249 had left: a real auto-commit suite and uv's floor
 
