@@ -75,7 +75,7 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
   the CPU baseline that GPU consumers must continue to support.
 - **CUDA architectures:** CON217 adds Turing, so RTX 20xx cards can run the NVIDIA packages.
 - **Results on a GPU:** CON220 covers wrong DirectML output that the provider checks do not see.
-- **GenAI threads:** CON218 covers the default thread count on pinned CPUs.
+- **GenAI threads:** CON218 (the default thread count on pinned CPUs) is done since 2026-11-19.
 - **riscv64 ORT:** CON219 covers the 4-bit `MatMulNBits` crash on RVV.
 - **Image readiness and capacity:** CON90 and CON174 track the ROCm Python rollout and
   measured disk requirements for GPU consumer builds.
@@ -96,7 +96,7 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
   QNN is arm64-only: about 0.4 GB of packages plus OpenVINO. Only the XPU torch (CON261) replaces a
   default component and is multi-GB. `:amd64-intel` does not fit the tag grammar; the names are
   `:latest-intel` and `:winamd64-intel`.
-- **Already open, and larger on every x86 CPU:** CON218 (GenAI threads) and CON191 (`libdnnl.so.3`,
+- **Already open, and larger on every x86 CPU:** CON191 (`libdnnl.so.3`,
   still absent on `a106e548…`). An explicit WebGPU session on that image also falls back to the CPU
   provider (`DawnProcTable must be provided`); CON233's WebGPU work owns that.
 - **The scratch probes** sit untracked in `logs/reports/intel-amd-cpu-20261110/` on the build host.
