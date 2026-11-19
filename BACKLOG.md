@@ -2428,23 +2428,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       engine with an old image, an old uv on `PATH`) with a mutation recipe per check, and
       `docs/shared-script-libraries.md` describes the script.
 
-- [ ] **CON250 — the shared test runners name a hang and report per test** [M, ★★]. Found by the audit of
-      2026-11-12, each read in the hub's code:
-      1. Done 2026-11-19: `ctest-run.sh` passes `--timeout 1500` unless the caller sets `--timeout`
-         (flag, env, caller default or after `--`). AccelerANTgine's main lane keeps its 300 s; its riscv64
-         lane, which set none, gets 1500 s at its next pin bump.
-      2. Hub half done 2026-11-19: `cargo_test.sh` keeps its log and writes JUnit through
-         `02-toolchain/rust/cargo-test-junit.py`, OxidANT's converter moved up. Left: OxidANT calls it at its
-         next pin bump and deletes its own copy.
-      3. Done 2026-11-16: `ci_tests.sh` measures each `PYTHON_COVERAGE_EXTRA` tree (`coverage-extra` on
-         `python-ci-linux.yml`, `DIR=MIN`) with its own report and floor, and the package's report leaves
-         them out. OrchestrANT's `benchmarks/` measured 91.0 % (4,202 of 4,616 statements), the package
-         alone 71.0 % on the test extra.
-
-      Done when `test-lib-ctest-run.sh`, `test-cargo-wrapper.sh` and `test-verify-test-reports.sh` cover the
-      new behaviour with a mutation recipe each, OxidANT's quality report records Rust test counts, and
-      OrchestrANT's lane prints a second percentage for `benchmarks/`. The pytest-timeout half is CON238.
-
 - [ ] **CON253 — Home Assistant keeps the cameras' model time, and warns when it rises** [S, ★★]. Found by the
       audit of 2026-11-12: no performance budget covers the Pi-class boards the cameras run on, as the
       perf-host baselines are for one desktop CPU. ObservANT's `/healthz` already reports `model_ms`,

@@ -22,6 +22,7 @@
   `logs/test-results/cargo-test.txt` and `cargo-test.xml` for every Rust consumer (`CARGO_TEST_RESULTS_DIR`, empty
   writes neither). The status is cargo's; a log with no test binary in it fails. Stable libtest prints no per-test
   time, so each binary keeps only its total.
+- OxidANT calls it since d1bcd2c and deleted its own converter, so CON250 is done.
 
 ## 2026-11-19 — a hung C++ test ends named (CON250 item 1)
 
