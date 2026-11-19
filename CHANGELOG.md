@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-19 — what CON269 left: the `--index` refusal's recipe and two commits through the hook pair
+
+- `lint-gates.index-needs-staged` proves that `run-lint-gates.sh` refuses `--index` without `--staged`. Its mutant ran
+  the downloaded linters inside `test-lint-gates.sh`; `test-consumer-hooks.sh` holds the case now, over its hub copy's
+  stub linters, so the mutant ends in seconds. The same suite commits through the hook pair: a staged CRLF script
+  stops the commit, and an unstaged deletion beside a clean commit does not. CON269 is done.
+
 ## 2026-11-19 — fleet-health shows lane debt, reruns and contract drift (CON247 items 1 to 3)
 
 - `lane.<workflow>.commits_since_green`: develop commits after the head of each workflow's newest green develop run,

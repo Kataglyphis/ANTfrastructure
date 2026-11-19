@@ -37961,6 +37961,14 @@
   "why": "the full gates on every commit take minutes and teach --no-verify"
  },
  {
+  "id": "lint-gates.index-needs-staged",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  [ -z \"${_LINT_GATES_INDEX}\" ] || _lint_gates_die \"--index belongs to --staged; the full gates read the working tree\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k notice",
+  "why": "the full gates read the working tree; an --index there is ignored in silence, so a caller who meant the staged checks gets the wrong ones"
+ },
+ {
   "id": "lib.trt-ep-protobuf-rc-frontend",
   "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
   "find": "                '\"$<$<COMPILE_LANGUAGE:C,CXX>:' + $option.Value + '>\"'",

@@ -2349,24 +2349,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       953d6f6, `Invoke-DartChecks.ps1 -Engine wslc`, analyze 146 s against nerdctl's
       371 s, format + test 23 s against 32 s (2026-10-06).
 
-- [ ] **CON269 — what the consumer hook pair and the staleness gate leave open** [S, ★★]. Found 2026-11-12
-      while CON243 and CON244 were built; what is built is in `CHANGELOG.md` and
-      [`adopting-in-a-new-project.md` § The git hooks, by reference](docs/adopting-in-a-new-project.md#the-git-hooks-by-reference).
-      1. Done 2026-11-19: `linux/scripts/verify-shell-eol.sh [<root>] [--staged]` is the hub's `crlf-guard`
-         and a gate of `run-lint-gates.sh`, in the full gates (`w/` column) and the staged checks (`i/`).
-      2. Done 2026-11-18: `lint-shell.sh`'s default sweep takes `shared/linux`, the hook templates included;
-         they were clean, and the warning ratchet did not move.
-      3. The refusal of `--index` without `--staged` has a test and no mutation recipe: its mutant runs
-         the downloaded linters inside `test-lint-gates.sh`.
-      4. Done 2026-11-18: `verify_large_files.py` sniffs the blob (`git cat-file blob`), so an unstaged
-         deletion no longer stops every commit and the index is what is graded.
-      5. Done 2026-11-19 (owner decision: the absolute path per clone): the adoption page's line is absolute,
-         and `run-lint-gates.sh` names a clone that still has the relative one.
-
-      Done when a staged CRLF shell script stops a commit
-      in `test-consumer-hooks.sh`, a default `lint-shell.sh` run lists both hook files, a commit passes
-      beside an unstaged deletion, and a commit in a worktree without the submodule is stopped or named.
-
 - [ ] **CON253 — Home Assistant keeps the cameras' model time, and warns when it rises** [S, ★★]. Found by the
       audit of 2026-11-12: no performance budget covers the Pi-class boards the cameras run on, as the
       perf-host baselines are for one desktop CPU. ObservANT's `/healthz` already reports `model_ms`,

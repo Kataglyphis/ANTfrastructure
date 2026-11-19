@@ -57,8 +57,8 @@ _hub_copy() {
     cp -p "${HUB}/${rel}" "${d}/${rel}"
   done
   for rel in lint-workflows.sh lint-python.sh; do _stub_sh "${d}/linux/scripts/${rel}"; done
-  # --list-files only classifies paths, so it is logged apart from a lint run; it names no shell file here.
-  printf '#!/usr/bin/env bash\nif [ "${1-}" = --list-files ]; then echo "lint-shell.sh --list-files" >> "${HOOK_TEST_ARGV}"; exit 0; fi\nprintf "%%s\\n" "${0##*/}" >> "${HOOK_TEST_ARGV}"\n' \
+  # --list-files only classifies paths, by suffix here, so it is logged apart from a lint run.
+  printf '#!/usr/bin/env bash\nif [ "${1-}" = --list-files ]; then echo "lint-shell.sh --list-files" >> "${HOOK_TEST_ARGV}"; shift; for f in "$@"; do case "$f" in *.sh) echo "$f" ;; esac; done; exit 0; fi\nprintf "%%s\\n" "${0##*/}" >> "${HOOK_TEST_ARGV}"\n' \
     > "${d}/linux/scripts/lint-shell.sh"
   _stub_sh "${d}/shared/config/sync-shared-config.sh"
   _stub_secrets "${d}/linux/scripts/lint-secrets.sh"
@@ -214,6 +214,25 @@ _section_commit() {
   _stage "${bare}" conf/app.txt "token = ${_TOKEN}"
   _run "${bare}" commit -q -m leak
   t_assert_eq 1 "${_rc}" "the secret scan needs no flag: ${_out}"
+}
+
+_section_eol() {
+  local d head
+  d="$(_consumer)"
+  t_case "a staged shell script with CRLF stops the commit, and an unstaged deletion beside a clean commit does not"
+  printf 'echo crlf\r\n' > "${d}/scripts/linux/crlf.sh"
+  git -C "${d}" add scripts/linux/crlf.sh
+  head="$(git -C "${d}" rev-parse HEAD)"
+  _run "${d}" commit -q -m crlf
+  t_assert_eq 1 "${_rc}" "${_out}"
+  t_assert_contains "${_out}" "i/crlf  scripts/linux/crlf.sh"
+  t_assert_eq "${head}" "$(git -C "${d}" rev-parse HEAD)" "no commit was made"
+  git -C "${d}" rm -q --cached scripts/linux/crlf.sh && rm "${d}/scripts/linux/crlf.sh"
+  rm "${d}/README.md"
+  _stage "${d}" notes.txt "beside a deletion not staged yet"
+  _run "${d}" commit -q -m beside
+  t_assert_eq 0 "${_rc}" "the large-files gate grades the index, so a missing working-tree file is no partial tree: ${_out}"
+  git -C "${d}" checkout -q -- README.md
 }
 
 _section_push() {
@@ -373,9 +392,16 @@ _notice() { _LINT_GATES_ROOT="$1" _LINT_GATES_DIR="$2" _lint_gates_hook_notice 2
 _section_notice() {
   local d out plain hub gates
 
-  t_case "a clone without hooks is told so in one line, and the gates still pass"
+  t_case "--index without --staged is refused before any gate runs; here the gates are stubs, so a mutant ends fast"
   d="$(_consumer)"
   gates="${d}/third_party/ANTfrastructure/linux/scripts"
+  : > "${HOOK_TEST_ARGV}"
+  out="$(bash "${gates}/run-lint-gates.sh" "${d}" --index "${d}/.git/index" 2>&1)"
+  t_assert_eq 2 "$?" "the full gates read the working tree, so an index there would be ignored in silence: ${out}"
+  t_assert_contains "${out}" "--index belongs to --staged"
+  t_assert_eq "" "$(cat "${HOOK_TEST_ARGV}")" "no gate ran"
+
+  t_case "a clone without hooks is told so in one line, and the gates still pass"
   git -C "${d}" config --unset core.hooksPath
   out="$(cd "${d}" && bash scripts/linux/run-lint-gates.sh 2>&1)"
   t_assert_eq 0 "$?" "a warning is not a verdict: ${out}"
@@ -423,5 +449,5 @@ _section_notice() {
 }
 
 _hub_copy "${_work}/hub"
-t_sections _section_commit _section_push _section_extension _section_image_runner _section_handover _section_notice -- "$@"
+t_sections _section_commit _section_eol _section_push _section_extension _section_image_runner _section_handover _section_notice -- "$@"
 t_summary
