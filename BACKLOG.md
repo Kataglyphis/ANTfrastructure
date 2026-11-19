@@ -2433,9 +2433,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       1. Done 2026-11-19: `ctest-run.sh` passes `--timeout 1500` unless the caller sets `--timeout`
          (flag, env, caller default or after `--`). AccelerANTgine's main lane keeps its 300 s; its riscv64
          lane, which set none, gets 1500 s at its next pin bump.
-      2. `linux/scripts/02-toolchain/rust/cargo_test.sh` runs `cargo test --all --verbose` and writes no
-         result file, so OxidANT's test counts and durations are recorded nowhere. Write per-test JUnit from
-         the output, for every Rust consumer, with no new tool in the image.
+      2. Hub half done 2026-11-19: `cargo_test.sh` keeps its log and writes JUnit through
+         `02-toolchain/rust/cargo-test-junit.py`, OxidANT's converter moved up. Left: OxidANT calls it at its
+         next pin bump and deletes its own copy.
       3. Done 2026-11-16: `ci_tests.sh` measures each `PYTHON_COVERAGE_EXTRA` tree (`coverage-extra` on
          `python-ci-linux.yml`, `DIR=MIN`) with its own report and floor, and the package's report leaves
          them out. OrchestrANT's `benchmarks/` measured 91.0 % (4,202 of 4,616 statements), the package

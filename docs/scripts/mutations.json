@@ -31569,6 +31569,30 @@
   "why": "The recorded compiler host must be unambiguous."
  },
  {
+  "id": "rust.cargo-test-junit-crash-counted",
+  "target": "linux/scripts/02-toolchain/rust/cargo-test-junit.py",
+  "find": "        if not suite.finished:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-cargo-test-junit.sh",
+  "why": "a test binary that died mid-run, as a SIGSEGV does, is a failure; without it the record reads green"
+ },
+ {
+  "id": "rust.cargo-test-status-kept",
+  "target": "linux/scripts/02-toolchain/rust/cargo_test.sh",
+  "find": "rc=\"${PIPESTATUS[0]}\"",
+  "replace": "rc=0",
+  "test": "bash linux/scripts/tests/test-cargo-test-junit.sh",
+  "why": "the JUnit record must not hide a failing cargo test; the step's status is cargo's"
+ },
+ {
+  "id": "rust.cargo-test-empty-record-fails",
+  "target": "linux/scripts/02-toolchain/rust/cargo_test.sh",
+  "find": "[ \"${rc}\" != 0 ] || rc=\"${junit_rc}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cargo-test-junit.sh",
+  "why": "a log with no test binary in it records nothing, and nothing is no pass"
+ },
+ {
   "id": "windows-lane.ort-license-match-dll",
   "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
   "find": "            if ((Get-WheelEntryHash -Entry $dll) -ceq $digest) { $matchingWheels.Add($wheel) }",
