@@ -10,9 +10,12 @@ plant() {
   mkdir -p "$1/quality" || return
   printf 'fixture rules\n' > "$1/AGENTS.md"
   printf 'fixture lock\n' > "$1/quality/uv.lock"
+  printf '[project]\nname="fixture"\nversion="0"\n' > "$1/quality/pyproject.toml"
   printf 'quality/.venv/\n' > "$1/.gitignore"
 }
 fixture="$(t_consumer_fixture "${work}" plant quality-venv)" || exit 1
 t_case "quality environments retain bytes and refuse unsafe source or destination inputs"
 t_assert_rc 0 python3 "${TESTS_DIR}/quality_venv_relocation_tests.py" "${TESTS_DIR}/../../host-config/relocate-quality-venv.py" "${fixture}"
+t_case "QA removal preserves sources and refuses active use or changed inputs"
+t_assert_rc 0 python3 "${TESTS_DIR}/qa_venv_cleanup_tests.py" "${TESTS_DIR}/../../host-config" "${fixture}"
 t_summary

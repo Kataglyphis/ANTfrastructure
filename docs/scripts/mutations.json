@@ -56236,5 +56236,213 @@
   "replace": "name = selected_library(value, required)\n            if expected_pid is not None and not re.fullmatch(rf\"\\s*{expected_pid}:\\s*\", prefix):\n                raise ValueError(\"loader trace process differs from profile\")\n            if name is not None:",
   "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
   "why": "Unrelated HIP child records may share a parent trace without supplying required ORT/plugin evidence."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-optimizer",
+  "target": "linux/host-config/qa_venv_cleanup.py",
+  "find": "require(__debug__, 'Optimization disables prerequisite safety assertions')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-protected-path",
+  "target": "linux/host-config/qa_venv_cleanup.py",
+  "find": "require(not any(path.is_relative_to(p.resolve()) or p.resolve().is_relative_to(path) for p in protected),\n            'Selected environment overlaps a protected path')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-embedded-checkout",
+  "target": "linux/host-config/qa_venv_cleanup.py",
+  "find": "require('.git' not in directories + files, 'A QA tree contains a versioned source checkout')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-recreation-metadata",
+  "target": "linux/host-config/qa_venv_cleanup.py",
+  "find": "require((path.parent / 'pyproject.toml').is_file(), 'Recreation project metadata is missing')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-authorization-scope",
+  "target": "linux/host-config/qa_venv_cleanup.py",
+  "find": "require(record.get('scope') == 'standing-automatic-cleanup-of-unused-reproducible-QA-outputs'\n            and 'ignored-quality-venv' in record.get('approved_categories', []), 'QA removal is not in the supplied authorization')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-authorization-root",
+  "target": "linux/host-config/qa_venv_cleanup.py",
+  "find": "require(record.get('allowed_root') == str(root), 'Authorization allowed root differs')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-safe-delete",
+  "target": "linux/host-config/qa_venv_cleanup.py",
+  "find": "require(shutil.rmtree.avoids_symlink_attacks, 'Symlink-resistant deletion is required')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-source-after-delete",
+  "target": "linux/host-config/qa_venv_cleanup.py",
+  "find": "require(source_state(path.parent.parent) == row['source'], 'Owning versioned source or lock changed')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-preserve-evidence",
+  "target": "linux/host-config/qa_venv_cleanup.py",
+  "find": "require(not output.exists() and not output.is_symlink(), 'Preserve existing cleanup evidence')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-observation-status",
+  "target": "linux/scripts/qa_venv_usage.py",
+  "find": "require(result.returncode == 0 and not result.stderr.strip(), f\"Observation failed: {command[0]}\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-observation-shape",
+  "target": "linux/scripts/qa_venv_usage.py",
+  "find": "require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), \"Malformed observation records\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-unit-pids",
+  "target": "linux/scripts/qa_venv_usage.py",
+  "find": "require((state['ActiveState'], state['SubState']) in terminal\n                and state['MainPID'] == state['ControlPID'] == '0', 'A build or QA unit is active')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-container-identity",
+  "target": "linux/scripts/qa_venv_usage.py",
+  "find": "require(re.fullmatch(r'[0-9a-f]{64}', str(row.get('ID', ''))), 'Truncated container identity')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-container-state",
+  "target": "linux/scripts/qa_venv_usage.py",
+  "find": "require(isinstance(status, str) and (status == 'Created' or status.startswith(('Exited ', 'Dead'))),\n                'An engine container is active or unknown')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-container-source",
+  "target": "linux/scripts/qa_venv_usage.py",
+  "find": "require(not any(str(path.parent.parent) in json.dumps(row) for path in paths), 'A container references a QA source')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-buildkit-unknown",
+  "target": "linux/scripts/qa_venv_usage.py",
+  "find": "require(all(type(row.get('inUse')) is bool for row in records), 'Unknown BuildKit use state')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-buildkit-in-use",
+  "target": "linux/scripts/qa_venv_usage.py",
+  "find": "require(not any(row['inUse'] for row in records), 'BuildKit has in-use records')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-process-use",
+  "target": "linux/scripts/qa_venv_usage.py",
+  "find": "require(not any(root in data for root in roots), f'QA source in use by PID {process.name}')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-process-incomplete",
+  "target": "linux/scripts/qa_venv_usage.py",
+  "find": "require(not process.exists(), 'A live process has incomplete use observations')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-mounted-tree",
+  "target": "linux/scripts/qa_venv_usage.py",
+  "find": "require(not any(mount.is_relative_to(path) for path in paths), 'A selected QA tree contains a mount')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-source-validator",
+  "target": "linux/host-config/qa_venv_cleanup.py",
+  "find": "    api['validate_source'](path)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-last-usage",
+  "target": "linux/host-config/qa_venv_cleanup.py",
+  "find": "    usage = observe_usage(paths, engine)\n    verify_candidate(row)",
+  "replace": "    usage = {}\n    verify_candidate(row)",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-last-candidate",
+  "target": "linux/host-config/qa_venv_cleanup.py",
+  "find": "    verify_candidate(row)\n    verify_inputs(inputs)",
+  "replace": "    pass\n    verify_inputs(inputs)",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-last-inputs",
+  "target": "linux/host-config/qa_venv_cleanup.py",
+  "find": "    verify_inputs(inputs)\n    path = Path(row['environment'])",
+  "replace": "    pass\n    path = Path(row['environment'])",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-process-dispatch",
+  "target": "linux/scripts/qa_venv_usage.py",
+  "find": "    processes = idle_processes(paths, proc_root)",
+  "replace": "    processes = 0",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.qa-cleanup-mount-dispatch",
+  "target": "linux/scripts/qa_venv_usage.py",
+  "find": "    idle_mounts(paths, proc_root)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-relocate-quality-venv.sh",
+  "why": "Disposable-tree and fake-host controls must reject removal of this safety check; they do not authenticate authorization, lock concurrent writers or prove host idleness, builds or runtime acceptance."
  }
 ]
