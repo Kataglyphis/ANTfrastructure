@@ -52,7 +52,8 @@ holds OpenAI chat stream lines with what a reader makes of them: text and thinki
 usage and whether `[DONE]` arrived, or the error. `data:` without a space, a usage-only chunk, keep-alives, a stream
 cut before `[DONE]`, reasoning under either name, an error object, a plain-text error, an `error:` line and a chunk
 that is no JSON are its cases. Owner decision 2026-11-19: a chunk that is no JSON fails the stream, and an `error:`
-line is the server's error. OxidANT's `endpoint.rs` and OrchestrANT's `answers.py` replay every case.
+line is the server's error. OxidANT's `endpoint.rs`, OrchestrANT's `answers.py` and OmniAccelerANT's
+`endpoint_reply.dart` replay every case.
 
 | Call | Contract |
 |---|---|

@@ -15,6 +15,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — CON237 closed: every binding replays the shared text cases
+
+- `fixture.json`'s `cases` are replayed by AccelerANTgine 7f8cb17 (C++ and Python), OxidANT 9e0f589 and OrchestrANT
+  585f40c, which now names a schema object llguidance cannot compile `generation_failed` as C++ and Rust do. The stream
+  lines reach Dart too: OmniAccelerANT e6b1898's `endpoint_reply.dart` replays them and fails on an `error:` line.
+
 ## 2026-11-20 — the test model's `fixture.json` lists its cases (CON237 item 4)
 
 - `tiny-genai-model.py` writes `cases`: seven requests with their answer or their error kind (`invalid_options`,

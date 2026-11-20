@@ -583,40 +583,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([`docs/language-ai.md` § Roadmap](docs/language-ai.md#roadmap)). ORT is built for Android
       (`03-media/build/onnxruntime/android/build-android.sh`, `Dockerfile.android:125`); GenAI is not. Left: build
       GenAI against that ORT in the android stage. Proving it needs a chain.
-- [ ] **CON237 — the text contract's shared cases: a schema case, stream lines, and a page that matches the code** [M, ★★].
-      Found by the audit of 2026-11-12. [`language-ai.md` § The test model](docs/language-ai.md#the-test-model)
-      says a binding test reads the tiny model's `fixture.json` "instead of retyping the numbers", but `write()`
-      in `linux/scripts/lib/tiny-genai-model.py` puts only the prompt, its ids, the continuation, `max_length`
-      and the end token there. The JSON-schema case is typed again in five consumer test files and in the
-      hub's own `windows/scripts/build/genai-guidance-smoke.py` (`SCHEMA`). Error kinds and OpenAI stream
-      lines are typed per language and have started to differ: a schema error is `InvalidOptions` in C++ and
-      `GenerationFailed` in Rust, and Rust's stream reader fails on a broken chunk that Python skips.
-      1. The page. `:winamd64` ships llguidance (LAI-H2), but "What the images carry", the text contract and
-         the LAI-H2 roadmap row still say Windows needs a chain to ship it. "Every binding … offers the
-         same calls against two backends" is wrong for AccelerANTgine, which has no endpoint client: say
-         which binding has which backend.
-      2. `fixture.json` gains the schema case, the schema and its expected answer; the old keys stay. The
-         smoke script reads it from there.
-      3. One hub file of OpenAI stream lines with their expected events or error: `data:` without a space, a
-         usage-only chunk, an error object, a plain-text error, an `error:` line, a stream cut before
-         `[DONE]`, reasoning deltas and finish reason `length`. It moves here once OxidANT's `endpoint.rs`
-         tests read it beside OrchestrANT's (the two-consumer rule); Dart later.
-      4. Later: a `cases` list in `fixture.json` (name, messages, options, then text, ids and finish reason,
-         or an error kind). A new case reaches a repo only at its hub pin bump, and AccelerANTgine's contract
-         test pins one case on purpose, so plan it with that repo.
-
-      Item 3 done 2026-11-19: `shared/contracts/openai-stream-lines.json` (owner decisions that day: a chunk that is no
-      JSON fails the stream, an `error:` line is the server's error), replayed by OxidANT 2afd994
-      (`crates/text/tests/stream_lines.rs`) and OrchestrANT 985c0d6 (`test_stream_lines_contract.py`); Dart later.
-      Item 4 in the hub 2026-11-20 (owner: all three bindings at once): `fixture.json`'s `cases`, seven of them;
-      left: AccelerANTgine, OxidANT and OrchestrANT replay them at their pin bump.
-      Items 1 and 2 done 2026-11-19: the page names each binding's backends and says `:winamd64` ships
-      llguidance; `fixture.json` carries `schema_case`, which the image smoke replays (`genai-guidance-schema-ok 7`
-      in `:latest` too). Left: items 3 and 4, which need OxidANT's and OrchestrANT's stream tests.
-      Done when `test-tiny-genai-model.sh` reads the schema case back, the image smoke replays it, Rust and
-      Python read the one stream file, and the page names each binding's backends. Items 1 and 2 need no
-      consumer.
-
 ## Open — Linux image (all arches)
 
 - [ ] **CON238 — two test tools the images lack: cargo-mutants and pytest-timeout** [S, ★★]. Found by the audit
