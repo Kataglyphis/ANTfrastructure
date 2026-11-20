@@ -2247,6 +2247,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the next image and verify the secret-scan gate without network access on each
       supported image architecture. This observation does not establish that the online
       bootstrap fails or describe the current mutable registry tag.
+      **Owner decision 2026-11-20:** yes, offline linting is part of the contract. In source the same day:
+      `install-lint-tools.sh` installs gitleaks at the pin on amd64 and arm64 (a real arm64 run reported 8.30.1 and
+      found its planted token), the smoke's `FACT lint-tools` and the contract row carry it. Left: the next chain, then
+      the secret-scan gate with networking off on amd64 and arm64.
 - [ ] **CON223 — a smaller Linux image for lanes that need no toolchain** [L, ★★]. Chain work. `:latest` takes about
       72 GB unpacked, so a 72 GB `ubuntu-26.04` runner cannot hold it and a job: WebDavClient run 41731774668 and
       OmniAccelerANT's docs run 41731757638 ran out of disk. Done when docs and pure-Python lanes pull an image that

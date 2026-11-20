@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — gitleaks in the image for an offline secret scan (CON222, in source)
+
+- `install-lint-tools.sh` installs gitleaks at `GITLEAKS_VERSION` on amd64 and arm64 beside shellcheck and hadolint,
+  SHA-verified, and fails unless it reports the pin and finds a GitHub-shaped token planted at run time (owner decision:
+  offline consumer linting belongs to the image contract). The smoke's `FACT lint-tools` and the `lint-tools` contract
+  row carry it; riscv64, with no upstream binary, ships none. A real arm64 run reported 8.30.1 and found the token.
+
 ## 2026-11-20 — the contract follows `ort` 2.0.0-rc.15 (CON95 step 2)
 
 - OxidANT f76b7f9 pins `ort` 2.0.0-rc.15. The consumer contract's Rust registration names the one `Environment` a

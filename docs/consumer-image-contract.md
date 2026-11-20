@@ -691,7 +691,7 @@ skip there ([image-decisions.md](image-decisions.md#deliberate--not-gaps)).
 
 ### shellcheck and hadolint
 
-The torch stage puts both on `PATH` in `/usr/local/bin` (CON83): shellcheck on every arch,
+The torch stage puts them on `PATH` in `/usr/local/bin` (CON83): shellcheck on every arch,
 hadolint on amd64 and arm64, at the
 `SHELLCHECK_VERSION` and `HADOLINT_VERSION` pins in `tool-pins.env`, the same pins the
 hub's lint gates bootstrap. `install-lint-tools.sh` takes each release binary through
@@ -704,11 +704,15 @@ does not report its pin.
   A source build under QEMU took about two hours of every riscv64 wrapper, and CI lints
   Dockerfiles on amd64 anyway. `install-lint-tools.sh` prints
   `NOTE: hadolint publishes no riscv64 binary; none is installed` there.
+- **gitleaks** (owner decision 2026-11-20, CON222): the secret scan's `GITLEAKS_VERSION` on amd64 and arm64, so
+  `lint-secrets.sh` finds it on `PATH` and the gate runs without network. The install fails unless the binary reports
+  the pin and finds a GitHub-shaped token it plants at run time. gitleaks publishes no riscv64 build, so the riscv64
+  image ships none and its secret scan still bootstraps online.
 - The pins live in `tool-pins.env`, not `versions.env`: only the torch stage reads them,
   so a lint-tool bump rebuilds the torch stage, never the compiler.
 
-The `lint-tools` contract row compares what both binaries report with the pins, on
-every arch; on riscv64 it requires that no hadolint reports at all.
+The `lint-tools` contract row compares what the three binaries report with the pins, on
+every arch; on riscv64 it requires that neither hadolint nor gitleaks reports at all.
 
 ### The riscv64 uv cache seed
 

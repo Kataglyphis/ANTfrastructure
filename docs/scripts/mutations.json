@@ -14788,6 +14788,14 @@
   "why": "a riscv64 install would drop hadolint without saying so in the build log"
  },
  {
+  "id": "lint-tools.gitleaks-planted-token",
+  "target": "linux/scripts/06-packaging/install-lint-tools.sh",
+  "find": "  [ \"${gl_rc}\" = 7 ] || die \"gitleaks did not report a planted GitHub token (exit ${gl_rc})\"",
+  "replace": "  [ \"${gl_rc}\" = 7 ] || true",
+  "test": "bash linux/scripts/tests/test-lint-tools.sh",
+  "why": "a gitleaks that finds nothing would turn the offline secret scan into a pass (CON222)"
+ },
+ {
   "id": "lint-tools.contract-wants-no-hadolint-on-riscv64",
   "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "[ \"${arch}\" != riscv64 ] || _hl=''",

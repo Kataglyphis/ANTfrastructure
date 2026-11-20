@@ -601,8 +601,8 @@ if [ -x "${_emu}/emulator" ]; then
 else
   printf 'FACT android-emulator no\n'
 fi
-printf 'FACT lint-tools shellcheck=%s hadolint=%s\n' "$(shellcheck --version 2>/dev/null | sed -n 's/^version: //p')" \
-  "$(hadolint --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+printf 'FACT lint-tools shellcheck=%s hadolint=%s gitleaks=%s\n' "$(shellcheck --version 2>/dev/null | sed -n 's/^version: //p')" \
+  "$(hadolint --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)" "$(gitleaks version 2>/dev/null | grep -oE '[0-9.]+' | head -1)"
 printf 'ENV uv-cache-seed %s\n' "${PYTHON_UV_CACHE_SEED:-}"
 printf 'FACT uv-cache-seed %s\n' "$(bash /opt/scripts/packaging/uv-cache-seed.sh verify "${PYTHON_UV_CACHE_SEED:-/nonexistent}" 2>&1 | tail -1)"
 printf 'FACT gtk4-dev %s\n' "$(bash -c 'source /opt/scripts/packaging/package-image-wiring.sh && verify_gtk4_dev_surface' 2>&1 | tail -1)"
