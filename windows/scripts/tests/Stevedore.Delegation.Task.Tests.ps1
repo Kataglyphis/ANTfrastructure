@@ -75,10 +75,7 @@ Describe 'Bounded delegated maintenance tasks' {
         }
         foreach ($fault in @('missing', 'active', 'stale', 'foreign', 'scheduler-running')) {
             $state = New-DelegationCompletionState -Fault $fault
-            Invoke-DelegationModuleFixture -Kind Completion -State $state -Body {
-                param($State)
-                Assert-Equal $null (Read-MutDelegatedMaintenanceCompletion $State.Task fixture $State.Started $State.Instance) 'uncompleted receipts must remain pending'
-            }
+            Assert-DelegationPendingCompletion $state
         }
     }
 

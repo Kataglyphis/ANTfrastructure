@@ -21,6 +21,11 @@ function Set-DelegatedMaintenanceTasksEnabled {
     foreach ($task in $Tasks) { $task.Enabled = $Enabled }
 }
 
+function Test-DelegatedMaintenanceTaskActive {
+    param($Task)
+    return $Task.State -notin @(1, 3) -or $Task.GetInstances(0).Count -gt 0
+}
+
 function Connect-DelegatedMaintenanceScheduler {
     $service = New-Object -ComObject Schedule.Service
     $service.Connect()

@@ -33,6 +33,38 @@ function New-DelegationFixtureContainer {
     }
 }
 
+function New-DelegationFixtureImageListing {
+    param([string]$Name = 'example/store:current', [string]$Digest = ('sha256:' + ('a' * 64)), [switch]$Untagged)
+    [pscustomobject]@{ Name = $(if ($Untagged) { '<none>' } else { $Name }); ID = $Digest;
+        Repository = $(if ($Untagged) { '<none>' } else { 'example/store' }); Tag = $(if ($Untagged) { '<none>' } else { 'current' }) }
+}
+
+function Assert-DelegationPendingCompletion {
+    param($State, [string]$Find = '', [string]$Replace = '')
+    Invoke-DelegationModuleFixture -Kind Completion -State $State -Find $Find -Replace $Replace -Body {
+        param($State)
+        Assert-Equal $null (Read-MutDelegatedMaintenanceCompletion $State.Task fixture $State.Started $State.Instance) 'uncompleted receipts must remain pending'
+    }
+}
+
+Export-ModuleMember -Function New-DelegationFixtureImageListing, Assert-DelegationPendingCompletion
+
+function Assert-DelegationPropertyRefusals {
+    param($Prototype, [hashtable[]]$Fault, [scriptblock]$Body, [string]$MessagePattern)
+    foreach ($change in $Fault) {
+        $changed = $Prototype.PSObject.Copy()
+        foreach ($key in $change.Keys) { $changed.$key = $change[$key] }
+        Assert-Throws { & $Body $changed } -MessagePattern $MessagePattern
+    }
+}
+
+function Get-DelegationFixtureIdentityCases {
+    param($Valid, $Foreign)
+    @([pscustomobject]@{ Entries = @() }, [pscustomobject]@{ Entries = @($Valid, $Valid) }, [pscustomobject]@{ Entries = @($Foreign) })
+}
+
+Export-ModuleMember -Function Assert-DelegationPropertyRefusals, Get-DelegationFixtureIdentityCases
+
 function New-DelegationFixtureCollection {
     $collection = [pscustomobject]@{ Entries = [Collections.Generic.List[object]]::new() }
     $collection | Add-Member -MemberType ScriptProperty -Name Count -Value { $this.Entries.Count }
@@ -54,8 +86,12 @@ function New-DelegationFixtureService {
         Actions = New-DelegationFixtureCollection
         Triggers = New-DelegationFixtureCollection
     }
-    $service = [pscustomobject]@{ Definition = $definition }
+    $service = [pscustomobject]@{ Definition = $definition; RunningTasks = @() }
     $service | Add-Member -MemberType ScriptMethod -Name NewTask -Value { param($Flags) $this.Definition }
+    $service | Add-Member -MemberType ScriptMethod -Name GetRunningTasks -Value {
+        param($Flags)
+        @($this.RunningTasks | Where-Object { $Flags -eq 1 -or -not $_.Hidden })
+    }
     return $service
 }
 
@@ -111,7 +147,7 @@ function New-DelegationFixtureResult {
 
 function New-DelegationCompletionState {
     param([ValidateSet('none', 'missing', 'active', 'stale', 'foreign', 'scheduler-running')][string]$Fault = 'none')
-    $task = [pscustomobject]@{ ActiveInstances = 0; LastTaskResult = 0 }
+    $task = [pscustomobject]@{ ActiveInstances = 0; LastTaskResult = 0; State = 3 }
     $task | Add-Member -MemberType ScriptMethod -Name GetInstances -Value { param($Flags) [pscustomobject]@{ Count = $this.ActiveInstances } }
     $state = [pscustomobject]@{ Task = $task; Exists = $true; ProbeMode = ''; Started = [datetimeoffset]::Parse('2026-11-20T00:00:00Z').UtcDateTime; Instance = 'instance-one';
         Result = [pscustomobject]@{ started_utc = '2026-11-20T00:00:01Z'; task_instance = 'instance-one'; raw_exit = 0 } }
@@ -125,8 +161,8 @@ function New-DelegationCompletionState {
     return $state
 }
 
-function Invoke-DelegationModuleFixture {
-    param([ValidateSet('Flow', 'Manifest', 'Completion')][string]$Kind, $State, [scriptblock]$Body, [string]$Find = '', [string]$Replace = '')
+function Get-DelegationModuleArguments {
+    param([ValidateSet('Flow', 'Manifest', 'Completion', 'ImageInventory')][string]$Kind, $State)
     switch ($Kind) {
         Flow {
             $module = 'WindowsStevedoreDelegation.Task.psm1'
@@ -156,10 +192,37 @@ function Test-Path { param($LiteralPath) $State.Exists }
 function Get-Content { param($LiteralPath,[switch]$Raw) $State.Result | ConvertTo-Json }
 '@
         }
+        ImageInventory {
+            $module = 'WindowsStevedoreDelegation.Inventory.psm1'
+            $names = @('Get-DelegatedContainerdInventory', 'ConvertTo-DelegatedImageTags', 'ConvertTo-DelegatedImageInventory', 'Get-DelegatedImageIdentities')
+            $prelude = @'
+function Invoke-DelegatedContainerdCommand {
+    param($Manifest,$Arguments,$LogRoot,$Name)
+    if ($Arguments -contains '--format') {
+        foreach ($ref in $State.Names) { New-DelegationFixtureImageListing $ref $State.Manifest | ConvertTo-Json -Compress }
+    } else {
+        'example/store current ' + $State.Manifest + ' 1 GB'
+        'local/kataglyphis arm64-acceptance-fixture ' + $State.Manifest + ' 1 GB'
     }
-    Invoke-WithFunctionModule -ScriptPath ('windows/scripts/modules/' + $module) -FunctionName $names `
-        -FixtureState $State -Prelude $prelude -Body $Body -Find $Find -Replace $Replace
 }
+function Read-DelegatedContainerdJson {
+    param($Manifest,$Arguments,$LogRoot,$Name)
+    if (($Arguments -join '|') -cne ('image|inspect|' + $State.Manifest)) { throw 'no such image: reconstructed display tag' }
+    return $State.Details
+}
+'@
+        }
+    }
+    return @{ ScriptPath = 'windows/scripts/modules/' + $module; FunctionName = $names; FixtureState = $State; Prelude = $prelude }
+}
+
+function Invoke-DelegationModuleFixture {
+    param([ValidateSet('Flow', 'Manifest', 'Completion', 'ImageInventory')][string]$Kind, $State, [scriptblock]$Body, [string]$Find = '', [string]$Replace = '')
+    $options = Get-DelegationModuleArguments -Kind $Kind -State $State
+    Invoke-WithFunctionModule @options -Body $Body -Find $Find -Replace $Replace
+}
+
+Export-ModuleMember -Function Get-DelegationModuleArguments
 
 function Assert-DelegationFixtureRemovalCommand {
     $ast = Get-TestScriptAst -ScriptPath (Join-Path (Get-RepoRoot) 'windows/scripts/host/Clear-DiskSpace.ps1')

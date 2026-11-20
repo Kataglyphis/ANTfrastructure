@@ -50,6 +50,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Windows host maintenance portability
 
+- [ ] Accept the repaired real-host v2 inventory and hidden-task lookup. The
+  original setup installed both tasks but failed the post-install image-name
+  query; its normal-user preview refused an unknown hidden instance before any
+  inventory or removal. Preserve both failures, install the reviewed correction
+  and require a fresh preview/Apply GUID, raw scheduler/worker exits, identity
+  preservation and measured capacity. Synthetic controls do not prove deployment.
+
 - [ ] Replay whole qualification with the isolated worker's pinned FT runtime.
   The `cc284e79` script command returned zero but its real free-threaded extension
   case printed a missing-interpreter skip. Preserve that limitation; prerequisite

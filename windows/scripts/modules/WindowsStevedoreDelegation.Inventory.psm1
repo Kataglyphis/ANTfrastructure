@@ -7,8 +7,10 @@ function Invoke-DelegatedStoreCommand {
     param([string]$Tool, [string[]]$Arguments, [string]$LogRoot, [string]$Name)
     $output = @(& $Tool @Arguments 2> (Join-Path $LogRoot "$Name.stderr.log"))
     $raw = $LASTEXITCODE
-    $output | Set-Content -LiteralPath (Join-Path $LogRoot "$Name.stdout.log") -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $LogRoot "$Name.stdout.log") -Value ($output -join "`n") -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $LogRoot "$Name.exitcode.log") -Value $raw -Encoding utf8
     if ($raw -ne 0) { throw "Stevedore probe failed: $Name ($raw)" }
+    if ([IO.File]::ReadAllText((Join-Path $LogRoot "$Name.stderr.log")).Trim()) { throw "Stevedore probe diagnostics: $Name" }
     return $output
 }
 
@@ -40,10 +42,12 @@ function Read-DelegatedContainerdJson {
 function ConvertTo-DelegatedImageTags {
     param([string[]]$Listing)
     $tags = @(foreach ($line in $Listing) {
-        if (-not $line.Trim() -or $line -match '^REPOSITORY\s+TAG\s+') { continue }
-        if ($line -cnotmatch '^(\S+)\s+(\S+)\s+(sha256:[0-9a-f]{64})\s+') { throw 'Image inventory format is unknown.' }
-        if ($Matches[1] -ceq '<none>' -or $Matches[2] -ceq '<none>') { throw 'Untagged images require separate review.' }
-        [pscustomobject]@{ Tag = $Matches[1] + ':' + $Matches[2]; Manifest = $Matches[3] }
+        if (-not $line.Trim()) { continue }
+        $row = $line | ConvertFrom-Json -ErrorAction Stop
+        if ($null -eq $row.PSObject.Properties['Name'] -or $null -eq $row.PSObject.Properties['ID']) { throw 'Image inventory identity is unknown.' }
+        if ($row.Name -isnot [string] -or $row.Name -cnotmatch '^\S+$' -or $row.ID -isnot [string] -or $row.ID -cnotmatch '^sha256:[0-9a-f]{64}$') { throw 'Image inventory identity is unknown.' }
+        if ($row.Repository -ceq '<none>' -or $row.Tag -ceq '<none>') { throw 'Untagged images require separate review.' }
+        [pscustomobject]@{ Tag = $row.Name; Manifest = $row.ID }
     })
     if (@($tags | ForEach-Object Tag | Sort-Object -Unique).Count -ne $tags.Count) { throw 'Image inventory contains duplicate tags.' }
     return $tags
@@ -51,14 +55,17 @@ function ConvertTo-DelegatedImageTags {
 
 function Get-DelegatedContainerdInventory {
     param($Manifest, [string]$LogRoot, [string]$Name, [ValidateSet('image', 'container')][string]$Kind)
-    $arguments = if ($Kind -ceq 'image') { @('images', '--no-trunc') } else { @('ps', '--all', '--quiet', '--no-trunc') }
+    $arguments = if ($Kind -ceq 'image') { @('images', '--no-trunc', '--format', '{{json .}}') } else { @('ps', '--all', '--quiet', '--no-trunc') }
     $listing = @(Invoke-DelegatedContainerdCommand $Manifest $arguments $LogRoot "$Name-$Kind-list")
     $tags = @(if ($Kind -ceq 'image') { ConvertTo-DelegatedImageTags $listing })
     $ids = @(if ($Kind -ceq 'image') { $tags | ForEach-Object Tag } else { $listing | Where-Object { $_.Trim() } })
     if (-not $ids.Count) { return @() }
     if ($Kind -ceq 'container') { foreach ($id in $ids) { if ($id -cnotmatch '^[0-9a-f]{64}$') { throw 'Container identity is unknown.' } } }
+    if ($Kind -ceq 'image') {
+        $details = @(Get-DelegatedImageIdentities $Manifest $tags $LogRoot $Name)
+        return @(ConvertTo-DelegatedImageInventory $tags $details)
+    }
     $details = @(Read-DelegatedContainerdJson $Manifest (@($Kind, 'inspect') + $ids) $LogRoot "$Name-$Kind-details")
-    if ($Kind -ceq 'image') { return @(ConvertTo-DelegatedImageInventory $tags $details) }
     if ($details.Count -ne $ids.Count) { throw 'Container inspection is incomplete.' }
     if ((@($details | ForEach-Object Id | Sort-Object -Unique) -join '|') -cne (@($ids | Sort-Object -Unique) -join '|')) { throw 'Container inspection identities differ.' }
     foreach ($item in $details) {
@@ -68,17 +75,24 @@ function Get-DelegatedContainerdInventory {
     }
 }
 
+function Get-DelegatedImageIdentities {
+    param($Manifest, [object[]]$Tags, [string]$LogRoot, [string]$Name)
+    $index = 0
+    foreach ($digest in @($Tags | ForEach-Object Manifest | Sort-Object -Unique)) {
+        $details = @(Read-DelegatedContainerdJson $Manifest @('image', 'inspect', $digest) $LogRoot "$Name-image-details-$index")
+        if ($details.Count -ne 1 -or $null -eq $details[0].PSObject.Properties['Id']) { throw 'Image inspection identity is unknown.' }
+        [pscustomobject]@{ Manifest = $digest; Config = $details[0].Id }
+        $index++
+    }
+}
+
 function ConvertTo-DelegatedImageInventory {
     param([object[]]$Tags, [object[]]$Details)
     foreach ($tag in $Tags) {
-        $normalized = $tag.Tag -creplace '^docker.io/', ''
-        $found = @($Details | Where-Object { $normalized -cin @($_.RepoTags | ForEach-Object { $_ -creplace '^docker.io/', '' }) })
-        $ids = @($found | ForEach-Object {
-            if ($null -eq $_.PSObject.Properties['Id']) { throw 'Image configuration identity is unknown.' }
-            $_.Id
-        } | Select-Object -Unique)
-        if ($ids.Count -ne 1 -or $ids[0] -cnotmatch '^sha256:[0-9a-f]{64}$') { throw 'Image configuration identity is unknown.' }
-        [pscustomobject]@{ Tag = $tag.Tag; Manifest = $tag.Manifest; Config = $ids[0] }
+        $found = @($Details | Where-Object Manifest -CEQ $tag.Manifest)
+        if ($found.Count -ne 1) { throw 'Image configuration identity is unknown.' }
+        if ($found[0].Config -isnot [string] -or $found[0].Config -cnotmatch '^sha256:[0-9a-f]{64}$') { throw 'Image configuration identity is unknown.' }
+        [pscustomobject]@{ Tag = $tag.Tag; Manifest = $tag.Manifest; Config = $found[0].Config }
     }
 }
 

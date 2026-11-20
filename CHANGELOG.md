@@ -18,6 +18,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — preserve Stevedore image names and hidden task identity
+
+- Preserve raw nerdctl JSON names and inspect each distinct manifest to bind
+  configuration identities, including digest-qualified aliases. Keep empty
+  successful output logged; refuse native diagnostics and incomplete identities.
+- Resolve the hidden SYSTEM worker by exact task path and GUID. Require Ready
+  state for completion and share queued/running/unknown refusal for overlap and
+  revocation. Keep original raw failures, regression controls and mutations;
+  corrected protected setup and real normal-user acceptance remain required.
+
 ## 2026-11-20 — complete isolated preflight's free-threading prerequisites
 
 - Install managed free-threaded CPython from the existing source pin, keep its

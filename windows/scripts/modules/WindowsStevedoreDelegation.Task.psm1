@@ -54,7 +54,7 @@ function Assert-DelegatedMaintenanceOverlap {
     foreach ($path in @('\ANTfrastructureMaintenance\RegularCache', '\ANTfrastructureMaintenance\IdleRecovery', '\ANTfrastructureMaintenanceV2\InspectBuildStorage', '\ANTfrastructureMaintenanceV2\ReclaimBuildStorage')) {
         try { $task = $service.GetFolder((Split-Path $path -Parent)).GetTask((Split-Path $path -Leaf)) }
         catch { if ($_.Exception.HResult -eq -2147024894) { continue }; throw }
-        if ($task.GetInstances(0).Count -gt 0 -and $path -cne $script:DelegatedCurrentTask) { throw 'Another maintenance task is active.' }
+        if ((Test-DelegatedMaintenanceTaskActive $task) -and $path -cne $script:DelegatedCurrentTask) { throw 'Another maintenance task is active.' }
     }
 }
 
@@ -71,6 +71,15 @@ function Invoke-DelegatedCanonicalReclaim {
     }
     & (Join-Path $Root 'Clear-DiskSpace.ps1') @options -Apply:$Apply
     if ($LASTEXITCODE -ne 0) { throw 'Canonical reclaim refused or failed; retain the complete transcript.' }
+}
+
+function Get-DelegatedMaintenanceCurrentInstance {
+    param($Service, [string]$TaskPath)
+    $instances = @($Service.GetRunningTasks(1) | Where-Object Path -CEQ $TaskPath)
+    $identity = [guid]::Empty
+    if ($instances.Count -ne 1) { throw 'The original scheduled-task instance is unknown.' }
+    if (-not [guid]::TryParse([string]$instances[0].InstanceGuid, [ref]$identity) -or $identity -eq [guid]::Empty) { throw 'The scheduled-task instance identity is unknown.' }
+    return $identity.ToString('B')
 }
 
 function Invoke-DelegatedMaintenanceWorker {
@@ -91,9 +100,7 @@ function Invoke-DelegatedMaintenanceWorker {
         $null = Start-Transcript -LiteralPath (Join-Path $logRoot 'console.log') -ErrorAction Stop
         $transcript = $true
         $service = Connect-DelegatedMaintenanceScheduler
-        $instances = $service.GetFolder($layout.Folder).GetTask((Split-Path $script:DelegatedCurrentTask -Leaf)).GetInstances(0)
-        if ($instances.Count -ne 1) { throw 'The original scheduled-task instance is unknown.' }
-        $result.task_instance = $instances.Item(1).InstanceGuid
+        $result.task_instance = Get-DelegatedMaintenanceCurrentInstance $service $script:DelegatedCurrentTask
         Assert-DelegatedMaintenanceOverlap
         $result.before = Get-DelegatedStoreSnapshot $manifest $logRoot 'before'
         $result.plan = Get-DelegatedRetirementPlan $result.before
@@ -147,7 +154,7 @@ function Get-DelegatedMaintenanceConnection {
 
 function Read-DelegatedMaintenanceCompletion {
     param($Task, [string]$Latest, [datetime]$Started, [string]$InstanceGuid)
-    if ($task.GetInstances(0).Count -eq 0 -and (Test-Path -LiteralPath $latest)) {
+    if ($task.State -eq 3 -and $task.GetInstances(0).Count -eq 0 -and (Test-Path -LiteralPath $latest)) {
         $result = Get-Content -LiteralPath $latest -Raw | ConvertFrom-Json -ErrorAction Stop
         if (([datetimeoffset]$result.started_utc).UtcDateTime -ge $started -and $result.task_instance -ieq $InstanceGuid) {
             if ($task.LastTaskResult -ne 267009) {

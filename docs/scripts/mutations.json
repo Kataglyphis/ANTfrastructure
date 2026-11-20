@@ -42811,9 +42811,9 @@
  {
   "id": "windows-lane.delegation-untagged",
   "target": "windows/scripts/modules/WindowsStevedoreDelegation.Inventory.psm1",
-  "find": "if ($Matches[1] -ceq '<none>' -or $Matches[2] -ceq '<none>')",
+  "find": "if ($row.Repository -ceq '<none>' -or $row.Tag -ceq '<none>')",
   "replace": "if ($false)",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Inventory.Tests.ps1",
   "why": "Untagged image records require separate review"
  },
  {
@@ -43431,5 +43431,101 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "The isolated full preflight must retain source-pinned genuine free-threaded prerequisites and raw refusals so its real extension case cannot silently skip."
+ },
+ {
+  "id": "windows-lane.delegation-raw-image-name",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Inventory.psm1",
+  "find": "Tag = $row.Name; Manifest = $row.ID",
+  "replace": "Tag = ($row.Repository + ':' + $row.Tag); Manifest = $row.ID",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Inventory.Tests.ps1",
+  "why": "Digest-qualified aliases retain their raw containerd names."
+ },
+ {
+  "id": "windows-lane.delegation-manifest-selector",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Inventory.psm1",
+  "find": "ForEach-Object Manifest | Sort-Object -Unique",
+  "replace": "ForEach-Object Tag | Sort-Object -Unique",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Inventory.Tests.ps1",
+  "why": "Display-name reconstruction must never select an immutable manifest query."
+ },
+ {
+  "id": "windows-lane.delegation-unique-manifest",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Inventory.psm1",
+  "find": "ForEach-Object Manifest | Sort-Object -Unique",
+  "replace": "ForEach-Object Manifest",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Inventory.Tests.ps1",
+  "why": "Aliases of one manifest need exactly one bound configuration result."
+ },
+ {
+  "id": "windows-lane.delegation-image-diagnostic",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Inventory.psm1",
+  "find": "[IO.File]::ReadAllText((Join-Path $LogRoot \"$Name.stderr.log\")).Trim()",
+  "replace": "$false",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Inventory.Tests.ps1",
+  "why": "A raw-zero command with diagnostic output cannot prove a complete inventory."
+ },
+ {
+  "id": "windows-lane.delegation-image-single-detail",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Inventory.psm1",
+  "find": "if ($details.Count -ne 1 -or $null -eq $details[0].PSObject.Properties['Id'])",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Inventory.Tests.ps1",
+  "why": "Missing or duplicate inspection records refuse before preservation planning."
+ },
+ {
+  "id": "windows-lane.delegation-image-config-id",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Inventory.psm1",
+  "find": "if ($found[0].Config -isnot [string] -or $found[0].Config -cnotmatch '^sha256:[0-9a-f]{64}$')",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Inventory.Tests.ps1",
+  "why": "An unknown configuration identity cannot be retained as an accepted image."
+ },
+ {
+  "id": "windows-lane.delegation-image-unique-name",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Inventory.psm1",
+  "find": "if (@($tags | ForEach-Object Tag | Sort-Object -Unique).Count -ne $tags.Count)",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Inventory.Tests.ps1",
+  "why": "Repeated raw names cannot conceal an incomplete image census."
+ },
+ {
+  "id": "windows-lane.delegation-hidden-task-instance",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Task.psm1",
+  "find": "GetRunningTasks(1)",
+  "replace": "GetRunningTasks(0)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Instance.Tests.ps1",
+  "why": "The original hidden SYSTEM instance must remain observable."
+ },
+ {
+  "id": "windows-lane.delegation-task-unique-instance",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Task.psm1",
+  "find": "if ($instances.Count -ne 1)",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Instance.Tests.ps1",
+  "why": "Ambiguous original instances must refuse without choosing one."
+ },
+ {
+  "id": "windows-lane.delegation-task-exact-path",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Task.psm1",
+  "find": " | Where-Object Path -CEQ $TaskPath",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Instance.Tests.ps1",
+  "why": "A foreign task cannot supply the maintenance receipt identity."
+ },
+ {
+  "id": "windows-lane.delegation-completion-ready",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Task.psm1",
+  "find": "$task.State -eq 3 -and ",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Instance.Tests.ps1",
+  "why": "A filtered hidden running task cannot look completed."
+ },
+ {
+  "id": "windows-lane.delegation-active-task-state",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Security.psm1",
+  "find": "$Task.State -notin @(1, 3) -or ",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Instance.Tests.ps1",
+  "why": "Filtered enumeration cannot override queued running or unknown scheduler state."
  }
 ]

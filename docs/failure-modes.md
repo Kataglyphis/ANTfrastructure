@@ -22,6 +22,25 @@ Two neighbours, so you land on the right page:
 > the triage index: enough to recognise the failure and act, with a link when
 > the full history matters.
 
+## Stevedore delegation reports no such image or an unknown task instance
+
+The first v2 host setup registered its two SYSTEM tasks but its post-install
+inventory failed on reconstructed display-table names. Containerd retained raw
+digest-qualified names that nerdctl's repository/tag columns could not reproduce.
+Read JSON `Name` and manifest `ID`, inspect each distinct immutable manifest and
+preserve its returned configuration separately. Never skip the failed rows or
+substitute the unrelated Docker namespace; native diagnostics remain failures.
+
+The first normal-user preview then stopped with `The original scheduled-task
+instance is unknown.` before querying the store. The hidden worker's
+`GetInstances(0)` enumeration returned zero. Resolve the SYSTEM worker through
+`GetRunningTasks(1)` with exact task path, unique instance and a nonempty GUID;
+do not pass that flag to `GetInstances`. Require scheduler Ready state for
+completion and refuse queued/running/unknown state before overlap or revocation.
+Both failures preceded any v2 removal. Install the reviewed correction and retain
+a fresh real preview/Apply receipt; unit tests do not prove protected deployment.
+See [setup, operation and updates](windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts).
+
 ## Windows GenAI clone reports repository not found after three attempts
 
 The full NVIDIA run at `bd6bb3b2` exported ONNX, FFmpeg, OpenCV and Hailo,

@@ -48,7 +48,11 @@ agent a general administrator token or let it submit commands to SYSTEM.
 The fixed policy is intentionally narrower than `system prune`:
 
 - Only the `buildkit` namespace is inspected. Every native query must succeed;
-  unknown identities or state refuse the entire action.
+  unknown identities, warnings or state refuse the entire action. The inventory
+  reads nerdctl's raw JSON `Name` and manifest `ID`, then inspects each distinct
+  manifest separately to bind its configuration ID. Display-table repository/tag
+  reconstruction loses digest-qualified names; configuration IDs are not manifest
+  selectors. Raw names and both identities remain in the preservation receipt.
 - A completed media-branch tag may retire only when its corresponding merged
   Media tag exists and no retained container references its configuration or manifest ID.
   The seven allowed stage names are `windows-media-core-onnx`,
@@ -121,7 +125,7 @@ protected from the ordinary user. Setup itself starts no cleanup.
 
 ```pwsh
 # Preview only; the privileged read uses its separate fixed task.
-pwsh -NoProfile -File .\windows\scripts\host\Invoke-StevedoreMaintenance.ps1
+pwsh -NoProfile -File .\windows\scripts\host\Invoke-StevedoreMaintenance.ps1 -Apply:$false
 # Apply the already approved retention policy.
 pwsh -NoProfile -File .\windows\scripts\host\Invoke-StevedoreMaintenance.ps1 -Apply
 # Read both task states and their latest receipts without starting a task.
@@ -144,6 +148,16 @@ zero, no remaining instance and verified preservation. `target_met` is a
 separate observation. Recheck the next build's unchanged disk floor yourself.
 No source/image publication or GPU inference is proved by maintenance.
 
+The SYSTEM worker locates its hidden instance through
+`TaskService.GetRunningTasks(1)`, requiring exactly one matching task path and a
+nonempty GUID. `RegisteredTask.GetInstances(0)` is security-filtered and alone
+did not expose the actual hidden SYSTEM run on the reference host. Completion
+also requires scheduler state Ready; queued, running or unknown tasks refuse
+overlap and revocation even when instance enumeration returns zero. Keep the
+documented zero flag for `GetInstances`; one is the hidden-task flag only on
+`GetRunningTasks`. See Microsoft's [running-task API](https://learn.microsoft.com/en-us/windows/win32/taskschd/taskservice-getrunningtasks)
+and [instance enumeration](https://learn.microsoft.com/en-us/windows/win32/taskschd/registeredtask-getinstances).
+
 First verify preview and Apply from a **genuinely non-elevated** shell on the
 host. The tests use fake daemons/tasks and cover selectors, refusal paths and
 mutations; they do not prove another machine's ACLs, UAC, daemon layout or
@@ -165,6 +179,17 @@ v2 tasks and archives the protected directory beside its old location; logs
 are retained and no container, image or store is touched. Reinstall after
 review when payload, tools or policy change. Do not make SYSTEM scripts or
 their configuration writable to avoid the administrator installation step.
+
+The first reference-host v2 setup registered both tasks, then stopped before
+creating its disposable control: reconstructed image names failed lookup. Its
+first normal-user preview also stopped before inventory because the hidden
+worker could not identify its original instance. No v2 image/container removal
+ran. Regression controls and mutations cover these failures; the corrected
+protected installation still requires a fresh real preview and Apply receipt.
+The earlier successful cache-only pilot is separate evidence. For an update,
+archive/revoke the idle installation and reinstall the reviewed payload through
+the commands above, then repeat normal-user acceptance. Keep the old receipts;
+successful setup or synthetic tests alone do not prove the correction on a host.
 
 The earlier local pilot under ignored `logs/handoff/stevedore-auto-cleanup/`
 is historical and is not copied to another host. Its `RegularCache` and

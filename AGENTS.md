@@ -1062,7 +1062,11 @@ retire. Preserve Final/Torch/Media, SDK/toolchain/base, unrelated tags, volumes
 and compiler caches. Use the canonical selectors with full expected IDs; never
 force removal, lower a disk floor, terminate a build or restart containerd.
 Require real idle checks, fresh task/worker receipts, before/after preservation
-and measured headroom. Never execute SYSTEM code from a writable checkout or
+and measured headroom. Inventory keeps raw containerd names and binds each
+distinct manifest lookup to its configuration; native warnings refuse partial
+results. Resolve hidden task instances by exact task path and GUID; filtered
+instance enumeration alone never proves completion, overlap safety or revocation.
+Never execute SYSTEM code from a writable checkout or
 accept writable task/configuration files. A new host needs its own administrator
 installation and non-admin acceptance; see [the runbook](docs/windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts).
 

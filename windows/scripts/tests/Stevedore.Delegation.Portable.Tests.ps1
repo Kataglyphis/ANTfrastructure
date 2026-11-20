@@ -66,23 +66,16 @@ Describe 'Portable delegated maintenance controls' {
         Assert-DelegationFixtureRemovalCommand
     }
 
-    It 'refuses active or unknown accounting and incomplete image identities' {
+    It 'refuses active or unknown accounting and unfinished history' {
         Import-Module (Join-Path $PSScriptRoot 'Stevedore.Delegation.Fixture.psm1') -ErrorAction Stop
         . (Get-DelegationFixtureFunctions Inventory)
         $usage = [pscustomobject]@{ id = 'regular-one'; inUse = $false; recordType = 'regular'; shared = $false; size = 0 }
         $history = '{"record":{"CreatedAt":{"seconds":1},"CompletedAt":{"seconds":2}}}'
         Assert-DelegatedStoreIdle @($usage) @($history)
-        foreach ($fault in @(@{inUse=$true}, @{inUse='false'}, @{shared='false'}, @{size=-1}, @{recordType=''})) {
-            $changed = $usage.PSObject.Copy()
-            foreach ($key in $fault.Keys) { $changed.$key = $fault[$key] }
-            Assert-Throws { Assert-DelegatedStoreIdle @($changed) @($history) } -MessagePattern 'active|unknown'
+        Assert-DelegationPropertyRefusals -Prototype $usage -Fault @(@{inUse=$true}, @{inUse='false'}, @{shared='false'}, @{size=-1}, @{recordType=''}) -MessagePattern 'active|unknown' -Body {
+            param($changed)
+            Assert-DelegatedStoreIdle @($changed) @($history)
         }
         Assert-Throws { Assert-DelegatedStoreIdle @($usage) @('{"record":{"CreatedAt":{"seconds":1},"CompletedAt":null}}') } -MessagePattern 'unfinished'
-        $digest = 'sha256:' + ('a' * 64)
-        $tags = @(ConvertTo-DelegatedImageTags @("local/kataglyphis current $digest 1 GB"))
-        $details = @([pscustomobject]@{ RepoTags = @('docker.io/local/kataglyphis:current'); Id = $digest })
-        Assert-Equal $digest @(ConvertTo-DelegatedImageInventory $tags $details)[0].Config
-        Assert-Throws { ConvertTo-DelegatedImageTags @("<none> <none> $digest 1 GB") } -MessagePattern 'Untagged'
-        Assert-Throws { ConvertTo-DelegatedImageInventory $tags @() } -MessagePattern 'identity is unknown'
     }
 }
