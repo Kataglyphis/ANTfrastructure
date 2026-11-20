@@ -19,12 +19,15 @@ cat > "${_work}/bin/git" <<'STUB'
 #!/usr/bin/env bash
 [[ "$*" == *"cat-file -e 1111"* ]] && exit 1
 [[ "$*" == *"--verify origin/develop"* ]] && exit "${HOOK_TEST_NO_DEVELOP:-0}"
+[[ "$*" == *kataglyphis.imageRunner* ]] && { echo "${HOOK_TEST_RUNNER:-}"; exit 0; }
 case "$*" in
   *"rev-parse --show-toplevel"*) printf '%s\n' "${HOOK_TEST_ROOT}" ;;
   *"status --porcelain"*) [ -z "${HOOK_TEST_DIRTY:-}" ] || printf ' M %s\n' "${HOOK_TEST_DIRTY}" ;;
 esac
 STUB
 chmod +x "${_work}/bin/git"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "${HOOK_TEST_ARGV}.runner"\nexit "${HOOK_TEST_RUNNER_RC:-0}"\n' > "${_work}/bin/fake-runner"
+chmod +x "${_work}/bin/fake-runner"
 
 _stub_gate() { gate_stub_recorder "${_root}/docs/scripts/verify_mutations.py"; }
 mkdir -p "${_root}/linux/scripts/tests"
@@ -87,6 +90,20 @@ t_case "a surviving mutation aborts the push"
 _out="$(_run_hook 0 1)"
 t_assert_contains "${_out}" "rc=1"
 t_assert_contains "${_out}" "SURVIVED"
+
+t_case "tests red here before any mutation: the image proves those ids, and its run decides the push"
+_red="[1/1] FAIL: lib.one -- baseline test already fails unmutated (vacuous bite)
+FAILED: 1 of 2 entr(ies), in manifest order: lib.one"
+_out="$(HOOK_TEST_RUNNER="fake-runner --" HOOK_TEST_GATE_SAY="${_red}" _run_hook 0 1)"
+t_assert_contains "${_out}" "rc=0"
+t_assert_contains "${_out}" "pre-push: lib.one fail unmutated on this host; proven again in the image"
+t_assert_eq "-- python3 docs/scripts/verify_mutations.py --only lib.one" "$(cat "${_ARGV}.runner")"
+t_assert_contains "$(HOOK_TEST_RUNNER="fake-runner --" HOOK_TEST_RUNNER_RC=1 HOOK_TEST_GATE_SAY="${_red}" _run_hook 0 1)" "rc=1"
+t_assert_contains "$(HOOK_TEST_GATE_SAY="${_red}" _run_hook 0 1)" "rc=1" "no runner: the push stops"
+rm -f "${_ARGV}.runner"
+t_assert_contains "$(HOOK_TEST_RUNNER="fake-runner --" HOOK_TEST_GATE_SAY="[1/1] SURVIVED: lib.one
+FAILED: 1 of 2 entr(ies), in manifest order: lib.one" _run_hook 0 1)" "rc=1" "a survivor stops the push"
+t_assert_fails test -e "${_ARGV}.runner"
 
 t_case "the gate picks its own job count, one per CPU, and PREPUSH_MUTATION_JOBS caps it"
 t_assert_eq "0" "$(_call 2 | grep -c -e '--jobs' || true)" "a fixed 4 left 28 of 32 cores idle through a 10-minute push"

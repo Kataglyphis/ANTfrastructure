@@ -34,6 +34,8 @@
   this host (`baseline test already fails unmutated`), as it already does for a missing pwsh: three hub tests trip
   over Debian 13's bash 5.2.37 (`pop_var_context: head of shell_variables not a function context`) and pass under the
   image's bash 5.3.9, so they said nothing about a mutation here. A real survivor beside them still stops the commit.
+  The pre-push hook does the same (it rejected the push of these commits for exactly those four tests); both read
+  `linux/scripts/lib/hook-host-red.sh`, and `test-prepush-hook.sh` covers the push side.
 
 ## 2026-11-20 — gitleaks in the image for an offline secret scan (CON222, in source)
 

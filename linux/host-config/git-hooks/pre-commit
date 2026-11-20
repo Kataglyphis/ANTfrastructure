@@ -31,6 +31,8 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
 _hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../scripts/01-core/python-probe.sh
 . "${_hook_dir}/../../scripts/01-core/python-probe.sh"
+# shellcheck source=../../scripts/lib/hook-host-red.sh
+. "${_hook_dir}/../../scripts/lib/hook-host-red.sh"
 preflight_python_require pre-commit || exit 1
 # Expanded UNQUOTED at every call site: the value may be a command line
 # ("uv run --no-project python"), which is the hint the probe's failure gives.
@@ -162,18 +164,6 @@ fi
 # commit). Newest entries first, capped, and it PRINTS the sample size -- green
 # here never means full coverage. It answers the one question reading a test
 # cannot: can it fail? docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget
-# <log>: the ids whose test was red before any mutation, when they are all that failed; nothing otherwise.
-# Such a test says nothing about a mutation here (Debian 13's bash 5.2 against the image's 5.3), so the image decides.
-_host_red_ids() {
-  local vac failed
-  vac="$(sed -n 's/^\(\[[0-9]*\/[0-9]*\] \)\{0,1\}FAIL: \([^ ]*\) -- baseline test already fails unmutated.*/\2/p' "$1" | tr -d '\r' | sort -u | tr '\n' ' ')"
-  failed="$(sed -n 's/^FAILED: [0-9]* of [0-9]* entr(ies), in manifest order: //p' "$1" | tr -d ',\r' | tr ' ' '\n' | sed '/^$/d' | sort -u | tr '\n' ' ')"
-  if [ -n "${vac}" ] && [ "${vac}" = "${failed}" ]; then
-    echo "pre-commit: ${vac}fail unmutated on this host; proven again in the image" >&2
-    printf '%s' "${vac}"
-  fi
-}
-
 if [ -n "${_staged_any}" ]; then
   _staged_list="$(mktemp)"
   printf '%s\n' "${_staged_any}" > "${_staged_list}"
@@ -206,7 +196,7 @@ if [ -n "${_staged_any}" ]; then
         for _id in ${_ps}; do _again+=(--only "${_id}"); done
         ${_PY} docs/scripts/verify_mutations.py "${_only[@]}" --delegate-chrome </dev/null > "${_mlog}" 2>&1 || _mrc=$?
         cat "${_mlog}"
-        _vac="$(_host_red_ids "${_mlog}")"
+        _vac="$(host_red_ids "${_mlog}" pre-commit)"
         if [ "${_mrc}" -ne 0 ] && [ -n "${_vac}" ]; then
           _mrc=0
           for _id in ${_vac}; do _again+=(--only "${_id}"); done
@@ -217,7 +207,7 @@ if [ -n "${_staged_any}" ]; then
       # The image has its say either way; a survivor on the host still stops the commit.
       # shellcheck disable=SC2086 # the runner is a command line of its own, split on purpose
       ${_runner} "python3 docs/scripts/verify_mutations.py ${_again[*]}" </dev/null || _mrc=$?
-    elif [ "${_mrc}" -ne 0 ] && [ -n "${_runner}" ] && _vac="$(_host_red_ids "${_mlog}")" && [ -n "${_vac}" ]; then
+    elif [ "${_mrc}" -ne 0 ] && [ -n "${_runner}" ] && _vac="$(host_red_ids "${_mlog}" pre-commit)" && [ -n "${_vac}" ]; then
       _again=()
       for _id in ${_vac}; do _again+=(--only "${_id}"); done
       _mrc=0
