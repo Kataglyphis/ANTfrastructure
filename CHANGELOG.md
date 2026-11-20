@@ -28,6 +28,21 @@
 - Share the native supervisor's monotonic-clock error boundary before launch and during its wait loop. Preserve nonzero errno and report `EIO` when a failing clock leaves errno zero, avoiding an unset elapsed value that GCC 16.2 rejects under `-O3 -Werror`.
 - Compile shared native fixture objects with optimization and fatal warnings. Add real child controls for initial/elapsed clock failures, exact error preservation and kill/reap behavior; retain the existing timeout, Rust and Dart ownership tests. These source controls do not establish finished consumer packages or GPU acceptance.
 - Normal commit hooks also exposed a missing logging-bootstrap import in the recently added host-red helper. Add its canonical import and a removal mutation; keep the existing unmutated library controls fatal and retain the original rejected commit attempt.
+## 2026-11-20 — shared hook diagnostics load the canonical logger
+
+- Import `log-bootstrap.sh` from `hook-host-red.sh` so standalone library checks see the real logging API. The missing import made the hosted preflight fail three library assertions and invalidated twelve mutation baselines in run 44819008926.
+- Add a removal mutation against the existing library suite; retain failed-positive-control refusals and normal hook scope. Local source checks remain separate from the subsequent hosted CI result.
+
+## 2026-11-20 — a probe for zstd layers (CON99); CON283 names OxidANT's Pester suites
+
+- `zstd-pull-probe.yml` (dispatch only, owner OK for a scratch package) recompresses `:latest`'s amd64 image to zstd
+  in `ghcr.io/kataglyphis/antfrastructure-zstd-probe`, times a serial `docker pull` of the published gzip image and
+  of the copy on two fresh runners through `prepare-linux-ci-host`'s `pull-seconds`, and deletes the package with
+  `GHCR_TOKEN` whatever the legs did. The copy fails unless its layers are `tar+zstd`. Its first run (44812697921)
+  read the tag's multi-arch index as the amd64 image and stopped before the pulls; the copy now takes the amd64
+  manifest out of the index, and the cleanup's delete answered 204.
+- CON283: OxidANT's Pester suites speak 3.4 too; AccelerANTgine, OmniAccelerANT and OxidANT each record the migration
+  as blocked on the chain that brings Pester 6.2.0.
 
 ## 2026-11-20 — the staged test runner waits for WER's record of a fail-fast abort
 

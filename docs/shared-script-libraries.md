@@ -2640,3 +2640,15 @@ The existing Rust release driver optionally captures its workspace and final
 CLI calls into [separate Cargo JSON streams](linux-build-basics.md#cargo-release-metadata).
 Both paths are cleared before shared wrapper setup; ordinary releases retain
 their original full workspace, explicit CLI and raw failure behavior.
+## Hook host diagnostics
+
+`linux/scripts/lib/hook-host-red.sh` imports its sibling `log-bootstrap.sh` before
+defining the hook diagnostic helper. Standalone sourcing therefore publishes the
+canonical `info`, `warn` and `err` functions, just as it does for other libraries.
+Callers copying this helper must retain the shared bootstrap and its logging owner.
+
+The existing `test-lib-modules.sh` checks standalone loading, real logging and the
+bootstrap import. Removing that import must fail those positive checks; the dedicated
+removal mutation proves the regression. A failing unmutated suite invalidates a
+mutation result rather than proving that a mutant was caught. These source controls
+do not establish a successful hosted workflow, image or consumer build.
