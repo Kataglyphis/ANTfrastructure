@@ -203,6 +203,8 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
 
       Done when `check_amd64_isa` passes on a published amd64 image and both measurements are recorded.
       **Owner 2026-11-17:** not yet. First the "before" numbers on the published `:latest` on an idle host; the chain waits for his go after them.
+      **Owner 2026-11-20:** he takes them with each consumer's `quality-report.sh --perf-host --update-baseline` on a fresh
+      clone, the `:latest` digest noted; the "after" run is the compare mode on the same commits once the chain published.
 
 - [ ] **CON265 — Windows x64: the source builds that get no CPU flag** [M, ★]. Read 2026-11-12, source only:
       the amd64 `SimdFlags` of `WindowsTargetArch.Common.psm1` (AVX2, FMA, SSE4.2) reach ONNX Runtime,
@@ -471,6 +473,7 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       FTP logins). Owner first: add `DEV_WASM_SITE_URL` and `DEV_SITE_URL`. Then one step after each
       dev upload, passing the URL by name (`-e DEV_WASM_SITE_URL`); the WASM check must run before
       the CanvasKit build replaces `build/web`. Done when a develop push shows both checks green.
+      **Owner 2026-11-20:** he adds the two secrets and says so; the steps follow then.
 
 - [ ] **CON150 — the uncaught `postMessage` TypeError on jonasheinle.de's landingPage and error404** [S, ★★].
       Found 2026-10-21, when jotrockenmitlocken 1.4.1 went to main: the live check saw one
