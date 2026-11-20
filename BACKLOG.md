@@ -1870,6 +1870,31 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       throwaway container's root may; a non-root run refuses. Shipping them in `Dockerfile.torch` makes that step a
       no-op. Done when an image built from it answers `import setuptools, wheel` from `/opt/venv/bin/python`.
 
+- [ ] **CON281 — GCC 16.2 segfaults on a module unit's `std::span<const unsigned int>` members** [S, ★★]. Found
+      2026-11-19 by BeschleunigerBallett's x64 and arm64 GCC jobs (runs 44628923878, 44634321158): an internal
+      compiler error at the end of `GltfLoader.cpp`'s first mem-initializer list; clang builds the tree. Bisected
+      in the image under a 4 GB cgroup (one object, `-j1`): only the two `std::span<const unsigned int>` data
+      members bring it back, and smaller module graphs of the same shape compile. BB f7e9c7fc holds them as a
+      pointer and a count; `docs/failure-modes.md` has the entry. Next: reduce it with `-freport-bug` from BB's
+      eca6b274..f7e9c7fc tree, report it to GCC, and drop the note once the image's GCC compiles the span form.
+
+- [ ] **CON282 — GNU `time` in the Linux image** [S, ★]. `/usr/bin/time` is missing on every arch, so a peak-RSS
+      measurement inside the image needs a Python `getrusage(RUSAGE_CHILDREN)` wrapper (BB's I13 measurement,
+      2026-11-19). Done when `/usr/bin/time -v true` prints `Maximum resident set size` in `:latest`.
+
+- [ ] **CON283 — Pester in the Linux image's `pwsh`** [S, ★]. `pwsh` is installed but `Get-Module -ListAvailable
+      Pester` lists nothing (checked 2026-11-20 on arm64), so the hub's Pester 5 suites and a consumer's Pester
+      suites run only on Windows. BB's agents fetched Pester 3.4.0 into a scratch directory and patched its
+      `Get-WmiObject` lookup to run its 3.4 suites on Linux. Install Pester 5.7 at the version the Windows lanes
+      pin; Pester 3.4 needs WMI and stays a Windows tool.
+
+- [ ] **CON284 — Mesa's PowerVR ICD warns on every Vulkan instance** [S, ★]. `powervr_mesa_icd.json` in
+      `/usr/share/vulkan/icd.d` prints `pvr_instance.c:92 ... Failed to enumerate drm devices` twice per instance in
+      a container without `/dev/dri` (checked 2026-11-20 with `vulkaninfo --summary`), so every llvmpipe golden log
+      carries it once per test. Either select the driver in the llvmpipe runs (`VK_DRIVER_FILES` naming
+      `lvp_icd.json` in `ctest-run.sh --virtual-display` and `cargo_test.sh`) or drop the ICD where no PowerVR
+      device is expected; the riscv64 image may want it for boards with a PowerVR GPU.
+
 ## Open — Linux arm64 and riscv64
 
 - [ ] **CON145 — `cxxbridge` in the Linux and Windows images** [S, ★★]. Found 2026-10-21 with
@@ -2159,6 +2184,18 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       and GenAI tags under Kataglyphis, which source builds try first; (2) until then `Test-PatchesApplyClean.ps1`
       reports a patch whose upstream answers 404 as `NOT CHECKED` with a warning, not a failure (done 2026-11-18).
       Done when the mirrors exist and the builds read them.
+
+- [ ] **CON285 — `run-in-ci-image.sh` takes a memory limit** [S, ★★]. An 8 GB WSL host (BB's dev host since
+      2026-11-19) died three times on GCC module builds; a hard cgroup limit kills only the container
+      (`nerdctl run --memory 4g --memory-swap 4g`, enforced by rootless nerdctl, checked 2026-11-20), but the runner
+      passes no such option, so BB's coordinator called nerdctl by hand. Add `--memory <size>` (with an equal
+      `--memory-swap`) and a test that a run over the limit exits 137 while the host keeps running.
+
+- [ ] **CON286 — the gitleaks gate scans git-ignored files** [S, ★]. `run-lint-gates.sh` on a hub worktree failed
+      `gitleaks` on two `generic-api-key` hits in `quality/.venv/.../playwright/.../coreBundle.js` (2026-11-20), an
+      ignored virtualenv left by a local `quality` run; CI's fresh checkout has none, so the gate is green there
+      and red on the dev host. Scan the tracked and untracked-but-not-ignored files (`git ls-files -co
+      --exclude-standard`) instead of the scope directories.
 
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
