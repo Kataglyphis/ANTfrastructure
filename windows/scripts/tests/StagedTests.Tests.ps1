@@ -12,13 +12,13 @@ function script:New-FakeTest([string]$Name, [string]$Kind, [int]$Exit, [string[]
 
 # Writes the fake binaries plus tests.json, and returns the verdict line Invoke-StagedTests.ps1 prints.
 function script:Invoke-FakeSuite {
-    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][object[]]$Tests, [scriptblock]$CrashEventReader)
+    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][object[]]$Tests, [scriptblock]$CrashEventReader, [int]$CrashEventWaitSeconds = 0)
     $entries = foreach ($t in $Tests) {
         $null = New-TestBatchTool -Directory $Dir -Name "$($t.Name).cmd" -Line @($t.Lines | ForEach-Object { "echo $_" }) -ExitCode $t.Exit
         @{ exe = "$($t.Name).cmd"; kind = $t.Kind }
     }
     ConvertTo-Json -InputObject @($entries) | Set-Content -LiteralPath (Join-Path $Dir 'tests.json') -Encoding utf8
-    $seam = @{}
+    $seam = @{ CrashEventWaitSeconds = $CrashEventWaitSeconds }
     if ($CrashEventReader) { $seam.CrashEventReader = $CrashEventReader }
     return @(& $script:StagedTests -Manifest (Join-Path $Dir 'tests.json') @seam 6>$null) | Select-Object -Last 1
 }
@@ -56,7 +56,7 @@ Describe 'Invoke-StagedTests.ps1' {
     # The arm64 WARP run (36889467167) died after "running 39 tests" and its log named nothing.
     It 'names a binary that dies before its summary: its NTSTATUS, and the faulting module WER logged' {
         Invoke-InTestDir { param($d)
-            $crash = { param($Reader, $Code) Invoke-FakeSuite -Dir $d -CrashEventReader $Reader -Tests @(New-FakeTest 'headless' 'cargo' $Code 'running 39 tests') }
+            $crash = { param($Reader, $Code, $Wait = 0) Invoke-FakeSuite -Dir $d -CrashEventReader $Reader -CrashEventWaitSeconds $Wait -Tests @(New-FakeTest 'headless' 'cargo' $Code 'running 39 tests') }
             Assert-Throws { & $crash { param($Since) throw 'no event log here' } -1073741819 } `
                 -MessagePattern "headless\.cmd: no libtest 'test result:' line in its output; exit -1073741819 \(0xC0000005 STATUS_ACCESS_VIOLATION\)$"
             # Event 1000's data in its own order; its Message is localized, so the script never reads it.
@@ -65,6 +65,15 @@ Describe 'Invoke-StagedTests.ps1' {
             $wer = { param($Since) & $record 'other.exe' 'wrong.dll'; & $record 'HEADLESS.cmd' 'd3d12warp.dll' }.GetNewClosure()
             Assert-Throws { & $crash $wer -1073740791 } `
                 -MessagePattern '0xC0000409 STATUS_STACK_BUFFER_OVERRUN \(a fail-fast abort\)\); WER: faulting module d3d12warp\.dll at offset 0x00000000000012ab, exception 0xc0000409$'
+            # WER logs a fail-fast abort after the binary exited (run 44782412041 named no module): it looks again each second.
+            $looks = @{ n = 0 }
+            $late = { param($Since) $looks.n++; if ($looks.n -gt 1) { & $record 'headless.cmd' 'd3d10warp.dll' } }.GetNewClosure()
+            Assert-Throws { & $crash $late -1073740791 3 } -MessagePattern 'WER: faulting module d3d10warp\.dll at offset 0x00000000000012ab, exception 0xc0000409$'
+            Assert-Equal 2 $looks.n 'the second look found it and the search stopped'
+            $looks.n = 0
+            $never = { param($Since) $looks.n++; throw 'No events were found that match the specified selection criteria.' }.GetNewClosure()
+            Assert-Throws { & $crash $never -1073740791 1 } -MessagePattern '\(0xC0000409 STATUS_STACK_BUFFER_OVERRUN \(a fail-fast abort\)\)$'
+            Assert-Equal 2 $looks.n 'a wait of one second looks twice, then names the exit code alone'
         }
     }
 

@@ -17,6 +17,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — the staged test runner waits for WER's record of a fail-fast abort
+
+- `Invoke-StagedTests.ps1` looked for Windows Error Reporting's event 1000 once, right after a binary died. That
+  works for an access violation (run 44739816593 named `d3d10warp.dll`), but WER logs a fail-fast abort
+  (`0xC0000409`) only after the process has exited, so OxidANT's two arm64 aborts in the traced renderer tests (runs
+  44759227422 and 44782412041) named no module. A crash now looks again each second for up to
+  `-CrashEventWaitSeconds` (default 15); a green run never waits. `StagedTests.Tests.ps1` covers a record that turns up
+  on the second look and one that never does.
+
 ## 2026-11-20 — CON287 (slangc), CON283 notes CON273, a stale lint-tools recipe re-pointed
 
 - New BACKLOG CON287: the image's slangc (Vulkan SDK, Slang 2026.17) cannot emit WGSL binding arrays; OxidANT's

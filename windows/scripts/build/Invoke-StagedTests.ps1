@@ -26,7 +26,9 @@ param(
     [scriptblock]$CrashEventReader = {
         param([datetime]$Since)
         Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000; StartTime = $Since } -ErrorAction Stop
-    }
+    },
+    # Seconds a crash waits for that record: WER logs a fail-fast abort (0xC0000409) only after the binary has exited.
+    [ValidateRange(0, 120)][int]$CrashEventWaitSeconds = 15
 )
 
 $ErrorActionPreference = 'Stop'
@@ -52,18 +54,22 @@ function Format-StagedExitCode([int]$Code) {
 
 # Windows Error Reporting's event 1000 for a binary that crashed since -Since, which names the faulting module; best effort.
 function Get-StagedCrashReport([string]$ExeName, [datetime]$Since) {
-    try {
-        $events = @(& $CrashEventReader $Since)
-    } catch {
-        return $null
+    for ($waited = 0; ; $waited++) {
+        try {
+            $events = @(& $CrashEventReader $Since)
+        } catch {
+            # Get-WinEvent throws while nothing matches yet, as it does where no event log exists.
+            $events = @()
+        }
+        foreach ($werEvent in $events) {
+            # Properties, not Message, which is localized: [0] application, [3] module, [6] exception code, [7] offset.
+            $data = @($werEvent.Properties | ForEach-Object { "$($_.Value)" })
+            if ($data.Count -lt 8 -or $data[0] -ne $ExeName) { continue }
+            return "WER: faulting module $($data[3]) at offset 0x$($data[7]), exception 0x$($data[6])"
+        }
+        if ($waited -ge $CrashEventWaitSeconds) { return $null }
+        Start-Sleep -Seconds 1
     }
-    foreach ($werEvent in $events) {
-        # Properties, not Message, which is localized: [0] application, [3] module, [6] exception code, [7] offset.
-        $data = @($werEvent.Properties | ForEach-Object { "$($_.Value)" })
-        if ($data.Count -lt 8 -or $data[0] -ne $ExeName) { continue }
-        return "WER: faulting module $($data[3]) at offset 0x$($data[7]), exception 0x$($data[6])"
-    }
-    return $null
 }
 
 # Adds -Passed/-Failed/-Skipped to the running -Into tally.
