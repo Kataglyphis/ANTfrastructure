@@ -2635,3 +2635,8 @@ package placement, consumer integration or kernel-blocked process cleanup.
 ### Cargo native helper transport
 
 `06-packaging/stage-cargo-native-helper.py` stages one exact OUT_DIR helper using successful Cargo JSON and the selected native artifact. Copies include `ort_census_probe.py`; the wheel-license stager imports the same ELF identity function. [The staging contract](linux-build-basics.md#cargo-native-helper-staging) states its target, no-replace and evidence limits.
+
+The existing Rust release driver optionally captures its workspace and final
+CLI calls into [separate Cargo JSON streams](linux-build-basics.md#cargo-release-metadata).
+Both paths are cleared before shared wrapper setup; ordinary releases retain
+their original full workspace, explicit CLI and raw failure behavior.

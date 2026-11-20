@@ -121,6 +121,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Compiler smoke callbacks stay unconditional; preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses.
    Isolated native workers preserve nonzero clock errors before launch and during supervision; absent errno becomes EIO. Keep optimized fatal-warning compilation and actual killed/reaped child controls.
    The hooks' host-red helper imports the canonical logging bootstrap; copied helpers retain it and the existing positive library-import controls.
+   Optional Cargo release JSON paths are paired, distinct regular outputs cleared before wrapper setup; retain the whole workspace then explicit CLI, their original alias parse points, raw failures and one unfiltered invocation per stream.
    Cache launcher sites initialize their parent environment directly before resolution; required callers propagate raw failure and legacy callers retain their advisory fallback.
    ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions.
    Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.

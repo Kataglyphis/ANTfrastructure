@@ -58859,5 +58859,149 @@
   "replace": ":",
   "test": "bash linux/scripts/tests/test-lib-modules.sh",
   "why": "The shared hook helper must import the real logging module; positive library controls cannot be bypassed or counted as a vacuous mutation bite."
+ },
+ {
+  "id": "rust.cargo-release-json.api-marker",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "# ANT_CARGO_RELEASE_JSON_API=1",
+  "replace": "# old release API",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "Callers must be able to refuse an older release driver before stale metadata can be used.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.whole-workspace",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "cargo build --message-format=json-render-diagnostics --release --workspace \"$@\" > \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\"",
+  "replace": "cargo build --message-format=json-render-diagnostics --release -p kataglyphis_cli \"$@\" > \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\"",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "Capturing metadata must retain every workspace member, including the native root library.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.explicit-cli",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "cargo build --message-format=json-render-diagnostics --release -p kataglyphis_cli \"$@\" > \"${CARGO_RELEASE_CLI_MESSAGES}\"",
+  "replace": "cargo build --message-format=json-render-diagnostics --release -p oxidant \"$@\" > \"${CARGO_RELEASE_CLI_MESSAGES}\"",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "The second call must still build the actual CLI instead of silently changing its package.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.json-format",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "cargo build --message-format=json-render-diagnostics --release --workspace \"$@\" > \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\"",
+  "replace": "cargo build --release --workspace \"$@\" > \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\"",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "A metadata stream must be actual Cargo JSON rather than ordinary console output.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.separate-streams",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "cargo build --message-format=json-render-diagnostics --release -p kataglyphis_cli \"$@\" > \"${CARGO_RELEASE_CLI_MESSAGES}\"",
+  "replace": "cargo build --message-format=json-render-diagnostics --release -p kataglyphis_cli \"$@\" > \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\"",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "The later CLI call cannot overwrite the workspace metadata or leave the CLI stream empty.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.invalidate-old-streams",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": ": > \"${_crj_messages}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "Both old streams must be empty before wrapper setup, even if the wrapper immediately fails.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.paired-paths",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "*) printf 'Both Cargo release JSON paths are required\\n' >&2; return 2 ;;",
+  "replace": "*) return 0 ;;",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "One requested stream must fail rather than silently mixing capture and console modes.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.distinct-paths",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "if [[ \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\" == \"${CARGO_RELEASE_CLI_MESSAGES}\" ||\n        \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\" -ef \"${CARGO_RELEASE_CLI_MESSAGES}\" ]]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "Canonical aliases and hardlinked outputs cannot overwrite another invocation.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.regular-paths",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "if [[ -e \"${_crj_messages}\" && ! -f \"${_crj_messages}\" ]]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "Directories and FIFOs must refuse before output redirection or wrapper setup.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.workspace-raw-status",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "cargo build --message-format=json-render-diagnostics --release --workspace \"$@\" > \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\"",
+  "replace": "cargo build --message-format=json-render-diagnostics --release --workspace \"$@\" > \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\" || true",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "Workspace failure preserves status43 and prevents the CLI phase.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.cli-raw-status",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "cargo build --message-format=json-render-diagnostics --release -p kataglyphis_cli \"$@\" > \"${CARGO_RELEASE_CLI_MESSAGES}\"",
+  "replace": "cargo build --message-format=json-render-diagnostics --release -p kataglyphis_cli \"$@\" > \"${CARGO_RELEASE_CLI_MESSAGES}\" || true",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "CLI failure preserves status47 rather than producing a successful release.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.wrapper-raw-status",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "source \"$SCRIPT_DIR/_cargo_wrapper.sh\"",
+  "replace": "source \"$SCRIPT_DIR/_cargo_wrapper.sh\" || true",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "Wrapper failure preserves status51 and cannot start Cargo with partially initialized state.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.argv-boundaries",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "cargo build --message-format=json-render-diagnostics --release --workspace \"$@\" > \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\"",
+  "replace": "cargo build --message-format=json-render-diagnostics --release --workspace $* > \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\"",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "Spaced and empty Cargo arguments retain their exact original boundaries.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.caller-bindings",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "cargo build --message-format=json-render-diagnostics --release --workspace \"$@\" > \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\"",
+  "replace": "cargo_release_mutant_scope() { local messages=hidden; cargo build --message-format=json-render-diagnostics --release --workspace \"$@\" > \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\"; }; cargo_release_mutant_scope \"$@\"",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "A supplied Cargo shell function must retain caller-visible configuration instead of inheriting a generic metadata local.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.wrapper-aliases",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "source \"$SCRIPT_DIR/_cargo_wrapper.sh\"",
+  "replace": "source \"$SCRIPT_DIR/_cargo_wrapper.sh\"\nunalias cargo 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "Preserve aliases selected by the wrapper for both ordinary and JSON releases.",
+  "timeout": 45
+ },
+ {
+  "id": "rust.cargo-release-json.phase-parse-boundary",
+  "target": "linux/scripts/02-toolchain/rust/cargo_release.sh",
+  "find": "info \"Running cargo release build...\"\n# Build all workspace members including binaries\nif [[ -n \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\" ]]; then\n  cargo build --message-format=json-render-diagnostics --release --workspace \"$@\" > \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\"\nelse\n  cargo build --release --workspace \"$@\"\nfi\n\n# Explicitly build the CLI binary to ensure it's available for packaging\ninfo \"Building CLI binary...\"\nif [[ -n \"${CARGO_RELEASE_CLI_MESSAGES}\" ]]; then\n  cargo build --message-format=json-render-diagnostics --release -p kataglyphis_cli \"$@\" > \"${CARGO_RELEASE_CLI_MESSAGES}\"\nelse\n  cargo build --release -p kataglyphis_cli \"$@\"\nfi",
+  "replace": "{\ninfo \"Running cargo release build...\"\n# Build all workspace members including binaries\nif [[ -n \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\" ]]; then\n  cargo build --message-format=json-render-diagnostics --release --workspace \"$@\" > \"${CARGO_RELEASE_WORKSPACE_MESSAGES}\"\nelse\n  cargo build --release --workspace \"$@\"\nfi\n\n# Explicitly build the CLI binary to ensure it's available for packaging\ninfo \"Building CLI binary...\"\nif [[ -n \"${CARGO_RELEASE_CLI_MESSAGES}\" ]]; then\n  cargo build --message-format=json-render-diagnostics --release -p kataglyphis_cli \"$@\" > \"${CARGO_RELEASE_CLI_MESSAGES}\"\nelse\n  cargo build --release -p kataglyphis_cli \"$@\"\nfi\n}",
+  "test": "bash linux/scripts/tests/test-cargo-release-messages.sh",
+  "why": "A Cargo alias changed by the workspace callback must be read again for the later CLI phase, as in the original driver.",
+  "timeout": 45
  }
 ]

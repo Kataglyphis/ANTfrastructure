@@ -17,6 +17,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — preserve separate Cargo release metadata for native helpers
+
+- Add paired optional JSON outputs to the shared Rust release driver, retaining its full-workspace build and explicit CLI build. Each file records one complete unfiltered Cargo call, suitable for the existing strict native-helper selector; no extra release builds or combined-message exception are introduced.
+- Validate distinct regular output paths and invalidate both before the shared wrapper runs. Stub controls cover argument boundaries, stale streams, path aliases, nonregular outputs and raw wrapper/build failures; actual module/helper staging and finished consumer packages remain separate evidence.
+- Keep Cargo at its original source-level call sites: the added alias regression rejects the unpublished function-based prototype, and controls cover both wrapper-selected aliases and an alias changed between the two phases.
+
 ## 2026-11-20 — isolated worker clock failures remain errors under optimization
 
 - Share the native supervisor's monotonic-clock error boundary before launch and during its wait loop. Preserve nonzero errno and report `EIO` when a failing clock leaves errno zero, avoiding an unset elapsed value that GCC 16.2 rejects under `-O3 -Werror`.

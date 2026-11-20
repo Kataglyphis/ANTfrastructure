@@ -1232,6 +1232,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       before launch and during supervision, including `EIO` when failure leaves errno zero. Five real
       clock/timeout cases pass under GCC 16.2 `-O3 -Werror`; all seven new guard mutations are caught.
       Consumer mirror updates, complete source qualification and helper-bearing finished packages remain open.
+      The shared release driver also prepares separate optional workspace and CLI JSON streams, retaining
+      both original builds and alias boundaries. Strict helper staging, the actual new release and consumer
+      integration remain open; protocol fixtures are not a finished-package or Root-FFI proof.
 
 
 **Native packaging source follow-up 2026-11-11:** AccelerANTgine's prepared CPack source selects the CPU core

@@ -514,6 +514,37 @@ no doc included. None of `lib/` ships in the images (no Dockerfile copies it): c
 from their submodule, and in this repo `preflight.sh` and `flutter_checks.sh` source
 `lib/code-quality.sh`.
 
+### Cargo release metadata
+
+`linux/scripts/02-toolchain/rust/cargo_release.sh` retains its whole-workspace
+release build followed by the explicit `kataglyphis_cli` build. Set both
+`CARGO_RELEASE_WORKSPACE_MESSAGES` and `CARGO_RELEASE_CLI_MESSAGES` to capture
+their individual `--message-format=json-render-diagnostics` stdout. Both unset
+or empty preserves ordinary console output and the original Cargo arguments.
+The script declares `ANT_CARGO_RELEASE_JSON_API=1` on its second line; callers
+that require these outputs must check that marker before invoking an older pin.
+
+The two paths must identify different regular files or new files. Canonical
+aliases and existing hardlinks to the same file refuse; directories and FIFOs
+refuse before opening either output. Parent allocation and truncation precede
+the normal shared Cargo wrapper, so failed wrapper setup cannot leave stale
+metadata behind. Wrapper and Cargo failures retain their raw status, and a
+failed workspace build cannot start the CLI phase.
+
+Cargo calls remain at their original source-level phase boundaries. Wrapper
+aliases, caller bindings and alias changes after the workspace call still
+apply to the CLI; capture does not move both calls into an early parsed function.
+
+Each file contains one unfiltered Cargo stdout stream; stderr and the driver's
+own messages stay outside it. Cargo's compiler-message JSON stays in the stream.
+Use the workspace stream for a root
+native-library artifact and the later CLI stream for its final executable;
+their build-script OUT_DIRs can differ. Do not concatenate the streams or weaken
+the native-helper stager's single successful build requirement. Capturing logs
+does not authenticate source, a build, linkage, runtime behavior or licences.
+The caller still binds the final module/helper bytes and verifies finished
+packages. Stub protocol fixtures do not establish an actual workspace release.
+
 ### Cargo native helper staging
 
 `linux/scripts/06-packaging/stage-cargo-native-helper.py` selects one helper build script by exact Cargo package ID and requires one selected native artifact in the same successful JSON-lines build. Supply `--messages`, `--package-id`, `--module`, `--name-env`, `--path-env`, `--target` and an existing canonical `--destination`. The two environment keys name the helper basename and full path; the latter must equal that build script's exact `out_dir` plus basename. `cargo pkgid --locked -p PACKAGE` supplies the package ID without copying a version.
