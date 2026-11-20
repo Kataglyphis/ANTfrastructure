@@ -1125,7 +1125,7 @@ transcript. Each was a child that outlived whatever started it. So:
    runner that starts tests uses one of the two (`test-run-tests-reaping.sh`, the reaping cases of
    `test-mutation-gate.sh`).
    Opt-in fixed mutation workspace roots are fresh, absolute and outside the source tree; use container-private paths. Keep exclusive allocation, per-worker isolation, identity-checked cleanup and fatal cleanup errors. Never reuse a writable host checkout as a mutation workspace.
-   Copied `verify_mutations.py` carries `mutation_workspace.py` beside its parse, push and shard companions; preserve normalized target paths and source-copy defaults.
+   Copied `verify_mutations.py` carries `mutation_workspace.py` beside its parse, push and shard companions, including consumer-hook fixtures; preserve normalized target paths and source-copy defaults. Hook fixtures isolate inherited per-command Git configuration.
 4. **A wait loop waits on a PID or a file, with a timeout.** `until ! pgrep -f <pattern>` matches
    its own `bash -c` and never ends; `pkill -f <pattern>` can kill the shell that runs it.
 

@@ -1250,7 +1250,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **7311 entries** over **847 distinct test commands**; both digits are
+manifest holds **7314 entries** over **848 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1348,7 +1348,13 @@ behavior. Measure real cache deltas separately after cleaning only the owned Car
 target. Source and compiler caches stay outside the disposable root.
 Copies of `verify_mutations.py` carry `mutation_workspace.py` beside
 `mutation_parse.py`, `mutation_push.py` and `mutation_shards.py`; workspace and
-relative-target path checks share that owner.
+relative-target path checks share that owner. The real consumer-hook fixtures carry
+the same closure: their local Git pushes check both successful delivery and
+stale-recipe refusal. Removing the workspace companion must fail those assertions;
+linter doubles and local remotes do not qualify downloaded tools or public pushes.
+The fixture clears both inherited Git configuration transports before setting its
+own hook paths. Parameter and counted-environment canaries prove this isolation
+when the suite itself runs from a hook.
 Copy-failure coverage also injects a transport error through the shared Python
 fixture, so rootful containers exercise the same fatal-copy verdict as other users.
 

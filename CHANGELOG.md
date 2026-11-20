@@ -17,6 +17,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — retain the mutation companion in consumer hook fixtures
+
+- Copy the mutation workspace module with the real runner into isolated consumer-hook fixtures. Clean pushes and stale-recipe refusals continue through the actual hook pair; a missing module cannot replace the intended verdict.
+- Clear inherited per-command Git configuration before creating fixture repositories, including runs started by the real hook. Regression mutations remove the companion or either configuration guard; local Git remotes and linter doubles do not qualify downloaded linters or public pushes.
+
 ## 2026-11-20 — deduplicate reviewed immutable OCI archives
 
 - Add a default preview and digest-bound apply helper for explicitly selected immutable OCI blobs. Require matching content, ownership, modes and timestamps; exclude identity-bound receipts, parent directories and outside hardlinks.

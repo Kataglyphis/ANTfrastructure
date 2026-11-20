@@ -58540,5 +58540,29 @@
   "replace": "for match in re.finditer(rb'\"((?:[^\"\\\\]|\\\\.)*)\"(\\s*:)', data)",
   "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
   "why": "The real scanner must consume large escaped JSON values in bounded time; a five-second child bound kills the old quadratic scanner. This fixture does not prove an arbitrary receipt-root runtime."
+ },
+ {
+  "id": "lint-gates.hook-fixture-mutation-workspace",
+  "target": "linux/scripts/tests/test-consumer-hooks.sh",
+  "find": "docs/scripts/mutation_push.py docs/scripts/mutation_workspace.py linux/scripts/verify-shell-eol.sh)",
+  "replace": "docs/scripts/mutation_push.py linux/scripts/verify-shell-eol.sh)",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh",
+  "why": "The real local consumer hook pair must retain every required mutation-runner companion. Removing its copied workspace module must fail clean-push and stale-recipe assertions; this does not qualify downloaded linters or public remotes."
+ },
+ {
+  "id": "lint-gates.hook-fixture-git-config-parameters",
+  "target": "linux/scripts/tests/test-consumer-hooks.sh",
+  "find": "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT CI",
+  "replace": "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_CONFIG_COUNT CI",
+  "test": "env GIT_CONFIG_PARAMETERS=\"'core.hooksPath'='/missing-consumer-fixture-hooks'\" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/missing-consumer-fixture-hooks bash linux/scripts/tests/test-consumer-hooks.sh",
+  "why": "Consumer hook fixtures must isolate inherited per-command Git settings before configuring real local hooks. The seeded nonexistent hook path must not suppress clean-commit, clean-push or refusal assertions; this proves neither public remotes nor downloaded linters."
+ },
+ {
+  "id": "lint-gates.hook-fixture-git-config-count",
+  "target": "linux/scripts/tests/test-consumer-hooks.sh",
+  "find": "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT CI",
+  "replace": "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_CONFIG_PARAMETERS CI",
+  "test": "env GIT_CONFIG_PARAMETERS=\"'core.hooksPath'='/missing-consumer-fixture-hooks'\" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/missing-consumer-fixture-hooks bash linux/scripts/tests/test-consumer-hooks.sh",
+  "why": "Consumer hook fixtures must isolate inherited per-command Git settings before configuring real local hooks. The seeded nonexistent hook path must not suppress clean-commit, clean-push or refusal assertions; this proves neither public remotes nor downloaded linters."
  }
 ]
