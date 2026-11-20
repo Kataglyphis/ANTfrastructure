@@ -197,4 +197,27 @@ for _f in linux/scripts/preflight.sh .github/workflows/linux-x64.yml .github/wor
   t_assert_eq "0" "$(grep -c -e '--delegate-chrome' -e '--push-range' "${REPO}/${_f}")" "${_f} proves every entry"
 done
 
+_external_gate() {
+  python3 "${REPO}/${GATE}" --root "${_work}/repo" --manifest "${_work}/repo/docs/scripts/mutations.json" "$@" 2>&1
+}
+
+t_case 'an explicit external root supplies staged change selection as well as execution'
+_rig
+printf '# external staged edit\n' >> "${_work}/repo/plain.sh"
+_g add plain.sh
+_out="$(_external_gate --changed --base HEAD)"; _rc=$?
+t_assert_eq 0 "$_rc" "$_out"
+t_assert_contains "$_out" 'bites   probe.plain'
+t_assert_contains "$_out" 'proved 1 of 1'
+
+t_case 'an explicit external root supplies push-range history as well as execution'
+_rig
+base="$(_g rev-parse HEAD)"
+printf '# external committed edit\n' >> "${_work}/repo/plain.sh"
+_g commit -qam external-scope
+_out="$(_external_gate --push-range "${base}...HEAD")"; _rc=$?
+t_assert_eq 0 "$_rc" "$_out"
+t_assert_contains "$_out" 'bites   probe.plain'
+t_assert_contains "$_out" 'proved 1 of 1'
+
 t_summary

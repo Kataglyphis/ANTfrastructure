@@ -239,7 +239,7 @@ t_case "the wrapper's ROCm environment exists only in a rocm image"
 PKG="${TESTS_DIR}/../../Dockerfile.package"
 t_assert_contains "$(cat "${PKG}")" 'ARG ROCM_ON=${ENABLE_AMD/false/}'
 t_assert_contains "$(cat "${PKG}")" $'ENV ROCM_PATH=${ROCM_ON:+/opt/rocm} \\\n    HIP_PATH=${ROCM_ON:+/opt/rocm}'
-t_assert_contains "$(cat "${PKG}")" 'ENV PATH="${PATH}${ROCM_ON:+:/opt/rocm/bin}"' "appended, so ROCm shadows no image tool"
+t_assert_contains "$(cat "${PKG}")" 'ENV PATH="${ROCM_ON:+/opt/rocm/migraphx/bin:}${PATH}${ROCM_ON:+:/opt/rocm/bin}"' "source MIGraphX leads while the retained SDK tools remain appended"
 
 t_case "the entrypoint names the flag that opens a GPU node closed to uid 1001"
 ENTRY="${TESTS_DIR}/../04-runtime/entrypoint.sh"

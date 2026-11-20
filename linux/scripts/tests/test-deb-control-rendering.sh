@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stubbed package builders verify control bytes and failure policies, not actual Debian archives or installation.
+# Stubbed builders and package discovery verify control bytes and raw readelf failures, not host package ABI or installation.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -127,7 +127,19 @@ cat > "${_DEP_TOOLS}/readelf" <<'TOOL'
 [ "${READELF_FAIL:-0}" = 0 ] || exit 9
 exec "${REAL_READELF}" "$@"
 TOOL
-chmod +x "${_DEP_TOOLS}/readelf"
+cat > "${_DEP_TOOLS}/ldconfig" <<'TOOL'
+#!/usr/bin/env bash
+[ "$#" -eq 1 ] && [ "$1" = -p ] || exit 2
+printf '1 libs found in cache /fixture/ld.so.cache
+	libc.so.6 (libc6) => /fixture/libc.so.6
+'
+TOOL
+cat > "${_DEP_TOOLS}/dpkg" <<'TOOL'
+#!/usr/bin/env bash
+[ "$#" -eq 2 ] && [ "$1" = -S ] && [ "$2" = /fixture/libc.so.6 ] || exit 2
+printf 'libc6: %s\n' "$2"
+TOOL
+chmod +x "${_DEP_TOOLS}/readelf" "${_DEP_TOOLS}/ldconfig" "${_DEP_TOOLS}/dpkg"
 _DEP_OUT="$(BUNDLE="${_DEP_BUNDLE}" PATH="${_DEP_TOOLS}:${PATH}" deb_depends)"
 _DEP_RC=$?
 t_assert_eq 0 "${_DEP_RC}" "${_DEP_OUT}"

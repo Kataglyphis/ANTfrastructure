@@ -657,9 +657,9 @@ def select(args: argparse.Namespace) -> list[MutationEntry]:
     """The entries this invocation proves: --only, then --changed, then --shard."""
     entries = select_only(load(args.manifest), args.only, args.manifest)
     if args.push_range:
-        entries = select_push(entries, args.push_range, ROOT, os.path.abspath(args.manifest))
+        entries = select_push(entries, args.push_range, args.root, os.path.abspath(args.manifest))
     elif args.changed:
-        touched = changed_files(ROOT, args.base)
+        touched = changed_files(args.root, args.base)
         entries = [e for e in entries if touches(e, touched)]
     return select_shard(entries, args.shard, args.shard_costs)
 

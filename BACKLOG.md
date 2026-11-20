@@ -1228,6 +1228,110 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       The standalone SDK rebuild with [node and registry ownership fixes](docs/linux-accelerator-images.md#node-compute-info-ownership)
       passes G2 and ASan/LSan on CPU plus two real plugin GPU tiny-model sessions. Full consumer builds,
       finished packages and their detector parity/operator profiles remain open; this is not image promotion.
+
+
+**Native packaging source follow-up 2026-11-11:** AccelerANTgine's prepared CPack source selects the CPU core
+      and separate image plugin, preserves its full license tree and requires the shared plugin-safe AppImage
+      patcher. The actual install/proof blocks pass fixture and mutation checks. The prepared finished-package
+      verifier now checks the plugin, full license tree and executable HIP companions in all three formats;
+      source fixtures do not establish an actual DEB/TAR/AppImage or packaged detector proof.
+      Prepared native profile checks now require the shared `migraphx-plugin` choice and actual `MIGraphX`
+      operators in both complete runs; old helper refusal precedes evidence/extraction. A real source CPU
+      DEIM repeat passed, but the GPU attempt timed out with empty results. Its surviving container was
+      stopped and retained. Shared owned-container cleanup now passes real killed-starter controls for
+      removal and retained/PID0 state, plus raw success/failure checks; actual packaged GPU parity remains open.
+      **Rust source follow-up:** the exact shared Rust policy and prepared OxidANT V2 adapter replace the
+      legacy provider/options. The pinned crate sources match both Cargo.lock checksums. Fake policy
+      tests and an API24 typecheck of the actual adapter/provider modules pass; this is not the
+      complete locked consumer graph. The actual locked inference crate now builds, compiles its test
+      targets, passes Clippy with warnings denied and executes all 65 CPU tests without ignored or
+      filtered cases. The prepared Linux Cargo integration now replaces the in-process HIP child with
+      the shared C/Rust transport and an OUT_DIR-built native executable. A separate exact-source run
+      executes79 library and6 build-output cases;14 integration cases pass with the pinned model required,
+      including real ORT/tract CPU inference and XNNPACK. Its earlier model-free green skipped bodies
+      and is not runtime acceptance. All 14 workspace members and 3 vendored path dependencies build;
+      all-target Clippy and formatting pass. The preserved 11 November complete canonical workspace replay
+      passes 912 cases across 64 summaries, with zero failed, ignored or filtered cases. It includes
+      40 headless and 43 root ABI/compiler cases, required CPU models, GenAI, GTK, GStreamer, lavapipe
+      and post-test ORT/tract/XNNPACK photograph parity. Its raw log hash, cleanup and independent
+      container-absence proof are rechecked. The newer 955-file prepared package snapshot matches the
+      recorded 953-file inventory's declared Rust/Cargo/native/shader hashes; 17 docs/script/test paths
+      differ. Seven historic docs/test files no longer match the old inventory, so retain that root as
+      evidence and do not silently reuse it as an unchanged current source. Recorded Hub-pin integration,
+      fresh-image workspace checks, finished helper/package profiles and actual finished GPU acceptance
+      remain required. Local C/C++ cache hits are measured;
+      the existing Rust wrapper opt-out remains explicit.
+      The prepared isolated worker transport now passes12 real process cases and an actual Dart FFI
+      matrix:64 retained worker statuses despite25 external supervisor reaps; the original runner loses64.
+      These are source-only transport checks. Native HIP, Cargo/consumer wiring, package delivery and
+      mutation-registry checks remain open; no installed-bridge or finished-package proof follows.
+      Nine native executable/fake-HIP checks now prove expected cleanup/error exits and a17-byte
+      LSan negative control through the real worker wait, with all controls inside the live Dart scope.
+      This proves no real HIP/GPU. The actual default-seccomp VM probe passes, and the report-gate
+      mutation bites against a green suite. Shared pinned Dart/cache preparation is now wired to
+      both source-CI jobs and isolated bootstrap; existing PE tools already supply Rust/Cargo.
+      Fresh provisioning/hosted-CI proof is still required before claiming the complete CI closure.
+      **Rust packaging replay 2026-11-11:** prepared shared plugin/license and Cargo-helper proofs,
+      original plus loader-renamed helper protection and explicit launcher-path G6 now produce actual
+      TAR, DEB and AppImage in accepted ROCm index `4e76aa2a75e1…`. Finished verification remains red:
+      native core `0083593fe853…` matches that image's CPU wheel only after target stripping, while
+      GPU packages require the wheel's original bytes. No stripped-core exception or GPU result is
+      claimed for that initial attempt. The follow-up replay restores uniquely matched original wheel
+      bytes (`4178745408d1…`) and passes the unchanged strict checks for actual TAR, DEB and AppImage:
+      original core/notices, image-identical plugin/full license tree, exact Cargo helper and locked model.
+      The finished TAR's CPU zero-image smoke passes; this is not cats/GPU parity, clean-host installation
+      or an image-acceptance receipt. Those checks and default-tip integration remain open.
+      The complete older `eb3ca33d` source replay also remains red: 4844 of 5020 mutations bite,
+      176 unmutated baselines and 11 script suites fail; focused follow-ups do not replace a full replay.
+      **Tensor diagnosis 2026-11-12:** the prepared Rust CLI records each actual model input and
+      first output before detection postprocessing. On the RX9070XT all four CPU/MIGraphX inputs
+      are byte-identical (`1x3x640x640`, SHA256 `a7a7689f3ab4bd52ef0169387a3ac97a8d757d9bda9d252f149c490724ffacad`);
+      both providers repeat their raw output bytes, and each GPU run has a MIGraphX operator.
+      CPU/GPU output already differs before postprocessing, and the unchanged strict detector
+      comparator stays red. The reusable tensor summary validates evidence/input identity and
+      grants no numerical or provider acceptance. This diagnostic replaces only the executable
+      in a preserved package closure; internal operator cause, finished-package and full consumer
+      acceptance remain open. Direct array errors include row reordering and are not box displacement.
+      Direct native C-API replay now consumes that saved input without Rust or detector postprocessing.
+      Old and new explicit core/plugin pairs produce identical CPU outputs and identical GPU outputs
+      under the same new-package loader/library closure and host ROCm. Each pair completes two runs
+      per provider with per-run operators; class-15 score delta remains `0.06410074234008789`, above
+      the unchanged `0.05`. This does not replay an entire old image, identify an internal operator
+      or grant parity. The preserved native builder shares SDK lifetime/cache/toolchain helpers;
+      SDK-free transport tests and tiny-model controls do not replace actual finished consumers.
+      Intermediate-tensor preparation now inventories the original model and can expose one known
+      float output in a separately hashed diagnostic copy, retaining original outputs and exact node
+      and initializer bytes. Schema-double tests do not prove ONNX parsing or inference. Exposed
+      outputs can alter fusion; actual intermediate probes do not replace original-model parity,
+      and an internal operator cause remains unproved.
+      A reusable host tensor-pair driver now replaces inline CPU/GPU/profile/summary loops,
+      retaining explicit loader arguments, raw failures and per-run profiles. Protocol fixtures
+      prove transport only; they do not establish numerical or finished-consumer acceptance.
+      **Padding diagnosis:** an independent negative-input zero-Pad/MaxPool case with the Pad also
+      exposed gives correct CPU values but incorrect default MIGraphX border values; disabling only
+      eliminate_pad restores the GPU result. The same explicit diagnostic control restores the
+      original model's failing raw confidence near the CPU value, with operators in both GPU runs.
+      The narrow MaxPool guard compiles against the real SDK: the original numerical case fails,
+      and all six patched upstream tests pass. Selectively loading that compiled source on the
+      actual GPU restores the tiny result and the unchanged original model's failing raw score
+      (delta 0.00003954768180847168), with repeated bytes and per-run operators. This explicit
+      preload is a diagnosis, not the shipped backend. The normal Linux GPU producer now retains
+      the apt SDK and invokes the complete corrected source stack with selected Python/pybind11,
+      fresh narrow imports, compiler/source caches and shared source-first runtime publication.
+      A real producer rebuild, selected-byte loader proof, complete binary licence review and
+      all ordinary finished-consumer/image receipts remain open.
+      Full source-backend preparation now verifies the upstream-required rocm-cmake pin,
+      selects the source-built LLVM explicitly and keeps every GPU feature enabled.
+      An early SDK development-package check now preserves CK host/rocMLIR version requirements
+      and fails on missing selected package metadata; this is not binary ABI or inference proof.
+      Its normal producer wiring and real full backend compilation remain open.
+      A preserved Linux parser-dependency builder now plans pinned static/PIC Abseil then Protobuf,
+      with source/compiler/cache and original-notice controls. Its genuine isolated build/install and
+      byte-identical warm replay now pass; backend configuration/normal producer wiring
+      and all ordinary finished-consumer/final-image receipts remain open.
+      Actual preparation now installs the required CMake tools and msgpack exports,
+      selects source LLVM and HIP, then refuses missing Protobuf development files.
+      No full backend configuration, backend installation or image acceptance has passed.
       **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
       `30-build-native-amd.sh`, `--use_migraphx`, the `onnxruntime-migraphx` wheel and the two MIGraphX patches are
       gone; the rocm variant has no ORT GPU build, the plugin builds over the CPU prefix, the wrapper's app venv
@@ -1248,6 +1352,15 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       with its amd64 platform retained. This fresh proof supersedes the older plugin-plus-in-tree wrapper
       for the removal; it does not prove new hardware inference. Done when the four AMD packages pass
       parity on the plugin (step 2).
+
+**Owner follow-up, queued for after normal rebuilt-backend and finished-app parity validation:**
+Check current upstream for existing fixes, then prepare a focused ROCm/AMDMIGraphX PR for
+`001-preserve-zero-pad-maxpool.patch` with a minimal reproducer, expected/actual results and
+regression test. Prepare separate onnxruntime/onnxruntime-ep-amdgpu PRs for the node-compute-info
+and kernel-registry lifetime fixes, each with its relevant evidence. The Python-selection patch
+needs a general upstream design; project build/cache/pinning scripts stay local. Remove local
+patches only after verified upstream fixes reach the selected version. This queued work does not
+interrupt active builds, replace CON231/CON233, or change publication approvals and holds.
 
 - [ ] **CON256 — the plugin move's open points on the hub side** [M, ★★★]. Found 2026-11-12, when the consumers
       began CON231 step 2. Read at hub d66d3909 and in AMD's source at `ORT_AMDGPU_EP_COMMIT`; nothing here was run
@@ -1349,6 +1462,37 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       smoke file contract; [windows-cross-builds.md](docs/windows-cross-builds.md#the-qnn-plugin-ep)). Proven when a
       Windows chain builds it and `:winarm64` republishes; a Snapdragon run of a registered session is still open.
 - [ ] **CON233 — move every EP with a plugin to it, CUDA and TensorRT included** [L, ★★].
+  - The LLVM/FT source descendant `a4741df7` retains the original historical GPU-profile hashes and validates the later package fixture; targeted20/all26/normal2 pass, and its complete6573/all42 source run remains open. The separate GNU_UNIQUE compiler-planning profile checks this exact lineage, compiler6 reference fingerprints, all seven input deltas and unchanged GNU closure. New and earlier profile controls and actual mutations pass; HOST qualification, actual compiler/SDK/descendant rebuilds, all lanes/full FINAL/Rust-first finished GPU and complete licences remain required.
+  - The isolated host selector now targets runtime `2aa1a778` and its own 6,512-entry/all-default-groups source proof; an older wheel-context receipt cannot qualify the smoke-export repair. Original Android8c/native108/Media86, exact app, normal disk admission and cleanup remain required. A targeted host receipt proves no runtime/FINAL or finished GPU result. Runtime6 and Runtime7 failed on final unpack after base/package/serial smoke passed; retain both failures and E30. The successor host profile requires max(300 GiB, parent plan bytes) before allocation and records that selected requirement; qualification and sufficient fresh headroom remain necessary before another attempt. All six lanes, Rust-first finished GPU checks, other consumers and full binary licences remain open.
+  - **Runtime5, 2026-11-15:** Base 244 s/status 0 and package 938 s/status 0; concurrent smoke and wrapper both failed after 310 s with explicit ENOSPC in separate native context materialization. Six actual autonomous keep-100 receipts survive; the third recovered 63,756,185,600 bytes while the producer was live, before package completion. All actual cleanup/query verdicts and resource logs remain preserved. Terminal idle cleanup recovered 93,190,426,624 bytes with every cachemount and image held. The next host profile adds the existing full serial-smoke choice and fixes failed/PID0 guardian sealing; a bounded complete FINAL consumer launcher and persistent recipe generator have independent source controls, with exact source qualification/normal hooks still required before use. The failed old seal remains failed evidence. No Runtime6 or actual FINAL receipt yet; all six lanes, finished Rust-first four-app parity/profiles, original 0.05 tolerance and complete binary licence closure remain required.
+  - **2026-11-15:** Actual Runtime4 completed base (251 s, status 0), then package import failed (762 s, status 1) with explicit `no space left on device` extracting the GCC AArch64 `lto-dump`; the final wrapper never started. Full logs, resource samples and successful invocation-owned cleanup/independent absence are retained. Large regular-layer reclamation occurred after failure and proves no successful import. A new bounded storage guardian has synthetic lifecycle/type-scope controls and actual gate mutations; source qualification and a real later run must establish its operational result. Authorized idle cleanup of two obsolete published Android copies reclaimed 32,855,150,592 bytes with every cachemount and unselected image preserved, restoring the normal reserve. Runtime5 has not started. Fresh admission, actual FINAL six-consumer receipts for all six lanes, finished Rust-first application parity/profiles and complete binary licence closure remain open.
+  - Repair `ec3be185` passes its complete 6,507-mutation/all-42-group/623-suite source proof. Actual Runtime3 through qualified host `cab2d209` completed base (280 s, status 0), then failed package import (791 s, status 1) during layer extraction; the clipped error does not prove ENOSPC. Its wrapper never started. Producer cleanup and an independent absence query passed; terminal idle cleanup restored the normal disk reserve while retaining all 42 compiler/source cachemounts and 49 image identities. The prepared local FINAL mode retains all six canonical consumers and exact completed-producer/image bindings; its fixtures are not actual acceptance. Runtime/FINAL, the other Linux lanes, finished GPU apps and complete binary licences remain open.
+  - Runtime2 from original `8c4e13b0` completed base/package but failed because the digest-qualified wheel-context key reached the registry. The qualified runtime-source selector requires repair `ec3be185` and its own complete source proof, preserving original Android source and native ancestry separately. Both tiny real BuildKit comparisons remain unaccepted because their original-source controls hit mirror HTTP429; candidate marker copies do not close runtime/FINAL acceptance. An ordinary runtime independently grades the actual wheel delivery through all normal gates.
+  - The ordinary ROCm amd64 source `8c4e13b0` passed its complete 6,246-mutation/all-42-group source proof and completed GPU, Media and Android. Media's actual native/GIL/FT and both Asyncify+JSPI factory replays passed; its native export matches all 43 GPU ancestors. Android manifest `16166523443a…` completed and its sealed native export matches all 86 Media ancestors across 108 layers. These are component proofs, not FINAL or hardware acceptance. The first runtime launch refused an unsupported bare-manifest tag source before starting a unit; the isolated host selector follow-up retains independent immutable checks. Ordinary runtime/FINAL six-consumer acceptance, all other Linux lanes, complete binary licences and finished Rust-first/four-consumer parity and profiles remain open.
+  - The exact SQLite-loader production source `8c4e13b0` now passes all 6,246 actual mutations, all 42 default preflight groups and 617 suites/32,480 assertions. Its complete receipt is sealed/stopped with cleanup and independent container absence. Separate host tools `158daf7f` pass 122 affected mutations, 26 quality groups and 16 normal-hook controls, plus the actual read-only GPU4 selector check. The owner then authorized autonomous local container cleanup: four obsolete published SDK/NVIDIA-Android copies were removed only after exact immutable registry/config readback, freeing 121,229,893,632 bytes while retaining all 12 cachemount IDs and all 46 unselected image records. Fresh ordinary admission passes at 292,339,486,720 bytes against the unchanged 193,273,528,320-byte floor, and the single repaired ordinary GPU5 now completes from exact production `8c4e13b0` and original compiler6/SDK4, including all seven real entry-library loads. Its local manifest is `sha256:a28498addfac…`; the native OCI receipt rehashes all 43 layers and matches all 41 SDK descriptors/diffIDs with raw export/extractor statuses zero and stopped unit. The reader retains the complete outer RUN's zero-byte log; final cache counters are 5,244 hits, one miss and eleven unclassified errors. Subsequent authorized idle regular-layer cleanup frees another 58,852,618,240 bytes while preserving all 12 cachemounts and 47 image identities. The single normal ROCm Media unit is now running with both required Wasm flags after fresh 235,083,415,552-byte admission. Native/GIL/FT, both actual Wasm modes, final images and finished consumers are still unaccepted. Preserve the failed original GPU4, E30 and every existing receipt; a successful source proof or cleanup does not close the remaining build/runtime criteria. All six runtime lanes, both actual Wasm modes, full binary licences and finished-consumer parity/profiles remain open. See [current loader evidence](docs/linux-accelerator-images.md#source-backend-entry-library-loads).
+  - The preserved GPU-to-Media host tools now use the immutable local manifest ID that the actual Docker-loaded GPU image resolves, independently checking its config and manifest against the tag lookup. The real read-only GPU4 selector replay passes; no native GPU export or Media build follows from it. The repaired production source remains separate, and native blob/SDK ancestry, mandatory disk admission, original licences, both actual Wasm modes and final consumer/hardware acceptance remain required. See [local selector resolution](docs/failure-modes.md#local-docker-loaded-gpu-image-does-not-resolve-by-repositorydigest).
+  - Ordinary local GPU4 completed from `7a7b23d2` after its complete 6,231-mutation/all-42-group source proof, but its actual core load fails on an existing, unregistered `librocm_sysdeps_sqlite3.so`. The isolated repair adds that exact directory discovery and requires all seven selected entry libraries to load after publication/ldconfig. A genuine unchanged-image control fails and a disposable corrected-publisher replay passes, with independent cold core/GPU mappings matching the original install hashes. The original GPU4 image remains unchanged and unaccepted. The later qualified GPU5 rebuild and verified native export are recorded above; full licences, all six Media/runtime lanes, both actual Wasm modes and finished-consumer parity/profiles remain open. See [the loader failure](docs/failure-modes.md#migraphx-core-cannot-find-rocm-sqlite) and [gate scope](docs/linux-accelerator-images.md#source-backend-entry-library-loads).
+  - Ordinary ROCm GPU3 on 2026-11-14 passed the real offline HIP gate, all rocMLIR targets and all 736 backend build/install steps, then failed staging on repeated CMake manifest rows. The isolated repair coalesces exact rows and validates public/private library layouts, preserving file/ELF/notice gates and source-first loading. No GPU image or consumer acceptance passed; all six Media/runtime lanes, both actual Wasm modes, full binary licence closure and finished-consumer/profile proofs remain open. Terminal logs/counters and the sealed read-only reader are under `logs/test-results/webgpu-registration-20261110/hip-object-format-20261114/gpu-rebuild-1/`.
+  - Genuine isolated Linux Abseil/Protobuf builds now pass: 975 installed files, 94 static archives and original Abseil/Protobuf/utf8_range notices. The repeat has 651 compiler-cache hits, zero misses and one classified negative C++20 feature-probe cache error; every installed byte matches the first run. External target/API checks, rocMLIR/full-backend builds and ordinary image/consumer acceptance remain open.
+  - Actual parser component builds have a bounded launcher mode with two readonly original archives, the canonical disk probe and an exact 180GiB byte floor before freezing. Transport/negative controls do not prove a successful vendor build, ordinary Docker/runtime integration or finished consumer/image acceptance.
+  - One preserved source-stack entry now resolves all seven pinned archives, rechecks cache hits and orders parsers, CK/API, rocMLIR, SDK and the full backend. The real retained archive cache has seven verified hits without fetching; actual vendor builds, Dockerfile/runtime-prefix wiring and ordinary finished-consumer/final-image acceptance remain required.
+  - CK host source builder now follows the exact MIGraphX requirements pin and codegen project, with original notice and shared ROCm-CMake/cache transport; actual CK/rocmlirTriton/full-backend integration and ordinary final-image/consumer proofs remain required.
+  - The full rocMLIR package builder now compiles the genuine pinned vendor target and validates its cache plan. Cold/warm installs retain 2,272 identical files and 44 original notices; the real external host C API passes. Warm cache: 3,169 hits, one successful coverage-probe miss, seven classified negative-header errors and two negative compiler checks. Full backend, binary licence review and ordinary final acceptance remain open.
+  - The external rocMLIR CMake/C-API probe passes against both real vendor installs, requiring exact API6, selected original headers, MIGraphX dialect, migraphx-to-tosa pipeline and unchanged inputs. Its fixtures remain separate; GPU execution and normal final acceptance remain open.
+  - The repaired base source 8e79becb passes its complete Linux preflight: 593 suites, 32,093 assertions and all 5,620 actual mutation IDs, with cleanup and independent container-absence proof. Later source-image integration still needs its own validated delta and real image/consumer evidence.
+  - The complete MIGraphX stack is now called by the normal AMD GPU producer after exact selected-Python pybind11 setup. The declared host-prepared 76-file context shares its core selection with the SDK; deterministic staging and the shared GPU/runtime publisher retain cache drains and raw failures. Environments prefer the source prefix; actual BuildKit cache isolation remains to measure. Actual backend/image construction, selected-byte precedence, complete binary licence review and ordinary finished-consumer/final-image acceptance remain open.
+  - The permanent selected-context cache probe passes all six actual SDK/AMD solves on clean local2006ae77: cold execution, unselected-change cache reuse and exact new bytes after an equal-length selected edit. Full receipt-SHA/files namespaces, validated host key forwarding and exact production selectors retain deterministic zero mtimes and raw phase statuses. Source QA passes229methods/135affected actual mutants/26qualitygroups; all5782anchors apply. This proves selected-script transport only. The original flat actual-2 remains RED: its SDK cold/unselected steps passed, but selected delivery read the old5081-byte receipt; AMD was not reached. Preserve both runs. The ordinary new base now builds successfully and its exact native OCI export is checked. Its corrected actual bootstrap cache probe passes4compiles/2hits/2misses with zero uncached labels and a matched actual container manifest; the old contradictory diagnostic remains retained. Counter fixc148de3d passes229methods/7counterassertions/all5affected actual mutants/26qualitygroups and unchanged normal hooks. The compiler admission correction below now owns the current SDK prerequisite; normal backend, binary licence and finished GPU/final acceptance stay open.
+  - The ordinary compiler completed and its native OCI ancestry matches the checked base, but actual defaults exposed distro Clang23.1.6 instead of source23.1.5. Fixed source `b7fab2ed` passes297Pythonmethods/all75affectedmutations(20new)/26qualitygroups/16normal-hook samples. An actual digest-bound replay selects23.1.5 for bothClangaliases while all4GNUaliases retain16.2.0/v3/generic. The corrected normal compiler solve reuses both expensive source RUNs; fresh image qualification, SDK and full backend remain open. Its complete frozen-source preflight passes all42groups/all5844mutations and602suites/32207assertions; this predates the later native-loader correction. Preserve the failed default-selection image and receipts. Actual previous source GNU/LLVM cache hits were2873/585; GNU186cacheerrors remain unclassified despite zero failed S3 writes. The original GNU RUN configures its error-log path under disposable /tmp; whether it created a file is unproved, and the preserved compiler2 image has no log. Phase diagnostics were not retained, so their cause stays open. Preserve raw counters/error evidence before the next naturally executed media RUN exits; do not force a cached compiler rebuild to relabel old counters.
+  - The rebuilt b7 compiler passes six compiler aliases but still selects 153 of 157 native LLVM utilities elsewhere; default llvm-config reports23.1.6 instead of source23.1.5. Local source c215635d moves the complete native bin tree behind Python/GNU after the expensive builds and adds a baked host-native gate. Source304methods/47actualmutations(14new)/26qualitygroups and16normal-hook controls pass. The real original gate fails1; an explicit candidatePATH selects all157tools/config23.1.5 and preserves allGNUdefaults. This is replay, not new-image admission. All150boundfiles and Dockerfile bytes through GNU/LLVM/Rust/Python match b7; the next canonical solve still needs actual cache evidence and the unchanged180GiB admission. At that checkpoint the owner was asked to free disk; the later standing authorization permits canonical regular-layer cleanup while retaining the original admission floor. Corrected image/OCI/SDK/full-backend and finishedGPU/final acceptance remain open.
+  - Source6412e572 additionally fixes global LLVM loader precedence through the shared late native/runtime publisher. The schema2 gate reads each real ELF SONAME rather than assuming the llvm-config linker alias is a cache key. Source309methods/all102affectedmutations(20new)/all26qualitygroups and16normal-hook controls pass; the committed patch exactly matches the tested snapshot. Actual digest-bound replay over f435 first fails the gate and loads distro LLVM, then passes157native tools/sixcompiler defaults and loads the source library with its exact SHA256. This is a disposable replay, not rebuilt-image/SDK acceptance. All150expensive bound inputs remain equal to b7; actual next solve cache evidence is still required. The complete frozen6412 source preflight now passes all42defaultgroups/all5878actualmutations and603suites/32234assertions. Its successful LOADED terminal was saved before stop; raw0, canonicalcleanup0 and independent successful enginequery/ownedabsence are preserved. The later ordinary compiler and first SDK outcomes are recorded next; its complete source proof remains distinct from image and consumer acceptance. Fresh all-lane factory/final-image and finished-consumer GPU receipts remain open.
+  - The ordinary 6412 compiler now completes as local manifest `sha256:c377f2c1e55b03c610b5b4140fd30f216bb8b615bdcc465f3abcbc06449a0227`; actual default and SDK-login qualification passes all157 native tools, six compiler aliases and bare-soname source LLVM loading. Its exact native OCI rehashes all26 layers and matches the original12 base layers and diffIDs. GNU/LLVM RUNs execute: actual hits12389/11108, misses2129/5272, errors186/0 and zero failed S3 writes; GNU errors remain unclassified, and Rust/Python have no final cache-stats proof. The first ordinary amd64 SDK then fails raw1 because materialization deletes the native LLVM prefix, leaving clang unreachable. The isolated repair e7ca4436 restores selected-prefix aliases and retains foreign-target build-host tools; 67 filesystem assertions, all24affected actual mutants(8new), all26qualitygroups and16normal-hook controls pass, with exact tested/committed patch equality. Three real disposable C377-parent replays for amd64/arm64/riscv64 preserve original target/host Clang hashes and pass the native157tools/sixcompiler defaults/sourceLLVM loading in default and SDK-login shells; all three cleanup and independent-absence receipts pass. These are materializer replays, not completed SDK or target ABI acceptance. The exact e7ca complete5886 preflight now passes all42groups and604suites/32301assertions, with strict exact-ID sealing, successful loaded terminal before stop, cleanup0 and independent owned-container absence. Fresh repaired SDK/full backend, all-lane final runtime and finished-consumer acceptance remain open. Standing permission covers canonical regular-layer cleanup only; cachemounts/images and the180GiB guard remain protected.
+  - Actual SDK2 passes the repaired materializer and Vulkan install, then fails raw1/inner127 because the architecture wrapper selects `/usr/bin/clang-23`, whose LLVM symbols do not match the source loader winner. The parent compiler's native-tool/default/loader proof remains at its declared scope. Isolated repair publishes wrappers after source building, selects the existing native source prefix before the versioned bootstrap and refuses incomplete prefixes; native LLVM includes the host plus configured cross CPU backends, while foreign target-native trees remain narrow. Both Clang wrapper drivers now receive exact-version and real target object/link/QEMU smokes. The c486 fixture49assertions and24newactualmutants cover source selection, backend lists, wrapper dispatch, installation order and raw failures; a follow-up adds explicit build-host wrapper dispatch outside the foreign-target loop (fixture50assertions and one additional mutant); new-source full validation, fresh compiler/image/OCI and ordinary SDK/full-backend/finishedGPU acceptance remain open. Canonical keep95 cleanup ran only while idle and preserved75cachemount IDs/all40image identities; the100GB mid-build knob minimum and exact180GiB build floor stay unchanged.
+  - A separate AMD GPU environment follow-up retains the qualified inherited GNU/source-LLVM PATH before distro/vendor compilers while keeping source MIGraphX first and HIP tools available. The existing AMD ENV would reintroduce the distro LLVM directory after SDK qualification. Exact-expression executable fixtures and mutations cover this boundary; the3154 compiler/SDK producer stays frozen, and the GPU source still requires its own complete proof and actual image/consumer acceptance.
+  - Linux Python discovery now selects the pinned interpreter/config/headers and extension ABI rather than stopping at 3.14; the plugin resolves HIP independently of the source prefix. Original-selection refusal and a real tiny 3.15.2 binding are proved separately; full backend, production wiring and ordinary GPU/image acceptance remain open.
+  - Genuine rocmlirTriton cold/warm builds complete offline with vendored LLVM/MLIR/LLD/Triton; 44 original source texts match policy and source. Selected-target binary licence review, normal source-backend integration and final consumer/image acceptance remain open.
+  - An external CK CMake target now links and its real GetHeaders API returns the exact selected original header. Normal SDK integration, rocmlirTriton/full backend and ordinary finished-consumer/final-image evidence remain open.
+
+
       **Owner decision 2026-11-08, superseding the triggers below:** every EP that has a plugin moves, at its newest
       version, and the in-tree paths go. Second decision the same day ("sofort komplett, inklusive Entfernen", both
       lanes): no consumer-first order; the removals land now and consumers lose their GPU EP until they register.
@@ -1363,7 +1507,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       **Source preparation 2026-11-10:** native CPU/NVIDIA and their free-threaded wheels select the pinned
       `--use_webgpu static_plugin` mode with external Dawn and require the actual configured flags. Asyncify
       and JSPI select the same plugin ABI with Emscripten's integrated Dawn, check their configured modes
-      and use shared artifact cache epoch `-wgpu3`. These are source/fixture gates; actual builds and runtime
+      and use shared artifact cache epoch `-wgpu4`. These are source/fixture gates; actual builds and runtime
       registration for native and Python linker products, all affected default/ROCm/NVIDIA media stages
       and new acceptance are still open. Native/GIL and FT build boundaries now preserve separate
       configured-mode/product hashes in `ort-webgpu-build.json`; canonical wheel repair adds checked delivery
@@ -1374,7 +1518,27 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       configured target compiler and shared cache helpers; its runtime phase checks each core directly,
       rejects legacy WebGPU and retains registration/negative/cleanup controls. Fixtures use stub Python
       bindings and a fake C ABI; actual native/Python factory registration in the image matrix and image
-      delivery remain open. Both enabled WASM flavors need real artifact proof. Before that
+      delivery remain open. A prepared reusable media replay selects collected wheels through completed
+      receipts, keeps isolated native/GIL/FT processes and retained raw logs, and refuses incomplete verdicts;
+      its synthetic controls are separate from actual image execution. The 2026-11-12 local default-amd64
+      media replay (index `b6b654b62f92`) passes native/GIL/FT factory and precise negative controls,
+      including disabled-GIL checks; other products and final consumer acceptance remain open.
+      An actual FT-store replay exposed a missing NumPy dependency and default discovery selecting an
+      unbuilt GPU tree. Runtime discovery now shares the strict delivery predicate; FT dependency
+      provisioning now has a prepared separate pinned offline NumPy pool; source-build/target execution
+      and full final-image replay remain open, with both failed controls preserved.
+      WASM source now prepares per-flavor configured/product receipts, checked shared-cache source/configuration,
+      direct-recipe and full-payload identities, and strict failure propagation through ORT_WEB_REQUIRED=1.
+      A linked-core mode now reuses the native C API controls in each actual WASM target, with a deferred
+      CMake hook, strict Node driver, source/product/loader-bound factory receipts and a fresh two-flavor
+      replay command. Cache epoch `-wgpu4` preserves the older pool. Host fake-ABI/loader fixtures prove
+      refusal and transport policies only. Source commit `031569f5` passes 280 Python methods, all 131
+      affected actual mutations (39 new), 26 normal quality groups and the unchanged normal hook's 16
+      actual samples. The clean source's full 42-group/5824-mutation preflight now passes600suites
+      and32176assertions, with successful terminal and independent cleanup sealed. Actual instrumented builds remain open. Native and WASM probe products also retain
+      the Hub's exact original MIT notice, with missing/altered/linked destinations rejected.
+      Both enabled WASM flavors still need actual source-to-artifact proof and runtime registration; the four
+      local media builds predate these receipts and do not complete that evidence. Before that
       media rebuild, preserve the
       OpenCV FindCUDA cache repair: its bounded SBSA replay records twelve forced-repeat hits and no misses;
       the complete stage, non-x86 Torch wrapper policy and consumer Rust cache wiring remain follow-ups

@@ -80,6 +80,13 @@ gate cannot see them, by design.
 
 ## Bootstrapping Flutter in the package stage
 
+For native worker source tests, `setup-flutter.sh --keep-cache` explicitly retains the
+verified archive's bundled Dart SDK. `ensure-native-worker-test-tools.sh` owns this opt-in for
+CI/bootstrap callers. Fresh ordinary image installs keep the bare-SDK default below; an
+already matching bootstrapped SDK still takes the existing no-install path. This option
+proves no foreign-architecture bootstrap or finished Flutter package.
+
+
 Being COPY'd is not enough for Flutter. The upstream tarball is the framework
 checkout only: `bin/cache` is empty, and the first `flutter` invocation
 downloads the Dart SDK for `uname -m` and compiles the `flutter_tools`
@@ -417,6 +424,39 @@ foreign arches, so the copy half is gone. What remains —
 load-bearing and stays: `libtvm_compiler.so` carries a `DT_NEEDED` on
 `libLLVM.so.<ver>` that resolves through `/etc/ld.so.conf.d/000-llvm-target.conf`
 and nothing else, so dropping it makes `import tvm` die.
+
+### SDK materialization preserves build-host and target paths
+
+The compiler image publishes its native architecture prefix in PATH, alternatives
+and `000-llvm-native.conf`. On 2026-11-13 the ordinary amd64 SDK copied that tree
+to `/opt/llvm-target`, then deleted every architecture prefix. Its real verification
+failed `Required tool is missing: clang` despite the correct generic tree.
+
+After materialization, `_llvm_target_preserve_prefixes` restores the selected
+`/opt/llvm-target-<arch>` name as a symlink to the complete generic prefix. For a
+native target this replaces the redundant source tree. For a foreign target it
+retains the separate native host tree, so build commands never select foreign
+executables. Other architecture prefixes, including dangling links, are removed.
+Original selected-prefix CMake references therefore keep resolving too. A failed
+cleanup stops before alias creation; both cleanup and alias failures retain their
+raw status under conditional callers.
+
+`test-llvm-target-aliases.sh` exercises all three native architectures and foreign
+host/target pairs, exact fixture bytes, dangling links and failure statuses. Its
+mutation recipes prove these checks can fail. These filesystem fixtures do not
+prove real ELF loading, SDK ABI or GPU execution. Final packaging still carries
+only the selected generic tree; retaining build-host tools is an SDK concern.
+
+The local `e7ca4436` repair also passes real disposable replays on the qualified
+compiler parent for amd64, arm64 and riscv64. Each replay runs the actual new
+materializer, compares original target and host Clang hashes, and reruns the baked
+native 157-tool inventory, six compiler defaults and source LLVM loader checks in
+ordinary and SDK login shells. A foreign target retains its separate native tree;
+the selected generic ELF has the requested machine. Successful terminal states,
+canonical cleanup and independent container absence are preserved. This checks
+materialization on real source trees; it does not prove a complete SDK, foreign
+target ABI, final runtime image or GPU inference. The new source's full preflight
+and ordinary SDK build remain separate requirements.
 
 ### A copied prefix carries links that only resolved where it came from
 

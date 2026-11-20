@@ -33,6 +33,16 @@ def extract(file: Path, fn: str) -> str:
     ).stdout
 
 
+def parser_companions(file: Path) -> str:
+    if file.name != "verify-parity.sh":
+        return ""
+    shared = ROOT / "linux/scripts/lib/cli-value-options.sh"
+    return "".join(
+        extract(shared, fn)
+        for fn in ("assign_cli_value_option", "parse_cli_value_options")
+    ) + extract(file, "_parity_flag")
+
+
 DRIVER = r"""
 _emit_usage() { printf 'USAGE:%s GRACE:<%s> N:<%s> C:<%s> V:<%s>\n' "$1" "$GRACE_SECS" "$NATIVE_IMAGE" "$CROSS_IMAGE" "$VERBOSE" >&"$STREAM"; return "$USAGE_RC"; }
 usage() { _emit_usage plain; }
@@ -46,9 +56,7 @@ log() { printf 'LOG:%s\n' "$*"; }
 """
 
 
-def run(
-    case: Sequence[Any], missing: bool = False
-) -> list[Any]:
+def run(case: Sequence[Any], missing: bool = False) -> list[Any]:
     subject, flag, status, strict, conditional, phase, stream = case
     file = ROOT / (
         "linux/scripts/stop-cross-chain.sh"
@@ -72,7 +80,7 @@ def run(
             ROOT / "linux/scripts/01-core/logging.sh", "show_usage_and_exit"
         )
     code += extract(file, callback)
-    code += extract(file, fn)
+    code += parser_companions(file) + extract(file, fn)
     if phase == "after":
         code += "alias usage=late_usage\n"
     args = (
@@ -126,6 +134,7 @@ GRACE_SECS=15 NATIVE_IMAGE=old CROSS_IMAGE=old VERBOSE=0
                     ROOT / "linux/scripts/01-core/logging.sh", "show_usage_and_exit"
                 )
                 code += extract(ROOT / "linux/scripts" / relative, callback)
+                code += parser_companions(ROOT / "linux/scripts" / relative)
                 code += extract(ROOT / "linux/scripts" / relative, name)
                 code += (
                     name + " " + shlex.join(args + ["--help", "tail value", ""]) + "\n"
@@ -137,6 +146,38 @@ GRACE_SECS=15 NATIVE_IMAGE=old CROSS_IMAGE=old VERBOSE=0
                     (0, "ARGS:<--help><tail value><>\n", ""),
                     (result.returncode, result.stdout, result.stderr),
                 )
+
+    def test_parity_value_arguments(self: "HelpExitTests") -> None:
+        file = ROOT / "linux/scripts/06-packaging/verify-parity.sh"
+        code = "set -euo pipefail\n" + DRIVER
+        code += "NATIVE_IMAGE= CROSS_IMAGE= VERBOSE=0 CHECKS=old DIFF_TOOL=old\n"
+        code += extract(file, "_parity_usage") + parser_companions(file)
+        code += extract(file, "verify_parity_parse_args")
+        code += (
+            "verify_parity_parse_args "
+            + shlex.join(
+                [
+                    "--cross",
+                    "cross [*]",
+                    "--checks",
+                    "",
+                    "--native",
+                    "native [*]",
+                    "--diff-tool",
+                    "diff [*]",
+                    "--verbose",
+                ]
+            )
+            + "\n"
+        )
+        code += 'printf "<%s><%s><%s><%s><%s>\\n" "$NATIVE_IMAGE" "$CROSS_IMAGE" "$CHECKS" "$DIFF_TOOL" "$VERBOSE"\n'
+        result = subprocess.run(
+            ["bash", "-c", code], capture_output=True, text=True, check=False
+        )
+        self.assertEqual(
+            (0, "<native [*]><cross [*]><><diff [*]><1>\n", ""),
+            (result.returncode, result.stdout, result.stderr),
+        )
 
     def test_original_receipts(self: "HelpExitTests") -> None:
         rows = json.loads(
@@ -204,6 +245,8 @@ printf FELLTHROUGH
                     relative,
                     "01-core/logging.sh",
                     "01-core/chain-lifecycle.sh",
+                    "lib/cli-value-options.sh",
+                    "lib/log-bootstrap.sh",
                 ]:
                     target = work / leaf
                     target.parent.mkdir(parents=True, exist_ok=True)

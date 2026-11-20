@@ -275,11 +275,11 @@ _ort_census_tree_args() {  # <root> <refs, one per line> <manifests, one per lin
   if [ -n "${4:-}" ]; then printf '%s\n' --ld-library-path "$4"; fi
 }
 
-_ort_census_run() {  # <label> <stamps armed> <probe args, one per line> <exemption>...
+_ort_census_run() {  # <label> <stamps armed> <probe args, one per line> <loader args, one per line> <exemption>...
   local label="$1" armed="$2" probe py verb path detail bad=0
   local -a args=()
-  mapfile -t args <<< "$3"
-  shift 3
+  mapfile -t args <<< "$3${4:+$'\n'}$4"
+  shift 4
   py="$(command -v python3 || command -v python)"
   probe="$(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "${py}" "$(_ort_host_dir "${_ORT_CENSUS_HERE}")/ort_census_probe.py" \
     "${args[@]}")" || true
@@ -294,22 +294,23 @@ _ort_census_run() {  # <label> <stamps armed> <probe args, one per line> <exempt
 
 # G6 over one bundle; a stated launcher library path is taken on trust, the launcher itself is not read.
 _ort_census_bundle() {  # <root> <refs> <manifests> <library path stated 0|1> <library path> <exemption>...
-  local root="$1" refs="$2" manifests="$3" libset="$4" libpath="$5" label="$1" probe_path=""
-  shift 5
+  local root="$1" refs="$2" manifests="$3" libset="$4" libpath="$5" loader_args="$6" label="$1" probe_path=""
+  shift 6
   if [ "${libset}" = 1 ]; then
     probe_path="$(_ort_census_library_path "${root}" "${libpath}")" || return 2
     label+=" (library path ${libpath})"
   fi
-  _ort_census_run "${label}" 0 "$(_ort_census_tree_args "${root}" "${refs}" "${manifests}" "${probe_path}")" "$@"
+  _ort_census_run "${label}" 0 "$(_ort_census_tree_args "${root}" "${refs}" "${manifests}" "${probe_path}")" "${loader_args}" "$@"
 }
 
 # G6 over one bundle; --image runs G1 over the system this runs in (what check_ort_census does in-image).
 ort_census_main() {
-  local root="" image=0 refs="" manifests="" libpath="" libset=0
+  local root="" image=0 refs="" manifests="" libpath="" libset=0 loader_args=""
   local -a exempt=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --image) image=1; shift ;;
+      --ld-library-path) loader_args=$'--ld-library-path\n'"${2?--ld-library-path needs a bundle-relative loader path}"; shift 2 ;;
       --reference) refs+="${2:?--reference needs a directory}"$'\n'; shift 2 ;;
       --manifest) manifests+="${2:?--manifest needs a file}"$'\n'; shift 2 ;;
       --library-path) libpath="${2-}"; libset=1; shift "$(($# > 1 ? 2 : 1))" ;;
@@ -324,10 +325,10 @@ ort_census_main() {
       echo "check-ort-provenance: --library-path describes a bundle's launcher; --image reads the system's own LD_LIBRARY_PATH" >&2
       return 2
     fi
-    _ort_census_run / "$(ort_census_stamps_armed)" "$(ort_census_image_args)" \
+    _ort_census_run / "$(ort_census_stamps_armed)" "$(ort_census_image_args)" "${loader_args}" \
       ${_ORT_CENSUS_IMAGE_EXEMPT[@]+"${_ORT_CENSUS_IMAGE_EXEMPT[@]}"} ${exempt[@]+"${exempt[@]}"}
   elif [ -n "${root}" ] && [ -d "${root}" ]; then
-    _ort_census_bundle "${root}" "${refs}" "${manifests}" "${libset}" "${libpath}" ${exempt[@]+"${exempt[@]}"}
+    _ort_census_bundle "${root}" "${refs}" "${manifests}" "${libset}" "${libpath}" "${loader_args}" ${exempt[@]+"${exempt[@]}"}
   else
     _ort_census_usage >&2
     return 2

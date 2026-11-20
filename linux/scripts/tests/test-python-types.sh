@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Real ty fixtures prove strict scopes and dynamically discovered report verdicts.
+# Explicit sibling imports expose omitted roots; runtime imports remain separate checks.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -37,10 +37,14 @@ _set_answer() {
   printf 'def answer() -> int:\n    return %s\n' "$2" > "$1"
 }
 
+_set_sibling_client() {
+  printf 'from %s import answer as imported_answer\ndef answer() -> int:\n    return imported_answer()\n' "$2" > "$1"
+}
+
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (136 files)"
+  t_assert_contains "$1" "ty quality gate: clean (153 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
-  t_assert_contains "$1" "Linux Python report: clean (136 files)"
+  t_assert_contains "$1" "Linux Python report: clean (153 files)"
   t_assert_contains "$1" "Windows Python report: clean (2 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -172,11 +176,21 @@ printf 'def _check(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scr
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_gate_registry.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/verify_image_env.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/06-packaging/ort_census_probe.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/06-packaging/stage-cargo-native-helper.py"
 printf 'import tvm\nimport numpy\nimport cv2\ndef answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/06-packaging/venv-version-probe.py"
 printf 'def main() -> None:\n    pass\n' > "${ROOT}/linux/scripts/03-media/build/gstreamer/common/gst-python-build-config.py"
 printf 'def cache_lock(cache: object) -> object:\n    return cache\n' > "${ROOT}/linux/scripts/lib/fetch-data-lock.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/verify_dead_functions.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/image-acceptance.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/image_acceptance_local.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/preserve-consumer-sources.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/runtime_terminal_evidence.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/runtime_storage_guard.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/launch-runtime-storage-guard.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/launch-local-final.py"
+for target in append-operational-memory.py operational_memory.py operational_memory_guard.py tests/operational_memory_tests.py; do
+  printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/${target}"
+done
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/docs/scripts/verify_mutations.py"
 printf 'from markdown_it import MarkdownIt\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/lib/dartdoc-guides.py"
 printf 'VALUE = 1\n' > "${ROOT}/linux/scripts/gate_scope.py"
@@ -184,6 +198,23 @@ printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scr
 printf 'VALUE = 1\n' > "${ROOT}/linux/scripts/extract_embedded_python.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/tests/fleet_dependency_tests.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/06-packaging/free-threaded-sysconfig-tools.py"
+for target in owned_nerdctl_args.py owned-nerdctl.py; do
+  printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/${target}"
+done
+_set_answer "${ROOT}/linux/scripts/local-proof/proof_subject.py" 42
+_set_answer "${ROOT}/linux/scripts/local-proof/native-oci-handoff.py" 42
+_set_answer "${ROOT}/shared/python/tests/quality_shared_test_sibling.py" 42
+sibling_clients=(
+  docs/scripts/subject.py:quality_search_sibling
+  linux/scripts/03-media/runtime/quality_search_sibling.py:ort_census_probe
+  linux/scripts/06-packaging/ort_census_probe.py:typed_subject
+  linux/scripts/tests/typed_subject.py:gw_client
+  linux/llm-stack/tests/gateway_e2e/gw_client.py:proof_subject
+  linux/scripts/local-proof/proof_subject.py:quality_shared_test_sibling
+)
+for sibling in "${sibling_clients[@]}"; do
+  _set_sibling_client "${ROOT}/${sibling%%:*}" "${sibling#*:}"
+done
 git -c core.autocrlf=false -C "${ROOT}" add .
 printf 'def value() -> int:\n    return 42\n' > "${ROOT}/third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/__init__.py"
 out="$(_run)"
@@ -196,9 +227,33 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-  t_assert_contains "${out}" "Ruff signature annotation gate: clean (143 files)"
-  t_assert_contains "${out}" "Ruff private return gate: clean (143 files)"
-  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (133 files)"
+  t_assert_contains "${out}" "Ruff signature annotation gate: clean (160 files)"
+  t_assert_contains "${out}" "Ruff private return gate: clean (160 files)"
+  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (148 files)"
+
+for sibling in "${sibling_clients[@]}"; do
+  _set_answer "${ROOT}/${sibling%%:*}" 42
+done
+
+t_case "the local FINAL companion belongs to the strict type scope"
+_set_answer "${ROOT}/linux/scripts/image_acceptance_local.py" "'wrong'"
+out="$(_run)"
+t_assert_contains "${out}" "ty quality gate failed"
+t_assert_contains "${out}" "image_acceptance_local.py"
+t_assert_contains "${out}" "invalid-return-type"
+t_assert_contains "${out}" "rc=1"
+_set_answer "${ROOT}/linux/scripts/image_acceptance_local.py" 42
+
+for storage_target in preserve-consumer-sources.py runtime_terminal_evidence.py runtime_storage_guard.py launch-runtime-storage-guard.py launch-local-final.py local-proof/proof_subject.py local-proof/native-oci-handoff.py append-operational-memory.py operational_memory.py operational_memory_guard.py tests/operational_memory_tests.py; do
+  t_case "operational helper stays in the strict type scope: ${storage_target}"
+  _set_answer "${ROOT}/linux/scripts/${storage_target}" "'wrong'"
+  out="$(_run)"
+  t_assert_contains "${out}" "ty quality gate failed"
+  t_assert_contains "${out}" "${storage_target}"
+  t_assert_contains "${out}" "invalid-return-type"
+  t_assert_contains "${out}" "rc=1"
+  _set_answer "${ROOT}/linux/scripts/${storage_target}" 42
+done
 
 t_case "ambient checker versions cannot replace the repository pins"
 out="$(TY_VERSION=bogus RUFF_VERSION=bogus _run)"
@@ -327,17 +382,20 @@ t_assert_contains "${out}" "renovate_uv_exports.py"
 t_assert_contains "${out}" "invalid-return-type"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/renovate_uv_exports.py"
 
-t_case "the native acceptance driver remains in strict types and public annotations"
-printf 'def answer(value: int) -> int:\n    return "wrong"\n' > "${ROOT}/linux/scripts/image-acceptance-ci.py"
-out="$(_run)"
-t_assert_contains "${out}" "image-acceptance-ci.py"
-t_assert_contains "${out}" "rc=1"
-printf 'def answer(value):\n    return value\n' > "${ROOT}/linux/scripts/image-acceptance-ci.py"
-out="$(_run)"
-t_assert_contains "${out}" "ANN001"
-t_assert_contains "${out}" "ANN201"
-t_assert_contains "${out}" "rc=1"
-printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/image-acceptance-ci.py"
+t_case "native acceptance and Cargo helper staging remain in strict types and public annotations"
+for target in linux/scripts/image-acceptance-ci.py linux/scripts/06-packaging/stage-cargo-native-helper.py; do
+  printf 'def answer(value: int) -> int:\n    return "wrong"\n' > "${ROOT}/${target}"
+  out="$(_run)"
+  t_assert_contains "${out}" "ty quality gate failed (exit 1)"
+  t_assert_contains "${out}" "${target}"
+  t_assert_contains "${out}" "rc=1"
+  printf 'def answer(value):\n    return value\n' > "${ROOT}/${target}"
+  out="$(_run)"
+  t_assert_contains "${out}" "ANN001"
+  t_assert_contains "${out}" "ANN201"
+  t_assert_contains "${out}" "rc=1"
+  printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/${target}"
+done
 
 t_case "a missing private Windows return fails the tracked-tree Ruff gate"
 printf 'def _answer():\n    return 42\n' > "${ROOT}/windows/scripts/subject.py"
@@ -358,8 +416,20 @@ for target in verify_package_names verify_comment_size verify_gate_registry; do
   printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/${target}.py"
 done
 
+t_case "runtime engine companions remain in the strict type scope"
+for target in owned_nerdctl_args.py owned-nerdctl.py; do
+  _set_answer "${ROOT}/linux/scripts/${target}" '"wrong"'
+  out="$(_run)"
+  t_assert_contains "${out}" "ty quality gate failed (exit 1)"
+  t_assert_contains "${out}" "${target}"
+  t_assert_contains "${out}" "rc=1"
+  _set_answer "${ROOT}/linux/scripts/${target}" 42
+done
+
 t_case "every selected Python file fails on missing parameter and public return types"
 parameter_targets=(
+  linux/scripts/local-proof/proof_subject.py linux/scripts/local-proof/native-oci-handoff.py \
+  linux/scripts/owned_nerdctl_args.py linux/scripts/owned-nerdctl.py \
   linux/scripts/tests/webdav_download_tests.py \
   linux/scripts/tests/meson_bound_provider_tests.py \
   linux/scripts/05-frameworks/flutter/flutter-trace-summary.py \
@@ -455,6 +525,7 @@ parameter_targets=(
   linux/scripts/lib/dartdoc-guides.py \
   linux/scripts/tests/fleet_dependency_tests.py \
   linux/scripts/06-packaging/free-threaded-sysconfig-tools.py \
+  linux/scripts/06-packaging/stage-cargo-native-helper.py \
   linux/scripts/06-packaging/ort_census_probe.py linux/scripts/06-packaging/venv-version-probe.py \
   linux/scripts/03-media/build/gstreamer/common/gst-python-build-config.py \
   linux/scripts/03-media/runtime/ort-venv-census.py \
@@ -462,6 +533,15 @@ parameter_targets=(
   linux/scripts/05-frameworks/flutter/check-web-artefacts.py \
   linux/scripts/lib/fetch-data-lock.py \
   linux/scripts/image-acceptance.py \
+  linux/scripts/image_acceptance_local.py \
+  linux/scripts/preserve-consumer-sources.py \
+  linux/scripts/runtime_terminal_evidence.py \
+  linux/scripts/runtime_storage_guard.py \
+  linux/scripts/launch-runtime-storage-guard.py \
+  linux/scripts/launch-local-final.py \
+  linux/scripts/append-operational-memory.py \
+  linux/scripts/operational_memory.py linux/scripts/operational_memory_guard.py \
+  linux/scripts/tests/operational_memory_tests.py \
   docs/scripts/verify_mutations.py
 )
 # One checker run must report both annotation rules for every selected file.

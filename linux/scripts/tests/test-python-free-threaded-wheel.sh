@@ -17,13 +17,15 @@ python_ci_fixture "${_work}" "${SCRIPTS}" \
 cat >> "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
 prepare_ci_workspace() { cd "${FIXTURE_WS}" || :; }
 uv_venv_ensure() { :; }
-uv_sync_project() { :; }
+uv_sync_project() { printf 'sync-cache CC=%s CXX=%s\n' "${CC:-}" "${CXX:-}" >> "${CALLS}"; }
 CI_COMMON
+python_ci_cache_fixture || exit 1
 
 # A uv that logs each call, finds the fake 3.14t, leaves the wheel each build would, and seeds venvs with a proof stub.
 cat > "${BIN}/uv" <<'UV'
 #!/usr/bin/env bash
 printf 'uv %s\n' "$*" >> "${CALLS}"
+printf 'uv-cache %s CC=%s CXX=%s\n' "$1" "${CC:-}" "${CXX:-}" >> "${CALLS}"
 if [ "$1 $2" = "python find" ]; then
   [ -z "${FAKE_NO_FT:-}" ] || exit 2
   printf '%s\n' "${FAKE_BIN}/python3.14t"
@@ -229,9 +231,28 @@ else
   printf '  SKIP [%s] no free-threaded interpreter at %s\n' "${_T_CASE}" "${FT_PY}"
 fi
 
+# _ftw [args]: the Python on stdin, with the helper imported as ftw and the args from sys.argv[2].
+_ftw() {
+  python3 -I -c "import importlib.util, sys
+spec = importlib.util.spec_from_file_location('ftw', sys.argv[1])
+ftw = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ftw)
+exec(sys.stdin.read())" "${HELPER}" "$@"
+}
+
 t_case "load: a GIL build's compiled modules load, a broken one fails, and a pure or absent distribution is no verdict"
-t_assert_eq "2" "$(t_rc python3 -I "${HELPER}" load pip)" "pip owns no compiled module"
-t_assert_contains "$(python3 -I "${HELPER}" load pip 2>&1)" "ERROR: pip owns no compiled module, so its wheel is no binary build"
+mkdir -p "${_work}/pure/ftfix_pure-1.0.dist-info"
+printf 'VALUE = 7\n' > "${_work}/pure/ftfix_pure.py"
+printf 'Metadata-Version: 2.1\nName: ftfix_pure\nVersion: 1.0\n' > "${_work}/pure/ftfix_pure-1.0.dist-info/METADATA"
+printf 'ftfix_pure.py,,\n' > "${_work}/pure/ftfix_pure-1.0.dist-info/RECORD"
+_pure_load() {
+  _ftw "${_work}/pure" <<'PY_PURE'
+sys.path.insert(0, sys.argv[2])
+sys.exit(ftw.main(["load", "ftfix_pure"]))
+PY_PURE
+}
+t_assert_eq "2" "$(t_rc _pure_load)" "a pure distribution owns no compiled module"
+t_assert_contains "$(_pure_load 2>&1)" "ERROR: ftfix_pure owns no compiled module, so its wheel is no binary build"
 t_assert_contains "$(python3 -I "${HELPER}" load no_such_dist_x 2>&1)" "ERROR: no_such_dist_x is not installed in"
 if python3 -I -c 'import sys, sysconfig, os; sys.exit(not os.path.isfile(os.path.join(sysconfig.get_paths()["include"], "Python.h")))' && command -v cc >/dev/null; then
   t_assert_ok python3 -m venv --without-pip "${_work}/gilvenv"
@@ -248,15 +269,6 @@ if python3 -I -c 'import sys, sysconfig, os; sys.exit(not os.path.isfile(os.path
 else
   printf '  SKIP [%s] no Python.h or cc for a real extension\n' "${_T_CASE}"
 fi
-
-# _ftw [args]: the Python on stdin, with the helper imported as ftw and the args from sys.argv[2].
-_ftw() {
-  python3 -I -c "import importlib.util, sys
-spec = importlib.util.spec_from_file_location('ftw', sys.argv[1])
-ftw = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(ftw)
-exec(sys.stdin.read())" "${HELPER}" "$@"
-}
 
 # _modules <site root> <file>...: the helper's module list for a fake distribution whose files sit under that root.
 _modules() {
@@ -358,5 +370,31 @@ t_assert_eq "3.14.8" "$(SCRIPT_DIR="${_rt}/scripts/06-packaging" PATH="${_rt}/im
   "an image still on 3.14.8 builds cp314 wheels, so a 3.15.0 runtime would install none of them"
 t_assert_eq "3.15.0" "$(SCRIPT_DIR="${_rt}/scripts/06-packaging" PATH="${_rt}/none:${PATH}" runtime_python_version)" \
   "with no working python3 the pin beside the scripts decides"
+
+t_case "the packaging companion preserves the shared CI import refusal"
+mv "${TREE}/02-toolchain/python/ci-common.sh" "${_work}/saved-ci-common"
+t_assert_fails _run
+t_assert_contains "$(cat "${OUT}")" 'failed to source ci-common.sh'
+mv "${_work}/saved-ci-common" "${TREE}/02-toolchain/python/ci-common.sh"
+
+t_case "copied packaging drivers require the cache companion and its API"
+cache_module="${TREE}/02-toolchain/python/ci-compiler-cache.sh"
+mv "$cache_module" "${_work}/saved-cache-module"
+t_assert_fails _run
+t_assert_contains "$(cat "${OUT}")" 'failed to source ci-compiler-cache.sh'
+printf '# No command API\n' > "$cache_module"
+t_assert_fails _run
+t_assert_contains "$(cat "${OUT}")" 'lacks its command API'
+mv "${_work}/saved-cache-module" "$cache_module"
+
+t_case "cache prefixes cover both syncs and all GIL/FT builds without reaching later uv discovery"
+cache_tool="$FAKE_CACHE_LAUNCHER"
+cc_tool="$FIXTURE_CC"
+cxx_tool="$FIXTURE_CXX"
+_pyproject "${DECLARED}"
+t_assert_ok _run PYTHON_BUILD_COMPILER_CACHE=on CC="$cc_tool" CXX="$cxx_tool" FAKE_CACHE_LAUNCHER="$cache_tool"
+t_assert_eq 2 "$(grep -cF "sync-cache CC=$cache_tool $cc_tool CXX=$cache_tool $cxx_tool" "${CALLS}")" "both editable syncs see compiler cache prefixes"
+t_assert_eq 3 "$(grep -cF "uv-cache build CC=$cache_tool $cc_tool CXX=$cache_tool $cxx_tool" "${CALLS}")" "pure, GIL and FT builders use the cache scope"
+t_assert_contains "$(cat "${CALLS}")" "uv-cache python CC=$cc_tool CXX=$cxx_tool" "FT discovery retains real compiler names"
 
 t_summary

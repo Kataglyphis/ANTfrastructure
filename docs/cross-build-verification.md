@@ -34,6 +34,96 @@ and Clang's depth-two, ten-library bound, file types and advisory messages. Path
 remain intact through the scanner. Its fixture suite simulates readelf output rather than
 claiming a real compiler or ELF test.
 
+## Native compiler selection
+
+The compiler stage selects `/opt/llvm-target-${TARGETARCH}` explicitly for
+`clang`, `clang++`, `llvm-ar` and `llvm-ranlib`. The alternatives helper
+checks all four executables before its first update and retains each update failure.
+There is no distro fallback. The baked smoke checks the successful first-line
+Clang token against the full `LLVM_RELEASE`, including the patch version.
+This preserves the existing GNU `cc`/`c++` selection.
+
+After Python setup, PATH puts the native source LLVM bin directory behind the
+Python and GNU bins. This late ENV change leaves the expensive GNU, LLVM, Rust
+and Python RUN inputs untouched. All executable native LLVM utilities, including
+versioned aliases, must resolve to that source tree; checking four alternatives
+alone leaves tools such as `llvm-config` on apt's newer patch release.
+The baked smoke carries the permanent probe and checks this selection on its
+actual host architecture:
+
+```bash
+python3 /opt/scripts/packaging/probe-compiler-defaults.py --llvm-version 23.1.5 --native-llvm-prefix /opt/llvm-target-amd64
+```
+
+Native schema 2 requires a nonempty, unique inventory with the core compiler,
+archiver, tablegen and linker tools. It refuses escaped source paths and checks
+the default `llvm-config`'s exact successful pin. The shared names reported by
+`llvm-config --link-shared --libnames` must be valid, unique source files.
+Each file's successful `readelf -d` report must contain one valid ELF SONAME,
+which must win the default loader cache. A linker alias such as `libLLVM-23.so`
+can differ from the actual `libLLVM.so.23.1` SONAME. The raw cache report must
+substantiate its recorded winner. Nonzero or timed-out child reports fail.
+
+Source Clang's RUNPATH can already select its own LLVM while a generic soname
+lookup still picks the distro. The compiler therefore publishes
+`/opt/llvm-target-<host>/lib` through `000-llvm-native.conf` after the expensive
+builds and before the baked gate. The shared `llvm-loader-path.sh` also retains
+the runtime package's existing `/usr/local/llvm-target/lib` publication under
+`000-llvm-target.conf`; copied payload entries carry that companion.
+Write failures stop before `ldconfig` and cache-update failures retain their
+raw status even under conditional callers.
+
+Cross-Clang architecture wrappers are a separate surface from default PATH tools.
+An actual SDK failure showed that a versioned apt driver can load the source LLVM
+DSO yet require symbols it does not export. Wrapper selection therefore prefers
+the existing native source tree and rejects partial trees; installation binds
+the wrappers only after the unified source builds finish. The native LLVM build
+includes all configured CPU target backends, and `smoke-toolchain.sh` checks both
+wrapper drivers for the full pin, target objects, linking and the existing QEMU
+execution policy. The host wrapper has an explicit call because the foreign
+target loop skips that architecture. See [the wrapper contract](linux-cross-builds.md#clang-cross-wrappers).
+
+GNU aliases use the separate amd64 mode below. Path/cache selection and version
+responses do not prove linked bytes, SDK ABI or inference.
+
+A diagnostic replay may apply the candidate PATH and loader publisher to preserved
+image bytes to test the correction. SDK admission still requires a fresh canonical
+compiler image, both probe modes without candidate PATH or loader overrides, and
+its independently checked image identity and OCI ancestry.
+
+For an amd64 image, run the reusable installed-defaults probe through the normal
+image entrypoint with explicit pins from the producer's `versions.env`:
+
+```bash
+python3 /opt/scripts/packaging/probe-compiler-defaults.py --gcc-version 16.2.0 --llvm-version 23.1.5
+```
+
+Mount the source-owned probe at that path read-only when the image does not carry it.
+It records raw bounded child output/status and resolved paths for `gcc`, `g++`,
+`cc`, `c++`, `clang` and `clang++`. Every GNU alias must report the exact
+pin, Linux amd64, default `-march=x86-64-v3`, `-mtune=generic` and all three
+`__AVX2__`/`__FMA__`/`__BMI2__` macros without forced architecture flags.
+Both Clang aliases must report the exact full pin. Nonzero or timed-out children
+cannot pass. Bind the actual container image manifest and preserve cleanup evidence
+separately; this JSON alone does not authenticate an image.
+
+The initial full compiler image built successfully but selected Ubuntu Clang
+23.1.6 for the 23.1.5 source pin. A digest-bound disposable selection replay now
+proves both Clang aliases at 23.1.5 and all four GNU aliases at 16.2.0/v3/generic.
+The corrected canonical solve reuses both expensive source RUNs. Its fresh image passes\nthe six compiler aliases, but the wider inventory finds 153 of 157 source tools\nelsewhere and a distro `llvm-config` at 23.1.6. The late PATH correction and\nnative inventory gate own that remaining SDK prerequisite. Fresh rebuilt
+image qualification and downstream SDK/backend/consumer acceptance remain open.
+
+The late correction at local `c215635d` passes 304 Python methods, all 47
+actual affected mutations and all 26 normal quality groups. A real original-red,
+candidate-green replay selects all 157 utilities with `llvm-config` 23.1.5 and
+preserves GNU defaults. This explicit PATH replay is not fresh-image admission;
+the next canonical rebuild still requires the normal disk reserve.
+
+The synthetic suites `test-llvm-alternatives.sh` and `test-compiler-defaults.sh`
+prove selection, collection and refusal, with actual mutation recipes. They do not
+prove an installed compiler, linked ELF ISA, cross SDK tools, compiler-cache coverage,
+GPU inference or finished-image/consumer acceptance.
+
 ## Failure classes (from build history)
 
 | # | Class | Representative bug(s) | Fix commit(s) | Caught early by |
@@ -692,6 +782,8 @@ the path.
   link out of the bundle, a link loop or a directory is the hit, unproven, and the finding names
   it; the chain core behind it does not count. Not covered: the same name on an importer's own
   RUNPATH or RPATH list still counts as absent there, and the next directory is searched.
+
+The earlier explicit `--ld-library-path /lib` form remains available for root-relative probe paths. The caller proves that its launcher supplies the stated search path; the census does not inspect the launcher.
 
 ### The in-image half of critical-fixes
 
@@ -2108,3 +2200,5 @@ mid-chain refusal, the explicit force override and disabled-handoff refusal.
 The context case also checks the BASE_IMAGE argument before its distinct
 layout and registry verdicts. These fixtures validate argument composition
 and refusal policy; they do not export images or invoke BuildKit.
+
+The runtime smoke sources the ISA and Intel gate modules before calling the platform grouping in `linux/scripts/06-packaging/check-arch-isa.sh`; its three checks retain their order and the caller’s failure counter.

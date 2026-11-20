@@ -25,7 +25,12 @@ parse_cli_value_options() {
       continue
     fi
     _cpo_consumed=0
-    "${_cpo_handler}" "$@" || _cpo_consumed=$?
+    # Bound callbacks keep the caller's active errexit policy.
+    if [[ "${_cpo_handler}" == +* ]]; then
+      "${_cpo_handler:1}" _cpo_consumed "$@"
+    else
+      "${_cpo_handler}" "$@" || _cpo_consumed=$?
+    fi
     case "${_cpo_consumed}" in
       0) break ;;
       1|2) shift "${_cpo_consumed}" ;;
@@ -45,4 +50,17 @@ append_cli_nonempty_args() {
     if [[ -n "${_cna_prefix}" ]]; then _cna_args+=("${_cna_prefix}"); fi
     _cna_args+=("${_cna_value}")
   done
+}
+
+cli_require_positionals() {
+  local _crp_usage="$1" _crp_min="$2" _crp_max="$3"
+  shift 3
+  if [[ "${1:-}" == --help ]]; then
+    printf 'Usage: %s %s\n' "${0##*/}" "${_crp_usage}"
+    exit 0
+  fi
+  if [[ "$#" -lt "${_crp_min}" || ( "${_crp_max}" -gt 0 && "$#" -gt "${_crp_max}" ) ]]; then
+    printf 'Usage: %s %s\n' "${0##*/}" "${_crp_usage}" >&2
+    exit 2
+  fi
 }

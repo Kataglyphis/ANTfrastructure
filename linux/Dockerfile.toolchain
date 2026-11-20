@@ -158,10 +158,10 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=cache,target
     bash /opt/scripts/toolchain/setup-dependencies.sh dockerfile-llvm; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
-# Installs under /usr/lib/llvm-*/bin are not always the top alternative, so clang is pinned to LLVM_RELEASE.
+# Keep the pinned native source tree ahead of the apt bootstrap.
 LABEL kataglyphis.step=llvm-alternatives
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/02-toolchain/register-llvm-alternatives.sh,target=/tmp/register-llvm-alternatives.sh,ro \
-    set -euo pipefail; LLVM_RELEASE="${LLVM_RELEASE}" bash /tmp/register-llvm-alternatives.sh
+    set -euo pipefail; bash /tmp/register-llvm-alternatives.sh "/opt/llvm-target-${TARGETARCH}"
 
 # Toolchain contract
 LABEL kataglyphis.step=toolchain-dependencies-verify
@@ -232,7 +232,7 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
 
 # Path only: every downstream stage creates its own venv, so one made here would be discarded.
 ENV VIRTUAL_ENV=/opt/python/.venv \
-    PATH=/opt/python/.venv/bin:${PATH} \
+    PATH=/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/opt/llvm-target-${TARGETARCH}/bin:${PATH} \
     UV_PYTHON=/opt/python/.venv/bin/python \
     MEDIA_HOST_PYTHON=/opt/python/.venv/bin/python
 
@@ -243,7 +243,9 @@ COPY --chmod=755 linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 linux/scripts/02-toolchain/python/build_python.sh \
                  linux/scripts/02-toolchain/python/fix-staged-python-pc.sh \
                  /opt/scripts/python/
-COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh \
+COPY --chmod=755 linux/scripts/06-packaging/probe-compiler-defaults.py \
+                 linux/scripts/06-packaging/llvm-loader-path.sh \
+                 linux/scripts/06-packaging/smoke-common.sh \
                  linux/scripts/06-packaging/smoke-toolchain.sh \
                  linux/scripts/06-packaging/smoke-cross-all-arches.sh \
                  /opt/scripts/packaging/
@@ -256,7 +258,11 @@ RUN --mount=type=secret,id=asset_mirror,required=false set -euo pipefail; \
 
 # A broken compiler stage fails here, not hours later in a downstream build.
 LABEL kataglyphis.step=toolchain-smoke
+# hadolint shell=bash
 RUN --mount=type=secret,id=asset_mirror,required=false set -euo pipefail; \
+    source /opt/scripts/packaging/llvm-loader-path.sh; \
+    declare -F publish_llvm_target_ld_path >/dev/null; \
+    publish_llvm_target_ld_path "/opt/llvm-target-${TARGETARCH}" /etc/ld.so.conf.d/000-llvm-native.conf; \
     bash /opt/scripts/packaging/smoke-toolchain.sh
 
 # sudo-rs mishandles --preserve-env*, so this pass-through strips it and runs the command.

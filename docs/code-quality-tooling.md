@@ -16,6 +16,14 @@ suite can fail, a `preflight.sh` slug, and a section below. The table of all
 slugs with their proof status is generated, not hand-written — see
 `docs/code-quality-gates.md`.
 
+## Installer import fixture scope
+
+Copied installer import tests set their own native build mode before sourcing the
+Rust preamble. An inherited cross-image mode with no target list cannot replace
+the expected missing/empty/partial/parse diagnostics with an earlier nounset error.
+The regression repeats valid cold imports under that ambient cross state; it
+does not install Rust, fetch archives or qualify any target compiler.
+
 ## Git Bash symlink prerequisites
 
 Start Git and Bash with `MSYS=winsymlinks:nativestrict` when running the Hub's
@@ -27,11 +35,68 @@ See [MSYS2's symlink modes](https://www.msys2.org/docs/symlinks/).
 
 ## Preserved local proof workflows
 
+Python module suites share `linux/scripts/tests/python-proof-fixture.sh` for module
+loading and unittest execution. The wrapper requires raw success, a positive executed
+test count and an exact successful summary; a zero-exit empty or failed suite is red.
+Fixture-path environment state survives both passing and failing callbacks unchanged.
+The WASM pass/cache entry points share allocation and companion staging; cache-specific
+cases live in `onnx_web_cache_cases.sh`, and their expected flags come from the independent
+`wasm_proof_fixture.py`. Copies of those suites must carry their shared companions.
+These controls validate test transport, not the production gate's own assertions.
+
+The WebGPU runtime transport fixture supplies and asserts the FT dependency NumPy version
+and target architecture before checking every ORT interpreter branch. Both successful and
+failed factory callbacks must leave a completed transport; argument mutations prove these
+fixture assertions fail. Stub interpreters do not establish real dependency installation,
+factory registration or final image acceptance.
+The SDK dispatch fixture quotes its log redirection and checks complete child argv;
+space-containing temporary paths must leave no sibling file in the suite TMPDIR.
+The cache-launcher fixture redirects the shared helper's actual image fallback,
+so a real image launcher cannot replace its expected bare fallback. Standalone
+library checks require a source command; a ShellCheck annotation alone is refused.
+These source checks do not establish unconditional execution inside a branch.
+GPU graph fixtures clear inherited accelerator/package defaults before their explicit
+CPU and conflict cases; a poisoned-image environment replay guards that isolation.
+
+`probe-rust-child-under-dart.sh NEW_OUTPUT` compiles a Rust FFI fixture with the canonical
+native supervisor and runs it in a real Dart VM with an active child. Default mode requires
+all64 worker statuses, observed external supervisor reaping and correct raw failure, signal,
+timeout and exec-error controls. It retains compiler/VM versions, JSON results and C compiler
+cache statistics through `lib/isolated-helper-compile.sh` and `capture-sccache-command.sh`.
+The same builder compiles the canonical HIP executable and fake runtime with ASan; nine
+native-worker checks require normal teardown, including exit86 and an exact17-byte LSan
+negative control. These checks execute while the bounded Dart child is live. The wrapper also
+requires the real report: `--teardown-negative-control` uses a compiled early-exit86 fixture
+which passes raw status checks but fails without sanitizer teardown. Its report-gate mutation
+is caught against a green baseline. The local engine default seccomp profile passes this
+actual probe; generic isolated-preflight security settings stay unchanged. Earlier opted-out
+container proofs retain their own scope. The C supervisor is not sanitizer-instrumented.
+The measured cache covers local C/C++ objects, not Rust or S3.
+
+Both Linux source-CI jobs use `.github/actions/native-worker-test-tools`, which caches the
+SDK by the existing Flutter archive checksum and calls `ensure-native-worker-test-tools.sh`.
+The isolated bootstrap calls the same script. It requires working C/C++, Rust and sccache,
+then reuses `setup-flutter.sh --keep-cache` to retain and execute the pinned bundled Dart.
+The existing PE-tool step already supplies Rust/Cargo; test setup adds the cache package.
+Fresh ordinary image installs still strip the archive cache. Fixture/archive and YAML wiring
+checks do not prove a hosted CI run or the entire fresh isolated bootstrap.
+The host parity verifier uses the same `parse_cli_value_options` owner for its value flags;
+its bound `+CALLBACK` retains help alias binding, complete remaining argv, active errexit and
+unknown-option exit. Legacy status-count callbacks retain their existing contract.
+The frozen help-receipt matrix and explicit empty/spaced-value controls cover that reuse.
+`--expect-status-loss` selects the original failing runner; `--idle-reaper` omits the Dart
+child. The shared Rust suite also runs this real VM path and retains failures before fixture
+cleanup. Use a bounded owned-container unit with the cleanup hook below. These source tests
+prove no installed bridge or GPU inference; see the
+[external-reaper failure](failure-modes.md#a-native-child-returns-echild-while-running-under-dart).
+
 Compiler-tool fixtures normalize generated source/output basenames, independently of the temporary root.
 `test-compiler-tool-toggles.sh` keeps a synthetic path-with-spaces control outside `/tmp`; its mutation
 restores the old hard-coded prefix and must fail. This tests the argument recorder, not real cache hits.
 
-Regular operational drivers live under `linux/scripts/` and are versioned with their tests.
+Regular operational drivers live under `linux/scripts/` and are versioned with their tests. The [operational toolkit](local-proof-workflows.md) also preserves full-preflight sealing, compiler/SDK qualification, cache diagnostics, checkpoints and authorized host cleanup; its inventory maps former session helpers to their canonical owners.
+The [operational memory appender](local-proof-workflows.md#operational-memory-appends) shares host transport and evidence utilities, checks controller absence and preserves exact prefix/append snapshots. Its entry, two companions and independent fixture belong to strict type and parameter/return scopes; the synthetic type fixture checks every added path. File locks and name observations do not exclude uncooperative writers or make file/proof updates crash-atomic.
+Shared Python test siblings also remain in the type checker's search roots. The independent synthetic import chain reaches that directory; removing the root must fail without suppressing unresolved fixture imports or reducing file coverage.
 Reuse these tools instead of reconstructing a scratch script on each session. Keep each run's
 inputs and evidence under ignored `logs/`; choose a new directory for a new attempt.
 
@@ -43,11 +108,23 @@ python3 linux/scripts/run-isolated-preflight.py --revision HEAD \
 The runner preserves a complete Git clone at the selected commit in `source/`, even when the
 working tree has later edits. It uses that commit's pinned Ubuntu base and versioned
 `isolated-preflight/bootstrap.sh` and `worker.sh`, then runs every `make preflight` slug as a
-nonroot user. Setup reuses the canonical uv, PowerShell, PE-tool and locked quality-tool installers;
+nonroot user. The engine init reaps orphaned descendants so strict process-group cleanup can
+observe disappearance; nerdctl requires `tini` on the host PATH. A timeout wrapper alone does not
+reap adopted children. This keeps the default seccomp profile and capabilities unchanged.
+Setup reuses the canonical uv, PowerShell, PE-tool and locked quality-tool installers;
 `en_US.UTF-8`, Python headers, pip and Chromium are checked prerequisites. No selection or shard
 knob is inherited. `preflight.log` preserves raw output; `run.json`, `container.cid` and `reports/`
 retain source, base digest, bootstrap hash, tool versions and results. This is a local gate proof,
 not image acceptance or a hardware test. An apt repository or tool download must remain available.
+
+For a cached family image, pass `--image IMAGE` and optionally `--native-tools-cache PREFIX`.
+The latter mounts the retained SDK prefix read-only at `/opt/preflight-native-tools`; the same
+pinned installer validates reuse. This avoids reconstructing the runner and its report permissions.
+The receipt records the explicit image selection and cache path; such a replay does not establish
+fresh Ubuntu provisioning or a newly downloaded SDK. nerdctl still requires host `tini` on PATH.
+For a long unit, generate a fresh UUID hex token before launch and pass `--run-id TOKEN` so its
+independent `ExecStopPost` cleanup uses the same owner label, token and CID from the start.
+Malformed tokens refuse before allocating a run; do not reuse a prior invocation's token.
 
 The source bind is read-only and separate from writable reports. Rootless uid mapping requires a
 temporarily writable report directory; cleanup restores mode 0755 and never changes bind ownership.
@@ -56,6 +133,37 @@ keep their raw status; an interruption leaves an unobserved command status null 
 signal exit separately. Missing container evidence or failed cleanup cannot pass. For a user unit,
 wrap the same command with `systemd-run --user --unit=ant-preflight-001
 --property=RuntimeMaxSec=14400 --property=TimeoutStopSec=120`; the latter allows bounded cleanup.
+If argv contains literal shell expressions, such as a Bash array in `bash -c`, add
+`--expand-environment=no`. Host quoting preserves argv for systemd, whose own expansion
+otherwise runs before Bash; see [the observed failure](failure-modes.md#systemd-expands-a-bash-array-before-starting-a-detector).
+Container payloads may live outside the starter unit; verify their owned IDs are stopped or absent.
+A native detector survived its starter timeout; preserve the failed evidence and use an owned-container
+cleanup runner before another long probe ([recovery](failure-modes.md#a-timed-out-container-starter-leaves-the-detector-running)).
+
+`cleanup-owned-containers.py` is the independent `ExecStopPost` hook for long container units.
+Generate one fresh `uuid.uuid4().hex` token before starting, use it in a dedicated
+`org.kataglyphis.*` ownership label on `nerdctl run`, and pass that same label, token and CID file:
+
+```bash
+python3 linux/scripts/cleanup-owned-containers.py --engine nerdctl \
+  --owner-label org.kataglyphis.local-proof --run-id "$proof_run_id" \
+  --cidfile "$proof_output/container.cid" --output "$proof_output/cleanup.json"
+```
+
+Put the absolute command in the unit's `ExecStopPost=` property, without a leading `-`, and use
+`TimeoutStopSec=300`. Quote paths inside the property as systemd arguments, and retain
+`--expand-environment=no`. The hook then runs even after a killed starter. A manual call after
+handoff does not provide that guarantee. Keep the container foregrounded, without a restart policy;
+bound the payload itself as well. The hook checks full IDs, live ownership labels and any recorded
+CID before a destructive command, then verifies removal against the global container inventory.
+`--retain` stops instead of removing and requires exited/created, Running=false and PID0, preserving
+failed filesystems. Engine errors, false-success commands or late owned containers fail cleanup.
+An existing output is refused before touching containers; choose a fresh receipt for each invocation.
+Cleanup success proves stopped-or-absent only, never a successful workload. The shared owner module
+also serves isolated preflight's finally cleanup; copy `owned_containers.py` and `host_commands.py`
+beside either entry point. A final receipt and terminal unit state must both be checked.
+The local lifecycle proof covers raw workload exits0/37 and SIGKILL starter timeouts with both
+removal and stopped-container retention. It does not exercise a model, GPU or published image.
 
 ```bash
 python3 linux/scripts/watch-build-units.py --unit rebuild-sequence-37.service \
@@ -69,6 +177,36 @@ executes the versioned `preflight-status.py`; that probe locates mutation and sc
 content, so a changed job order does not silently select another gate. Observations do not create
 acceptance receipts. Both Python host drivers require their sibling `host_commands.py`; the watcher
 also needs `preflight-status.py`. Preserve these companions when copying a tool.
+
+Use `linux/scripts/source-ci.py` for [source CI evidence](github-cli-pipeline-monitoring.md#preserved-source-ci-evidence)
+and `linux/scripts/seal-mutation-unit.py --unit NAME.service --manifest MANIFEST --log LOG --output PROOF`
+to seal a completed local mutation run before stopping its user unit. `--selected` requires the exact
+selected manifest; the tool compares every executed ID, refuses duplicates, unloaded units and live
+processes, and preserves terminal evidence even when stopping fails. Success after stopping is written
+separately to `PROOF-stopped.json`; a terminal-only file is not a completed seal.
+
+`capture-sccache-command.sh NEW_OUTPUT -- COMMAND [ARG...]` preserves text/JSON cache counters and both
+statuses on every command exit. Text counters also go to stderr. A failed command retains its raw
+status; failed stats turn an otherwise successful command red. Both shell entry points use `lib/cli-value-options.sh` and its logging companions for help/argument validation.
+Run the cache wrapper inside the image containing sccache; it neither starts a unit nor selects a container. Do not reuse an evidence directory.
+
+For the real tiny AMD ownership regression, run inside the selected image with GPU access:
+
+```bash
+bash linux/scripts/capture-sccache-command.sh /evidence/ownership-001 -- \
+  bash linux/scripts/probe-migraphx-ownership.sh /evidence/ownership-001 \
+    /work/migraphx-001 /work/migraphx-prefix-001 /models/relu.onnx
+```
+
+The model must have one float `x` input and `y` output, shape `[1]`, implementing Relu. Use absolute
+paths and separate work/prefix/output paths for each attempt. The runner calls the production builder,
+compiles `shared/native/tests/ort_plugin_runtime_probe.cpp` through the guarded cache launcher and
+requires CPU plus two V2 GPU sessions with ASan/LSan enabled. The versioned runtime audit requires
+three distinct profiles and delegates operator/per-run validation to `shared/python/verify_ort_profile.py`;
+`--device migraphx-plugin` selects the plugin's `MIGraphX` profile name. This is a tiny session and
+ownership proof, not full media acceptance, finished packages or detector parity. Old-image and
+standalone-module evidence cannot certify a later image. Optional final CORE_DIRECTORY selects the
+image's existing cache/Python companions; the default is `/opt/scripts/core`.
 
 For a native ORT plugin load/export check, use [the permanent probe](linux-accelerator-images.md#repeat-a-native-plugin-probe).
 For another consumer platform, preserve the full contract with [the plan command](image-acceptance.md#preserve-a-platform-specific-plan).
@@ -764,15 +902,19 @@ files. It uses the Linux target for Linux and shared scripts and the Windows tar
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
 The full-tree Ruff annotation scan writes
 `logs/code-quality/ruff-annotations-gate.txt`. A second full-tree ANN202 gate writes
-`logs/code-quality/ruff-private-returns-gate.txt`. The maintained 122-file scope has fatal
+`logs/code-quality/ruff-private-returns-gate.txt`. The maintained parameter/return scope has fatal
 ANN001/ANN201 checks in `logs/code-quality/ruff-parameters-returns-gate.txt`.
+Compiler image subject and OCI modules belong to both strict scopes. The shared search paths
+include media runtime, packaging, script tests, gateway end-to-end tests and local proof tools.
+The real-ty fixture imports through every sibling root and rejects type or annotation errors
+in either profile module; those source checks do not prove runtime imports or image acceptance.
 The Linux x64 workflow uploads
 these files after preflight. Any finding in the full Ruff annotation scan or the generic
 Linux/Windows ty reports fails preflight. A failed download, invalid configuration or
 checker crash also fails CI.
 
-**All 154 tracked Python files have fatal ty coverage.** The locked quality
-environment checks 146 Linux/shared files, and the Windows platform gate checks
+**All tracked Python files have fatal ty coverage.** The locked quality
+environment checks Linux/shared files, and the Windows platform gate checks
 the Windows certificate helper. Five files with dependencies absent from the
 locked environment are checked in their real workflow or build environments:
 `docs/conf.py`, the WebDAV downloader, `venv-version-probe.py`, the Jetson webcam
@@ -781,7 +923,9 @@ remaining files whose imports resolve in the locked environment.
 `quality/pyproject.toml` and the committed `quality/uv.lock` supply pytest,
 PyYAML, markdown-it-py and Playwright to a Python 3.14 environment; the gate
 syncs it with `uv sync --project quality --locked` and passes that interpreter
-to ty. The Linux and Windows strict results have separate ignored reports.
+to ty. The Linux and Windows strict results have separate ignored reports. The local FINAL
+acceptance companion belongs to both strict ty and ANN001/ANN201 scopes; the isolated
+fixture checks type errors and missing annotations for that companion.
 Linux x64 checks `docs/conf.py` with the pinned DocumANTation submodule using
 `--docs-conf` before building and publishing the site. That mode writes
 `logs/code-quality/ty-docs-conf-gate.txt` and fails for a missing theme or a
@@ -805,6 +949,19 @@ and probe script so the build checks the same pin without copying the checker in
 the final image. The shared loader clears an ambient `TY_VERSION`; the preflight
 driver also clears `RUFF_VERSION` before loading its pinned tools. Fixtures and
 mutations prove ambient versions cannot replace either pin.
+The cache-unavailability fixture masks only the selected command probe and refuses
+unexpected direct calls. Its grouped-tool case keeps a fake cache executable beside
+real shell utilities: removing that whole PATH directory must fail before a broken
+fixture can be mistaken for a production resolver failure.
+
+The fake native-worker SDK suite uses a harness-owned temporary directory so
+intentionally failed downloads can retain diagnostic archives without leaking into
+the outer runner. Its command statuses and the runner's leftover check stay fatal.
+
+The isolated type fixture includes the Cargo native-helper stager selected by both
+production scopes. Its wrong-return and missing-annotation controls must fail; a new
+scoped file needs a matching fixture before the fixed production census can pass.
+
 There is no allowlist or raised diagnostic threshold. `tests/test-python-types.sh` plants
 incorrect types and missing annotations in existing and newly discovered Linux and Windows
 files, requiring each gate to fail. Mutation cases remove the verdict, path selections,
@@ -823,7 +980,7 @@ masked-assignment and trailing-conditional verifiers, the lint-scope and callbac
 nine small docs, host, image, wheel and test files, plus the mutation verifier,
 gate registry, image acceptance driver, image-env verifier, complexity and
 dead-function verifiers, ORT census probe, venv version probe, GStreamer metadata
-helper, ORT venv census, QNN query tests, chain ORT fixtures, sudo policy, raw pin reader, cross-active registration, compiler candidate, media-file set, smoke query contract, Clang job policy, binfmt probe, Meson dispatch, host Cargo preparation, target Cargo pipeline and host Python pin tests, Flutter performance reporter, media-pin advisory, directory-visitor, verified-installer, toolchain download-loader and fleet dependency tests, workflow conventions verifier, site-link verifier, shared quality allow and gate scope helpers, comment-size and ShellCheck ratchet verifiers, the Dart documentation renderer, free-threaded sysconfig tool, SHA-256 data-lock fetcher, Ansible status report, Jetson webcam app, validator probe, runtime child-stop, wheel tag resolution, runtime SDK help, triplet query, advertised-key verifier, CLI help exit, image-reference CLI, native smoke dispatch, nerdctl service receipts, binfmt probe controls, native GCC environment tests, Dockerfile ENV ordering verifier, image-consumer bootstrap tests, NPM Python transport tests, Python provider context tests, serving stack tests, LLM network guard, libcamera report tests, consumer quality wiring tests, embedded Python extractor, Corrosion toolchain tests, sudo policy closure tests, wheel archive transport tests, WebDAV download tests, Meson bound provider tests, Flutter trace summary, wheelhouse manifest, chain sibling PID and log-dir consumer tests, gateway log-tail tests, the WebDAV downloader, and the Renovate PEP git resolver. ANN001/ANN201 fail in those 122 files.
+helper, ORT venv census, QNN query tests, chain ORT fixtures, sudo policy, raw pin reader, cross-active registration, compiler candidate, media-file set, smoke query contract, Clang job policy, binfmt probe, Meson dispatch, host Cargo preparation, target Cargo pipeline and host Python pin tests, Flutter performance reporter, media-pin advisory, directory-visitor, verified-installer, toolchain download-loader and fleet dependency tests, workflow conventions verifier, site-link verifier, shared quality allow and gate scope helpers, comment-size and ShellCheck ratchet verifiers, the Dart documentation renderer, free-threaded sysconfig tool, SHA-256 data-lock fetcher, Ansible status report, Jetson webcam app, validator probe, runtime child-stop, wheel tag resolution, runtime SDK help, triplet query, advertised-key verifier, CLI help exit, image-reference CLI, native smoke dispatch, nerdctl service receipts, binfmt probe controls, native GCC environment tests, Dockerfile ENV ordering verifier, image-consumer bootstrap tests, NPM Python transport tests, Python provider context tests, serving stack tests, LLM network guard, libcamera report tests, consumer quality wiring tests, embedded Python extractor, Corrosion toolchain tests, sudo policy closure tests, wheel archive transport tests, WebDAV download tests, Meson bound provider tests, Flutter trace summary, wheelhouse manifest, chain sibling PID and log-dir consumer tests, gateway log-tail tests, the WebDAV downloader, and the Renovate PEP git resolver. The focused files include the compiler image subject and OCI modules; `lint-python-types.sh` owns the exact ANN001/ANN201 set.
 All eight Ruff annotation rules in this scan are fatal across every tracked Python file.
 The focused suite injects unannotated signatures, and selector, scope and verdict mutations
 prove the gates can fail. The annotation and ty scans preserve their own diagnostics and
@@ -1037,11 +1194,24 @@ slug `mutations`. For each recorded entry it makes a literal edit that **neuters
 one guarantee**, runs the named test, and requires the test to FAIL. A mutation
 the tests survive is reported and fails the gate.
 
+Prepare recurring require-removal data with `python3 docs/scripts/generate_require_mutations.py --root ROOT --target RELATIVE_PYTHON --test TEST_COMMAND --prefix FAMILY.PREFIX --why LIMITS --output FRESH_JSON`. It selects require expressions inside top-level functions and preserves the exact source segment; this is recipe preparation, not proof that every gate is covered or that mutations bite. Independent fixtures cover selection, parse-valid replacements, empty/syntax refusal and output preservation.
+
 Use `python3 docs/scripts/merge_mutation_recipes.py <manifest>` to preview
 adding reviewed recipes; pass `--write` to apply and `--replace <id>` for an
 intentional change to an existing recipe. It checks unique in-repo anchors before
-writing atomically. Run the mutation gate afterwards: an applicable anchor does
+writing atomically. JSON output escapes non-ASCII characters without changing any
+decoded recipe value. Deliberately corrupt strings used by encoding mutations must
+remain data: writing them literally makes source encoding checks reject the clean
+baseline before the mutation runs. The merger fixture checks semantic preservation,
+escaped Unicode and repeated writes; it does not prove that recipe tests bite.
+Run the mutation gate afterwards: an applicable anchor does
 not prove the test catches the mutation.
+
+`--root` selects both the files executed and the Git checkout used by `--changed` or
+`--push-range`. Running a Hub-installed driver against another checkout must not select
+from the Hub's own history. The external-root fixture independently stages and commits
+changes in another local repository and requires an actual bite and nonempty coverage;
+`nothing selected` is not a mutation proof. This checks scope, not the consumer's semantics.
 
 Consumers can call `.github/workflows/mutation-gates.yml@develop` with a tracked
 `manifest` path and an optional tracked `setup-script`. The shared validator
@@ -1080,7 +1250,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5135 entries** over **665 distinct test commands**; both digits are
+manifest holds **7223 entries** over **843 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1448,7 +1618,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 107 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 109 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -1927,7 +2097,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 107 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 109 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -3307,7 +3477,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 1074 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1122 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -3318,7 +3488,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **423** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **453** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **0** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.
@@ -4855,3 +5025,13 @@ restricted PATH that excludes ripgrep. Their complete assertion totals remain
 mandatory. Searches use portable grep, and negative checks require its exact
 no-match status rather than accepting every failure. Missing helper definitions,
 missing commands and malformed search inputs must make the fixtures fail.
+
+
+## Mutation namespace repairs
+
+Recipe IDs use a preflight slug or a declared descriptive family. Move a misplaced
+recipe into its existing owning family while preserving its target, edit, test and
+reason. Record a one-to-one old/new ID map with the validation evidence and retain
+every recipe. The AMD package-provenance recipes belong to `packaging`; declaring
+a second family for those same checks is unnecessary. Use the canonical mutation
+merge driver for the validated additions after removing only the mapped old IDs.

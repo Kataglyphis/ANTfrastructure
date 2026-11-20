@@ -1,0 +1,5 @@
+# Selected source -> image path; this is a staging plan, not build or runtime acceptance.
+@core-common
+01-core/repos.sh|core/repos.sh
+01-core/verify.sh|core/verify.sh
+01-core/vulkan-env.sh|core/vulkan-env.sh

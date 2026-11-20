@@ -6,6 +6,13 @@ set -euo pipefail
 # shellcheck source=media-payloads.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/media-payloads.sh"
 
+# shellcheck source=llvm-loader-path.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/llvm-loader-path.sh"
+declare -F publish_llvm_target_ld_path >/dev/null || {
+  printf 'ERROR: copy-media-payloads requires publish_llvm_target_ld_path\n' >&2
+  exit 1
+}
+
 SRCPREFIX="${SRCPREFIX:-}"
 
 _payload_logger="$(dirname "${BASH_SOURCE[0]}")/log-bootstrap.sh"
@@ -250,26 +257,7 @@ publish_cuda_ld_path() {
   [ -s /etc/ld.so.conf.d/000-cuda.conf ] || rm -f /etc/ld.so.conf.d/000-cuda.conf
 }
 
-# /opt/rocm is on no default loader path; no-op without it.
-publish_rocm_ld_path() {
-  local lib
-  : > /etc/ld.so.conf.d/000-rocm.conf
-  # Dirs holding libamdhip64 or libmigraphx_c (extras-<major>/lib since 10.1), never core-asan-*: ASAN consumers preload it by hand.
-  {
-    find /opt/rocm -path '/opt/rocm/core-asan-*' -prune -o \( -name 'libamdhip64.so*' -o -name 'libmigraphx_c.so*' \) -printf '%h\n' 2>/dev/null || true
-    printf '%s\n' /opt/rocm/lib /opt/rocm/lib64
-  } | LC_ALL=C sort -u | while IFS= read -r lib; do
-    # if, not `[ ] && printf`: a false last iteration would fail the while under set -e.
-    if [ -n "${lib}" ] && [ -d "${lib}" ]; then printf '%s\n' "${lib}" >> /etc/ld.so.conf.d/000-rocm.conf; fi
-  done
-  [ -s /etc/ld.so.conf.d/000-rocm.conf ] || rm -f /etc/ld.so.conf.d/000-rocm.conf
-}
 
-# libtvm_compiler.so's libLLVM resolves only through this. See docs/artifact-copy-completeness.md § The llvm-target prefix fills what it needs, and nothing else
-publish_llvm_target_ld_path() {
-  printf '/usr/local/llvm-target/lib\n' > /etc/ld.so.conf.d/000-llvm-target.conf
-  ldconfig
-}
 
 main() {
   copy_media_payloads "${1:-}"

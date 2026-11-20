@@ -1,0 +1,46 @@
+{
+  "commit": "f347064fea12aa0ab325e1244b65766652a2530c",
+  "scope": "Unmodified original C API declarations and both original licence texts for self-contained compiled fixtures; no vendor implementation. Header .txt inputs are copied to a disposable include tree.",
+  "files": {
+    "mlir-c/IR.h": {
+      "original": "external/llvm-project/mlir/include/mlir-c/IR.h",
+      "fixture": "mlir-c/IR.h.txt",
+      "sha256": "802ee8ba1f99cb4b7e6aa11d28ece1210e8ea1ea0ccb8eda024b6b98a9e4099e"
+    },
+    "mlir-c/Pass.h": {
+      "original": "external/llvm-project/mlir/include/mlir-c/Pass.h",
+      "fixture": "mlir-c/Pass.h.txt",
+      "sha256": "e05100b1b488ee5e5f8fa6e81f88365073aaef5413b7ca3a686478db48c800c2"
+    },
+    "mlir-c/Support.h": {
+      "original": "external/llvm-project/mlir/include/mlir-c/Support.h",
+      "fixture": "mlir-c/Support.h.txt",
+      "sha256": "77015e356a44457d0aa614db90f7c6275084f4749d3096333c8d0a76ba711983"
+    },
+    "mlir-c/RegisterRocMLIR.h": {
+      "original": "mlir/include/mlir-c/RegisterRocMLIR.h",
+      "fixture": "mlir-c/RegisterRocMLIR.h.txt",
+      "sha256": "5893dbc65dbe2e5f62f625777c3f279925d6f9e21f591f1955d53eb24222ea45"
+    },
+    "mlir-c/Dialect/MIGraphX.h": {
+      "original": "mlir/include/mlir-c/Dialect/MIGraphX.h",
+      "fixture": "mlir-c/Dialect/MIGraphX.h.txt",
+      "sha256": "1f5db54b8767098065621fd1cceb429b99bc95c28bd6158af17c5b9848bbea09"
+    },
+    "LLVM-LICENSE.TXT": {
+      "original": "external/llvm-project/LICENSE.TXT",
+      "fixture": "LLVM-LICENSE.TXT.txt",
+      "sha256": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee"
+    },
+    "ROCMLIR-LICENSE": {
+      "original": "LICENSE",
+      "fixture": "ROCMLIR-LICENSE.txt",
+      "sha256": "94b301bb652ae351f5941655bf533f1a136300ad1396be7452c8a04ff2c91374"
+    },
+    "TRITON-LICENSE": {
+      "original": "external/triton/LICENSE",
+      "fixture": "TRITON-LICENSE.txt",
+      "sha256": "92640fb97222fd0a698ff28ce0c3782c172623f8d6c609b557636a80f28fb946"
+    }
+  }
+}

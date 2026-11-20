@@ -19,6 +19,7 @@ sed -n '/^TORCH_STAGING_DIR=""$/,/^require_host_python() {/p' "${source_file}" |
 source_file="${ORIGINAL:-${ROOT}/06-packaging}/copy-media-payloads.sh"
 sed '/^_dest() {/,$d' "${source_file}" > "${WORK}/packaging/loggers.sh"
 : > "${WORK}/packaging/media-payloads.sh"
+cp "${ORIGINAL:-${ROOT}/06-packaging}/llvm-loader-path.sh" "${WORK}/packaging/llvm-loader-path.sh"
 cp "${WORK}/packaging/"* "${WORK}/flat/"
 cp "${WORK}/lib/log-bootstrap.sh" "${WORK}/flat/"
 for name in info log warn err; do
@@ -112,6 +113,17 @@ for profile in abseil wheelhouse payload flat-payload bootstrap; do
 done
 t_case 'normal bootstrap ignores inherited application arguments'
 t_assert_ok bash -uc 'loader="$1"; set -- --fallbacks-only; source "${loader}"; declare -F info >/dev/null && declare -F warn >/dev/null && declare -F err >/dev/null' _ "${WORK}/lib/log-bootstrap.sh"
+t_case 'copied payload import refuses missing or empty loader publisher before use'
+t_assert_ok bash -c 'unset -f publish_llvm_target_ld_path; source "$1"' _ "${WORK}/flat/loggers.sh"
+mv "${WORK}/flat/llvm-loader-path.sh" "${WORK}/loader-publisher.saved"
+t_capture_command diagnostic status bash -c 'unset -f publish_llvm_target_ld_path; source "$1"' _ "${WORK}/flat/loggers.sh"
+t_assert_eq 1 "${status}"
+t_assert_contains "${diagnostic}" llvm-loader-path.sh
+: > "${WORK}/flat/llvm-loader-path.sh"
+t_capture_command diagnostic status bash -c 'unset -f publish_llvm_target_ld_path; source "$1"' _ "${WORK}/flat/loggers.sh"
+t_assert_eq 1 "${status}"
+t_assert_contains "${diagnostic}" 'requires publish_llvm_target_ld_path'
+mv "${WORK}/loader-publisher.saved" "${WORK}/flat/llvm-loader-path.sh"
 if [ -z "${ORIGINAL}" ]; then
   for stage in toolchain media; do
     t_case "${stage} ships the shared logger beside its core modules"

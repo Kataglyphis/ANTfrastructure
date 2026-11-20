@@ -33,6 +33,9 @@ if compgen -G "${store}/*.whl" >/dev/null; then
   uv venv --quiet --python "/usr/local/bin/python${PYTHON_MAJOR_MINOR}t" "${work}/venv" >/dev/null 2>&1 \
     && uv pip install --quiet --offline --no-deps --python "${work}/venv/bin/python" "${store}"/*.whl >/dev/null 2>&1 \
     || echo "FTS NOINSTALL the store does not install into a python${PYTHON_MAJOR_MINOR}t venv"
+  "${work}/venv/bin/python" -I /opt/scripts/packaging/free-threaded-probe-deps.py install \
+    --numpy-version "${FT_PROBE_NUMPY_VERSION:?missing NumPy source pin}" --arch "${FT_PROBE_ARCH:?missing probe architecture}" \
+    || echo "FTS NOINSTALL the pinned offline probe dependencies do not install"
 fi
 for w in "${store}"/*.whl; do
   [ -f "${w}" ] || continue
@@ -144,7 +147,9 @@ check_free_threaded_wheels() {
   # shellcheck disable=SC2034  # _rt_run reads image_tag by dynamic scope
   local image_tag="$1" target_arch="$2" probe
   echo "--- Free-threaded wheels: the free-threaded store on the free-threaded python (${target_arch}) ---"
-  probe="$(_rt_run -e "WEBGPU_EXPECT_REF=$(_rt_versions_env_pin ONNXRUNTIME_VERSION)" bash -lc "$(ft_store_probe_script)" 2>/dev/null)" || true
+  probe="$(_rt_run -e "WEBGPU_EXPECT_REF=$(_rt_versions_env_pin ONNXRUNTIME_VERSION)" \
+    -e "FT_PROBE_NUMPY_VERSION=$(_rt_versions_env_pin PY_NUMPY_VERSION)" -e "FT_PROBE_ARCH=${target_arch}" \
+    bash -lc "$(ft_store_probe_script)" 2>/dev/null)" || true
   smoke_verdict_lines FT-STORE "${target_arch}" < <(ft_store_verdict "${probe}")
   echo ""
 }

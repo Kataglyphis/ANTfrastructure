@@ -60,7 +60,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    exist for the next session.
    Image publication also requires the digest-specific consumer receipt before a public tag
    moves; see [image-acceptance.md](docs/image-acceptance.md) for replay and its coverage limits.
-   Successful consumers must preserve versioned sources. Manual promotion also preserves
+   Successful consumers retain their versioned checkouts, recursive Git stores and logs; safe layer cleanup must not delete them.
+   Working-source copies retain the selected base and exact staged index, including staged gitlinks; an independently checked-out child must not replace that index. Bind actual child trees separately, and keep committed-tree acceptance strict.
+   Independent source copies wait for the consumer log and recheck clean bytes and independent objects on reuse. Manual promotion also preserves
    the target's runtime platforms; an early shell-gate override cannot bypass acceptance.
    Native consumer CI pins the image, exact clean tooling and all recursive source snapshots;
    its plan changes only platform. Require a matching host and checked cleanup; job metadata
@@ -68,8 +70,19 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    byte-identical and map downloaded logs through their artifact-relative metadata paths.
    `--gates-only` exits before builds, candidate creation and promotion, including when
    combined with push flags; it provides no consumer acceptance receipt.
+   Explicit local FINAL acceptance retains the complete canonical consumer plan, its own
+   immutable manifest/config and successful producer/source/cleanup bindings before and after checks;
+   its schema-2 receipt cannot promote a registry tag. Validate receipts before pruning checkouts.
+   Keep lane-bound runtime identities and exact selected host-worker closures; image and export wheelhouses retain the same gates, and separately located owned wrappers match every selected companion byte.
+   A missing Android stage label requires its exact unpublished Android driver, lane, transport and complete source proof; derive only a local view and preserve the original receipt bytes.
    Linux acceptance restores disposable rootful checkout ownership on every exit;
    failed container cleanup or ownership restoration cannot produce a passed receipt.
+   Combined WebGPU media factory acceptance requires native/GIL/FT plus fresh Asyncify and JSPI replay at one exact ORT revision; partial receipts cannot stand for the combined result.
+   Six-lane Media command preparation keeps SDK parents for default targets and GPU parents for accelerators; NVIDIA arm64 requires SBSA. Prepared commands do not qualify parent ancestry or authorize a launch.
+   Fake sccache server startup tests clear inherited cache-chain settings in their child environments; retain the explicit inherited-setting regression and original fallback assertions.
+   Isolated preflight mirror opt-ins use the shared Ubuntu rewrite before apt; retain signed source metadata, the recorded URL and default-off behavior.
+   Relocate only closed, Git-ignored quality venvs to a different existing tmpfs; shared inodes, nonregular payloads or changed canonical archive bytes cannot produce a receipt.
+   Local command seals preserve raw command/cache-capture status and owned cleanup identity; an existing exclusive cleanup must never run again, and marker matches do not confer artifact acceptance.
    Require a successful engine query to prove every consumer and ownership-helper container absent;
    retain both removal and query statuses and diagnostics, including already-auto-removed containers.
    Windows vendor-specific DirectML defaults use the shared DXGI selector only when no explicit adapter is set; enumeration does not prove inference.
@@ -79,6 +92,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    `000-<name>.conf` into `/etc/ld.so.conf.d` (read in SORT order) and never rely on a purge,
    because another dependency pulls the distro copy back in. The soname-precedence gate enforces
    it on the SHIPPED bytes. Same rule for `PATH`, `PKG_CONFIG_PATH` and `PYTHONPATH`.
+   The AMD GPU PATH retains the inherited GNU/source-LLVM order before ROCm compiler tools; source MIGraphX remains first. Native LLVM alternatives select the explicit source prefix; after Python setup, its executable tree wins PATH behind GNU. Incomplete tools, foreign selections, full-version mismatches and default shared-LLVM loader-cache losses fail.
+   SDK LLVM materialization restores the selected architecture prefix as an alias and retains the native host tree for foreign targets; existing PATH, alternatives, loader and CMake references must keep resolving.
+   Cross-Clang wrappers bind after the source build, prefer the existing native source prefix and refuse incomplete source installs. The native LLVM build includes the host and configured cross backends; both wrapper drivers receive exact-version and real target compiler smokes, including the build-host architecture outside the foreign-target loop.
 6. **One-line comments, only the why**, in every repo of the family: § Comments: one line, only
    the why.
 7. **Quality exceptions must shrink.** Refactor the code to satisfy duplication, complexity and size
@@ -89,11 +105,20 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    variables, reformat copies or add suppressions to evade a duplication finding.
    A declared shared shell mirror may count a real command from the validated image-consumer plan as a caller; retain the executable call and the separate shared-config drift gate.
    The duplication scanner shares the code-size shell lexer so quoted braces and here-doc bodies do not merge function units.
+   Mutation --root controls Git change/push selection as well as execution; an empty selection is no coverage receipt.
    Windows ShellCheck warning scans keep each command below 24,000 characters and merge every batch's JSON findings; preserve `-x` in each call.
    Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
    Copied lint drivers carry `lint-scope-init.sh` and `lint-root.sh`; source initialization in the driver shell so remaining positional arguments survive.
    Wheel unpack/pack transport keeps Python argument boundaries and raw status; packaging execution keeps best-effort and sudo failure policies separate.
+   Cross-Clang wrappers use the filesystem-root sysroot with Debian's absolute target linker scripts; foreign target trees remain mandatory. Independent image probes require that same root and reject the old double-root wrappers.
+   Copied compiler/SDK qualifiers and OCI handoffs carry `proof_subject.py` and `proof_commands.py`; SDK profiles bind the actual invocation, complete source and compiler parent, both native shell modes and all compiler ancestor layers. Never retarget a compiler plan to represent an SDK.
+   Copied live configure snapshots carry their cache reader/profile, native OCI layout/seed and command companions; require a live matching process, stable before/after source and copied bytes, bounded regular files, fresh output and no source/output overlap.
+   Copied cache log readers/replayers/sealers carry `cache_capture_profile.py`; retain actual PID/start identity, existing regular-file and live inode checks, input hashes, bounded named units and explicit partial-timeout verdicts.
+   Copied normal SDK/GPU launchers carry `normal_stage_launch.py`; GPU admission requires the exact qualified SDK, rehashed native blobs and compiler ancestry, complete source proof, fresh local alias, idle host and unchanged disk floor.
+   The normal AMD producer loads all seven recorded source entry libraries after shared ROCm path publication and ldconfig; preserve selected-byte checks, fatal dependency failures and ASAN exclusion. Selected loads do not prove complete ABI, licence closure or inference.
+   Copied native OCI handoffs also carry `native_oci_layout.py` and `native_oci_seed.py`; parent-seeded context exports require these helpers beside the core layout, a fresh destination, immutable verified layer links, independent child metadata and both raw transport statuses. Hash and ancestry checks remain mandatory after sharing. New link receipts use schema 2 with device/inode, size, mode, owner and mtime checks; later links may advance ctime. Schema 1 retains its strict ctime policy. Default amd64 Media/Android byte parents use their own explicit statuses.
    Compiler smoke callbacks stay unconditional; preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses.
+   Cache launcher sites initialize their parent environment directly before resolution; required callers propagate raw failure and legacy callers retain their advisory fallback.
    ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions.
    Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.
    Locked tool installs also require `uv-image-overlay.sh` beside `python_uv.sh`; copied code-quality libraries carry `quality/cmake-format/{pyproject.toml,uv.lock}` and retain the Python 3.15 lexer patch.
@@ -107,22 +132,50 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Bound command callbacks retain their original parse phase and source scope; preserve caller-specific raw failure and advisory policies.
    Copied core and dependency preambles carry `cross-active-fallback.sh`; source it at the original registration point to retain alias binding.
    Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls.
+   rocMLIR library builds keep preparation bindings in the build shell, inspect every planned C/C++ cache/compiler/toolchain binding, use memory-capped jobs and install the generated package leaf; required archive/exports/headers and original notices precede success. Plans and payload presence do not prove linkage or binary licence closure.
+   External rocMLIR consumers require exact package/API pins, the supplied archive and original headers, observable dialect/pipeline state, unchanged inputs and original notices; host fixture proofs do not establish vendor linkage or GPU acceptance.
+   Full MIGraphX source builds retain preparation scope, fresh-prefix refusal, memory-capped jobs, raw failures and unchanged source inputs; installed manifests, native ELF identities and original notice hashes must pass before provenance is written. Copied stagers carry both notice policies and the shared ELF census reader in its relative packaging layout.
+   Backend notice staging requires the selected Python pybind11 version, its unique original distribution notice and matching configured CMake package; preserve the original text and provenance version before any receipt is written.
+   Linux MIGraphX Python builds require the exact selected interpreter and pybind11 pins, paired config prefix/suffix/headers and one matching installed extension ABI; retain both source patches in provenance. Plugin builds resolve HIP from ROCM_HOME independently of the MIGraphX source prefix and prefer the normal SDK core.
+   Full MIGraphX source-stack copies carry source-stack.sh, source-archives.txt and all selected child closures; validate every archive pin before fetching, rehash cache hits and retain every required API/SDK/build failure.
+   The normal AMD image builds the complete source stack after the retained apt SDK, pins pybind11 in the selected Python and consumes the declared selected-file bundle with both compiler caches and success/failure drains; source MIGraphX wins GPU and shipped runtime search paths.
+   SDK and AMD share their core manifest and consume a host-prepared named build context under the full receipt SHA256 and files leaf; retain the validated HUB_SCRIPTS_KEY argument and exact COPY/mount selectors so an empty key cannot select the flat root. Bundles reject missing, foreign, duplicate and recursive inputs, preserve exact selected bytes and normalize modes/timestamps. Measure actual BuildKit reuse before claiming cache isolation.
+   Selected-context cache claims require the permanent probe with actual cold, unselected-change and selected-change solves for both SDK and AMD; retain exact step/byte/input verdicts and never count fake-engine fixtures as cache evidence.
+   Compiler-cache activity probes count only aggregate integer counters; rates, timings, error rows and language subtotals must not manufacture or erase activity. Preserve raw stats failures and keep diagnostic evidence separate from full compiler/image acceptance.
+   Copied `stage-script-closure.py` carries `script_closure.py` and all selected/transitive profiles; bundle-aware copy-coverage probes require that same parser. The read-only declared-script reporter does not prove built images or ABI.
+   Actual MIGraphX parser and rocMLIR proof units require their original archives, the canonical disk probe and at least 180GiB in exact available bytes before freezing; retain ordinary offline entrypoints, exact bounded resource profiles and cleanup. Parser builds keep two jobs/6GiB/one hour; rocMLIR builds keep four jobs/12GiB/two hours. The launcher performs no reclaim or floor override.
+   Recurring source proofs use the versioned launcher and current recipe definitions by ID; retain reviewed resource limits, matching tool locks, fresh units, raw statuses and canonical cleanup.
+   rocmlirTriton preparation carries `source-rocmlir.sh` and `rocmlir-source-notices.sha256`; preserve all vendored compiler trees, fat static/PIC targets, original notice bytes and configured cache facts. Source preparation does not prove binary licence closure. Proof workers carry `proof-cleanup.sh` and retain raw status and fatal ownership failures.
+   MIGraphX CK host builds use the requirements-pinned codegen subdirectory, C++20, static/PIC output and original CK license; generic MLIR does not replace rocmlirTriton.
+   CK host consumer probes select the exact installed package and library, compare original header bytes and retain child failures; metadata alone does not prove linkage or GPU inference.
+   Native MIGraphX CMake plans share caller-array initialization and NUL argument recording; copied CK verification entries carry their CMake/C++ project and existing shared companions.
    The plugin QNN EP stage checks the module, both exports and the HTP backend beside it on arm64; the CPU prefix refuses an in-tree QNN provider.
    The GPU prefix refuses an in-tree TensorRT provider and requires the CUDA module's plugin exports; the TensorRT plugin stage runs on nvidia images with TensorRT.
    Native and C++ WASM WebGPU select `--use_webgpu static_plugin`; retain native external Dawn and Emscripten's integrated Dawn.
    Check the configured flags on CPU, NVIDIA, free-threaded, Asyncify and JSPI builds; explicit opt-outs prove OFF.
+   Record both WASM products before their configured trees change; reuse the shared pool only after its source, mode, direct recipe and every artifact hash pass.
+   Both WASM factory receipts require the real linked C export, exact unregister/negative controls, raw Node success and unchanged module/loader/recipe bytes; initialization or Dawn instance creation is insufficient.
+   Instrumented WASM products carry the Hub probe's original MIT notice as a hash-bound sidecar; keep the companion identical to the root LICENSE and refuse foreign or linked destinations.
+   CON233 media chains forward ORT_WEB_REQUIRED=1 and require both flavors; preserve strict failures through the cache wrapper and after JS staging.
+   Copied WASM proof modules carry the build-proof/runtime modules and webgpu-factory-probe companions; copied suites carry wasm_proof_fixture.py and its independent node fixture.
+   Python proof suites carry python-proof-fixture.sh; raw zero, a nonempty executed unittest suite and its successful summary are all required.
    Native/GIL and free-threaded builds carry `ort-webgpu-build-proof.py`; record each linker product before its configured tree changes.
    Build receipts retain pre-repair bytes; wheel repair checks their source/mode and records validated final hashes before runtime registration proof.
    Carry `ort_webgpu_delivery.py`, the canonical build-proof module and `python-app-deb-depends.py` with `python_app_deb_symbols.py` through media/runtime copies.
    WebGPU delivery requires a matching precheck and unchanged loaded code/data; loader metadata normalization does not prove loader safety or inference.
+   Only unbuilt ORT prefixes containing directories and empty top-level census placeholders may omit WebGPU receipts; payloads, unknown files and symlinks still fail.
+   Runtime default-prefix discovery shares that unbuilt-prefix predicate; explicit prefix requests are never silently filtered.
    Native WebGPU probes load each checked core directly, reject the legacy compiled provider and retain exact API failure and cleanup controls.
    Compile each shipped probe through shared cache/CMake helpers using its core's configured target compiler, flags and absolute C API header.
    Python WebGPU factory checks require a completed delivery and the loaded extension's own hash; native core hashes do not prove Python modes.
+   FT smoke dependencies use the separate pinned offline probe pool; never add NumPy to the exact twin-family store or fetch it during acceptance.
    Keep factory unregistration isolated, its precise missing-registration control and FT GIL checks before and after loading and execution.
+   Media factory replay selects collected wheels from completed delivery receipts and uses fresh GIL/FT environments with an explicit NumPy pin.
+   Preserve raw child statuses and both streams, including timeout output; an existing evidence directory or partial phase set cannot publish a passed receipt.
    Copied runtime smoke drivers carry `check-ort-runtime.sh`; the FT store runs the same Python gate in its installed FT environment.
    `finalize-media.sh` retains collection, both Python-mode repairs/verdicts and final smoke ordering; native install failures stay fatal and foreign failures stay advisory.
    Shared CMake entry checks retain first-value launcher reads and strict typed, duplicate-refusing Boolean reads.
-   Static-plugin WASM assets key the shared cache by build type and `-wgpu3`; an old completed artifact cache is not a rebuild.
+   Static-plugin WASM assets key the shared cache by build type and `-wgpu4`; an old completed artifact cache is not a rebuild.
    Its protobuf seed validates every C/C++ option argument, including mixed scoped inputs; none may reach rc.exe or its cmcldeps preprocessor.
    Shared plugin C++ flags retain /EHsc because the ORT C++ API throws.
    CUDA standard options stay joined so sccache does not parse the value as another input.
@@ -130,6 +183,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    TensorRT cross builds select target CXX before CUDAHOSTCXX is published; failed setup stops the build.
    Plugin closure checks retain inspector failures; SBSA TensorRT uses the target loader under bounded QEMU, not native ldd.
    Copied `35-build-migraphx-plugin-ep.sh` and `37-build-tensorrt-plugin-ep.sh` carry `plugin-ep-exports.sh` and `plugin-ep-seeds.txt` beside them; the media verify stage reads the export probe from the mounted ORT build directory, so keep that directory mount on the GPU RUN.
+   G6 accepts an explicit loader search path for launcher-based bundles; retain strict defaults, byte identity and foreign-first refusal.
    G2 reads `onnxruntime_ep_*` modules and `Microsoft.ML.OnnxRuntime.EP.*` directories as ORT consumers, never as ORT.
    AMD Python bundles carry the plugin MIGraphX EP beside the chain core and prove it against the image's module; their self-test proves registration, not availability.
    MIGraphX node cleanup retains its ownership patch and adjusting casts in all six C ABI callbacks; the SDK C base has no virtual destructor.
@@ -189,8 +243,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Gradle wrapper updates change only the version in one distribution URL; duplicate properties and checksum-pinned archives refuse before writing.
    Shared harness mutation suites stay host-portable; native batch execution remains in the separately discovered Windows suite.
    Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order.
-   Copied `app-packaging.sh` carries `app-packaging-license.sh`; both it and `pe-icon-tools.sh` carry `log-bootstrap.sh` in the shared lib layout. Package the original project license and validate declared texts in built artifacts.
+   Copied `app-packaging.sh` carries `app-packaging-license.sh` and `app-packaging-entrypoint.sh`; both it and `pe-icon-tools.sh` carry `log-bootstrap.sh` in the shared lib layout. Package the original project license and validate declared texts in built artifacts. The standalone entrypoint selector also imports the canonical logging bootstrap.
    Native and Python app DEBs use gzip compression and root-owned payloads; retain both properties when changing their builders.
+   Linux TAR selection uses the shared bundle resolver and propagates its failure; keep explicit staged trees, default Flutter paths and the separate Android APK source policy.
    Python DEB discovery rejects a host library with multiple reported package owners; retain that refusal without assuming it proves architecture or loader selection.
    Shared bundle DEBs must store payload entries as uid 0 and gid 0 even when built by an unprivileged container user.
    Python app bundle copies carry `lib/app-packaging-license.sh` and `lib/log-bootstrap.sh`; validate the declared project license before resetting the bundle and stage its original text.
@@ -207,6 +262,18 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Reusable GPU workflow invocation scopes use the shared validated suffix for artifact names and job concurrency; raw caller input must not cancel a valid invocation before validation.
    GPU artifact staging checks the raw archive digest, both required check receipts and exact expanded files before atomic no-replace publication; trusted callers remain responsible for receipt provenance and hardware checks.
    GPU detector parity uses the shared two-cats comparator; validate the CPU baseline before using `--pairwise` for repeats, and require real provider profiles and matched results. For repeated inference, `verify_ort_profile.py --min-runs` requires provider operators in every complete sequential run; process identity alone does not prove one session.
+   GPU loader-origin checks use `shared/python/verify_ort_loader_trace.py`; profile-bound checks select the matching PID trace and retain the canonical provider/run verdict. Every selected ORT/plugin record must match that PID, including duplicate records; unrelated fork-child libraries may share the trace. Paths and process identity do not prove bytes or one ORT session.
+   Loader trace parent segments require explicit live root resolution, normalized package-directory agreement and actual containment; CLI roots remain canonical, and raw trace paths stay in the receipt.
+   Mutation namespace repairs preserve every target, edit and test and record a one-to-one ID map; keep the registry's existing coverage.
+   Tensor diagnostics compare every repeated input before describing model-output differences; a successful diagnostic never grants numerical/provider/package acceptance. Copy `compare_detector_parity.py` beside `summarize_detector_tensors.py` for its canonical JSON reader.
+   Native tensor replay and the tiny SDK probe carry `ort_probe_session.hpp` beside `ort_plugin_eps.hpp`; preserve caller-owned options/input memory and use the canonical GCC toolchain for Clang SDK links. Raw replay success never grants parity.
+   Intermediate-tensor diagnostics bind the original and instrumented model hashes and preserve node/initializer bytes; exposed outputs can change fusion, so they cannot replace original-model or finished-consumer acceptance.
+   Copied host tensor-pair drivers carry the CLI/environment helpers, both shared Python probes and the parity reader; preserve raw child status, isolated Python, both devices and every-run profile checks.
+   Explicit zero padding contributes to MaxPool on negative inputs; preserve that padding and a valid CPU baseline when testing compiler folds. A pass-disable or preload diagnostic is not a shipping compiler fix; compile original and patched passes successfully before accepting a numerical regression control.
+   MIGraphX source preparation uses its requirements-pinned rocm-cmake API and absolute source-built LLVM paths; keep all selected GPU features and reject a configuration-only receipt as image acceptance.
+   Linux MIGraphX source entries carry `cli-common.sh`, `entry-common.sh` and `source-common.sh`; the parser-dependency builder also carries `source-deps.sh`, retains the original Abseil, Protobuf and utf8_range notices and checks cache, compiler, static/PIC and offline facts before building.
+   The MIGraphX SDK check carries both `sdk-closure` CMake files and requires CK host, rocMLIR and the selected development packages; ordinary MLIR metadata is not rocMLIR, vendor config variables cannot erase missing facts, and resolution is not ABI or inference acceptance.
+   Native C++ diagnostic builders carry `lib/native-cxx-probe.sh`; preserve its caller-visible launcher, GCC root, single-argument toolchain flag and raw failures.
    The opt-in Linux clean-host and GPU profile actions download by immutable ID, check the upload digest and compare the same packages before and after the actual check; keep the default CPU name-based path.
    Windows ORT provider staging validates requested DLL names and their presence before changing the destination; unrelated SDK DLLs remain opt-in.
    Flutter apps with an Android manifest validate its mipmap launcher reference and every standard-density PNG; the source check does not prove image identity or inspect an APK.
@@ -226,8 +293,12 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Finished-package binary checks use streaming exact hashes, not text-license normalization; copied `WindowsPackageBinary.Common.psm1` carries the MSI module and both Python verifiers, and MSI members map through the File and Media tables.
    Python app packages that contain Windows ORT must compare the installed texts with the matched wheel and check them in ZIP, MSI and MSIX; apps without ORT remain supported.
    Linux ORT license staging compares every selected native ELF with one wheel, directly or after target-compatible stripping; copied `stage-ort-wheel-licenses.py` carries `ort_census_probe.py`, and the shell companion carries both package verifiers.
+   Explicit native original-byte staging validates every selected library and notice before writing; replace only unchanged regular files inside the bundle and retain per-file failure/cleanup verdicts.
    GPU AppImages must retain the wheel's unstripped ORT bytes and verify the finished artifact, including both notices; a staged-tree match alone is insufficient.
+   Their opt-in shared patchelf wrapper also preserves libmigraphx-ep.so exactly; its image-byte proof must survive package generation.
    Finished-package ORT trees use `06-packaging/ort-package-proof.sh` for library and notice checks; keep failures explicit under conditional callers.
+   Optional AMD provenance paths stay outside the exact license tree and bind the original image text; preserve old callers, refusal before overwrite and raw copy failures.
+   Its AMD plugin staging/proof APIs also require `ort-runtime-bundle.sh`; preserve image-identical module bytes, full original license trees and in-tree-provider refusal.
    Linux GPU app bundles require the image's provider in the self-test's available list and a relocatable ELF scan; packaging retains that requirement, and a separate GPU-host test must require the active provider before distribution.
    Python DEB dependency discovery must prove isolated launcher and sitecustomize startup before omitting preloaded site-package libraries; executable `.pth` lines invalidate that proof.
    GPU DEB library-path and Python preload assumptions require generated wrappers for detected runnable ELFs; CON188 records remaining limits to these assumptions.
@@ -236,8 +307,10 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Python DEB discovery rejects an unproven earlier external search path before a bundled candidate; legacy RPATH precedes GPU launcher library paths, while RUNPATH follows them.
    Python DEB version-node minimums come from the host package's symbols file; a missing node or malformed line fails, and unversioned symbols remain CON188.
    Python DEBs without bundled glibc require libc6 >= 2.36 for DT_RELR or its GLIBC_ABI_DT_RELR marker; reject unrecognized GLIBC_ABI markers rather than understate the host requirement.
-   Use `docs/scripts/merge_mutation_recipes.py` to preview or merge recurring mutation recipe updates; stale anchors and unintended replacements fail before writing.
+   Use `docs/scripts/generate_require_mutations.py` for recurring require-removal recipe preparation; it does not replace canonical merge, parse checks or actual mutation runs.
+   Use `docs/scripts/merge_mutation_recipes.py` to preview or merge recurring mutation recipe updates; stale anchors and unintended replacements fail before writing. Keep serialized registries ASCII-safe and decoded values exact, including deliberately corrupt negative-test strings.
    Core disk probes share validation without merging zero-disabled and nonnegative-free-space policies.
+   Invalid temporary-allocation fixtures share the harness emitter and retain failed, empty and missing-path outcomes.
    Test workers use the harness optional-function emitter; keep required definitions mandatory.
    Stream receipt suites carry `stream-receipt-fixture.sh`; keep their expected results independent of production code.
    Wheelhouse stderr fixtures pin child locale to C.UTF-8; retain both parent-locale controls and original receipt bytes.
@@ -245,7 +318,11 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Shared mirror enumeration preserves source-file order and original shell-option behavior; artifact and image probes retain caller failure policies.
    ORT and GenAI provenance checks share hashing and chain-byte membership; keep their distinct archive and exemption policies.
    Windows media staging rejects foreign ORT, GenAI and DirectML DLLs before copying and checks staged bytes against the chain.
+   Copied `copy-media-payloads.sh` carries `llvm-loader-path.sh`; native compiler and package publication share its source-first conf and raw write/cache failures.
    Copy `compiler-cache-utils.sh` beside `common.sh`, cache modules and standalone cache probes and `media-payloads.sh` beside packaging copy/validation scripts; preserve narrow mounts.
+   ROCm runtime paths keep source MIGraphX public and private lib directories before retained distro paths, follow a command-line ROCm symlink and exclude ASAN; discovery and ordering failures must precede any configuration replacement.
+   MIGraphX install manifests coalesce exact repeated CMake rows only; retain alias, complete-tree, unique-library, native-ELF and original-notice refusals for public and private ROCm layouts.
+   GPU and runtime ROCm configuration share `publish_rocm_ld_path` from `media-payloads.sh`; keep the required source build, publication and ldconfig calls unconditional and preserve their raw failures.
    Copy `elf-strip.sh` and `image-ref-args.sh` beside `build-helpers.sh`; `digest-pinning.sh` also requires `image-ref-args.sh`.
    Minimal toolchain bootstraps carry `elf-strip.sh` and `load-versions-env.sh`; keep the narrow GCC/LLVM mounts.
    New required toolchain imports validate their expected export and preserve selected-file failures; legacy file-only imports retain their caller policy.
@@ -255,9 +332,17 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copies of `python_uv.sh` and `webdav-download.sh` carry `python-probe.sh`; missing companions fail rather than restoring interpreter-selection copies.
    Consumer checks running inside the family Linux image use `ci_image_python_require` from `python-probe.sh`; retain its image marker, pinned interpreter probe and caller-specific diagnostic.
    Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts.
+   FT transport fixtures supply and assert both dependency pins before interpreting factory results; keep raw probe status and each interpreter branch observable.
+   Rust plugin consumers carry the exact shared policy, preserve GetEpDevices failures and retain the owning environment during V2 calls without blocking its normal teardown.
+   Native child waits under Dart must preserve external-reaper failures; an ECHILD or a successful failure-control probe never proves worker teardown or bridge acceptance.
+   Copied isolated-worker Rust bindings carry their canonical C source/header; retain descriptor closure, parent-death guards, validated worker status and normal worker exec/teardown. Initial supervisor startup uses ordinary fork for libc state repair.
+   Cargo native helper staging uses the exact successful Cargo JSON artifact and build-script OUT_DIR; copy stage-cargo-native-helper.py with ort_census_probe.py and retain target checks and no-replace publication.
+   Copied loaded-module Rust lookup stays an exact shared asset; retain byte paths, foreign-symbol ownership and the wrong-module refusal after relative loading and cwd changes.
+   Native transport controls execute while the bounded Dart child is live; preserve the canonical HIP worker/fake-runtime companions, normal sanitizer teardown, its real report and the expected leak-control exit.
    Copied Torch setup carries `package-image-wiring.sh`, `wheelhouse-manifest.sh` and `native-gcc-system-paths.sh` before its first execution.
    Copied `build-app-wheelhouse.sh` carries `torch-source-pins.sh` beside it.
    Native GCC profiles carry `native-gcc-system-paths.sh`; preserve flag expansion when the profile is sourced.
+   Standalone native C++ probe libraries import their own logging bootstrap; FT dependency RUNs retain guarded cache setup, the narrow drain mount and a closing drain. SDK dispatch fixtures quote redirects and assert complete argv, including paths with spaces.
    `verify-cross-chain.sh` help carries `runtime-build-fns.sh`; ordinary forwarding must not load build helpers.
    Copied `lib-runtime-wheels.sh` carries `01-core/wheelhouse-manifest.sh`.
    Windows formatting preserves distinct C/C++ fallback and tracked-only Dart policies; copied source-build suites carry their retry and media wiring fixture companions.
@@ -280,6 +365,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Standalone fallback registration keeps caller lookup policy; copied Abseil and payload entry points carry the logging bootstrap in its documented layout.
    Smoke ELF inspection carries its platform owner and preserves caller parser overrides without leaking platform initialization.
    Bundle packagers share scoped facts, bundle copying, desktop/icon staging and artifact verdicts; invoke renderers unconditionally so Bash errexit remains active.
+   Bundles with executable helpers set APP_PACKAGING_BINARY_NAME to their actual application; a declared missing, linked or nonexecutable entry refuses instead of selecting another file.
    ONNX web steps share lockfile retries and JS artifact verdicts; keep install failures fatal and check both source and copied artifacts.
    Agentic build, test and quality phases share execution; preserve fatal build/test results and advisory quality results.
    Runtime and cross orchestrators share common CLI dispatch; preserve consumed-argument counts and help code 255.
@@ -304,6 +390,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Consumer pin checks parse pyproject TOML and ignore only uv's exclusion list; genuine dependency pins, overrides and malformed manifests retain their fatal verdicts.
    `uv_sync_project --only-group` excludes the project, default groups and extras; when the chain store is active, reject an unreadable lock or any ORT in it before syncing.
    Windows Python CI build, packaging and installed-wheel drivers share the summary, log-close and fatal-step verdict in `Complete-CiBuildSession`; preserve that order and verdict.
+   Copied isolated-helper-compile.sh carries lib/log-bootstrap.sh; SDK failure fixtures own their temporary download archives through the harness.
+   Cache-unavailability fixtures stub the selected tool probe without removing directories that contain shell utilities; keep the grouped-tool regression and raw fallback verdict.
+   The strict-type fixture carries every explicitly selected native helper and proves both incorrect returns and missing annotations; production scope counts remain enforced.
    The hub's full Ruff scan, all-file annotations and compatible Linux/Windows type checks fail on findings. Keep the tracked-file coverage and pinned tools intact; run dependency-specific checks in the workflow or build that provides their imports. See [Python type analysis](docs/code-quality-tooling.md#python-type-analysis) for the current scopes and test requirements. Ty checks inferred types but does not require annotations.
    `python-static.sh` adds the quality site-packages and the pinned docs theme to ty as extra search paths; do not replace ty's own environment discovery with `--python`, which unresolves imports it found before.
    Dependency-specific checks run in their owning workflow or image build; keep checker tools out of shipped images. The version probe catches only expected import, metadata, lock-parse and OpenCV failures; malformed present locks and unexpected runtime exceptions must fail.
@@ -431,14 +520,49 @@ Five of them are RULES and stay here:
 - **`--log-dir` is not universal.** `build-cross-chain.sh` and `build-cross-stage.sh` tee each
   stage; the other three orchestrators do not take the flag, so pipe them through `tee` yourself.
 
-- **Preserve recurring operational scripts in the repo.** Reuse and extend the canonical helper;
-  do not regenerate regular preflight, monitoring or probe drivers in scratch space. Keep run-specific
-  inputs, extracted code and reports under `logs/`. The permanent isolated preflight, unit watcher
+- Compiler-plan copies carry `compiler_plan_profile.py`, `compiler_unique_profile.py`, `proof_profiles.py` and `native_oci_layout.py`; retain original profiles and record reviewed deltas without rewriting the old reference. The explicit GNU_UNIQUE profile binds its exact source, compiler6 inputs and normal matched-hook count; copied profile suites carry their shared fixture module.
+- The HIP smoke requests raw device ELF with `--no-gpu-bundle-output`; copied GPU launchers carry `gpu_source_profile.py`. An explicit alternate source requires the exact reviewed HIP, backend-install or runtime-load repair and its own complete preflight while preserving the original qualified SDK identity. Tool and documentation descendants do not inherit that production proof.
+- Local GPU-to-Media handoffs rehash native OCI bytes and SDK layer/diffID ancestry; require the actual terminal GPU producer, exact source proof and bounded export before ordinary Media with both required Wasm modes. Resolve the immutable local manifest ID independently against the tagged config before export; Media retains its repository@digest and native-context binding.
+- Local Media-to-Android handoffs retain the same exact source/command checks and native GPU ancestry; keep distinct Media receipts, complete worker companions, raw export statuses and the unchanged disk floor. Android precedes runtime; native exports are not FINAL acceptance. Native Android exports keep their own subject and all Media ancestors; GPU/Media/Android copies carry `stage_handoff_profile.py` and the recursive parent companions.
+- Ordinary local runtime launches retain the verified native Android layout, exact app commit, all three fresh canonical image names and default image wheel transport. Create the immutable local alias from the verified source tag and independently inspect its bare manifest/config; preserve the post-tag identity checks. Carry `owned-nerdctl.py`, `owned_nerdctl_args.py`, `owned_containers.py`, `host_commands.py` and the cleanup entry together; install the same fresh ownership token, required cleanup CID-file argument and ExecStopPost before launch, then require cleanup and an independent absence query before acceptance. Runtime command success is not FINAL consumer acceptance.
+- The alternate ROCm runtime selector requires the exact reviewed wheel-context/smoke-export source with context-valid exporter controls and its own complete current preflight before any tags or units; an older source receipt cannot qualify the repair. Preserve the original Android/native parent, shared admission minimum, app commit and invocation cleanup bindings; ordinary ROCm runtime launches additionally require at least 300 GiB before allocating outputs, aliases or units.
+- A bounded local FINAL run keeps the complete canonical consumer plan, committed tooling and successful runtime binding; install fresh UUID-labelled container cleanup before any consumer work and require actual terminal unit status, receipt validation, canonical cleanup and an independent empty label query before the stopped proof. Failed outer status cannot become acceptance through an inner receipt. An unloaded successful runtime requires the sealed canonical guardian plus freshly queried trusted same-boot lifecycle records; preserve actual exit time and explicit observation provenance, and never infer success from not-found defaults. Copied acceptance/guardian workers carry `runtime_terminal_evidence.py`.
+- A runtime storage guardian binds one already live ordinary runtime by invocation hash, unit, PID and start ticks; commit its source and worker closure before launch. Reuse the canonical regular-layer worker synchronously in its bounded control group, retaining at least 100 GB while the outer producer is live even if BuildKit reports zero in-use records. Never restart, stop or accept the producer from storage observation; retain failed producer status in the stopped receipt. A stopped failed unit may retain systemd's failed state with PID 0; a successful guardian still requires an inactive stopped state.
+- The explicit ordinary-runtime `--serial-smoke` host option sets only `RUNTIME_SMOKE_OVERLAP=0`; keep the same required smoke, raw failure, production source proof, app, native parent and cleanup bindings. Ordinary overlap remains the default.
+- Automatic local image cleanup selects explicit obsolete published tags, verifies their immutable registry manifests/configs and waits for an idle engine; preserve current build parents, E30/receipts, all cachemounts and every unselected image identity. Keep before/after evidence and recheck the ordinary reserve ([host cleanup](docs/linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches)).
+- Native ORT and app-wheelhouse Media cache readers use exact outer RUN markers and the Media unit family; retain final-drain lifetime, mandatory worker/profile hashes and explicit partial-timeout scope. IREE configure snapshots require the selected target build tree and the same live process identity; they do not classify errors or prove a completed build.
+- **Python packaging cache prefixes stay command-scoped.** With `PYTHON_BUILD_COMPILER_CACHE=on`,
+  pass explicit single-executable `CC` and `CXX`, use the shared resolver and preserve callback
+  bindings and raw failures. Never export the cache-prefixed compiler strings into package assembly.
+  Copied `ci_packaging.sh` carries `ci-compiler-cache.sh`; cache-enabled copies need the full core layout.
+
+- **Preserve recurring operational scripts in the repo.** The canonical implementation must be Git-tracked; an ignored `logs/` copy is evidence only. Promote a recurring helper before its next use, retain its required companions and parameterize run-specific inputs. The [operational toolkit](docs/local-proof-workflows.md) owns the reusable proof, checkpoint and authorized cleanup drivers. Reuse and extend the canonical helper;
+  do not regenerate regular preflight, monitoring or probe drivers in scratch space. Diagnostic compiler prefixes remain explicitly unverified and cannot qualify an SDK parent; retain the failed producer and mandatory source smoke. Keep run-specific
+  inputs, extracted code and reports under `logs/`. Add missing recurring functionality to Git before
+  its next use. Local BuildKit cache transfers use `local-proof/seed-buildkit-cache.py` with its
+  stopped-producer proof; preserve separate mutable metadata and verify the actual next command's
+  cache import before launch. A transport receipt does not prove cache hits. Current compiler plans with `source_proofs` require
+  `image_qualification_profile=compiler-cross-cpu`; retain both shell modes, all six wrappers and the OCI parent refusals.
+  Its subject and OCI modules stay in strict ty and ANN001/ANN201 scopes; retain their sibling module search roots.
+  Direct-suite failures retain raw failed status and assertion logs; a missing mutator log cannot become passing mutation evidence.
+  The permanent isolated preflight, unit watcher
   and native plugin probe are documented in [quality tooling](docs/code-quality-tooling.md#preserved-local-proof-workflows).
   Copied host proof tools carry `host_commands.py`; the watcher also carries `preflight-status.py`,
   and isolated preflight carries both scripts under `isolated-preflight/`.
+  Copied `append-operational-memory.py` carries both `operational_memory` modules, `host_commands.py` and `source_ci/common.py`; preserve controller refusals, exact prefix checks and exclusive backups.
+  Isolated preflight requires the engine init to reap orphaned test children; group-disappearance checks stay strict.
+  Cached-image replays use its explicit image and read-only native-tools-cache options; retain report writability and record the altered environment scope.
+  Long isolated-preflight units pass one fresh run-id to both the driver and independent cleanup hook before launch.
+  Container cleanup tools also carry `owned_containers.py`; long container units require its
+  `cleanup-owned-containers.py` ExecStopPost hook with the same fresh label/token and CID file.
   Copied `run-in-ci-image.sh` carries the shared `lib/cli-value-options.sh` and logging companions;
   the mutation recipe contract lives in `mutation_parse.py` beside its runner.
+  Source CI dispatch, retrieval and audits use `source-ci.py` with its `source_ci/` and `host_commands.py` companions.
+  Mutation seals require a loaded, terminal successful unit before stopping; cached default success is insufficient.
+  Native worker source tests require Dart, C/C++, Rust and sccache; use `ensure-native-worker-test-tools.sh` and preserve mandatory VM coverage.
+  Flutter `--keep-cache` is a test-runner opt-in; fresh image installs retain their default bare-SDK policy.
+  Parity CLI copies carry `lib/cli-value-options.sh` and logging companions; retain usage alias binding and complete remaining arguments.
+  `+CALLBACK` CLI dispatch uses an output count and an unconditional invocation; do not swallow the caller's active errexit policy.
   Container transport fixtures accept the shared runner security and value flags before parsing
   the image and command; preserve the production AppArmor setting.
 
@@ -707,6 +831,10 @@ Resume mid-chain, build one stage, or `--parallel-archs`:
 
 ### Runtime Helpers
 
+An alternate runtime source requires its own complete source proof and explicit reviewed
+selection; preserve the original Android source, invocation and native ancestry separately.
+A host-tools commit or the parent's source proof cannot qualify changed runtime code.
+
 Wrapper builds, manifest publishing and manifest repair:
 [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) § Runtime lane helper commands.
 
@@ -954,6 +1082,8 @@ shared test helper emits forward slashes. Prove the copy before trusting its bui
   a warning string written INSIDE a Dockerfile command counts as if it had fired. Match real
   output lines only.
 
+Host test jobs use an on-disk TMPDIR outside every Git checkout, so non-Git fixtures cannot inherit an ancestor repository index.
+
 ## Background jobs and test processes (no ghosts)
 
 On 2026-10-21 the build host carried a test fixture spinning at 100 % for 2.8 days and 24 headless
@@ -963,8 +1093,10 @@ transcript. Each was a child that outlived whatever started it. So:
 1. **An agent starts a background job as a named user unit**, never `setsid nohup … &`:
    `systemd-run --user --unit=<name> -p RuntimeMaxSec=<bound> bash <script>`. Then
    `systemctl --user list-units '<prefix>*'` shows what runs, `systemctl --user stop <name>` ends
-   it with every child, and nothing outlives its bound. A job meant to outlive the session (a
+   it with every child, and nothing outlives its bound. User units retain system utility directories in PATH, including `/usr/sbin` and `/sbin`, for probes such as `ldconfig`. A job meant to outlive the session (a
    chain, a watcher) says so in its handoff, by unit name.
+   Literal shell expressions in unit argv require `--expand-environment=no`; host-shell quoting does not disable systemd expansion.
+   Container engines may keep their payload outside the starter unit; use the versioned owned-container ExecStopPost hook and verify cleanup separately before handoff. Command success without stopped/PID0 or absence is insufficient; retained failed containers stay stopped.
 2. **A test fixture ends on its own.** A spin or a sleep has a bound (`while [ "${SECONDS}" -lt 60 ]`,
    `sleep 60`); a fixture that only a kill can end outlives every interrupted run.
    Fixtures unrelated to ref resolution use a synthetic immutable app identity;
@@ -1453,7 +1585,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 - **Linux disk reclaim: `linux/host-config/prune-safe.sh`, NEVER `nerdctl builder prune -f`**, and
   `nerdctl system prune` / `nerdctl builder prune` are not steps on the list at all. The `-f`
   prune deletes `type==exec.cachemount` records (hours of compile time) together with the cheap
-  layer cache. The measurements, the mid-run lever ORDER and the third cache store
+  layer cache. Standing owner authorization (2026-11-13) permits agents to run this script when the canonical disk reserve is insufficient, without another confirmation. Measure first; use `PRUNE_KEEP_GB=120 PRUNE_DUP_CACHEMOUNTS=0` by default and retain the documented minimum of 100 GB during builds. Verify cachemount and required-image identities afterward and recheck the unchanged disk guard. This does not authorize other deletion or a recurring service. The measurements, the mid-run lever ORDER and the third cache store
   `prune-safe.sh` cannot reach:
   [`linux-host-setup.md` § B7](docs/linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches).
 
@@ -1670,6 +1802,8 @@ and [`cross-build-verification.md`](docs/cross-build-verification.md#per-arch-ve
 - Use the centralized helpers: `resolve_arch_list()`, `is_dry_run()`,
   `append_mirror_build_args_from_env()`, `append_version_build_args()`,
   `normalize_target_arches()`.
+- Copied MIGraphX SDK/HIP checks carry `native-check-common.sh`, retaining caller-visible argument and compiler setup.
+- Native source LLVM retains AMDGPU beside the configured CPU backends. Reuse checks query the installed targets; the MIGraphX stack must compile an offline HIP device object before fetching heavy dependencies. This does not prove GPU inference.
 - New OS packages → `Dockerfile.base`. Compiler changes → `Dockerfile.toolchain`. SDK/frameworks →
   `Dockerfile.sdk`. Media libs → `Dockerfile.media` + `03-media/build/`. Android →
   `Dockerfile.android`. GPU → `Dockerfile.nvidia`/`Dockerfile.amd`.

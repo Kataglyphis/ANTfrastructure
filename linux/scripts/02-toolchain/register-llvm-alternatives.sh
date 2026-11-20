@@ -1,30 +1,20 @@
 #!/usr/bin/env bash
+# Select only the source-owned native tree; existence does not prove versions, linking or inference.
 set -euo pipefail
 
-# Points clang, clang++, llvm-ar and llvm-ranlib at the LLVM_RELEASE major.
+[ "$#" -eq 1 ] || { echo "Usage: register-llvm-alternatives.sh ABSOLUTE_NATIVE_PREFIX" >&2; exit 2; }
+prefix="$1"
+case "${prefix}" in
+  /*) ;;
+  *) echo "Native LLVM prefix must be absolute" >&2; exit 2 ;;
+esac
 
-llvm_major="${LLVM_RELEASE%%.*}"
-
-alt_install() {
-  local name="$1"
-  local priority="${2:-120}"
-  local candidate
-
-  # Source-built LLVM first: the apt bootstrap lags point releases, and the smoke asserts clang == LLVM_RELEASE.
-  for candidate in \
-    "/usr/local/llvm-${llvm_major}/bin/${name}" \
-    "/usr/lib/llvm-${llvm_major}/bin/${name}" \
-    "/usr/bin/${name}-${llvm_major}"; do
-    if [ -x "${candidate}" ]; then
-      update-alternatives --install "/usr/bin/${name}" "${name}" "${candidate}" "${priority}"
-      update-alternatives --set "${name}" "${candidate}"
-      return 0
-    fi
-  done
-  echo "WARNING: could not find ${name} for LLVM ${llvm_major}" >&2
-}
-
-alt_install clang
-alt_install clang++
-alt_install llvm-ar
-alt_install llvm-ranlib
+tools=(clang clang++ llvm-ar llvm-ranlib)
+# Refuse incomplete installs before changing any alternative.
+for name in "${tools[@]}"; do
+  [ -x "${prefix}/bin/${name}" ] || { echo "Missing source-built LLVM tool: ${prefix}/bin/${name}" >&2; exit 1; }
+done
+for name in "${tools[@]}"; do
+  update-alternatives --install "/usr/bin/${name}" "${name}" "${prefix}/bin/${name}" 120
+  update-alternatives --set "${name}" "${prefix}/bin/${name}"
+done

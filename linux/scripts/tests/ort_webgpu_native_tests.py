@@ -18,6 +18,8 @@ PROBE = Path(sys.argv[4]).resolve()
 SUBJECT = Path(sys.argv[5]).resolve()
 FAKE_CORE = Path(sys.argv[2]).resolve()
 CLOSE_FAILURE = Path(sys.argv[6]).resolve()
+LINKED_PROBE = Path(sys.argv[7]).resolve()
+FLUSH_FAILURE = Path(sys.argv[8]).resolve()
 spec = importlib.util.spec_from_file_location("native_runtime_proof", SUBJECT)
 assert spec is not None and spec.loader is not None
 runtime = importlib.util.module_from_spec(spec)
@@ -97,11 +99,41 @@ class NativeTests(unittest.TestCase):
         self.assertNotIn("WEBGPU-NATIVE OK:", result.stdout)
         self.assertIn("RELEASEENV", self.trace.read_text())
 
+    def test_native_and_linked_stdout_flush_failure_stays_failed_after_cleanup(self) -> None:
+        for command in ([str(PROBE), str(FAKE_CORE), "ON"], [str(LINKED_PROBE), "ON"]):
+            with self.subTest(command=command):
+                self.trace.unlink(missing_ok=True)
+                result = subprocess.run(command, capture_output=True, text=True, check=False,
+                                        env={**self.environment, "LD_PRELOAD": str(FLUSH_FAILURE)}, timeout=10)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("stdout flush failed", result.stderr)
+                self.assertIn("RELEASEENV", self.trace.read_text())
+
     def test_invalid_usage_and_unloadable_core_fail_without_success(self) -> None:
         for args in ([], ["relative.so", "ON"], [str(FAKE_CORE), "maybe"], [str(self.root / "absent.so"), "ON"]):
             result = subprocess.run([str(PROBE), *args], capture_output=True, text=True, check=False, timeout=10)
             self.assertNotEqual(result.returncode, 0)
             self.assertNotIn("WEBGPU-NATIVE OK:", result.stdout)
+
+    def test_linked_core_reuses_real_c_controls_without_a_dynamic_loader(self) -> None:
+        failures = ("legacy", "duplicate-cpu", "no-cpu", "null-providers", "empty-list", "empty-entry",
+                    "too-many", "provider-failure", "release-failure", "no-base", "no-api", "no-unregister",
+                    "no-version", "create-failure", "null-env", "first-missing", "repeat-success",
+                    "wrong-message", "wrong-code", "null-message")
+        for mode, scenario in (("ON", "static"), ("OFF", "off"), *(("ON", case) for case in failures),
+                               ("OFF", "static"), ("invalid", "static")):
+            with self.subTest(mode=mode, scenario=scenario):
+                self.trace.unlink(missing_ok=True)
+                result = subprocess.run([str(LINKED_PROBE), mode], capture_output=True, text=True, check=False,
+                                        env={**self.environment, "WEBGPU_NATIVE_SCENARIO": scenario}, timeout=10)
+                passed = (mode, scenario) in (("ON", "static"), ("OFF", "off"))
+                self.assertEqual(result.returncode == 0, passed, result.stdout + result.stderr)
+                self.assertEqual("WEBGPU-WASM OK:" in result.stdout, passed)
+                calls = self.trace.read_text().splitlines() if self.trace.exists() else []
+                self.assertNotIn("DLCLOSE", calls)
+                if passed:
+                    self.assertEqual(calls.count("UNREGISTER"), 2)
+                    self.assertEqual(calls[-1], "RELEASEENV")
 
     def test_runtime_binds_every_requested_native_prefix_without_importing_python(self) -> None:
         with patch.object(runtime.importlib, "import_module", side_effect=AssertionError("Python import is forbidden")):

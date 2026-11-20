@@ -5,10 +5,10 @@
 import argparse
 import base64
 import hashlib
+import importlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -17,6 +17,7 @@ import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Protocol, TypedDict
 
 
@@ -56,6 +57,7 @@ class CheckArgs(EngineArgs, Protocol):
     workspace: str
     receipt: str
     replay: str | None
+    local_runtime_invocation: str | None
 
 
 class PromoteArgs(Protocol):
@@ -246,10 +248,20 @@ def validate_consumer_result(result: dict[str, Any], spec: ConsumerSpec) -> None
         raise ValueError("consumer evidence is missing")
 
 
-def validate_receipt(receipt: dict[str, Any], image: str, plan_path: str | os.PathLike[str]) -> dict[str, Any]:
+def validate_receipt(receipt: dict[str, Any], image: str, plan_path: str | os.PathLike[str], *, allow_local: bool = False) -> dict[str, Any]:
     plan = read_plan(plan_path)
-    image_parts(image)
-    if receipt.get("schema_version") != 1 or receipt.get("image") != image:
+    if allow_local:
+        if receipt.get('image_transport') != 'local':
+            raise ValueError('Local receipt transport is missing')
+        local_module().complete_plan(plan, read_plan(DEFAULT_PLAN))
+        local_module().validate_receipt(receipt, image, plan['platform'])
+    else:
+        if any(key.startswith('local_') for key in receipt):
+            raise ValueError('Local subject evidence cannot authorize registry promotion')
+        if receipt.get('image_transport', 'registry') != 'registry':
+            raise ValueError('Local acceptance cannot authorize registry promotion')
+        image_parts(image)
+    if receipt.get("schema_version") != (2 if allow_local else 1) or receipt.get("image") != image:
         raise ValueError("receipt belongs to another image or schema")
     if receipt.get("plan_sha256") != fingerprint(plan_path) or receipt.get("status") != "passed":
         raise ValueError("acceptance did not pass this exact plan")
@@ -354,33 +366,69 @@ def run_consumer(args: EngineArgs, plan: AcceptancePlan, work: Path, index: int,
         raise ValueError(f"{spec['name']}: consumer modified tracked acceptance sources")
 
 
-def prune_consumer_checkouts(plan: AcceptancePlan, work: Path) -> None:
-    """A passed receipt keeps the logs; the checkouts (28 GB a run on 2026-10-29) are re-cloned by any replay."""
-    for spec in plan["consumers"]:
-        shutil.rmtree(work / spec["name"], ignore_errors=True)
+def local_module() -> ModuleType:
+    directory = Path(__file__).resolve().parent
+    sys.path.insert(0, str(directory))
+    module = importlib.import_module('image_acceptance_local')
+    if module.__file__ is None or Path(module.__file__).resolve() != directory / 'image_acceptance_local.py':
+        raise ValueError('Local acceptance companion belongs to another checkout')
+    return module
+
+
+def acceptance_transport(args: CheckArgs, plan: AcceptancePlan) -> bool:
+    local = bool(getattr(args, 'local_runtime_invocation', None))
+    if local:
+        local_module().validate_reference(args.image)
+        local_module().complete_plan(plan, read_plan(DEFAULT_PLAN))
+        if any(path.exists() or path.is_symlink() for path in [Path(args.workspace), Path(args.receipt)]):
+            raise ValueError('Local acceptance requires a fresh workspace and receipt')
+    else:
+        image_parts(args.image)
+    return local
+
+
+def prepare_acceptance_image(args: CheckArgs, plan: AcceptancePlan, work: Path, receipt: dict[str, Any],
+                             previous: dict[str, Any] | None, local: bool) -> None:
+    if local:
+        receipt['local_subject'] = local_module().prepare(args.engine, args.image, plan['platform'],
+                                                        args.local_runtime_invocation, work)
+        receipt['local_alias_receipt'] = str(work / 'local-image-alias.json')
+        receipt['local_alias_sha256'] = fingerprint(work / 'local-image-alias.json')
+        if previous and previous['local_subject'] != receipt['local_subject']:
+            raise ValueError('Local replay producer or image identity changed')
+    else:
+        started = time.monotonic()
+        subprocess.run([args.engine, 'pull', '--platform', plan['platform'], args.image], check=True, timeout=1800)
+        receipt['pull_seconds'] = round(time.monotonic() - started, 3)
+
+
+def finish_acceptance_image(args: CheckArgs, plan: AcceptancePlan, receipt: dict[str, Any], local: bool) -> None:
+    if local:
+        receipt['local_subject_after'] = local_module().recheck(args.engine, args.image, plan['platform'],
+                                                              args.local_runtime_invocation, receipt['local_subject'])
 
 
 def check(args: CheckArgs) -> None:
-    image_parts(args.image)
     plan = read_plan(args.plan)
+    local = acceptance_transport(args, plan)
     work = Path(args.workspace).resolve()
     work.mkdir(parents=True, exist_ok=True)
     if git(ROOT, "status", "--porcelain"):
         raise ValueError("commit the hub tooling before creating an acceptance receipt")
-    receipt = {"schema_version": 1, "image": args.image, "plan_sha256": fingerprint(args.plan),
+    receipt = {"schema_version": 2 if local else 1, "image": args.image, "plan_sha256": fingerprint(args.plan),
                "hub_revision": git(ROOT, "rev-parse", "HEAD"), "platform": plan["platform"],
                "status": "failed", "consumers": []}
+    if local:
+        receipt['image_transport'] = 'local'
     previous = None
     if args.replay:
         previous = json.loads(Path(args.replay).read_text(encoding="utf-8"))
-        validate_receipt(previous, args.image, args.plan)
+        validate_receipt(previous, args.image, args.plan, allow_local=local)
         if previous["hub_revision"] != receipt["hub_revision"]:
             raise ValueError("replay must use the hub revision recorded by the receipt")
     receipt["started_at"] = datetime.now(UTC).isoformat()
     try:
-        pull_started = time.monotonic()
-        subprocess.run([args.engine, "pull", "--platform", plan["platform"], args.image], check=True, timeout=1800)
-        receipt["pull_seconds"] = round(time.monotonic() - pull_started, 3)
+        prepare_acceptance_image(args, plan, work, receipt, previous, local)
         engine_info = subprocess.run([args.engine, "info"], text=True, capture_output=True, check=True, timeout=60).stdout
         rootless = sys.platform.startswith("linux") and "rootless" in engine_info
         for index, spec in enumerate(plan["consumers"]):
@@ -388,9 +436,11 @@ def check(args: CheckArgs) -> None:
             receipt["consumers"].append(row)
             expected = previous["consumers"][index] if previous else None
             run_consumer(args, plan, work, index, spec, row, expected, rootless)
+        finish_acceptance_image(args, plan, receipt, local)
         receipt["status"] = "passed"
-        prune_consumer_checkouts(plan, work)
-    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        validate_receipt(receipt, args.image, args.plan, allow_local=local)
+    except (AssertionError, ValueError, OSError, subprocess.SubprocessError) as exc:
+        receipt["status"] = "failed"
         receipt["error"] = str(exc)
     output = Path(args.receipt)
     receipt["finished_at"] = datetime.now(UTC).isoformat()
@@ -398,7 +448,7 @@ def check(args: CheckArgs) -> None:
     output.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
     if receipt["status"] != "passed":
         raise ValueError(receipt["error"])
-    validate_receipt(receipt, args.image, args.plan)
+    validate_receipt(receipt, args.image, args.plan, allow_local=local)
 
 
 
@@ -498,6 +548,7 @@ def main() -> None:
     test.add_argument("--receipt", required=True)
     test.add_argument("--engine", default=os.environ.get("NERDCTL_BIN", "nerdctl"))
     test.add_argument("--replay", help="recheck the image, source SHAs and dependency locks in a passed receipt")
+    test.add_argument("--local-runtime-invocation", help="bind an unpublished FINAL wrapper to its successful runtime; local receipts cannot promote")
     publish = commands.add_parser("promote")
     publish.add_argument("--receipt", required=True)
     publish.add_argument("--plan", default=str(DEFAULT_PLAN))

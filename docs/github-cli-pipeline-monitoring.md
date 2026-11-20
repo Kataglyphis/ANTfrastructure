@@ -187,3 +187,46 @@ Reading status, logs, and re-running failed jobs is routine. **Cancelling other
 people's runs, editing workflow files to make a failure go away, or disabling a
 workflow is not** — a failing pipeline is information, and the fix belongs in
 the code that failed.
+
+## Preserved source CI evidence
+
+The recurring Hub evidence drivers are versioned under `linux/scripts/`. Use their explicit source,
+branch and output arguments instead of recreating a dated script in `logs/`. The Python entry point
+requires the sibling `source_ci/` modules and `host_commands.py`; no package installation is needed.
+`--help` lists the arguments for each subcommand.
+
+```bash
+python3 linux/scripts/source-ci.py dispatch --repo Kataglyphis/ANTfrastructure \
+  --head FULL_SHA --branch FEATURE_BRANCH --output logs/test-results/dispatch.json
+python3 linux/scripts/source-ci.py fetch --dispatch logs/test-results/dispatch.json \
+  --root . --directory logs/test-results/source-logs
+```
+
+Dispatch covers Linux, Windows, docs, Renovate and security gate mode. It checks the remote head,
+reuses a single matching existing run and reserves the dispatch record exclusively. Before a new
+request it persists an ambiguous/in-progress state; it never retries a workflow write. If interrupted,
+resolve that run ID from GitHub and repair the record after inspection rather than dispatch again.
+Multiple existing matches require inspection. Do not start a second driver with another output path.
+
+Fetch observes those recorded runs only, requiring successful direct `workflow_dispatch` source
+identity. It retains complete job metadata, original logs, the local/remote tree binding and the native
+Windows test archive/API digest. Downloads preserve bytes exclusively; a failed HTTP response cannot
+become a cached successful log. Reusing the directory resumes absent downloads without replacing
+preserved evidence. Existing failed evidence requires a separate attempt directory.
+
+Run `audit-linux` with `--root`, `--head`, `--run`, `--jobs`, `--tree-binding`, `--log-dir` and `--output`.
+It reads the manifest from that Git revision, checks all eight shards' actual ID union and the
+nonvacuous preflight summary. Run `audit-windows` with `--zip`, `--api`, `--prior-proof`, `--root` and
+`--output`; the prior proof must be an independently audited coverage baseline. Its coverage policy
+must be byte-identical to the tested revision, otherwise re-audit it before proceeding. The archive
+must match its API digest and prove every native test/coverage floor without skips or broken cases.
+
+Finally, `audit-all --dispatch RECORD --directory LOGS --linux LINUX_PROOF --windows WINDOWS_PROOF
+--output PROOF` binds both subproofs to their actual runs, rechecks their logs/archive and requires all
+five workflows. Only the feature-branch docs publication job may be skipped. These receipts prove
+source workflows only; hardware inference, product image acceptance and packaged detector parity
+remain separate. Output proof files are exclusive and historical evidence is never overwritten.
+
+`test-source-ci.sh` uses synthetic metadata, logs and archives for failure cases; the cache command
+has `test-capture-sccache-command.sh`. Their mutations must fail assertions. These fixtures do not
+contact GitHub, run real compiler builds or certify GPU availability.

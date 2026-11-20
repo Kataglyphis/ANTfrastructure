@@ -28,6 +28,17 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 # Load platform helpers (from 01-core or /opt/scripts/core) if available
 smoke_load_platform
 
+# A version string alone cannot prove that a host-built wrapper emits and links the selected target.
+check_cross_clang() {
+  local target_arch="$1" driver compiler
+  for driver in clang clang++; do
+    compiler="$(command -v "${driver}-${target_arch}" 2>/dev/null || true)"
+    check_clang_version "${compiler}" "${LLVM_RELEASE}" "${driver} (${target_arch} wrapper)"
+    validate_compiler_for_target "${compiler}" "${target_arch}" "${driver} (${target_arch} wrapper)" cross
+  done
+}
+
+
 smoke_target() {
   local target_arch="$1"
   local triplet
@@ -54,6 +65,7 @@ smoke_target() {
     fail "cross-ld (${triplet}-ld) not found"
   fi
 
+  check_cross_clang "${target_arch}"
   echo ""
 }
 
@@ -89,10 +101,20 @@ check_host_gcc() {
 check_llvm_clang() {
   # LLVM/Clang
   echo "--- LLVM/Clang ---"
-  check_version_major_minor "clang --version" "${LLVM_RELEASE}" "clang"
+  check_clang_version clang "${LLVM_RELEASE}" "clang"
   check_dumpmachine "$(command -v clang)" "$(smoke_host_machine)" "host clang"
-  check_version_major_minor "clang++ --version" "${LLVM_RELEASE}" "clang++"
+  check_clang_version clang++ "${LLVM_RELEASE}" "clang++"
   echo ""
+}
+
+# Every installed source utility must win PATH, not only the four compiler alternatives.
+check_native_llvm_tools() {
+  if python3 "${_SCRIPT_DIR}/probe-compiler-defaults.py" --llvm-version "${LLVM_RELEASE}" \
+      --native-llvm-prefix "/opt/llvm-target-$(smoke_host_arch)"; then
+    pass "native LLVM tool paths and full llvm-config pin"
+  else
+    fail "native LLVM tool selection or llvm-config pin"
+  fi
 }
 
 check_rust() {
@@ -274,6 +296,8 @@ main() {
   print_smoke_header "${host_arch}" "${target_arches}"
   check_host_gcc
   check_llvm_clang
+  check_cross_clang "${host_arch}"
+  check_native_llvm_tools
   check_rust "${target_arches}"
   check_node
   check_python "${target_arches}"

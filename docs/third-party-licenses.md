@@ -9,6 +9,13 @@ file, the `SPDX-License-Identifier: MIT` header on every source file, and the
 `org.opencontainers.image.licenses="MIT"` label on the published images.  Each
 upstream component below carries its own license terms.
 
+The Linux source MIGraphX backend also stages pybind11's original distribution
+notice under `share/licenses/migraphx-source-build/pybind11/LICENSE`. Staging
+binds the selected Python package version and configured CMake origin before
+checking the original notice hash. The original-text fixture and its source
+metadata move with a reviewed pybind11 pin; this checks one notice's provenance,
+not the complete linked binary's licence closure.
+
 ## Maintaining this list
 
 Everything between the `generated:deps-table` markers is **generated**. Editing
@@ -241,6 +248,18 @@ argument remains required for CLI compatibility. Copies of the script require
 the caller must still identify every library actually shipped and its other
 dependencies.
 
+For a disposable native bundle whose core matches a wheel only after target stripping,
+`stage-ort-wheel-licenses.py --restore-unstripped` can restore that wheel's original
+ELF bytes. Supply every `--library` inside `--destination`; linked roots/files,
+escaping parents and duplicate destinations refuse before any output. All libraries
+and original texts must first match one wheel. The shell API is
+`stage_ort_wheel_originals BUNDLE`; it retains the separate image plugin untouched.
+It validates a complete same-directory temporary and unchanged input before replacing
+each file. Copy or replacement failure is fatal and cleans unpublished temporaries;
+there is no whole-bundle rollback, concurrent-writer protocol or build authentication.
+A failed bundle remains unaccepted. Re-run strict finished-package checks with
+`--require-unstripped`; this staging operation does not establish GPU inference.
+
 `linux/scripts/06-packaging/ort-wheel-licenses.sh` shares bundle library
 selection and archive or native AppImage verification. Its relative layout
 includes `stage-ort-wheel-licenses.py`, `ort_census_probe.py`,
@@ -258,6 +277,12 @@ GPU SDK libraries. Its path and alias rules live in
 their tarball and DEB trees without a second copy. Run it after AppImage generation:
 the generator can alter ELF files after an install-tree check has passed. It does
 not prove GPU execution or account for other dependencies.
+
+AMD package consumers can pass a fourth provenance-file path to both
+`ort_package_stage_amdgpu_licenses` and `ort_package_verify_amdgpu`. It binds the image's
+original `provenance.txt` separately from the complete license tree; linked or changed
+files and paths outside the package refuse. Original source metadata does not establish
+linkage, licence completeness or GPU inference.
 
 <!-- generated:deps-table:start -->
 
@@ -352,6 +377,13 @@ not prove GPU execution or account for other dependencies.
 | --- | --- | --- | --- |
 | ROCm | 10.1 | [rocm.docs.amd.com](https://rocm.docs.amd.com/) | Apache 2.0 / MIT (varies by component) |
 | MIGraphX | 2.18.0 | [github.com/ROCm/AMDMIGraphX](https://github.com/ROCm/AMDMIGraphX) | MIT |
+| pybind11 (MIGraphX source-build Python headers) | 3.1.0 | [github.com/pybind/pybind11](https://github.com/pybind/pybind11) | BSD 3-Clause |
+| rocm-cmake (MIGraphX source-build tools) | 0.14.0 | [github.com/ROCm/rocm-cmake](https://github.com/ROCm/rocm-cmake) | MIT |
+| Composable Kernel host code generator (MIGraphX source dependency) | 1.0.0 | [github.com/ROCm/composable_kernel](https://github.com/ROCm/composable_kernel) | MIT |
+| msgpack-c (MIGraphX source headers) | 3.3.0 | [github.com/msgpack/msgpack-c](https://github.com/msgpack/msgpack-c) | Boost 1.0 (including bundled Boost Predef/Preprocessor) |
+| abseil-cpp (MIGraphX source parser dependency) | 20250512.0 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
+| Protocol Buffers + utf8_range (MIGraphX source parsers) | 30.0 | [github.com/protocolbuffers/protobuf](https://github.com/protocolbuffers/protobuf) | BSD 3-Clause + MIT (bundled utf8_range) |
+| rocmlirTriton (prepared source; binary closure review remains open) | 2.0.0 | [github.com/ROCm/rocmlirTriton](https://github.com/ROCm/rocmlirTriton) | Apache 2.0 with LLVM exception / MIT / legacy NCSA (primary texts) |
 
 ### Optional Accelerator — Hailo (`Dockerfile.torch`)
 
@@ -387,6 +419,7 @@ not prove GPU execution or account for other dependencies.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | OrchestrANT | develop | [github.com/Kataglyphis/OrchestrANT](https://github.com/Kataglyphis/OrchestrANT) | MIT |
+| NumPy | 2.5.4 | [numpy.org](https://numpy.org/) | BSD 3-Clause |
 
 ### LLM Stack (`llm-stack/Dockerfile`)
 
@@ -840,6 +873,7 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 This project patches the following upstreams before redistributing them. Both the Apache-2.0 and the GPL families require that modification be stated.
 
+- **MIGraphX — Linux Images** — The prepared Linux source build preserves negative zero-padding semantics and selects the pinned interpreter, paired Python config and extension ABI. Patches: `linux/scripts/patches/migraphx/001-preserve-zero-pad-maxpool.patch`, `linux/scripts/patches/migraphx/002-select-pinned-python.patch`.
 - **GStreamer — Windows Image** — The Windows build patches a GES symbol rename, and carries upstream GStreamer commit 17d22abe89 in gst-plugins-bad's ext/dtls/gstdtlsconnection.c (an empty BIO read signals retry, not EOF) until GSTREAMER_VERSION moves past 1.29.2. Patches: `windows/scripts/patches/gstreamer/001-ges-commit-rename.patch`.
 - **FFmpeg — Windows Image** — The Windows build patches configure to allow MSYS2 builds. Patches: `windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch`.
 

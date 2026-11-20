@@ -139,4 +139,21 @@ done
 t_assert_eq "base compiler runtime" "${_seen}" \
   "the caller's s must survive every call, including the return-1 path"
 
+t_case "media forwards explicit strict-WASM policy without leaking it to other stages"
+unset ORT_WEB_REQUIRED ORT_WASM_WEBGPU_FLAVORS
+_args=()
+cross_stage_build_args _args media arm64
+t_assert_rc 1 grep -F -q ORT_WEB_REQUIRED <<<"${_args[*]}"
+t_assert_rc 1 grep -F -q ORT_WASM_WEBGPU_FLAVORS <<<"${_args[*]}"
+_args=()
+ORT_WEB_REQUIRED=1 ORT_WASM_WEBGPU_FLAVORS=false cross_stage_build_args _args media arm64
+t_assert_contains "${_args[*]}" ORT_WEB_REQUIRED=1
+t_assert_contains "${_args[*]}" ORT_WASM_WEBGPU_FLAVORS=false
+_args=()
+ORT_WEB_REQUIRED=0 cross_stage_build_args _args media amd64
+t_assert_contains "${_args[*]}" ORT_WEB_REQUIRED=0
+_args=()
+ORT_WEB_REQUIRED=1 cross_stage_build_args _args compiler
+t_assert_rc 1 grep -F -q ORT_WEB_REQUIRED <<<"${_args[*]}"
+
 t_summary

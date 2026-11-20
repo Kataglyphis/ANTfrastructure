@@ -244,6 +244,7 @@ class ReceiptTests(unittest.TestCase):
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
         def fake_snapshot(checkout: Path, spec: dict[str, Any], expected: object) -> dict[str, object]:
             checkout.mkdir(parents=True, exist_ok=True)
+            (checkout / "source.txt").write_text(spec["name"] + " versioned fixture\n")
             return dict(snapshot, repository=spec["repository"])
         def fake_git(checkout: Path, *command: str) -> str:
             if command[0] == "status":
@@ -261,11 +262,11 @@ class ReceiptTests(unittest.TestCase):
                 module.check(args)
         return json.loads(args.receipt.read_text()), run.call_args_list
 
-    def test_passed_receipt_prunes_the_consumer_checkouts_and_keeps_the_logs(self) -> None:
+    def test_passed_receipt_keeps_versioned_consumer_sources_and_logs(self) -> None:
         receipt, _ = self.run_check()
         self.assertEqual(receipt["status"], "passed")
         sources = Path(self.directory.name) / "sources"
-        self.assertFalse((sources / "first").exists(), "a passed run leaves no 28 GB checkout behind (CON174)")
+        self.assertEqual((sources / "first/source.txt").read_text(), "first versioned fixture\n")
         self.assertTrue((sources / "first.log").exists(), "its log stays with the receipt")
 
     def test_failed_receipt_keeps_the_consumer_checkout_for_inspection(self) -> None:

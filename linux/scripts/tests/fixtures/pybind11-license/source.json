@@ -1,0 +1,8 @@
+{
+  "distribution": "pybind11",
+  "version": "3.1.0",
+  "sha256": "83965b843b98f670d3a85bd041ed4b372c8ec50d7b4a5995a83ac697ba675dcb",
+  "original_path": "pybind11-3.1.0.dist-info/licenses/LICENSE",
+  "source_image_manifest": "sha256:043982876b43a466ca2eede0e8da5461d66ddf1d18f602351df6b777cb45377e",
+  "scope": "Exact original installed distribution notice for the selected builder Python;not a full backend licence review."
+}

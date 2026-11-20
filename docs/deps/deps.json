@@ -375,7 +375,7 @@
           ]
         },
         {
-          "title": "Optional GPU — NVIDIA",
+          "title": "Optional GPU \u2014 NVIDIA",
           "dockerfile": "Dockerfile.nvidia",
           "entries": [
             {
@@ -402,7 +402,7 @@
           ]
         },
         {
-          "title": "Optional — NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only)",
+          "title": "Optional \u2014 NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only)",
           "dockerfile": "Dockerfile.media",
           "entries": [
             {
@@ -450,7 +450,7 @@
           ]
         },
         {
-          "title": "Optional GPU — AMD",
+          "title": "Optional GPU \u2014 AMD",
           "dockerfile": "Dockerfile.amd",
           "entries": [
             {
@@ -465,12 +465,90 @@
               "var": "MIGRAPHX_VERSION",
               "url": "https://github.com/ROCm/AMDMIGraphX",
               "license": "MIT",
+              "spdx": "MIT",
+              "source": {
+                "kind": "upstream-commit",
+                "url": "https://github.com/ROCm/AMDMIGraphX.git",
+                "ref_var": "MIGRAPHX_WINDOWS_COMMIT",
+                "patches": [
+                  "linux/scripts/patches/migraphx/001-preserve-zero-pad-maxpool.patch",
+                  "linux/scripts/patches/migraphx/002-select-pinned-python.patch"
+                ],
+                "note": "The prepared private Linux source build uses this exact source; the ordinary GPU image still uses the distro backend until production prefix wiring is validated."
+              },
+              "modified": {
+                "patches": [
+                  "linux/scripts/patches/migraphx/001-preserve-zero-pad-maxpool.patch",
+                  "linux/scripts/patches/migraphx/002-select-pinned-python.patch"
+                ],
+                "note": "The prepared Linux source build preserves negative zero-padding semantics and selects the pinned interpreter, paired Python config and extension ABI."
+              }
+            },
+            {
+              "name": "pybind11 (MIGraphX source-build Python headers)",
+              "var": "PY_PYBIND11_VERSION",
+              "url": "https://github.com/pybind/pybind11",
+              "license": "BSD 3-Clause",
+              "spdx": "BSD-3-Clause"
+            },
+            {
+              "name": "rocm-cmake (MIGraphX source-build tools)",
+              "var": "MIGRAPHX_ROCM_CMAKE_VERSION",
+              "url": "https://github.com/ROCm/rocm-cmake",
+              "license": "MIT",
               "spdx": "MIT"
+            },
+            {
+              "name": "Composable Kernel host code generator (MIGraphX source dependency)",
+              "var": "MIGRAPHX_CK_HOST_VERSION",
+              "url": "https://github.com/ROCm/composable_kernel",
+              "license": "MIT",
+              "spdx": "MIT",
+              "source": {
+                "kind": "upstream-commit",
+                "url": "https://github.com/ROCm/composable_kernel.git",
+                "ref_var": "MIGRAPHX_CK_COMMIT",
+                "note": "MIGraphX requirements pin the codegen subdirectory; preserve the original root LICENSE."
+              }
+            },
+            {
+              "name": "msgpack-c (MIGraphX source headers)",
+              "var": "MIGRAPHX_WINDOWS_MSGPACK_VERSION",
+              "url": "https://github.com/msgpack/msgpack-c",
+              "license": "Boost 1.0 (including bundled Boost Predef/Preprocessor)",
+              "spdx": "BSL-1.0"
+            },
+            {
+              "name": "abseil-cpp (MIGraphX source parser dependency)",
+              "var": "MIGRAPHX_WINDOWS_ABSEIL_VERSION",
+              "url": "https://github.com/abseil/abseil-cpp",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "Protocol Buffers + utf8_range (MIGraphX source parsers)",
+              "var": "MIGRAPHX_WINDOWS_PROTOBUF_VERSION",
+              "url": "https://github.com/protocolbuffers/protobuf",
+              "license": "BSD 3-Clause + MIT (bundled utf8_range)",
+              "spdx": "BSD-3-Clause AND MIT"
+            },
+            {
+              "name": "rocmlirTriton (prepared source; binary closure review remains open)",
+              "var": "MIGRAPHX_ROCMLIR_VERSION",
+              "url": "https://github.com/ROCm/rocmlirTriton",
+              "license": "Apache 2.0 with LLVM exception / MIT / legacy NCSA (primary texts)",
+              "spdx": "Apache-2.0 WITH LLVM-exception AND MIT AND NCSA",
+              "source": {
+                "kind": "upstream-commit",
+                "url": "https://github.com/ROCm/rocmlirTriton.git",
+                "ref_var": "MIGRAPHX_ROCMLIR_COMMIT",
+                "note": "Complete pinned source vendors LLVM/MLIR/LLD and Triton. Original source notices are preserved; selected-target per-file licence review and actual binary acceptance remain required."
+              }
             }
           ]
         },
         {
-          "title": "Optional Accelerator — Hailo",
+          "title": "Optional Accelerator \u2014 Hailo",
           "dockerfile": "Dockerfile.torch",
           "entries": [
             {
@@ -622,6 +700,13 @@
               "url": "https://github.com/Kataglyphis/OrchestrANT",
               "license": "MIT",
               "spdx": "MIT"
+            },
+            {
+              "name": "NumPy",
+              "var": "PY_NUMPY_VERSION",
+              "url": "https://numpy.org/",
+              "license": "BSD 3-Clause",
+              "spdx": "BSD-3-Clause"
             }
           ]
         },
@@ -792,7 +877,7 @@
               "var": null,
               "version_fixed": "bundled with Python",
               "url": "https://github.com/python/cpython-source-deps",
-              "license": "various (Apache 2.0, MIT, PD, …)",
+              "license": "various (Apache 2.0, MIT, PD, \u2026)",
               "spdx": "LicenseRef-Distro-Bundle",
               "source": {
                 "kind": "upstream-tag",
@@ -977,7 +1062,7 @@
               }
             },
             {
-              "name": "GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …)",
+              "name": "GStreamer meson subprojects (glib, orc, libnice, x264, openh264, \u2026)",
               "var": null,
               "version_fixed": "per wrap files",
               "url": "https://gstreamer.freedesktop.org/",
@@ -1004,7 +1089,7 @@
               }
             },
             {
-              "name": "Rust crates linked into gstrswebrtc.dll and gstrsrtp.dll (gstreamer-rs, gtk-rs-core, tokio, rustls, ring, …)",
+              "name": "Rust crates linked into gstrswebrtc.dll and gstrsrtp.dll (gstreamer-rs, gtk-rs-core, tokio, rustls, ring, \u2026)",
               "var": null,
               "version_fixed": "pinned by gst-plugins-rs's Cargo.lock at the GStreamer tag",
               "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs",
@@ -1322,7 +1407,7 @@
               "spdx": "MIT"
             },
             {
-              "name": "vcpkg packages (zlib, protobuf — linked into builds)",
+              "name": "vcpkg packages (zlib, protobuf \u2014 linked into builds)",
               "var": null,
               "version_fixed": "vcpkg baseline",
               "url": "https://github.com/microsoft/vcpkg",
@@ -1568,7 +1653,7 @@
               "spdx": "Apache-2.0"
             },
             {
-              "name": "Stevedore (Windows builds — bundled docker.exe)",
+              "name": "Stevedore (Windows builds \u2014 bundled docker.exe)",
               "var": null,
               "version_fixed": "host install",
               "url": "https://github.com/slonopotamus/stevedore",

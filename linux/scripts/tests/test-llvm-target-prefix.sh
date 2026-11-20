@@ -278,7 +278,7 @@ t_assert_eq "" "$(printf '%s\n' "${_PAY_SRC}" | grep -e 'repair_llvm_target_sona
   "a call left behind after the function went would break every package build"
 
 t_case "the loader-path half is kept -- import tvm depends on it"
-_PUB_SRC="$(t_fn_src "${PAY}" publish_llvm_target_ld_path)" || exit 1
+_PUB_SRC="$(t_fn_src "${TESTS_DIR}/../06-packaging/llvm-loader-path.sh" publish_llvm_target_ld_path)" || exit 1
 t_assert_contains "${_PUB_SRC}" "/etc/ld.so.conf.d/000-llvm-target.conf" \
   "libtvm_compiler.so's DT_NEEDED libLLVM.so.<ver> resolves through this and nothing else"
 t_assert_contains "${_PUB_SRC}" "ldconfig" "a conf file nothing reads is not a loader path"
