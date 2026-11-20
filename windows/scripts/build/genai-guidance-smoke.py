@@ -12,10 +12,6 @@ import tempfile
 from types import ModuleType
 from typing import Any
 
-# One legal answer, which the tiny model's successor rule never predicts from its prompt: only a live mask can produce it.
-SCHEMA = {"enum": [7]}
-
-
 def load_fixture(path: str) -> ModuleType:
     """Import the fixture writer, whose hyphenated name import statements cannot reach."""
     spec = importlib.util.spec_from_file_location("tiny_genai_model", path)
@@ -41,8 +37,8 @@ def generate(og: ModuleType, model: Any, tokenizer: Any, oracle: dict[str, Any],
     return tokenizer.decode(tokens)
 
 
-def run(fixture_script: str) -> str:
-    """Return the constrained answer after proving the unconstrained control follows the model."""
+def run(fixture_script: str) -> tuple[str, str]:
+    """(the constrained answer, the fixture's expected one) after proving the unconstrained control follows the model."""
     # Only the image provides it; ty checks this script without the image's site-packages.
     og = importlib.import_module("onnxruntime_genai")
 
@@ -55,18 +51,19 @@ def run(fixture_script: str) -> str:
         control = generate(og, model, tokenizer, oracle, None)
         if control != oracle["continuation"]:
             raise AssertionError(f"the control run gave {control!r}, expected {oracle['continuation']!r}")
-        answer = generate(og, model, tokenizer, oracle, SCHEMA)
+        case = oracle["schema_case"]
+        answer = generate(og, model, tokenizer, oracle, case["schema"])
         # The temporary directory cannot go while the native model still holds its files.
         del tokenizer, model
-    return answer
+    return answer, case["answer"]
 
 
 def main() -> int:
     """Print the sentinel only for the one answer the schema allows."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture", required=True, help="path of tiny-genai-model.py")
-    answer = run(parser.parse_args().fixture)
-    if json.loads(answer) != 7:
+    answer, expected = run(parser.parse_args().fixture)
+    if json.loads(answer) != json.loads(expected):
         raise AssertionError(f"the constrained answer breaks the schema: {answer!r}")
     print(f"genai-guidance-schema-ok {answer}")
     return 0

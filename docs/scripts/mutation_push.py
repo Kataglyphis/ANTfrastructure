@@ -119,6 +119,16 @@ def split_pwsh(entries: Sequence[E], root: str, pwsh_here: Callable[[], bool]) -
     return [e for e in entries if not verdict[str(e["test"])]], wanting
 
 
+def refuse_without_pwsh(entries: Sequence[E], root: str, say: Callable[[str], None]) -> bool:
+    """Name the tests that start pwsh on a host without it; run, each would exit 127, a vacuous bite."""
+    _here, wanting = split_pwsh(entries, root, host_has_pwsh)
+    if wanting:
+        # The commit hook reruns its sample in the image on this line (CON279).
+        say(f"FAIL: pwsh is not on PATH, so {len(wanting)} selected test(s) cannot run here: "
+            + ", ".join(str(e["id"]) for e in wanting))
+    return bool(wanting)
+
+
 def set_aside(entries: Sequence[E], root: str, refuse: Callable[[list[E]], tuple[list[E], int]],
               say: Callable[[str], None]) -> tuple[list[E], list[E], int]:
     """(entries to prove here, entries CI proves, refuse's code); pwsh ones leave before the parse check, which needs pwsh."""

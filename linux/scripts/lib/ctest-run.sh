@@ -28,6 +28,8 @@ ${CTEST_RUN_USAGE_INTRO:-Runs the ctest suite of a CMake project.} Options:
   --build-dir DIR          build tree to run ctest in (default: ${CTEST_RUN_DEFAULT_BUILD_DIR:-build})
   --build-type CONFIG      value for ctest -C (default: ${CTEST_RUN_DEFAULT_BUILD_TYPE:-Debug})
   --ctest-exclude REGEX    value for ctest -E (default: ${CTEST_RUN_DEFAULT_EXCLUDE:-<none>})
+  --timeout SECONDS        per-test limit, ctest --timeout; 0 sets none (default: ${CTEST_RUN_DEFAULT_TIMEOUT:-1500})
+  --fail-on-skipped REGEX  fail when a test whose name matches REGEX is skipped; Disabled never counts (env: CTEST_FAIL_ON_SKIPPED)
 EOF
   vulkan_env_cli_usage
   cat <<EOF
@@ -48,6 +50,14 @@ _ctest_run_other_arg() {
   esac
 }
 
+# Only ever called as a condition, so errexit cannot fire inside; 2 is an invalid pattern, 1 a miss.
+_ctest_run_matches() {
+  local rc
+  [[ "$1" =~ $2 ]] 2>/dev/null
+  rc=$?
+  return "${rc}"
+}
+
 ctest_run_parse_args() {
   CTEST_RUN_PASSTHROUGH=()
 
@@ -58,6 +68,8 @@ ctest_run_parse_args() {
     [--build-dir]=BUILD_DIR
     [--build-type]=BUILD_TYPE
     [--ctest-exclude]=CTEST_EXCLUDE
+    [--timeout]=CTEST_TIMEOUT
+    [--fail-on-skipped]=CTEST_FAIL_ON_SKIPPED
   )
   parse_cli_value_options _value_options CTEST_RUN_PASSTHROUGH _ctest_run_other_arg "$@"
 
@@ -65,6 +77,13 @@ ctest_run_parse_args() {
   BUILD_DIR="${BUILD_DIR:-${BUILD_DIR_DEFAULT:-${CTEST_RUN_DEFAULT_BUILD_DIR-build}}}"
   BUILD_TYPE="${BUILD_TYPE:-${BUILD_TYPE_DEFAULT:-${CTEST_RUN_DEFAULT_BUILD_TYPE:-Debug}}}"
   CTEST_EXCLUDE="${CTEST_EXCLUDE:-${CTEST_EXCLUDE_DEFAULT:-${CTEST_RUN_DEFAULT_EXCLUDE:-}}}"
+  # CTest's own DART_TESTING_TIMEOUT: a hung test ends named, not at the lane's 60 to 150 minute limit.
+  CTEST_TIMEOUT="${CTEST_TIMEOUT:-${CTEST_RUN_DEFAULT_TIMEOUT:-1500}}"
+  [[ "${CTEST_TIMEOUT}" =~ ^[0-9]+$ ]] || err "--timeout needs whole seconds, got: ${CTEST_TIMEOUT}"
+  CTEST_FAIL_ON_SKIPPED="${CTEST_FAIL_ON_SKIPPED:-}"
+  local _regex_rc=0
+  _ctest_run_matches "" "${CTEST_FAIL_ON_SKIPPED}" || _regex_rc=$?
+  [[ "${_regex_rc}" -ne 2 ]] || err "--fail-on-skipped needs an extended regular expression, got: ${CTEST_FAIL_ON_SKIPPED}"
 }
 
 # Environment preparation: git refuses a host-owned bind mount until it is marked safe.
@@ -88,7 +107,70 @@ ctest_run_build_command() {
     CTEST_CMD+=(-E "${CTEST_EXCLUDE}")
   fi
 
+  # A --timeout the caller passes after -- is the one ctest applies.
+  if [[ "${CTEST_TIMEOUT}" != 0 && " ${CTEST_RUN_PASSTHROUGH[*]:-} " != *" --timeout "* ]]; then
+    CTEST_CMD+=(--timeout "${CTEST_TIMEOUT}")
+  fi
+
   CTEST_CMD+=("${CTEST_RUN_PASSTHROUGH[@]:+${CTEST_RUN_PASSTHROUGH[@]}}")
+}
+
+# Prints "<ran|skipped|disabled> TAB <reason> TAB <name>" per test of ctest's JUnit report.
+_ctest_run_junit_results() {
+  python3 -I - "$1" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+for case in ET.parse(sys.argv[1]).getroot().iter("testcase"):
+    skipped = case.find("skipped")
+    if case.get("status") == "disabled" or (skipped is not None and skipped.get("message") == "Disabled"):
+        kind, reason = "disabled", "Disabled"
+    elif skipped is not None:
+        kind, reason = "skipped", skipped.get("message", "")
+    else:
+        kind, reason = "ran", case.get("status", "")
+    print(f"{kind}\t{reason}\t{case.get('name', '')}")
+PY
+}
+
+# A skip is not a pass: JUnit marks ctest's Skipped and Not Run tests, and only Disabled ones are exempt.
+_ctest_run_check_skipped() {
+  local report="$1" results kind reason name matched=0 disabled=0 skipped=0
+  results="$(_ctest_run_junit_results "${report}")" || {
+    warn "--fail-on-skipped: ctest wrote no readable JUnit report at ${report}"
+    return 1
+  }
+  while IFS=$'\t' read -r kind reason name; do
+    [[ -n "${kind}" ]] && _ctest_run_matches "${name}" "${CTEST_FAIL_ON_SKIPPED}" || continue
+    matched=$((matched + 1))
+    case "${kind}" in
+      disabled) disabled=$((disabled + 1)) ;;
+      skipped) skipped=$((skipped + 1)); warn "Skipped, which --fail-on-skipped forbids: ${name} (${reason})" ;;
+    esac
+  done <<< "${results}"
+  if [[ "${skipped}" -gt 0 ]]; then
+    warn "--fail-on-skipped: ${skipped} of ${matched} tests matching ${CTEST_FAIL_ON_SKIPPED} were skipped"
+    return 1
+  fi
+  info "--fail-on-skipped: ${matched} tests match ${CTEST_FAIL_ON_SKIPPED}, none skipped (${disabled} disabled)"
+}
+
+# The report ctest writes: the caller's last --output-junit, else a temporary one appended here.
+_ctest_run_junit_report() {
+  local i
+  CTEST_RUN_JUNIT_REPORT=""
+  CTEST_RUN_JUNIT_OWNED=0
+  for ((i = 0; i < ${#CTEST_CMD[@]} - 1; i++)); do
+    [[ "${CTEST_CMD[i]}" != --output-junit ]] || CTEST_RUN_JUNIT_REPORT="${CTEST_CMD[i + 1]}"
+  done
+  if [[ -n "${CTEST_RUN_JUNIT_REPORT}" ]]; then
+    # A report left by an earlier run must not stand in for this one.
+    rm -f "${CTEST_RUN_JUNIT_REPORT}" || err "Cannot remove the old JUnit report: ${CTEST_RUN_JUNIT_REPORT}"
+    return 0
+  fi
+  CTEST_RUN_JUNIT_REPORT="$(mktemp "${TMPDIR:-/tmp}/ctest-run-junit.XXXXXX")" || err "Cannot create a JUnit report file"
+  CTEST_RUN_JUNIT_OWNED=1
+  CTEST_CMD+=(--output-junit "${CTEST_RUN_JUNIT_REPORT}")
 }
 
 ctest_run_execute() {
@@ -101,8 +183,20 @@ ctest_run_execute() {
 
   ctest_run_build_command
 
+  local rc=0
+  if [[ -n "${CTEST_FAIL_ON_SKIPPED:-}" ]]; then
+    command -v python3 >/dev/null 2>&1 || err "--fail-on-skipped reads ctest's JUnit report with python3, which is not on PATH"
+    _ctest_run_junit_report
+  fi
+
   info "Executing: ${CTEST_CMD[*]}"
-  "${CTEST_CMD[@]}"
+  "${CTEST_CMD[@]}" || rc=$?
+
+  if [[ -n "${CTEST_FAIL_ON_SKIPPED:-}" ]]; then
+    _ctest_run_check_skipped "${CTEST_RUN_JUNIT_REPORT}" || [[ "${rc}" -ne 0 ]] || rc=1
+    [[ "${CTEST_RUN_JUNIT_OWNED}" -eq 0 ]] || rm -f "${CTEST_RUN_JUNIT_REPORT}"
+  fi
+  return "${rc}"
 }
 
 # Full pipeline: parse args, prepare the environment, run the suite.

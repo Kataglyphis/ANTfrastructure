@@ -1176,8 +1176,9 @@ Why these four, read from `ort-sys` 2.0.0-rc.13 (the checksum OxidANT's
   bundle must carry the chain DLL or `.so` beside the app.
 - Keep `ORT_LIB_PATH` unset and never export a falsy `CARGO_NET_OFFLINE`.
 - On the Linux GPU variants the variables name the CPU chain build, which is what
-  `ld.so` resolves. A GPU consumer points both at `onnxruntime-gpu/lib`, which is
-  chain-built too. On `:winarm64` they name the aarch64 chain ORT.
+  `ld.so` resolves. An NVIDIA consumer points both at `onnxruntime-gpu/lib`, which is
+  chain-built too; rocm has no such tree, its MIGraphX EP is the plugin under
+  `ORT_AMDGPU_EP_ROOT` over the CPU core. On `:winarm64` they name the aarch64 chain ORT.
 - `ORT_DYLIB_PATH` is baked in, so inside the image a program that honours it loads
   the image's copy, not one staged beside its exe. A bundle smoke run inside the
   image should unset it to exercise the staged copy.

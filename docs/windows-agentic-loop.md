@@ -285,7 +285,7 @@ and both loops pick it up.
 | `Get-BlockedTaskCount [-BacklogPath <path>]` | Count blocked `- [b]` lines in BACKLOG.md. |
 | `Remove-CheckedBacklogTasks [-BacklogPath <path>]` | Delete completed `- [x]` task blocks (title line plus indented body); returns how many. Bash counterpart: `remove_checked_tasks [backlog]`. |
 | `Get-UsageLimitWaitSeconds -Output <string>` | Detect a Claude usage/session-limit failure and return seconds to sleep until the stated reset (0 = not a limit failure). |
-| `Invoke-GitAutoCommit -Message <string> [-RepoRoot <path>] [-Enabled <bool>]` | `git add -A && git commit` with a message. Bash counterpart: `invoke_git_auto_commit <message> [repo_root] [enabled]`. |
+| `Invoke-GitAutoCommit -Message <string> [-RepoRoot <path>] [-Enabled <bool>]` | Stages tracked changes (`git add -u`) and new text files of at most 500 KiB, logs each file it leaves out, and commits. Returns `$false` when git refuses, and the loop stops with exit code 1 before the build; nothing to commit is no failure. Bash counterpart: `invoke_git_auto_commit <message> [repo_root] [enabled]`, exit 1. |
 
 ### Build / Test / Quality Wrappers
 
@@ -373,6 +373,7 @@ The config is read from `AgenticLoop.config.json`. Key sections:
 | `intervals.agentRetryDelaySeconds` | `[int]` | 20 | Base backoff delay between agent retries |
 | `intervals.fixBuildFailures` | `[bool]` | `true` | Dispatch the fixer agent after a failed build, then rebuild once |
 | `intervals.maxConsecutiveBuildFailures` | `[int]` | 3 | Stop the loop after N consecutive failed build phases |
+| `intervals.maxConsecutiveGateFailures` | `[int]` | 3 | Stop the loop with exit code 1 after N consecutive failed commit gates |
 | `intervals.waitForUsageLimitReset` | `[bool]` | `true` | When an agent fails because the Claude usage/session limit was hit, sleep until the reset time stated in the message (+2 min) and retry without burning a retry attempt (capped at 10 waits per invocation) |
 | `buildMatrix.windows` | `[array]` | — | Windows build matrix entries (objects with name, sanitizer, buildDir, buildType, testCommand) |
 | `buildMatrix.linux` | `[array]` | — | Linux build matrix entries |
@@ -384,6 +385,7 @@ The config is read from `AgenticLoop.config.json`. Key sections:
 | `build.linuxQualityCommand` | `[string]` | — | Quality command for Linux |
 | `git.autoCommit` | `[bool]` | `true` | Auto-commit after each completed task |
 | `git.commitPrefix` | `[string]` | `agentic-loop` | Prefix for auto-commit messages |
+| `git.commitGate` | `[string]` | — | A command run from the repo root before each auto-commit, for example `bash scripts/linux/run-lint-gates.sh`. A failure keeps the task uncommitted (the next passing gate commits it with its successor) and counts toward `maxConsecutiveGateFailures`; a pass resets the count |
 | `backlog.skipPlannerWhenTasksPending` | `[bool]` | `true` | Skip the planner phase while `BACKLOG.md` still has actionable `- [ ]` tasks. Blocked `- [b]` entries don't count, and a zero-progress iteration forces the planner to run next iteration (starvation guard); if the planner ran and the executor still made no progress, the loop stops |
 | `backlog.deleteCompletedTasks` | `[bool]` | `true` | Prune completed (`- [x]`) task blocks from `BACKLOG.md` after each task (history lives in git) |
 | `logging.logDir` | `[string]` | `logs/agentic-loop` | Repo-relative log directory, read by `Initialize-AgenticLoop` (the Bash loop always uses the default) |

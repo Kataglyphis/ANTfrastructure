@@ -205,17 +205,21 @@ def declared_meta(row: dict[str, object]) -> tuple[str, str, str, str]:
             str(row.get("class", CODE)))
 
 
+def pattern_hits(ctx: Context, row: dict[str, object]) -> list[tuple[str, int, str]]:
+    """(file, line number, line) of every match of one pattern row; verify_pattern_limits.py reads them too."""
+    rx = re.compile(str(row["pattern"]))
+    return [(rel, number, line)
+            for rel in selected(ctx, row)
+            for number, line in enumerate(text_lines(ctx.root, rel) or [], 1)
+            if rx.search(line)]
+
+
 def pattern_metric(ctx: Context, row: dict[str, object]) -> Metric:
     """A counted regex over declared paths, set-valued so a swapped match still regresses."""
     name = str(row.get("name", "?"))
     try:
         name, unit, better, klass = declared_meta(row)
-        rx = re.compile(str(row["pattern"]))
-        hits = []
-        for rel in selected(ctx, row):
-            for number, line in enumerate(text_lines(ctx.root, rel) or [], 1):
-                if rx.search(line):
-                    hits.append((rel, number, normalise(line)))
+        hits = [(rel, number, normalise(line)) for rel, number, line in pattern_hits(ctx, row)]
     except (KeyError, ValueError, re.error) as exc:
         return failed(name, "matches", LOWER, CODE, "quality-report.toml", str(exc))
     source = f"git ls-files {' '.join(strings(row, 'paths'))} | grep -E '{row['pattern']}'"

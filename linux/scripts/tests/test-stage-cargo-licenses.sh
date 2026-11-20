@@ -64,11 +64,27 @@ nested = json.loads(json.dumps(policy)); nested["packages"]["app@1.0.0"]["files"
 bad = json.loads(json.dumps(policy)); bad["packages"]["app@1.0.0"]["files"].append({"root": "workspace", "path": "packaging/LICENSE", "sha256": sha(workspace / "LICENSE"), "provenance": "same name"}); save("workspace-name-clash.json", bad)
 notice = work / "registry" / "notice-only"; notice.mkdir(); (notice / "Cargo.toml").write_text("[package]\n"); (notice / "NOTICE").write_text("notice only\n")
 bad = json.loads(json.dumps(metadata)); bad["packages"][1].update({"manifest_path": str(notice / "Cargo.toml"), "license_file": None, "license": "MIT"}); save("notice-only.json", bad)
+graph = json.loads(json.dumps(metadata))
+extra = {"macro": ("1.0.0", "proc-macro"), "helper": ("1.0.0", "lib"), "gfx-core": ("0.3.0", "lib"), "cc": ("1.0.0", "lib")}
+for crate_name in extra:
+    crate_root = work / "registry" / crate_name
+    crate_root.mkdir()
+    (crate_root / "Cargo.toml").write_text("[package]\n")
+    (crate_root / "LICENSE").write_text(f"{crate_name} license\n")
+    graph["packages"].append({"id": f"{crate_name}-id", "name": crate_name, "version": extra[crate_name][0], "manifest_path": str(crate_root / "Cargo.toml"), "license": "MIT", "license_file": None, "source": "registry+https://example.test/index", "targets": [{"kind": [extra[crate_name][1]]}]})
+    graph["resolve"]["nodes"].append({"id": f"{crate_name}-id", "deps": []})
+nodes = {node["id"]: node for node in graph["resolve"]["nodes"]}
+edges = [("crate-id", "macro-id", None), ("macro-id", "helper-id", None), ("crate-id", "gfx-core-id", None), ("app-id", "cc-id", "build")]
+for edge in edges:
+    nodes[edge[0]]["deps"].append({"pkg": edge[1], "dep_kinds": [{"kind": edge[2], "target": None}]})
+save("graph.json", graph)
+(work / "graph-tree.txt").write_text("app v1.0.0 (/workspace/app)\ncrate v1.2.0\nmacro v1.0.0\nhelper v1.0.0\ngfx-core v0.3.0\ncc v1.0.0\n")
+(work / "graph-normal-tree.txt").write_text("app v1.0.0 (/workspace/app)\ncrate v1.2.0\nmacro v1.0.0\ngfx-core v0.3.0\n")
 PY
 
 run_collector() {
   python3 "$SCRIPT" --workspace "$work/workspace" --root-package app --target x86_64-pc-windows-msvc \
-    --metadata "$work/${1}" --policy "$work/${2}" --output-dir "$work/${3}"
+    --metadata "$work/${1}" --policy "$work/${2}" --output-dir "$work/${3}" "${@:4}"
 }
 
 t_case 'the selected normal graph stages original package, nested and workspace texts'
@@ -111,6 +127,8 @@ mkdir -p "$work/bin"
 cat > "$work/bin/cargo" <<'SH'
 #!/usr/bin/env bash
 if [[ "${1:-}" = --version ]]; then printf 'cargo 1.2.3 (fixture)\n'; exit 0; fi
+if [[ "${1:-}" = tree && " $* " = *" normal,build "* ]]; then cat "$CARGO_FIXTURE_TREE"; exit 0; fi
+if [[ "${1:-}" = tree ]]; then cat "$CARGO_FIXTURE_NORMAL_TREE"; exit 0; fi
 printf '%s\n' "$@" > "$CARGO_FIXTURE_LOG"
 if [[ "${CARGO_FIXTURE_RC:-0}" -ne 0 ]]; then exit "$CARGO_FIXTURE_RC"; fi
 cat "$CARGO_FIXTURE_METADATA"
@@ -122,6 +140,64 @@ t_assert_eq $'metadata\n--locked\n--offline\n--filter-platform\nx86_64-pc-window
 t_assert_fails env PATH="$work/bin:$PATH" CARGO_FIXTURE_LOG="$work/cargo-args" CARGO_FIXTURE_METADATA="$work/metadata.json" CARGO_FIXTURE_RC=7 \
   python3 "$SCRIPT" --workspace "$work/workspace" --root-package app --target x86_64-pc-windows-msvc --policy "$work/policy.json" --output-dir "$work/cargo-failed"
 t_assert_fails test -e "$work/cargo-failed"
+
+graph_run() { run_collector graph.json policy.json "$@" 2>&1; }
+
+t_case 'without the graph options every selected package stages, proc macros included, and no budget line prints'
+out="$(graph_run graph-default)"; rc=$?
+t_assert_eq 0 "$rc"
+t_assert_contains "$out" 'license files for 5 Cargo packages'
+t_assert_eq 0 "$(grep -c -e 'runtime' <<<"$out")"
+
+t_case 'a forbidden name anywhere in the staged graph fails before staging and prints its dependency path'
+out="$(graph_run forbid-out --forbid-package 'gfx*' --forbid-package helper)"; rc=$?
+t_assert_eq 1 "$rc"
+t_assert_contains "$out" 'forbidden Cargo package gfx-core@0.3.0 (gfx*): app@1.0.0 -> crate@1.2.0 -> gfx-core@0.3.0'
+t_assert_contains "$out" 'forbidden Cargo package helper@1.0.0 (helper): app@1.0.0 -> crate@1.2.0 -> macro@1.0.0 -> helper@1.0.0'
+t_assert_fails test -e "$work/forbid-out"
+
+t_case 'a dev or unselected build dependency, a partial name and another case are not forbidden matches'
+t_assert_rc 0 graph_run forbid-none --forbid-package dev --forbid-package cc --forbid-package gfx --forbid-package Crate
+
+t_case 'an empty or unsafe pattern, a budget below the root and a budget over fixture metadata fail before staging'
+t_assert_rc 1 graph_run bad-empty --forbid-package ''
+t_assert_rc 1 graph_run bad-space --forbid-package 'gfx core'
+t_assert_contains "$(graph_run bad-zero --max-runtime-packages 0)" 'counts the root, so it needs at least 1'
+t_assert_rc 2 graph_run bad-word --max-runtime-packages many
+t_assert_contains "$(graph_run bad-fixture --max-runtime-packages 9)" 'counts the live Cargo tree, not --metadata'
+t_assert_fails test -e "$work/bad-fixture"
+
+printf '#!/usr/bin/env bash\nprintf "rustc 1.2.3 (fixture)\\nhost: x86_64-unknown-linux-gnu\\n"\n' > "$work/bin/rustc"
+chmod +x "$work/bin/rustc"
+live_run() {
+  local out="$1"
+  shift
+  env PATH="$work/bin:$PATH" RUSTC="$work/bin/rustc" CARGO_FIXTURE_LOG="$work/cargo-args" CARGO_FIXTURE_METADATA="$work/graph.json" \
+    CARGO_FIXTURE_TREE="$work/graph-tree.txt" CARGO_FIXTURE_NORMAL_TREE="$work/graph-normal-tree.txt" python3 "$SCRIPT" \
+    --workspace "$work/workspace" --root-package app --target x86_64-pc-windows-msvc --policy "$work/policy.json" \
+    --output-dir "$work/${out}" "$@" 2>&1
+}
+
+t_case 'the runtime budget counts the live normal-edge tree, not the staged metadata graph or build edges'
+out="$(live_run budget-ok --max-runtime-packages 4)"; rc=$?
+t_assert_eq 0 "$rc"
+t_assert_contains "$out" 'license files for 5 Cargo packages'
+t_assert_contains "$out" 'PASS: 4 runtime Cargo packages, within the budget of 4'
+out="$(live_run budget-over --max-runtime-packages 3)"; rc=$?
+t_assert_eq 1 "$rc"
+t_assert_contains "$out" 'FAIL: Cargo graph gate:'
+t_assert_contains "$out" '4 runtime Cargo packages exceed the budget of 3'
+t_assert_fails test -e "$work/budget-over"
+
+t_case 'the live tree scope forbids a build dependency with its path and still budgets only normal edges'
+out="$(live_run tree-ok --graph-scope tree-normal-build --max-runtime-packages 4)"; rc=$?
+t_assert_eq 0 "$rc"
+t_assert_contains "$out" 'license files for 6 Cargo packages'
+t_assert_contains "$out" 'PASS: 4 runtime Cargo packages, within the budget of 4'
+out="$(live_run tree-cc --graph-scope tree-normal-build --forbid-package cc)"; rc=$?
+t_assert_eq 1 "$rc"
+t_assert_contains "$out" 'forbidden Cargo package cc@1.0.0 (cc): app@1.0.0 -> cc@1.0.0'
+t_assert_fails test -e "$work/tree-cc"
 
 t_case 'malformed and foreign Cargo graphs cannot pass'
 for metadata in no-kind.json wrong-workspace.json outside-license.json missing-manifest.json; do

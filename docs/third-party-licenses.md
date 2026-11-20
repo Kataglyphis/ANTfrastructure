@@ -212,6 +212,18 @@ used with tree selection or feature flags. Neither the Cargo graph
 nor this collector proves what was actually linked, covers native dependencies,
 or resolves corresponding-source obligations.
 
+Two optional graph gates fail before anything is staged; without them the stager
+behaves as before. `--forbid-package PATTERN`, repeatable, is a case-sensitive glob
+(`wgpu*`) over the selected graph's package names, and each match fails with its
+shortest path from the root over the scope's edges
+(`app@1.0.0 -> crate@1.2.0 -> wgpu@0.20.0`). `--max-runtime-packages N` counts what
+live `cargo tree --edges normal` lists for the root, target and feature flags, the
+root and proc macros included and build dependencies not, and fails above N with the
+count; it refuses `--metadata`. The conservative metadata graph holds more than that:
+for OxidANT's `kataglyphis_cxx_bridge` at `398021a` it staged 129 packages on aarch64
+Linux and 130 on x86_64 Linux and Windows, against a normal tree of 55 on all three
+(2026-11-19). Neither gate sees native libraries.
+
 The native ONNX Runtime finalizer now copies `LICENSE` and
 `ThirdPartyNotices.txt` from the checkout it actually builds to the corresponding
 output's `licenses/` directory, before the source tree is removed. A consumer

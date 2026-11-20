@@ -56,6 +56,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
   proof remains scoped to that commit and platform. Preserve the original
   failure and require a new whole native result; targeted fixture checks do
   not replace it. See [the diagnosed discrepancy](docs/failure-modes.md#qnn-query-receipts-differ-between-filesystems).
+  Integrating newer develop changes requires complete native and Windows
+  qualification of the resulting commit, including the isolated consumer-hook
+  fixtures; no predecessor result transfers to that merged source.
 
 - [x] Add the versioned bounded installer, normal-user preview/Apply/status,
   fixed protected policy, explicit disposable-container marker and canonical
@@ -221,7 +224,7 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
   the CPU baseline that GPU consumers must continue to support.
 - **CUDA architectures:** CON217 adds Turing, so RTX 20xx cards can run the NVIDIA packages.
 - **Results on a GPU:** CON220 covers wrong DirectML output that the provider checks do not see.
-- **GenAI threads:** CON218 covers the default thread count on pinned CPUs.
+- **GenAI threads:** CON218 (the default thread count on pinned CPUs) is done since 2026-11-19.
 - **riscv64 ORT:** CON219 covers the 4-bit `MatMulNBits` crash on RVV.
 - **Image readiness and capacity:** CON90 and CON174 track the ROCm Python rollout and
   measured disk requirements for GPU consumer builds.
@@ -242,7 +245,7 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
   QNN is arm64-only: about 0.4 GB of packages plus OpenVINO. Only the XPU torch (CON261) replaces a
   default component and is multi-GB. `:amd64-intel` does not fit the tag grammar; the names are
   `:latest-intel` and `:winamd64-intel`.
-- **Already open, and larger on every x86 CPU:** CON218 (GenAI threads) and CON191 (`libdnnl.so.3`,
+- **Already open, and larger on every x86 CPU:** CON191 (`libdnnl.so.3`,
   still absent on `a106e548…`). An explicit WebGPU session on that image also falls back to the CPU
   provider (`DawnProcTable must be provided`); CON233's WebGPU work owns that.
 - **The scratch probes** sit untracked in `logs/reports/intel-amd-cpu-20261110/` on the build host.
@@ -287,7 +290,8 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
 - [ ] **CON260 — OpenVINO, its ORT provider as a chain-built plugin, and the NPU driver** [L, ★★★].
       `OPENVINO_VERSION=2026.4.1` is pinned and Renovate-tracked, yet nothing fetches OpenVINO:
       `ffmpeg_probe_libopenvino` always skips, the image's FFmpeg has no `--enable-libopenvino`, and the
-      probe's fallback literal `2026.2.1` differs from the pin. Read 2026-11-10:
+      probe had a fallback literal `2026.2.1` (gone 2026-11-20: it takes the passed pin or the synthetic
+      `.pc`'s default). Read 2026-11-10:
       1. ORT v1.31.1's tree carries the provider's `OrtEpFactory` (`core/providers/openvino/ov_factory.cc`);
          nobody built it here.
       2. Intel's `onnxruntime-ep-openvino` 1.8.1 is binary-only (52.6 MB Linux, 75.8 MB Windows) and
@@ -299,7 +303,7 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
 
       Build OpenVINO at the pin and the provider as a plugin over the chain's CPU prefix, with QNN's
       export, census and verify contracts; add the NPU user-space driver; then wire FFmpeg's
-      backend at the pin (owner 2026-11-12) and drop the probe's literal. amd64 only. Done when `verify_ort_profile.py` shows operators on the
+      backend at the pin (owner 2026-11-12). amd64 only. Done when `verify_ort_profile.py` shows operators on the
       OpenVINO provider on the owner's Intel GPU and NPU, and a device-less check reports registration only.
 - [b] **CON261 — PyTorch on Intel GPUs: a torch-only `-intel` tag** [M, ★★]. **Postponed indefinitely**
       (owner 2026-11-12): the approach below is approved, and it is built only if he gets an Intel GPU. `torch` 2.14.1+xpu for cp315 is 861 MB on Linux and 768 MB on Windows,
@@ -349,6 +353,8 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
 
       Done when `check_amd64_isa` passes on a published amd64 image and both measurements are recorded.
       **Owner 2026-11-17:** not yet. First the "before" numbers on the published `:latest` on an idle host; the chain waits for his go after them.
+      **Owner 2026-11-20:** he takes them with each consumer's `quality-report.sh --perf-host --update-baseline` on a fresh
+      clone, the `:latest` digest noted; the "after" run is the compare mode on the same commits once the chain published.
 
 - [ ] **CON265 — Windows x64: the source builds that get no CPU flag** [M, ★]. Read 2026-11-12, source only:
       the amd64 `SimdFlags` of `WindowsTargetArch.Common.psm1` (AVX2, FMA, SSE4.2) reach ONNX Runtime,
@@ -625,6 +631,7 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       FTP logins). Owner first: add `DEV_WASM_SITE_URL` and `DEV_SITE_URL`. Then one step after each
       dev upload, passing the URL by name (`-e DEV_WASM_SITE_URL`); the WASM check must run before
       the CanvasKit build replaces `build/web`. Done when a develop push shows both checks green.
+      **Owner 2026-11-20:** he adds the two secrets and says so; the steps follow then.
 
 - [ ] **CON150 — the uncaught `postMessage` TypeError on jonasheinle.de's landingPage and error404** [S, ★★].
       Found 2026-10-21, when jotrockenmitlocken 1.4.1 went to main: the live check saw one
@@ -640,20 +647,6 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       navigation and cookie notice, so reproduce by loading `/#/landingPage` 50 times at 1280x800
       with the console captured. Done when the cause is named and fixed in its own repo, and the
       retry logs no `flaky:` line on 50 consecutive runs.
-
-- [ ] **CON234 — the three detectors' golden tests get the same pixels, and the contract rows read 0** [S, ★★].
-      What is left of the decode contract of 2026-11-12. Done since: ModelANT `a6eaca1` carries nine decode cases
-      with a recipe per rule, its contract lists the metadata keys and their values, OxidANT, AccelerANTgine and
-      OrchestrANT pin it and replay every case, and all three refuse a model whose `kataglyphis.preprocess` or
-      `kataglyphis.output` contradicts what the detector does (C++ and Rust since 2026-11-13).
-      1. A decoded, lossless copy of `two_cats` in ModelANT's `contracts/fixtures/` (PNG, or raw RGB with its
-         SHA-256 in the contract), so the three golden tests give the model the same pixels. Today three JPEG
-         decoders feed them, and one box's score differs by 0.019 between two recordings (not double-checked).
-      2. Done 2026-11-14: ModelANT `7b02dfb` names each detector's guard under rule 4 (OrchestrANT's and
-         AccelerANTgine's suppression recipes, OxidANT's replayed case).
-
-      Done when the three golden tests read the lossless copy at one ModelANT pin and fleet-health's contract
-      rows (CON247) read 0.
 
 - [ ] **CON236 — the Windows publish dispatches the consumers' lanes too** [S, ★★]. Owner decision 2026-11-13:
       after each publish every consumer's lanes run once on the new image. `build-runtime-manifest.sh`
@@ -751,32 +744,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([`docs/language-ai.md` § Roadmap](docs/language-ai.md#roadmap)). ORT is built for Android
       (`03-media/build/onnxruntime/android/build-android.sh`, `Dockerfile.android:125`); GenAI is not. Left: build
       GenAI against that ORT in the android stage. Proving it needs a chain.
-- [ ] **CON237 — the text contract's shared cases: a schema case, stream lines, and a page that matches the code** [M, ★★].
-      Found by the audit of 2026-11-12. [`language-ai.md` § The test model](docs/language-ai.md#the-test-model)
-      says a binding test reads the tiny model's `fixture.json` "instead of retyping the numbers", but `write()`
-      in `linux/scripts/lib/tiny-genai-model.py` puts only the prompt, its ids, the continuation, `max_length`
-      and the end token there. The JSON-schema case is typed again in five consumer test files and in the
-      hub's own `windows/scripts/build/genai-guidance-smoke.py` (`SCHEMA`). Error kinds and OpenAI stream
-      lines are typed per language and have started to differ: a schema error is `InvalidOptions` in C++ and
-      `GenerationFailed` in Rust, and Rust's stream reader fails on a broken chunk that Python skips.
-      1. The page. `:winamd64` ships llguidance (LAI-H2), but "What the images carry", the text contract and
-         the LAI-H2 roadmap row still say Windows needs a chain to ship it. "Every binding … offers the
-         same calls against two backends" is wrong for AccelerANTgine, which has no endpoint client: say
-         which binding has which backend.
-      2. `fixture.json` gains the schema case, the schema and its expected answer; the old keys stay. The
-         smoke script reads it from there.
-      3. One hub file of OpenAI stream lines with their expected events or error: `data:` without a space, a
-         usage-only chunk, an error object, a plain-text error, an `error:` line, a stream cut before
-         `[DONE]`, reasoning deltas and finish reason `length`. It moves here once OxidANT's `endpoint.rs`
-         tests read it beside OrchestrANT's (the two-consumer rule); Dart later.
-      4. Later: a `cases` list in `fixture.json` (name, messages, options, then text, ids and finish reason,
-         or an error kind). A new case reaches a repo only at its hub pin bump, and AccelerANTgine's contract
-         test pins one case on purpose, so plan it with that repo.
-
-      Done when `test-tiny-genai-model.sh` reads the schema case back, the image smoke replays it, Rust and
-      Python read the one stream file, and the page names each binding's backends. Items 1 and 2 need no
-      consumer.
-
 ## Open — Linux image (all arches)
 
 - [ ] **CON238 — two test tools the images lack: cargo-mutants and pytest-timeout** [S, ★★]. Found by the audit
@@ -853,32 +820,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       try a newer DirectML, and report it upstream. Done when an image check fails on this shape on
       that card, or a shipped DirectML passes it.
 
-- [ ] **CON218 — GenAI's default thread count ignores the CPU affinity mask** [S, ★★].
-      Found 2026-11-02 by `--perf-host` on an AMD Ryzen 9 5950X pinned to 8 CPUs: the shipped SmolLM2-135M
-      config gave about 92 tok/s and 143 ms to first token, with TTFT spread above 8 %. A copy fixed to 7
-      threads (`lib/genai-model-threads.py`) gave about 314 tok/s and 20 ms, and the perf baselines use that
-      copy, so their text figures are not the shipped default. Done when a shipped config respects the
-      mask, or the consumers set a bounded thread count, and a measurement quotes the unmodified model.
-      **Consumer half:** ObservANT's `llm_threads` (default 2) caps its in-process GenAI model at load since OxidANT
-      701476e (`OgaConfigOverlay`), and its `/ask` answers report the time to the first token and the decode rate.
-      The detector's side of the same cause is CON240.
-      **On a Pi 5, 2026-11-15** (4 CPUs in the CI image): SmolLM2-135M decoded 104 tokens per second on one thread
-      and 34 on seven, and a seven-thread description took the detector beside it from 238 ms to 1157 ms (one
-      thread: 570 ms); OrchestrANT's describe engine decodes on one thread since (owner decision). Both
-      `perf-host.sh` (OrchestrANT and AccelerANTgine) still build `smollm2-perf` with
-      `genai-model-threads.py --threads 7`, the Ryzen's choice, so a Pi baseline would record an oversubscribed
-      model. Since 2026-11-15 `genai-model-threads.py --threads auto` takes CON240's rule (7 on the Ryzen pinned to 8,
-      as the baselines used; 3 on a Pi 5). Measured there at 1, 2, 3 and 4 threads: 161, 92, 73 and 72 ms to the
-      first token, 109, 92, 80 and 71 tokens per second, so more threads speed the prefill and slow the decode, and
-      a 48-token reply is quickest on one or two. Left: OrchestrANT's, AccelerANTgine's and OxidANT's
-      `perf-host.sh` pass `--threads auto` at their next hub pin; whether a shipped text default follows the
-      detector's rule or a text rule of its own is the owner's call on these numbers.
-      **Owner decision 2026-11-17, revised the same day on a Pi 5 measurement:** a shipped text default takes half the
-      detector's pool, 1 to 4, and one thread beside a running detector ([`onnxruntime-single-source.md` § The text
-      thread rule](docs/onnxruntime-single-source.md#the-text-thread-rule)). In source: AccelerANTgine 41468fb,
-      OxidANT and OrchestrANT with their next push. Left: `genai-model-threads.py` learns `--threads text` and the
-      three `perf-host.sh` pass it, so a perf baseline records the shipped text default.
-
 - [ ] **CON219 — ORT reads a null scale pointer in 4-bit `MatMulNBits` on riscv64 RVV** [M, ★★★].
       Found 2026-11-02 with OxidANT's SmolLM2-135M contract test under QEMU, image index `7d4d4129`: a fault in
       `libonnxruntime.so.1.31.0` at `0x150150c` on `flw fa5, 0x0(s10)`, `s10=0x1f80`. In ORT v1.31.0's
@@ -940,11 +881,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★]. In source (CHANGELOG 2026-11-03,
       `_disk_guard_release_stale_records`), tested with stubs only. Done when the next chain resumed after a stop
       logs `left by a stopped chain: restarting buildkitd` and reclaims without a hand restart.
-- [ ] **CON153 leftover — the chain says at start whether the asset-mirror secret is present** [S, ★]. The mirror
-      itself is proved: with the keys installed, the rocm media stage of 2026-11-07 (run 20261107-192205) logged
-      `asset-mirror| hit` for all ten plugin-EP archives that `fill-asset-mirror.sh --apply` had mirrored from the
-      previous run's misses. What stayed invisible for two rounds was the ABSENCE of the host env file:
-      `host_secret_file_ready` is silent on a missing file. One `[INFO] asset mirror: none` line at chain start.
 - [ ] **CON129 — finish GTK 4 validation on foreign arches and GPU variants** [M, ★★★].
       The mandatory `gui_unix` feature is enabled in OxidANT. On the recorded `3c558d88` index,
       its x64 run `39865676735` passed 728 normal and 728 instrumented tests with real Xvfb/GTK;
@@ -1245,7 +1181,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the cached digest does not establish the contents of today's mutable tags. A local
       AccelerANTgine package using this image cannot pass its required VP8 capability check.
 
-
 - [ ] **CON184 - provide provenance and license texts for Windows GStreamer runtime dependencies** [M].
       **In source 2026-11-04, unproved in an image.** `WindowsNativeProvenance.Common.psm1` writes
       `C:\runtime\share\native-provenance\gstreamer.json` from meson's records before cleanup, and the merge and smoke gates fail on a
@@ -1278,7 +1213,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       A prospective AccelerANTgine install from the NVIDIA image reached this notice gate and
       rejected all seven DLLs, so it produced no installer; see
       `_implementation/accelerant-win-prospective3-20261031-build.log`.
-
 
 - [ ] **CON185 - provide Windows GStreamer tensor inference elements** [M].
       **Mostly a consumer fix (checked 2026-11-04).** `tensor_transform` and `tensor_decoder` are NNStreamer's, and no `onnxruntime` element
@@ -1515,7 +1449,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       which nothing defines; `docs/consumer-image-contract.md` 1114-1116 points every GPU consumer at
       `onnxruntime-gpu/lib`, which rocm no longer has; `AGENTS.md` 1243-1244 says the verify stages fail an in-tree
       MIGraphX provider, which only the runtime smoke does; CON233 names per-language registration helpers that
-      `shared/` does not hold.
+      `shared/` does not hold. **Fixed 2026-11-20:** the accelerator page names `/usr/local/lib/onnxruntime-gpu` and
+      the runtime gate's real plugin-EP checks (root, module, both exports, closure), the contract sends only NVIDIA
+      consumers to `onnxruntime-gpu/lib`, `AGENTS.md` says the verify stage fails the in-tree TensorRT provider and the
+      smoke both; CON233 no longer names such helpers.
       (j) **The Python bundle's library closure, seen 2026-11-13.** OrchestrANT's first AMD bundle on the
       plugin-only image (run 43409294907, job *inventory (amd, x64, latest-rocm)*, hub pin ed3d170) stops in
       `elf-closure.sh`: `runtime/lib/python3.15/site-packages/onnxruntime/capi/libmigraphx-ep.so: libonnxruntime.so.1`
@@ -2064,7 +2001,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 
 
-
 - [ ] **CON162 — step labels in the published images** [S, ★★]. In source since 2026-10-26: a
       `LABEL kataglyphis.step=<name>` before each of the 104 RUNs in `linux/Dockerfile.*`, graded by
       `verify_dockerfile_step_labels.py`, and `layer-audit.py` prints each layer's step. Done when
@@ -2106,14 +2042,15 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 ## Open — Linux arm64 and riscv64
 
 - [ ] **CON145 — `cxxbridge` in the Linux and Windows images** [S, ★★]. Found 2026-10-21 with
-      BeschleunigerBallett 7f54642c: every BB configure runs an unpinned `cargo install cxxbridge-cmd` at build time
-      (`_myproject_find_or_install_cxxbridge`, `third_party/CMakeLists.txt:103`). `CXXBRIDGE_CMD_VERSION=1.0.205` matches
-      OxidANT's lock; the two must match. **Windows:** `:winamd64`, `:winarm64`, `:winamd64-nvidia` and `:winamd64-rocm`
-      of 2026-10-28/29 carry that ARG in their history, and `Test-Container.ps1:455` asserts the binary. Left:
-      - `:latest` (web-lane tools, three arches) and the NVIDIA and ROCm variants: no Linux script installs it. An
-        AccelerANTgine GPU package check had to compile it in its container, and an OmniAccelerANT CUDA build failed
-        installing it from an incomplete offline Cargo cache. Verify the pinned binary before publication.
-      - BB's helper refuses a missing or mismatched binary in CI.
+      BeschleunigerBallett 7f54642c, whose configure ran an unpinned `cargo install cxxbridge-cmd` at build time.
+      `CXXBRIDGE_CMD_VERSION=1.0.205` matches OxidANT's lock; the two must match. **Windows:** `:winamd64`, `:winarm64`,
+      `:winamd64-nvidia` and `:winamd64-rocm` of 2026-10-28/29 carry that ARG in their history, and
+      `Test-Container.ps1:455` asserts the binary. **BB deleted that helper on 2026-11-19:** nothing read its result, and
+      Corrosion takes a `cxxbridge` at the lock's `cxx` version or builds exactly that one. Left:
+      - `:latest` (web-lane tools, three arches) and the NVIDIA and ROCm variants: no Linux script installs it, so every
+        fresh Linux or riscv64 BB build directory compiles `cxxbridge` 1.0.205 through Corrosion. An AccelerANTgine GPU
+        package check had to compile it in its container, and an OmniAccelerANT CUDA build failed installing it from an
+        incomplete offline Cargo cache. Verify the pinned binary before publication.
 
 - [ ] **CON110 — OrchestrANT's riscv64 free-threaded leg needs a seeded cache** [M, ★]. The seed's second pass on X.Yt
       and the torch stage's `ar` fix are in source since 2026-10-20 (CHANGELOG); from that seed OrchestrANT de144d10's `3.14t`
@@ -2237,19 +2174,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Done when the smoke gate proves VP8 with `webrtcsink`'s encoder settings and a `webrtcsrc` viewer, red
       on today's image and green on a chain's `:winamd64`, and `SourceBuild.GstreamerWebRtc.Tests.ps1` holds
       the VP8 call with a mutation recipe. The arm64 bundle was not checked.
-
-- [ ] **CON254 — `New-PortableBundle` returns its package check's output with its result** [S, ★★★]. Found
-      2026-11-12: AccelerANTgine's two Windows lanes stopped at "The property 'Bundle' cannot be found on this
-      object" (run 43220521132), one push after its hub pin moved to d66d390. Line 173 of
-      `windows/scripts/modules/WindowsCrossBundle.Common.psm1` calls `& $PackageCheck` unassigned. The default
-      check, `Assert-PackageMsvcRuntimeNotice`, runs the Python verifier through `Assert-PackageLicense`
-      (`WindowsMsiLicense.Common.psm1`), and a native command's standard output is pipeline output: the caller
-      gets the verifier's lines and then the object. The runner's output is kept out and has a test
-      (`windows/scripts/tests/CrossBundle.Common.Tests.ps1`, "a passed runner's output does not join the result
-      either"); the package check came later and has none. AccelerANTgine, the only caller, takes the last
-      object since its 2d91dbc. First step: discard the check's output inside the function and add the twin
-      test with a chatty `-PackageCheck`. Done when that test fails without the discard and a recipe in the
-      mutation manifest removes it.
 
 ## Open — the Windows arm64 bundle and unpublished variants
 
@@ -2555,162 +2479,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       953d6f6, `Invoke-DartChecks.ps1 -Engine wslc`, analyze 146 s against nerdctl's
       371 s, format + test 23 s against 32 s (2026-10-06).
 
-- [ ] **CON242 — one consumer runs its Linux test step through `run-in-ci-image.sh` on a named volume** [S, ★★].
-      The helper takes `--volume NAME:/PATH`, `--env NAME=VALUE` and `--privileged` since 2026-11-13, runs as root by
-      itself under a rootless engine on Linux and names the local image's creation date
-      ([`shared-script-libraries.md` § `run-in-ci-image.sh`](docs/shared-script-libraries.md#run-in-ci-imagesh--run-a-command-in-the-ci-image)).
-      Left: no consumer page gives its local test run through it yet; AccelerANTgine's pages gave no local container
-      command at all. Each consumer takes it at the pin bump that brings the options.
-      Done when one consumer's documented Linux test command is this helper with a named volume, and it was run once.
-
-- [ ] **CON269 — what the consumer hook pair and the staleness gate leave open** [S, ★★]. Found 2026-11-12
-      while CON243 and CON244 were built; what is built is in `CHANGELOG.md` and
-      [`adopting-in-a-new-project.md` § The git hooks, by reference](docs/adopting-in-a-new-project.md#the-git-hooks-by-reference).
-      1. No hook checks line endings in a consumer. The hub's `crlf-guard` is a function of
-         `preflight.sh` over the hub's own shell files, and `run-lint-gates.sh` has no such gate.
-         First step: move that check into a script that takes `--root`, then call it from the staged
-         checks and the full gates.
-      2. `lint-shell.sh` without arguments scans `linux/` only, so no gate lints
-         `shared/linux/templates/git-hooks/*`. They were checked by hand with
-         `bash linux/scripts/lint-shell.sh <file>`.
-      3. The refusal of `--index` without `--staged` has a test and no mutation recipe: its mutant runs
-         the downloaded linters inside `test-lint-gates.sh`.
-      4. The commit hook's large-file check is `verify_large_files.py --root`, which refuses a tracked
-         file that is missing from disk. A deletion that is not staged yet stops every commit until it
-         is; AccelerANTgine's clone on the Linux dev host was in that state on 2026-11-12. First step:
-         the gate sniffs the blob (`git cat-file`) in place of the working-tree file.
-      5. The config line is relative, so a linked worktree whose hub submodule is not checked out has
-         no hook: in a scratch clone of OxidANT a 1 MB binary was committed there without one line of
-         output, and the `core.hooksPath` warning stays silent because the setting is not empty.
-         An absolute path fails such a commit with the bootstrap's `git submodule update` hint.
-         The aggregator cannot warn there, it is in the missing submodule. First step: decide between
-         the absolute path per clone and a check in the copied bootstrap `antfrastructure.sh`.
-
-      Done when a staged CRLF shell script stops a commit
-      in `test-consumer-hooks.sh`, a default `lint-shell.sh` run lists both hook files, a commit passes
-      beside an unstaged deletion, and a commit in a worktree without the submodule is stopped or named.
-
-- [ ] **CON245 — a `kind = "pattern"` row with `max = 0` fails the lint gates** [S, ★★]. Found by the audit of
-      2026-11-12: many AGENTS.md rules are one pattern, and two sampled ones hold by habit only
-      (AccelerANTgine: no direct `g_print`, `printf` or `std::cout` in `Src/`; OxidANT: no `[features]` table
-      in any `Cargo.toml`). `pattern_metric` (`linux/scripts/quality_report_text.py:208`) counts such a row,
-      and a regression is reported, not enforced (`.github/workflows/code-quality-report.yml:111`).
-      First step: the row may carry `max = 0`, and `run-lint-gates.sh` fails when such a row has a match,
-      printing file and line. No new rule registry.
-      Done when `test-lint-gates.sh` fails on a planted match in a fixture tree, the gate has its mutation
-      recipe and its lines in the `run-lint-gates.sh` section of `docs/shared-script-libraries.md`, and the
-      two consumers have added their row with one recipe each.
-
-- [ ] **CON246 — a rise in oversized Rust, Dart or C++ functions shows in `--compare`** [S, ★★]. Found by the
-      audit of 2026-11-12. `functions_over_80_lines_extra_languages` is class `REPORT`
-      (`linux/scripts/quality_report_tree.py:113`), so `quality-report.sh --compare` never grades it,
-      fleet-health shows a change as `moved`, and the size ratchets bind shell and Python only
-      ([`code-quality-tooling.md` § Extra-language readers](docs/code-quality-tooling.md#extra-language-readers-report-only)).
-      The reader found 35 oversized functions of 2290 in OxidANT, 10 of 352 in AccelerANTgine and 31 in
-      OmniAccelerANT, about 22 of those Dart test `main()` bodies.
-      1. `linux/scripts/lang_units.py` tells a Dart test `main()` from product code, so the graded count is
-         not mostly tests.
-      2. The metric moves from `REPORT` to a graded class.
-
-      File size and complexity for these languages stay report-only. Done when `test-quality-report.sh`
-      shows a planted 81-line Rust function as `regressed` on a fixture, `test-lang-units.sh` covers the
-      test-body rule, and the page says which extra-language number is graded.
-
-- [ ] **CON247 — fleet-health shows lane debt, reruns, contract drift and pin lag** [M, ★★]. Found by the audit
-      of 2026-11-12. None of these rows exists in `linux/scripts/fleet_health_github.py` or
-      `fleet_health_tree.py` today. In order of value:
-      1. `lane.<workflow>.commits_since_green`: develop commits after the head commit of that workflow's last
-         green develop run. It needs no path map and also shows debt from portable code. Measured since
-         2026-10-16: a Windows-path commit waited a median of 21 to 23 hours for a Windows run in
-         OmniAccelerANT, OxidANT and AccelerANTgine, and about 137 hours in OrchestrANT.
-      2. `ci.<workflow>.rerun_rate`: the share of the last 20 develop runs that needed a second attempt,
-         without the reruns whose first attempt failed in the disk-refusal step (`retry-disk-refusal.yml`
-         reruns those on purpose). `ci_runs` reads the run list already.
-      3. `shared_facts.contract_inference_v1` and `shared_facts.contract_text_generation_v1`: the SHA-256 of
-         ModelANT's two contract files as each repo sees them (a submodule, a lock file's hash or a tracked
-         copy), distinct values minus one, built like `shared_facts.models_lock_deim`.
-      4. For OmniAccelerANT, how far its OxidANT and AccelerANTgine gitlinks lag their develop, as
-         `hub_pin.lag_commits` does for the hub.
-      5. `bench_history.<artifact>.days_since_sample`, so the history of an on-request lane that stopped
-         moving shows. The audit asks for a red row when OxidANT's newest `criterion-arm64` sample is older
-         than 14 days (not double-checked).
-      6. Per consumer, the lanes with no develop run since the image tag they pull (`:latest`, `:winamd64`)
-         was last published: the report-only half of CON236, which needs no decision.
-
-      Each row gets a case in `test-fleet-health.sh`, a mutation recipe and a line in
-      [`fleet-health.md`](docs/fleet-health.md). Done when a weekly `fleet-health.yml` record carries all six.
-      Not taken from the audit: a per-repo lane-to-path table, and a hook that stops a push without its
-      `[ci <lane>]` token. A path hint, if it comes, is a warning in the lint lane's summary only.
-
-- [ ] **CON248 — the agentic loop reads git's exit code and stages by rule** [S, ★]. Found by the audit of
-      2026-11-12 and read in the hub's code. `invoke_git_auto_commit`
-      (`linux/scripts/lib/agentic-loop.sh:232-237`) runs `git add -A` and `git commit`, each with
-      `2>/dev/null || true`. `Invoke-GitAutoCommit` (`windows/scripts/modules/WindowsAgenticLoop.Common.psm1:867-874`)
-      logs `Committed` without reading the exit code. The loop's own commit comes before its build and
-      quality phases (`_agentic_after_task_phases`), an advisory phase returns 0 whatever its command
-      returned, and `shared/agentic-loop/system-prompts/executor.md:71` tells the agent to run `git add -A`.
-      The same prompt has the agent build, and test when the task says so, before it commits (steps 6, 7
-      and 9), so what is missing is a check the loop runs itself. A refused commit is silent, and a core
-      file or a test output in the tree would be committed. Low today: the four AI consumers do not run the
-      loop, and the 19 MB core file of that week came from an agent session that ran `git add -A` by hand.
-      Due before a consumer adopts the loop.
-      1. Both twins read git's exit code. A refused commit is a failed phase, and the log says what happened.
-         The Bash twin's comment, "a commit error never fails the loop", changes with it.
-      2. Stage with `git add -u` plus new text files under the large-files limit (`LIMIT_KIB`, 500, in
-         `linux/scripts/verify_large_files.py`), and log what was left out. The prompt says "stage the files
-         you changed by name".
-      3. A commit gate from a config key runs before the commit; a consumer sets its
-         `bash scripts/linux/run-lint-gates.sh`. Its failures are capped like `maxConsecutiveBuildFailures`.
-
-      Done when `test-agentic-loop.sh` and `WindowsAgenticLoop.Common.Tests.ps1` prove three new cases, each
-      with a mutation recipe: a planted untracked 1 MB binary is not committed, a failing gate stops the
-      commit and returns non-zero, and a failing `git commit` is reported as failed.
-
-- [ ] **CON249 — a read-only doctor says when the checkout, the local image or the tools are stale** [M, ★★].
-      Found by the audit of 2026-11-12: a month-old local image, a uv older than the lock format and a tree
-      about 100 commits behind each cost an hour of wrong debugging, and nothing said so. The hub has no
-      doctor for consumers (`linux/scripts/01-core/cross-env-doctor.sh` is for cross builds).
-      First step: `linux/scripts/dev-doctor.sh <repo-root>`, one line per finding, exit 1 on any, writing
-      nothing:
-      - commits behind `origin/develop`, from `git ls-remote` on the public https URL against the local refs
-        (a fetch writes refs, and fails without a loaded key; `git-sync-branches.sh --dry-run` prints the
-        count too, but it fetches);
-      - submodules at their recorded gitlinks, and `core.hooksPath` set;
-      - the local CI image's creation date, with a warning above 7 days;
-      - uv and the lint tools against `versions.env` (`UV_VERSION` is 0.13.7; the dev host had 0.11.3).
-
-      Offline, each remote check prints `could not check` and does not fail; the doctor never pulls.
-      Also: a row in `docs/scripts/consumer_pins.py` that holds a repo's `[tool.uv]` `required-version`,
-      written as a lower bound, at or below `UV_VERSION`.
-      Done when a new `test-dev-doctor.sh` passes on fixtures (a clone three commits behind, a recording
-      engine with an old image, an old uv on `PATH`) with a mutation recipe per check, and
-      `docs/shared-script-libraries.md` describes the script.
-
-- [ ] **CON250 — the shared test runners name a hang and report per test** [M, ★★]. Found by the audit of
-      2026-11-12, each read in the hub's code:
-      1. `linux/scripts/lib/ctest-run.sh` sets no `--timeout` (a caller can pass one after `--`), so a hung
-         C++ test ends at the lane's limit of 60 to 150 minutes without a test name. Add a default that a
-         caller's own value replaces.
-      2. `linux/scripts/02-toolchain/rust/cargo_test.sh` runs `cargo test --all --verbose` and writes no
-         result file, so OxidANT's test counts and durations are recorded nowhere. Write per-test JUnit from
-         the output, for every Rust consumer, with no new tool in the image.
-      3. Done 2026-11-16: `ci_tests.sh` measures each `PYTHON_COVERAGE_EXTRA` tree (`coverage-extra` on
-         `python-ci-linux.yml`, `DIR=MIN`) with its own report and floor, and the package's report leaves
-         them out. OrchestrANT's `benchmarks/` measured 91.0 % (4,202 of 4,616 statements), the package
-         alone 71.0 % on the test extra.
-
-      Done when `test-lib-ctest-run.sh`, `test-cargo-wrapper.sh` and `test-verify-test-reports.sh` cover the
-      new behaviour with a mutation recipe each, OxidANT's quality report records Rust test counts, and
-      OrchestrANT's lane prints a second percentage for `benchmarks/`. The pytest-timeout half is CON238.
-
-- [ ] **CON252 — `check_gpu_detector_parity.py` moves to `shared/python/`** [S, ★]. Found by the audit of
-      2026-11-12: OxidANT's and OmniAccelerANT's `scripts/windows/check_gpu_detector_parity.py` (186 and 183
-      lines) share about 110 lines, with the photo's hash typed into each. Two consumers, so the rule for
-      moving code upstream is met.
-      First step: one copy beside `shared/python/compare_detector_parity.py`, with the launcher command as
-      an argument and a test under `shared/python/tests/`.
-      Done when both repos call the hub copy and have deleted their own.
-
 - [ ] **CON253 — Home Assistant keeps the cameras' model time, and warns when it rises** [S, ★★]. Found by the
       audit of 2026-11-12: no performance budget covers the Pi-class boards the cameras run on, as the
       perf-host baselines are for one desktop CPU. ObservANT's `/healthz` already reports `model_ms`,
@@ -2722,5 +2490,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       (`catcam_evening_summary` in `automations.yaml`).
       Later, once ObservANT's `/healthz` names its `backend` and `execution_provider`, which is OxidANT's
       change: a sensor for each, so a silent fall back to tract shows (not double-checked).
+      **In source 2026-11-19:** three sensors per cam, the day and week medians and `catcam_model_time_rise` in
+      `packages/catcam_performance.yaml`, `model_ms` in the 21:00 summary, the README rows; Home Assistant's
+      `check_config` passes it. Deployed to the live instance on 2026-11-19 (owner's leave that day, applied as a
+      patch over its uncommitted lines; all 16 entities registered). Left: from 2026-11-26, a week of `model_ms` per
+      camera, then fire `catcam_model_time_rise` once with a test value (Developer tools, set a day median).
       Done when `linux/homeassistant/README.md` lists the sensors under "The cat cams", the live instance has
       kept a week of `model_ms` for each camera, and the alert has fired once on a test value.

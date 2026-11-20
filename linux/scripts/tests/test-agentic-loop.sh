@@ -112,14 +112,16 @@ _drain() { _lib "
 _AL[repo_root]='${_work}'; _AL[delete_completed]=false; _AL[max_retries]=2
 _AL[tasks_completed]=0; _AL[consecutive_build_failures]=0
 _AL[max_consecutive_build_failures]=3
-_agentic_after_task_phases() { :; }
+_agentic_after_task_phases() { return ${2:-0}; }
 invoke_agent() { ${1}; }
 _agentic_drain_executor_queue 1; echo \"rc=\$?\"
 echo \"completed=\${_AL[tasks_completed]}\""; }
 
+# The faked executor ticks the first open task.
+_TICK="sed -i '0,/^- \[ \]/s//- [x]/' '${_work}/BACKLOG.md'"
 t_case "the drain runs until the queue is empty and counts every completed task"
 printf -- '- [ ] one\n- [ ] two\n' > "${_work}/BACKLOG.md"
-_out="$(_drain "sed -i '0,/^- \[ \]/s//- [x]/' '${_work}/BACKLOG.md'")"
+_out="$(_drain "${_TICK}")"
 t_assert_contains "${_out}" "Tasks in queue: 2"
 t_assert_contains "${_out}" "completed=2"
 t_assert_contains "${_out}" "rc=0"
@@ -131,6 +133,13 @@ t_assert_contains "${_out}" "Retry 1/2"
 t_assert_contains "${_out}" "Max retries reached"
 t_assert_contains "${_out}" "completed=0"
 t_assert_contains "${_out}" "rc=0" "a stalled queue ends the drain; it is not a loop failure"
+
+t_case "a refused auto-commit stops the drain, so the next task is not piled onto it"
+printf -- '- [ ] first\n- [ ] second\n- [ ] third\n' > "${_work}/BACKLOG.md"
+_out="$(_drain "${_TICK}" 1)"
+t_assert_contains "${_out}" "Auto-commit refused or its gate failed too often — stopping queue drain"
+t_assert_contains "${_out}" "completed=1"
+t_assert_contains "${_out}" "rc=1"
 
 t_case "a backlog holding only BLOCKED tasks reads as an empty queue"
 printf -- '- [b] blocked on the SDK\n' > "${_work}/BACKLOG.md"

@@ -226,6 +226,7 @@ owning page above.
 | What to read in a running chain's log | [`build-watch-list.md`](build-watch-list.md) | The 2026-09-05 wave's closure changes, grouped by stage: the log line that proves each one worked and the line that means it failed, plus the read-only probes to run on the shipped bytes afterwards. Why: eleven backlog entries closed on static proof, and a first rebuild attempt still found two build-killing bugs. |
 | Open refactor work, Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | What changed and why, current wave | [`../CHANGELOG.md`](../CHANGELOG.md) |
+| Changelog entries 2026-11-13 … 2026-11-14 | [`changelog-archive-2026-11-14.md`](changelog-archive-2026-11-14.md) | Preserved Linux and Windows build, test and acceptance history. |
 | Changelog entries 2026-11-07 … 2026-11-12 | [`changelog-archive-2026-11-12.md`](changelog-archive-2026-11-12.md) | Build, cache, packaging, consumer hooks and acceptance history. |
 | Changelog entries 2026-11-05 … 2026-11-06 | [`changelog-archive-2026-11-06.md`](changelog-archive-2026-11-06.md) | Compiler caches, Windows TensorRT acquisition and GPU runtime fixes. |
 | Changelog entries 2026-11-05 | [`changelog-archive-2026-11-05.md`](changelog-archive-2026-11-05.md) |

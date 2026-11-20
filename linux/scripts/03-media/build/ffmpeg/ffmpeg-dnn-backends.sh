@@ -286,10 +286,11 @@ ffmpeg_probe_libopenvino() {
     [ -z "${ov_base}" ] && { echo "Skipping libopenvino: SDK not found."; return 1; }
 
     local ov_lib_dir
+    # The pin from versions.env when the stage passes it; no literal of its own, which went stale (2026.2.1 against 2026.4.1).
     [ -d "${ov_base}/runtime/lib" ] && ov_lib_dir="${ov_base}/runtime/lib" || ov_lib_dir="${ov_base}/lib"
     if ffmpeg_enable_via_synth_pkgconfig "libopenvino" "openvino" \
         "openvino/c/openvino.h" "ov_get_openvino_version" "${ov_base}" \
-        "-I${ov_base}/runtime/include" "-L${ov_lib_dir} -lopenvino" "${OPENVINO_VERSION:-2026.2.1}"; then
+        "-I${ov_base}/runtime/include" "-L${ov_lib_dir} -lopenvino" "${OPENVINO_VERSION:-}"; then
         return 0
     fi
 

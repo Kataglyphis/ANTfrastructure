@@ -8,7 +8,7 @@ t_private_tmpdir
 HUB="${TESTS_DIR%/linux/scripts/tests}"
 HOOKS_REL=third_party/ANTfrastructure/shared/linux/templates/git-hooks
 # A hook or a CI runner that starts this suite must not hand its own git or CI state to the fixtures.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX CI
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_CEILING_DIRECTORIES CI
 # Sourced for the gate lists and the notice function; the hooks run the copy inside each fixture.
 # shellcheck source=../run-lint-gates.sh
 source "${HUB}/linux/scripts/run-lint-gates.sh"
@@ -17,13 +17,17 @@ _work="$(t_mktemp -d)"
 # A developer's global core.hooksPath or signing key must not decide what a fixture's git does.
 : > "${_work}/gitconfig"
 export GIT_CONFIG_GLOBAL="${_work}/gitconfig" GIT_CONFIG_NOSYSTEM=1
+# An owned ancestor proves empty fixtures cannot inherit the checkout that owns TMPDIR.
+git -C "${_work}" init -q -b fixture || exit 1
+GIT_CEILING_DIRECTORIES="$(git -C "${_work}" rev-parse --show-toplevel)" || exit 1
+export GIT_CEILING_DIRECTORIES
 # Every stub appends here: a shell stub its name, a Python stub its arguments.
 export HOOK_TEST_ARGV="${_work}/calls.log" HOOK_TEST_GATE_RC=0 HOOK_TEST_STALE_RC=0
 _REAL=(shared/linux/templates/git-hooks/pre-commit shared/linux/templates/git-hooks/pre-push
   linux/scripts/run-lint-gates.sh linux/scripts/01-core/gates.sh linux/scripts/01-core/python-probe.sh
   linux/scripts/gate_scope.py linux/scripts/quality_allow.py linux/scripts/verify_large_files.py
   docs/scripts/verify_mutations.py docs/scripts/mutation_parse.py docs/scripts/mutation_shards.py
-  docs/scripts/mutation_push.py)
+  docs/scripts/mutation_push.py linux/scripts/verify-shell-eol.sh)
 # Short of a real token's length, so the hub's own secret scan does not read this suite as a leak.
 _TOKEN="ghp_fixture"
 
@@ -56,10 +60,14 @@ _hub_copy() {
     mkdir -p "${d}/$(dirname "${rel}")"
     cp -p "${HUB}/${rel}" "${d}/${rel}"
   done
-  for rel in lint-shell.sh lint-workflows.sh lint-python.sh; do _stub_sh "${d}/linux/scripts/${rel}"; done
+  for rel in lint-workflows.sh lint-python.sh; do _stub_sh "${d}/linux/scripts/${rel}"; done
+  # --list-files only classifies paths, by suffix here, so it is logged apart from a lint run.
+  printf '#!/usr/bin/env bash\nif [ "${1-}" = --list-files ]; then echo "lint-shell.sh --list-files" >> "${HOOK_TEST_ARGV}"; shift; for f in "$@"; do case "$f" in *.sh) echo "$f" ;; esac; done; exit 0; fi\nprintf "%%s\\n" "${0##*/}" >> "${HOOK_TEST_ARGV}"\n' \
+    > "${d}/linux/scripts/lint-shell.sh"
   _stub_sh "${d}/shared/config/sync-shared-config.sh"
   _stub_secrets "${d}/linux/scripts/lint-secrets.sh"
   for rel in docs/scripts/sync_versions.py docs/scripts/verify_doc_dupes.py linux/scripts/verify_readme_length.py \
+    linux/scripts/verify_pattern_limits.py \
     "${_LINT_GATES_RATCHET_DOC_GATES[@]}" "${_LINT_GATES_RATCHET_GATES[@]/%/.py}"; do
     case "${rel}" in */*) ;; *) rel="linux/scripts/${rel}" ;; esac
     [ -f "${d}/${rel}" ] || gate_stub_recorder "${d}/${rel}"
@@ -107,7 +115,7 @@ WRAPPER
     git -C "${d}" add -A
     git -C "${d}" commit -qm base
     git -C "${d}" push -q origin develop
-    git -C "${d}" config core.hooksPath "${HOOKS_REL}"
+    git -C "${d}" config core.hooksPath "${d}/${HOOKS_REL}"
   } >/dev/null 2>&1
   printf '%s' "${d}"
 }
@@ -146,7 +154,7 @@ _section_commit() {
   _run "${d}" commit -q -m clean
   t_assert_eq 0 "${_rc}" "${_out}"
   t_assert_contains "${_out}" "pre-commit: scripts/linux/run-lint-gates.sh --staged" "the repo's own wrapper carries its flags"
-  t_assert_contains "${_out}" "STAGED CHECKS OK (2 gate(s))" "large files, behind the wrapper's --ratchets, and the secret scan"
+  t_assert_contains "${_out}" "STAGED CHECKS OK (3 gate(s))" "large files, behind the wrapper's --ratchets, the secret scan and the line endings"
   t_assert_grep "${HOOK_TEST_ARGV}" '^lint-secrets\.sh .*/tree/README\.md$'
   t_assert_no_grep "${HOOK_TEST_ARGV}" '^(lint-(shell|workflows|python)|sync-shared-config)\.sh$|^--'
   t_assert_eq 1 "$((SECONDS < 60))" "a commit hook that takes a minute teaches --no-verify; took ${SECONDS}s"
@@ -158,7 +166,7 @@ _section_commit() {
   _run "${d}" commit -q -m blob
   t_assert_eq 1 "${_rc}" "${_out}"
   t_assert_contains "${_out}" "blob.bin"
-  t_assert_contains "${_out}" "STAGED CHECKS FAILED (1 of 2): large files"
+  t_assert_contains "${_out}" "STAGED CHECKS FAILED (1 of 3): large files"
   t_assert_contains "${_out}" "git commit --no-verify" "the refusal names the bypass"
   t_assert_eq "${head}" "$(git -C "${d}" rev-parse HEAD)" "no commit was made"
   _stage "${d}" large-files.allow "blob.bin | 1024 | fixture"
@@ -210,10 +218,29 @@ _section_commit() {
   _run "${bare}" commit -q -m blob
   t_assert_eq 0 "${_rc}" "the large-file check is opt-in with --ratchets, which only a wrapper passes: ${_out}"
   t_assert_contains "${_out}" "linux/scripts/run-lint-gates.sh $(_git_root "${bare}") --staged"
-  t_assert_contains "${_out}" "STAGED CHECKS OK (1 gate(s))"
+  t_assert_contains "${_out}" "STAGED CHECKS OK (2 gate(s))"
   _stage "${bare}" conf/app.txt "token = ${_TOKEN}"
   _run "${bare}" commit -q -m leak
   t_assert_eq 1 "${_rc}" "the secret scan needs no flag: ${_out}"
+}
+
+_section_eol() {
+  local d head
+  d="$(_consumer)"
+  t_case "a staged shell script with CRLF stops the commit, and an unstaged deletion beside a clean commit does not"
+  printf 'echo crlf\r\n' > "${d}/scripts/linux/crlf.sh"
+  git -C "${d}" add scripts/linux/crlf.sh
+  head="$(git -C "${d}" rev-parse HEAD)"
+  _run "${d}" commit -q -m crlf
+  t_assert_eq 1 "${_rc}" "${_out}"
+  t_assert_contains "${_out}" "i/crlf  scripts/linux/crlf.sh"
+  t_assert_eq "${head}" "$(git -C "${d}" rev-parse HEAD)" "no commit was made"
+  git -C "${d}" rm -q --cached scripts/linux/crlf.sh && rm "${d}/scripts/linux/crlf.sh"
+  rm "${d}/README.md"
+  _stage "${d}" notes.txt "beside a deletion not staged yet"
+  _run "${d}" commit -q -m beside
+  t_assert_eq 0 "${_rc}" "the large-files gate grades the index, so a missing working-tree file is no partial tree: ${_out}"
+  git -C "${d}" checkout -q -- README.md
 }
 
 _section_push() {
@@ -223,7 +250,7 @@ _section_push() {
   d="$(_consumer)"
   _push "${d}" 0 README.md "more"
   t_assert_contains "${_out}" "pre-push: scripts/linux/run-lint-gates.sh"
-  t_assert_contains "${_out}" "LINT GATES OK (9 gate(s))" "the eight of every consumer and the wrapper's ratchets"
+  t_assert_contains "${_out}" "LINT GATES OK (11 gate(s))" "the ten of every consumer and the wrapper's ratchets"
   t_assert_contains "${_out}" "demo-mutations.json: 1 entr(ies)"
   t_assert_grep "${HOOK_TEST_ARGV}" '^lint-shell\.sh$'
   t_assert_grep "${HOOK_TEST_ARGV}" '^--against-hub --root '
@@ -237,7 +264,7 @@ _section_push() {
   _push "${d}" 1
   t_assert_contains "${_out}" "demo.guard" "the recipe to re-point"
   t_assert_contains "${_out}" "demo-mutations.json" "and its manifest"
-  t_assert_contains "${_out}" "LINT GATES FAILED (1 of 9): mutation staleness"
+  t_assert_contains "${_out}" "LINT GATES FAILED (1 of 11): mutation staleness"
   t_assert_contains "${_out}" "git push --no-verify" "the refusal names the bypass"
   t_assert_eq "${tip}" "$(_tip "${d}")" "the remote did not move"
 
@@ -258,7 +285,7 @@ _section_push() {
   bare="$(_consumer bare)"
   _push "${bare}" 0 README.md "more"
   t_assert_contains "${_out}" "linux/scripts/run-lint-gates.sh $(_git_root "${bare}")"
-  t_assert_contains "${_out}" "LINT GATES OK (8 gate(s))"
+  t_assert_contains "${_out}" "LINT GATES OK (10 gate(s))"
   t_assert_no_grep "${HOOK_TEST_ARGV}" '^--against-hub'
   _push "${bare}" 1 scripts/linux/subject.sh "GUARD=renamed"
   t_assert_contains "${_out}" "demo.guard"
@@ -306,7 +333,7 @@ EXTENSION
 
 _section_image_runner() {
   local d runner
-  runner="${_work}/image-runner"
+  runner="$(_git_root "${_work}")/image-runner"
   cat > "${runner}" <<RUNNER
 #!/usr/bin/env bash
 printf 'runner %s\n' "\$*" >> "\${HOOK_TEST_ARGV}"
@@ -373,15 +400,22 @@ _notice() { _LINT_GATES_ROOT="$1" _LINT_GATES_DIR="$2" _lint_gates_hook_notice 2
 _section_notice() {
   local d out plain hub gates
 
-  t_case "a clone without hooks is told so in one line, and the gates still pass"
+  t_case "--index without --staged is refused before any gate runs; here the gates are stubs, so a mutant ends fast"
   d="$(_consumer)"
   gates="${d}/third_party/ANTfrastructure/linux/scripts"
+  : > "${HOOK_TEST_ARGV}"
+  out="$(bash "${gates}/run-lint-gates.sh" "${d}" --index "${d}/.git/index" 2>&1)"
+  t_assert_eq 2 "$?" "the full gates read the working tree, so an index there would be ignored in silence: ${out}"
+  t_assert_contains "${out}" "--index belongs to --staged"
+  t_assert_eq "" "$(cat "${HOOK_TEST_ARGV}")" "no gate ran"
+
+  t_case "a clone without hooks is told so in one line, and the gates still pass"
   git -C "${d}" config --unset core.hooksPath
   out="$(cd "${d}" && bash scripts/linux/run-lint-gates.sh 2>&1)"
   t_assert_eq 0 "$?" "a warning is not a verdict: ${out}"
   t_assert_eq 1 "$(printf '%s\n' "${out}" | grep -c -e 'core.hooksPath is unset')" "${out}"
-  t_assert_contains "${out}" "set it once: git config core.hooksPath ${HOOKS_REL}"
-  t_assert_eq "LINT GATES OK (9 gate(s))" "$(printf '%s\n' "${out}" | tail -n 1)" "the verdict stays the last line"
+  t_assert_contains "${out}" "set it once: git config core.hooksPath ${d}/${HOOKS_REL}"
+  t_assert_eq "LINT GATES OK (11 gate(s))" "$(printf '%s\n' "${out}" | tail -n 1)" "the verdict stays the last line"
   t_assert_contains "$(cd "${d}" && bash scripts/linux/run-lint-gates.sh --staged 2>&1)" "core.hooksPath is unset" \
     "the staged checks run by hand say it too"
 
@@ -390,9 +424,16 @@ _section_notice() {
   t_assert_contains "${out}" "LINT GATES OK"
   t_assert_eq 0 "$(printf '%s\n' "${out}" | grep -c -e 'hooksPath')" "${out}"
 
-  t_case "a clone with any hooks path set gets no such line"
+  t_case "a clone with its own or an absolute hooks path gets no such line"
   git -C "${d}" config core.hooksPath scripts/git-hooks
   t_assert_eq "" "$(_notice "${d}" "${gates}")" "a repo's own hook directory is a decision, not a gap"
+  git -C "${d}" config core.hooksPath "${d}/${HOOKS_REL}"
+  t_assert_eq "" "$(_notice "${d}" "${gates}")" "the adoption page's absolute line"
+
+  t_case "the hub's hooks by a relative path are named: a worktree without the submodule runs none"
+  git -C "${d}" config core.hooksPath "${HOOKS_REL}"
+  t_assert_contains "$(_notice "${d}" "${gates}")" "core.hooksPath is relative in ${d}"
+  t_assert_contains "$(_notice "${d}" "${gates}")" "set it absolute: git config core.hooksPath ${d}/${HOOKS_REL}"
   git -C "${d}" config --unset core.hooksPath
   t_assert_contains "$(_notice "${d}" "${gates}")" "core.hooksPath is unset"
 
@@ -416,5 +457,5 @@ _section_notice() {
 }
 
 _hub_copy "${_work}/hub"
-t_sections _section_commit _section_push _section_extension _section_image_runner _section_handover _section_notice -- "$@"
+t_sections _section_commit _section_eol _section_push _section_extension _section_image_runner _section_handover _section_notice -- "$@"
 t_summary

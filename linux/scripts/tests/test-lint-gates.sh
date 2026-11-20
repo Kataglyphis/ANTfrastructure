@@ -404,6 +404,46 @@ if _lint_gates_interpreter >/dev/null 2>&1; then
     "a root that is not a checkout is a broken call, not an empty one"
 fi
 
+# _consumer_plus <path> <text>...: a consumer with each path written as its text plus a newline, and tracked.
+_consumer_plus() {
+  local d; d="$(_consumer)"
+  while [ "$#" -ge 2 ]; do
+    mkdir -p "$(dirname "${d}/$1")" && printf '%s\n' "$2" > "${d}/$1"
+    shift 2
+  done
+  git -C "${d}" add -A >/dev/null 2>&1
+  printf '%s' "${d}"
+}
+# _limited <max> <Src/main.cpp text>: quality-report.toml forbids std::cout under Src/ beyond max; tools/ is free.
+_limited() {
+  _consumer_plus Src/main.cpp "$2" tools/allowed.cpp 'std::cout << 1;' quality-report.toml \
+    "$(printf 'schema_version = 1\n[[metric]]\nname = "direct_stdout"\nkind = "pattern"\npattern = %s\ninclude = ["Src/*"]\nmax = %s' \
+      "'\\bstd::cout\\b'" "$1")"
+}
+_pattern_gate() { _LINT_GATES_ROOT="$1" _LINT_GATES_PY="" _lint_gates_pattern_limits; }
+
+t_case "a pattern row with max = 0 fails on a planted match and names its file and line"
+_d="$(_limited 0 $'int main() {\n  std::cout << "hi";\n}')"
+t_assert_eq "1" "$(t_rc _pattern_gate "${_d}")" "a match of a max = 0 row must fail the lint gates, not only be reported"
+t_assert_contains "$(t_out _pattern_gate "${_d}")" "Src/main.cpp:2:" "the finding names file and line"
+t_assert_eq "" "$(t_out _pattern_gate "${_d}" | grep 'tools/allowed.cpp' || true)" \
+  "a match outside the row's include is not the row's"
+
+t_case "a clean tree, a match within max, and a repo without the file pass"
+t_assert_eq "0" "$(t_rc _pattern_gate "$(_limited 0 'int main() { return 0; }')")"
+t_assert_eq "0" "$(t_rc _pattern_gate "$(_limited 1 'std::cout << 1;')")" "one match under max = 1 holds"
+t_assert_eq "1" "$(t_rc _pattern_gate "$(_limited 1 $'std::cout << 1;\nstd::cout << 2;')")" "two under max = 1 fail"
+t_assert_contains "$(t_out _pattern_gate "$(_consumer)")" "nothing to enforce"
+
+t_case "a max that is no whole number of zero or more fails instead of lifting the limit"
+for _bad in true -1 '"0"'; do
+  t_assert_eq "1" "$(t_rc _pattern_gate "$(_limited "${_bad}" 'std::cout << 1;')")" "max = ${_bad} is malformed"
+done
+t_assert_contains "$(t_out _pattern_gate "$(_limited true 'x')")" "max must be a whole number"
+
+t_case "run-lint-gates.sh registers the pattern limits gate"
+t_assert_contains "$(cat "${GATE}")" 'run_gate "pattern limits" _lint_gates_pattern_limits'
+
 t_case "the Python gates run under PREFLIGHT_PYTHON, and a dead interpreter is named"
 _LINT_GATES_PY=""
 t_assert_eq "1" "$(PREFLIGHT_PYTHON=/nonexistent/python t_rc _lint_gates_interpreter)"

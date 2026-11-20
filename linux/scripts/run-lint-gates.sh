@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-lint-gates.sh - shellcheck, actionlint, gitleaks, ruff, shared config, pins, README length, mutation staleness (+ratchets) over ONE consumer tree.
+# run-lint-gates.sh - shellcheck, actionlint, gitleaks, ruff, shared config, pins, README length, pattern limits, shell line endings, mutation staleness (+ratchets) over ONE consumer tree.
 
 #   run-lint-gates.sh <consumer-root> [--exclude <top-level-dir>]... [--ratchets] [--code-dupes|--code-dupes-report] [--allow-empty-shell] [--agents-drift] [--staged [--index <file>]]
 
@@ -185,6 +185,19 @@ _lint_gates_readme() {
   _lint_gates_hub linux/scripts/verify_readme_length.py || return 1
   _lint_gates_interpreter || return 1
   ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --root "${_LINT_GATES_ROOT}"
+}
+
+# <mode...>: no shell script with CR in it, the working tree's bytes or with --staged the commit's.
+_lint_gates_shell_eol() {
+  _lint_gates_hub linux/scripts/verify-shell-eol.sh || return 1
+  bash "${_LINT_GATES_HUB_FILE}" "${_LINT_GATES_ROOT}" "$@"
+}
+
+# A quality-report.toml pattern row with `max` binds here; without one this prints a line and passes.
+_lint_gates_pattern_limits() {
+  _lint_gates_hub linux/scripts/verify_pattern_limits.py || return 1
+  _lint_gates_interpreter || return 1
+  _lint_gates_hub_python --root "${_LINT_GATES_ROOT}"
 }
 
 # A recipe whose find text a refactor moved fails before the push, not in the mutation lane after it.
@@ -507,16 +520,22 @@ _lint_gates_staged_secrets() {
 
 # One line and never a verdict: without a hook these gates run only when someone remembers them.
 _lint_gates_hook_notice() {
-  local hub line
+  local hub line set_to
   [ -z "${CI:-}" ] || return 0
   git -C "${_LINT_GATES_ROOT}" rev-parse --git-dir >/dev/null 2>&1 || return 0
-  [ -z "$(git -C "${_LINT_GATES_ROOT}" config --get core.hooksPath 2>/dev/null)" ] || return 0
+  set_to="$(git -C "${_LINT_GATES_ROOT}" config --get core.hooksPath 2>/dev/null)"
   hub="$(cd "${_LINT_GATES_DIR}/../.." && pwd)"
-  line="git config core.hooksPath ${hub#"${_LINT_GATES_ROOT}/"}/shared/linux/templates/git-hooks"
+  line="git config core.hooksPath ${hub}/shared/linux/templates/git-hooks"
   # The hub's own pair is the other one, and make hooks sets it.
   [ "${hub}" != "${_LINT_GATES_ROOT}" ] || line="make hooks"
-  printf 'run-lint-gates.sh: WARNING: core.hooksPath is unset in %s, so no git hook runs these gates; set it once: %s\n' \
-    "${_LINT_GATES_ROOT}" "${line}" >&2
+  if [ -z "${set_to}" ]; then
+    printf 'run-lint-gates.sh: WARNING: core.hooksPath is unset in %s, so no git hook runs these gates; set it once: %s\n' \
+      "${_LINT_GATES_ROOT}" "${line}" >&2
+  elif [ "${set_to}" = "${hub#"${_LINT_GATES_ROOT}/"}/shared/linux/templates/git-hooks" ]; then
+    # Relative to each worktree: one without the hub submodule finds no hooks directory, and git says nothing.
+    printf 'run-lint-gates.sh: WARNING: core.hooksPath is relative in %s, so a linked worktree without the hub runs no hook; set it absolute: %s\n' \
+      "${_LINT_GATES_ROOT}" "${line}" >&2
+  fi
 }
 
 # The commit hook's half; --index is this commit's index, which `git commit -a` keeps in a lock file.
@@ -532,6 +551,7 @@ _lint_gates_staged_main() {
     run_gate "large files" _lint_gates_large_files
   fi
   run_gate "gitleaks (staged files)" _lint_gates_staged_secrets
+  run_gate "shell line endings (staged)" _lint_gates_shell_eol --staged
   _lint_gates_hook_notice
   assert_gates
 }
@@ -547,12 +567,14 @@ _lint_gates_main() {
   printf 'lint gates over %s (excluding: %s)\n' "${_LINT_GATES_ROOT}" "${_LINT_GATES_EXCLUDE[*]}"
   gate_reset "LINT GATES"
   run_gate "shellcheck" _lint_gates_shell
+  run_gate "shell line endings" _lint_gates_shell_eol
   run_gate "actionlint + CI image refs" _lint_gates_workflows
   run_gate "gitleaks" _lint_gates_secrets
   run_gate "ruff" _lint_gates_python
   run_gate "shared-config drift" _lint_gates_shared_config
   run_gate "consumer pins" _lint_gates_consumer_pins
   run_gate "README length" _lint_gates_readme
+  run_gate "pattern limits" _lint_gates_pattern_limits
   run_gate "mutation staleness" _lint_gates_mutation_staleness
   if [ "${_LINT_GATES_RATCHETS}" -eq 1 ]; then
     run_gate "ratchets" _lint_gates_ratchet

@@ -1105,7 +1105,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5350 entries** over **694 distinct test commands**; both digits are
+manifest holds **5418 entries** over **699 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1495,7 +1495,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 106 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 107 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -1974,7 +1974,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 106 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 107 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -2219,6 +2219,32 @@ Fix a finding by moving a procedure, table or piece of history to `docs/` and li
 is no allowlist. `tests/test-readme-length.sh` drives both halves; the `readme-length.*`
 mutations prove the limit, the unterminated last line, the missing file, and that
 `run-lint-gates.sh` registers the gate and returns its verdict.
+
+## Pattern limits (`pattern-limits`)
+
+A `kind = "pattern"` row of `quality-report.toml` is counted and reported; with `max` it also
+binds. `linux/scripts/verify_pattern_limits.py --root <repo>` fails when such a row matches more
+often than its `max`, and prints every match as `file:line: text`. An AGENTS.md rule that is one
+pattern ("no `std::cout` in `Src/`") holds by gate this way, not by habit.
+
+```toml
+[[metric]]
+name = "direct_stdout_in_src"
+kind = "pattern"
+pattern = '\bstd::cout\b'
+include = ["Src/*"]
+max = 0
+```
+
+- **Where it runs.** In every consumer through `run-lint-gates.sh`, so `lint-gates.yml` and the
+  pre-push template run it. A repo without `quality-report.toml`, or without a row that has `max`,
+  prints one line and passes.
+- **Malformed.** A `max` that is not a whole number of zero or more (`true`, `-1`, `"0"`), a broken
+  regex or a malformed TOML fails the gate; it is never read as no limit.
+- **Not covered.** A match in an untracked file, and `kind = "ruff"` rows: Ruff's own gate binds those.
+
+`tests/test-lint-gates.sh` plants a match in a fixture tree; the `lint-gates.pattern-limits-*` mutations prove
+the limit, the malformed `max`, and that `run-lint-gates.sh` registers the gate.
 
 ## AGENTS drift (`agents-drift`)
 
@@ -2623,9 +2649,12 @@ slug below is proven now; see
 
 ### `crlf-guard`, the worked example
 
-`check_crlf_guard` is inline in `preflight.sh`: it asks `lint-shell.sh --list-files`
+`linux/scripts/verify-shell-eol.sh [<root>]` (preflight's `check_crlf_guard` calls it on
+the hub, `run-lint-gates.sh` on a consumer) asks `lint-shell.sh --list-files`
 which of the tracked files are shell scripts, reads `git ls-files --eol` over exactly
-those, and fails naming every one whose **working-tree** bytes carry CR.
+those, and fails naming every one whose **working-tree** bytes carry CR. With
+`--staged`, the consumers' commit hook, it reads the `i/` column of the staged scripts
+instead: the bytes the commit carries.
 
 **Which column decides.** `git ls-files --eol` prints `i/<eol> w/<eol> attr/<attr>`
 — the index shape and the working-tree shape. Only `w/` counts here, because
@@ -2796,7 +2825,9 @@ against the text verdict on a fixture tree.
 `--extra-languages` adds units that never change the exit status:
 
 - `verify_code_size.py` prints `REPORT-ONLY:` for each Rust (`.rs`), Dart (`.dart`) and C/C++
-  (`.c .cc .cpp .h .hpp .ixx`) function over `FUNCTION_SIZE_LIMIT`, and a total line.
+  (`.c .cc .cpp .h .hpp .ixx`) function over `FUNCTION_SIZE_LIMIT`, and a total line. A Dart
+  `main()` in a `*_test.dart` file is a `test body` and counted apart (`oversized_test_bodies`): its
+  length is the number of tests in it, not product code.
 - `verify_code_dupes.py` indexes Python files apart from the gated kinds and prints file pairs
   over the threshold. Units are outermost functions, with decorators, and blank-line chunks.
   Comments are dropped and strings reduced before shingling. A shell or PowerShell count
@@ -2820,6 +2851,11 @@ descended. Blind spots:
 
 `test-lang-units.sh` pins hand-counted fixtures for each language.
 
+**The one graded number.** The scanner's exit status never moves, but `quality-report.sh --compare`
+grades `functions_over_80_lines_extra_languages` (class `code`): a new oversized Rust, Dart or C/C++
+function, test bodies left out, reads `regressed`. The Python duplicate units, file size and
+complexity for these languages stay report-only.
+
 ## quality-report
 
 `bash linux/scripts/quality-report.sh --root . [--compare FILE|previous-develop] [--offline]`
@@ -2840,7 +2876,7 @@ graded, `report` is not), `source` command, `status` and, for a set, sorted `mem
 | `ruff_findings`, `ty_diagnostics` (`ty_unresolved_imports`, report) | `python-static.sh --report-only`, with ty given an empty `VIRTUAL_ENV` so host packages cannot resolve imports |
 | `duplicated_blocks` (`python_duplicate_blocks`, report) | `verify_code_dupes.py --json`, `totals.pairs` |
 | `hub_reuse_pairs` | `verify_hub_reuse.py --json` against the hub holding the script; not collected in the hub itself |
-| `functions_over_80_lines` (`…_extra_languages`, report) | `verify_code_size.py --extra-languages --json` |
+| `functions_over_80_lines` (`…_extra_languages`, graded, Dart test `main()` left out) | `verify_code_size.py --extra-languages --json` |
 | `functions_over_complexity_15` | `verify_code_complexity.py --json`, `totals.over_cc` |
 | `powershell_complexity_findings` | `Invoke-CodeComplexity.ps1 -JsonPath` over every tracked `.ps1`/`.psm1` |
 | `allow_rows.<file>`, `allow_budget_total` | rows per tracked `*.allow`; budgets summed from `quality_allow.iter_rows` where every row has a count |
@@ -2868,7 +2904,8 @@ lines in the file. A moved line keeps its key; a new member regresses even when 
   ([declaration](fleet-health.md#perf-host)).
 - `[[metric]]` rows: `kind = "pattern"` (a regex over tracked files under `paths`, filtered by
   `include` and `exclude` globs, set-valued) or `kind = "ruff"` (the locked Ruff over `paths`
-  with `config` overrides).
+  with `config` overrides). A pattern row with `max` is also a gate:
+  [pattern limits](#pattern-limits-pattern-limits).
 
 An artifact source is read from the checkout first. Otherwise, unless `--offline`, the GitHub CLI
 downloads the newest matching artifact of a run at the same SHA. No file, no run or no login
@@ -3423,7 +3460,7 @@ mid-line would flag every message that merely mentions a log file.
 
 **Proof (2026-09-04).** `tests/test-stdout-returns.sh`, over
 throwaway trees at the gate's own depth (it derives its root from `parents[2]`),
-plus 5 mutations (`stdout-returns.*`), every one proven to bite (the fifth,
+plus 6 mutations (`stdout-returns.*`), every one proven to bite (the fifth,
 `root-argument-is-the-tree`, arrived 2026-09-15 with `--root`). This was the
 first of the fourteen `gate-proofs.allow` slugs to be closed rather than
 re-frozen; the shape generalised to the tree-consistency checkers listed above,
@@ -4584,6 +4621,10 @@ dependency declaration and its contents are not pin candidates. A same-named rea
 or override is still checked; malformed TOML fails the gate. `test-consumer-pins-toml.sh`
 and `test-version-snapshot.sh` cover exclusions, actual pins and parser failure.
 
+**uv's own floor** is read by key, not as a string value: `[tool.uv] required-version` must be a lower bound,
+`>=X.Y.Z`, at or below `UV_VERSION` (CON249). An exact pin fails, as a newer image uv would refuse the
+project; a floor above the pin fails, as the image's uv refuses it today.
+
 **The eighth arrived unproven, and that is exactly the shape described above.**
 It shipped with nine mutations in the registry and none of them touching
 `check_consumer_pins`, no fixture, and a registry row still reading
@@ -4691,7 +4732,9 @@ Four rules, each of which a copy got wrong somewhere:
 4. **A tracked path that is not on disk is reported, not skipped.** The old walk
    could only yield files that exist; the index can name files a sparse checkout
    never materialised, and `except OSError: continue` turned that into a quiet
-   partial grading.
+   partial grading. A gate that reads only blobs has no such gap: `large-files`
+   sizes and sniffs `git cat-file` output, so a file missing from disk is graded
+   as the index holds it.
 
 A gate's `--root` must default to `None`, never to its own `ROOT`. `resolve_root`
 maps `None` to the gate's own tree without asking git, while a named root must

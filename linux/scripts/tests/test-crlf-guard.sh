@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# check_crlf_guard judges working-tree bytes only; see docs/code-quality-tooling.md#crlf-guard-the-worked-example
+# verify-shell-eol.sh judges working-tree bytes, or with --staged the index's; see docs/code-quality-tooling.md#crlf-guard-the-worked-example
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=linux/scripts/tests/preflight-gate-fixture.sh
-source "${TESTS_DIR}/preflight-gate-fixture.sh"
+# shellcheck source=linux/scripts/tests/test-workspace-fixture.sh
+source "${TESTS_DIR}/test-workspace-fixture.sh"
 declare WORK
-preflight_gate_fixture_init WORK check_crlf_guard || exit 1
-SET_LINE="$(grep -m1 -e '^set -' "${REPO_ROOT}/linux/scripts/preflight.sh")"
+t_fixture_workspace_init WORK REPO_ROOT || exit 1
+SET_LINE="$(grep -m1 -e '^set -' "${REPO_ROOT}/linux/scripts/verify-shell-eol.sh")"
 
 REPO=""
 _repo() {
@@ -17,7 +17,7 @@ _repo() {
   git -C "${REPO}" config user.name tester
   git -C "${REPO}" config core.autocrlf false
   mkdir -p "${REPO}/linux/scripts/01-core"
-  cp "${REPO_ROOT}/linux/scripts/lint-shell.sh" "${REPO}/linux/scripts/lint-shell.sh"
+  cp "${REPO_ROOT}/linux/scripts/"{lint-shell,verify-shell-eol}.sh "${REPO}/linux/scripts/"
   # lint-shell.sh sources lint-root.sh; without it the guard falls to its failure sentinel.
   cp "${REPO_ROOT}/linux/scripts/01-core/"{lint-root,lint-scope-init}.sh "${REPO}/linux/scripts/01-core/"
   cp "${REPO_ROOT}/linux/scripts/01-core/lint-tool-release.sh" "${REPO}/linux/scripts/01-core/lint-tool-release.sh"
@@ -32,7 +32,10 @@ _repo() {
 _eol() { git -C "${REPO}" ls-files --eol -- "$1" | awk -F'\t' -v n="$2" '{split($1,c,/[ \t]+/); print c[n]}'; }
 
 OUT=""; rc=0
-_guard() { preflight_gate_fixture_run OUT rc "${1:-${REPO}}" "${SET_LINE}"; }
+_guard() {
+  rc=0
+  OUT="$(bash "${REPO}/linux/scripts/verify-shell-eol.sh" "${1:-${REPO}}" "${@:2}" 2>&1)" || rc=$?
+}
 
 _named() { printf '%s' "${OUT}" | grep -c "$1"; }
 
@@ -90,11 +93,11 @@ t_assert_eq "w/" "$(_eol bad.sh 2)" "git prints an empty w/ column for a missing
 _guard
 t_assert_eq "0" "${rc}" "missing is not CRLF"
 
-t_case "git failing is a loud failure, not an empty pass"
+t_case "a root that is no git checkout is a loud failure, not an empty pass"
 mkdir -p "${WORK}/nogit"
 _guard "${WORK}/nogit"
-t_assert_eq "1" "${rc}" "git ls-files failing must not read as a clean tree"
-t_assert_contains "${OUT}" "__git-ls-files-FAILED__"
+t_assert_eq "2" "${rc}" "git ls-files cannot run there, and that must not read as a clean tree"
+t_assert_contains "${OUT}" "is not a git checkout"
 
 t_case "an extension-less script on a shell shebang is in scope, like the commit hook"
 _repo hook
@@ -120,7 +123,22 @@ _guard
 t_assert_eq "1" "${rc}" "no lint-shell.sh means no answer to 'what is a shell script'"
 t_assert_contains "${OUT}" "__git-ls-files-FAILED__"
 
-t_case "the pipefail this guard needs is pinned in preflight.sh, not hard-coded here"
+t_case "--staged grades the bytes the commit carries: the index's, of the staged scripts only"
+_repo staged
+printf 'echo bad\r\n' > "${REPO}/bad.sh"
+git -C "${REPO}" add bad.sh
+printf 'echo bad\n' > "${REPO}/bad.sh"
+_guard "${REPO}" --staged
+t_assert_eq "1" "${rc}" "CRLF staged, LF on disk: the commit would carry the CR"
+t_assert_contains "${OUT}" "i/crlf  bad.sh"
+_guard "${REPO}"
+t_assert_eq "0" "${rc}" "the full guard reads the working tree, which is LF"
+_repo unstaged 'echo bad\r\n'
+_guard "${REPO}" --staged
+t_assert_eq "0" "${rc}" "a CR on disk that is not staged is not this commit's"
+t_assert_contains "${OUT}" "no i/crlf, i/mixed or i/-text shell scripts staged"
+
+t_case "the pipefail this guard needs is pinned in its own set line, not hard-coded here"
 t_assert_contains "${SET_LINE}" "pipefail" \
   "the loud-failure cases run under preflight.sh's own set line; dropping pipefail there must break them"
 

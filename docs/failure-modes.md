@@ -3176,6 +3176,21 @@ find out, and an isolated build offline has no setuptools to download. `check_do
 **Fix.** `uv lock --project docs` and commit the one-line change with the gitlink that caused it. Do not add
 `--no-build-isolation` or lower the theme's bound: the check would still read the lock as stale.
 
+### Consumer-hook empty-directory cases inherit a parent repository
+
+`test-consumer-hooks.sh` can fail its three final "not a git checkout" assertions
+when TMPDIR belongs to a real checkout. Git walks from the empty fixture to that
+ancestor and runs the gates instead of refusing the missing repository.
+
+The suite now initializes an owned parent repository and exports a discovery
+ceiling using Git's canonical root spelling. Child consumer repositories remain
+discoverable; empty-directory cases stop before their parent. A valid mutation
+removes the export and must break those existing assertions on both platforms.
+The image-runner fixture uses that same native spelling before its path crosses
+Git's configuration boundary; Windows must still match the complete diagnostic.
+These tests grade hook wiring with stubbed downloaded linters, not the linters
+themselves or a complete preflight result.
+
 ### QNN query receipts differ between filesystems
 
 `test-qnn-runtime-query.sh` can fail its original 120-case receipt comparison

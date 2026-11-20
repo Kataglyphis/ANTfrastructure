@@ -23,6 +23,32 @@ OPSET, IR_VERSION = 17, 8
 CONTEXT = 512
 ATTR_INT = 2
 PROMPT, CONTINUATION = "abc", "defg"
+# One legal answer the successor rule never predicts from the prompt: only a live guidance mask produces it.
+SCHEMA_CASE = {"schema": {"enum": [7]}, "answer": "7"}
+# Every binding replays these (CON237 item 4); the error names are the contract's, each binding maps its own type.
+REFUSED_SCHEMA = '{"type":"object","properties":{"a":{"$ref":"#/definitions/nowhere"}},"required":["a"]}'
+
+
+def cases() -> list[dict[str, object]]:
+    """(messages, options) with the answer or the error kind; measured on the image's GenAI on 2026-11-20."""
+    user = [{"role": "user", "content": PROMPT}]
+    return [
+        {"name": "greedy to the budget", "messages": user, "options": {"max_new_tokens": len(CONTINUATION)},
+         "expect": {"text": CONTINUATION, "ids": list(CONTINUATION.encode()), "finish": "length"}},
+        {"name": "a schema whose one answer the model never predicts", "messages": user,
+         "options": {"max_new_tokens": 8, "json_schema": '{"enum":[7]}'},
+         "expect": {"text": "7", "finish": "stop"}},
+        {"name": "a schema that is a JSON array", "messages": user,
+         "options": {"max_new_tokens": 1, "json_schema": "[]"}, "expect": {"error": "invalid_options"}},
+        {"name": "a schema that is a JSON number", "messages": user,
+         "options": {"max_new_tokens": 1, "json_schema": "7"}, "expect": {"error": "invalid_options"}},
+        {"name": "a schema object the grammar compiler refuses", "messages": user,
+         "options": {"max_new_tokens": 1, "json_schema": REFUSED_SCHEMA}, "expect": {"error": "generation_failed"}},
+        {"name": "no messages", "messages": [], "options": {"max_new_tokens": 1},
+         "expect": {"error": "invalid_options"}},
+        {"name": "no budget", "messages": user, "options": {"max_new_tokens": 0},
+         "expect": {"error": "invalid_options"}},
+    ]
 CHAT_TEMPLATE = "{% for message in messages %}{{ message['content'] }}{% endfor %}"
 
 
@@ -185,7 +211,7 @@ def write(out: Path, hidden_states: bool = False) -> dict[str, object]:
     tok, tok_config = tokenizer()
     oracle = {"prompt": PROMPT, "prompt_ids": prompt_ids, "continuation": CONTINUATION,
               "continuation_ids": expected_ids, "max_length": len(prompt_ids) + len(expected_ids),
-              "eos_token_id": EOS_ID}
+              "eos_token_id": EOS_ID, "schema_case": SCHEMA_CASE, "cases": cases()}
     if hidden_states:
         oracle["embedding"] = unit_mean([hidden_row(byte) for byte in PROMPT.encode()])
     files = {"genai_config.json": genai_config(CONTEXT, hidden_states), "tokenizer.json": tok,

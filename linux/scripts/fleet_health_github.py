@@ -111,10 +111,68 @@ def minutes(run: dict[str, Any]) -> float:
     return (dt.datetime.fromisoformat(run["updated_at"]) - start).total_seconds() / 60
 
 
-def ci_runs(client: develop_red.Client, repo: str) -> Metrics:
+# The retry workflow reruns a run whose first attempt hit the runner's disk refusal; that rerun is on purpose.
+RETRY_ACTOR = "github-actions[bot]"
+
+
+def rerun_rate(runs: list[dict[str, Any]]) -> float:
+    """Share of runs that needed a second attempt, without the ones retry-disk-refusal.yml reran on purpose."""
+    reran = [r for r in runs if int(r.get("run_attempt", 1)) > 1
+             and (r.get("triggering_actor") or {}).get("login") != RETRY_ACTOR]
+    return round(100 * len(reran) / len(runs), 1)
+
+
+def commits_since_green(client: develop_red.Client, repo: str, runs: list[dict[str, Any]],
+                        source: str) -> dict[str, Any]:
+    """Develop commits after the head of the newest green run: the debt the lane has not yet run on."""
+    green = next((r for r in runs if r["conclusion"] == "success"), None)
+    if green is None:
+        return gap(NOT_COLLECTED, "commits", LOWER, EXTERNAL, source, f"no green run in the {source}")
+    try:
+        ahead = get(client, f"/repos/{OWNER}/{repo}/compare/{green['head_sha']}...develop")["ahead_by"]
+    except NotCollected as exc:
+        # A head from before a history rewrite has no common ancestor with develop; the other ci rows still stand.
+        return gap(NOT_COLLECTED, "commits", LOWER, EXTERNAL, source, f"head {green['head_sha'][:10]}: {exc}")
+    return rec(int(ahead), "commits", LOWER, EXTERNAL, f"{source}; head {green['head_sha'][:10]}")
+
+
+IMAGE_PACKAGE = "kataglyphis_beschleuniger"
+
+
+def image_published(client: develop_red.Client) -> dict[str, dt.datetime]:
+    """{tag: when its newest version was published} for the family image; empty without read:packages."""
+    path = f"/users/{OWNER}/packages/container/{IMAGE_PACKAGE}/versions?state=active"
+    try:
+        versions = paged(client, path)
+    except (NotCollected, Failed):
+        return {}
+    published: dict[str, dt.datetime] = {}
+    for version in versions:
+        when = dt.datetime.fromisoformat(version["updated_at"])
+        for tag in version.get("metadata", {}).get("container", {}).get("tags", []):
+            published[tag] = max(published.get(tag, when), when)
+    return published
+
+
+def lanes_behind_image(newest: dict[str, dt.datetime], tag_of: dict[str, str],
+                       published: dict[str, dt.datetime]) -> dict[str, Any]:
+    """The lanes whose newest develop run is older than the image tag they pull: the image is untried there."""
+    source = f"{IMAGE_PACKAGE} versions against each lane's newest develop run"
+    if not published:
+        return gap(NOT_COLLECTED, "lanes", LOWER, EXTERNAL, source,
+                   "the package versions need read:packages, which this token lacks")
+    behind = [name for name, when in newest.items()
+              if tag_of.get(name, "latest") in published and when < published[tag_of.get(name, "latest")]]
+    return rec(len(behind), "lanes", LOWER, EXTERNAL, source,
+               members=[f"{name} (:{tag_of.get(name, 'latest')})" for name in behind])
+
+
+def ci_runs(client: develop_red.Client, repo: str, tag_of: dict[str, str] | None = None,
+            published: dict[str, dt.datetime] | None = None) -> Metrics:
     """Success rate and median minutes of each active workflow's last 20 decisive develop runs."""
     def collect() -> Metrics:
         found: Metrics = {}
+        newest: dict[str, dt.datetime] = {}
         workflows = get(client, f"/repos/{OWNER}/{repo}/actions/workflows?per_page={PAGE}")["workflows"]
         for workflow in sorted(workflows, key=lambda w: w["path"]):
             if workflow.get("state") != develop_red.ACTIVE:
@@ -128,6 +186,11 @@ def ci_runs(client: develop_red.Client, repo: str) -> Metrics:
             found[f"ci.{name}.success_rate"] = rec(round(rate, 1), "%", HIGHER, EXTERNAL, source)
             found[f"ci.{name}.median_minutes"] = rec(
                 round(statistics.median(minutes(r) for r in runs), 1), "min", LOWER, EXTERNAL, source)
+            found[f"ci.{name}.rerun_rate"] = rec(rerun_rate(runs), "%", LOWER, EXTERNAL, source)
+            found[f"lane.{name}.commits_since_green"] = commits_since_green(client, repo, runs, source)
+            newest[name] = dt.datetime.fromisoformat(runs[0]["created_at"])
+        if published is not None:
+            found["image_lag.lanes_without_run"] = lanes_behind_image(newest, tag_of or {}, published)
         return found
     return guarded({"ci": ("runs", HIGHER, EXTERNAL)}, "actions/workflows", collect)
 
@@ -225,6 +288,19 @@ def hub_pin_lag(client: develop_red.Client, pin: str | None) -> Metrics:
     return guarded(names, "compare", collect)
 
 
+def sibling_pin_lag(client: develop_red.Client, pins: dict[str, str]) -> Metrics:
+    """Commits on each sibling's develop that the repo's third_party/<sibling> gitlink lacks, as hub_pin does."""
+    found: Metrics = {}
+    for sibling, pin in sorted(pins.items()):
+        name = f"sibling_pin.{sibling}.lag_commits"
+
+        def collect(sibling: str = sibling, pin: str = pin, name: str = name) -> Metrics:
+            ahead = get(client, f"/repos/{OWNER}/{sibling}/compare/{pin}...develop")["ahead_by"]
+            return {name: rec(ahead, "commits", LOWER, EXTERNAL, f"compare {pin[:12]}...develop")}
+        found.update(guarded({name: ("commits", LOWER, EXTERNAL)}, "compare", collect))
+    return found
+
+
 def newest_artifact(client: develop_red.Client, slug: str, name: str,
                     keep: Callable[[dict[str, Any]], bool]) -> dict[str, Any] | None:
     """The newest unexpired artifact of that exact name whose run passes `keep`."""
@@ -299,23 +375,31 @@ def security_audit(client: develop_red.Client, repo: str, dest: str) -> Metrics:
     return guarded(names, "security-audit artifact", collect)
 
 
-def bench_history(client: develop_red.Client, repo: str, keys: list[str], dest: str) -> Metrics:
-    """The newest develop verdict of each bench-history artifact quality-report.toml declares."""
+# An on-request lane whose newest sample is older than this has stopped moving; the row says stale.
+BENCH_STALE_DAYS = 14
+
+
+def bench_history(client: develop_red.Client, repo: str, keys: list[str], dest: str,
+                  now: dt.datetime) -> Metrics:
+    """The newest develop verdict and age of each bench-history artifact quality-report.toml declares."""
     if not keys:
         return {"bench_history": gap(NOT_COLLECTED, "verdict", LOWER, EXTERNAL, "quality-report.toml",
                                      "quality-report.toml declares no benchmark output")}
     metrics: Metrics = {}
     for key in keys:
-        name = f"bench_history.{key}.verdict"
+        name, age = f"bench_history.{key}.verdict", f"bench_history.{key}.days_since_sample"
 
-        def collect(key: str = key, name: str = name) -> Metrics:
+        def collect(key: str = key, name: str = name, age: str = age) -> Metrics:
             found = newest_artifact(client, f"{OWNER}/{repo}", key, on_develop)
             if found is None:
                 raise NotCollected(f"no develop run carries a {key} artifact")
             doc = read_json(download(client, f"{OWNER}/{repo}", found, dest))
-            return {name: rec(doc["verdict"], "verdict", LOWER, EXTERNAL,
-                              f"{key} artifact of run {found['workflow_run']['id']}")}
-        metrics.update(guarded({name: ("verdict", LOWER, EXTERNAL)}, f"{key} artifact", collect))
+            source = f"{key} artifact of run {found['workflow_run']['id']}"
+            days = (now - dt.datetime.fromisoformat(found["created_at"])).days
+            return {name: rec(doc["verdict"], "verdict", LOWER, EXTERNAL, source),
+                    age: {**rec(days, "days", LOWER, EXTERNAL, source), "stale": days > BENCH_STALE_DAYS}}
+        metrics.update(guarded({name: ("verdict", LOWER, EXTERNAL), age: ("days", LOWER, EXTERNAL)},
+                               f"{key} artifact", collect))
     return metrics
 
 

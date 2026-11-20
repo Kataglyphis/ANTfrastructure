@@ -217,6 +217,17 @@ repeated results to each other. It retains the schema, bounds and one-to-one tol
 checks without reapplying the CPU-only two-cats score oracle to a GPU reference.
 Pairwise checks must not replace the default CPU-baseline checks.
 
+**The three-process run.** `shared/python/check_detector_parity.py` is the run a consumer's Windows GPU
+lane makes around the comparator: the packaged detector in three processes (CPU, the GPU, the GPU again),
+each writing an output, a repeat and one provider profile; `verify_ort_profile.py --min-runs 2` on each
+profile; and the comparator over every pair of the six outputs, `--pairwise` unless the CPU output is
+one side. Each child gets a clean environment (no inherited `KATAGLYPHIS_`, `ORT_`, `MIGRAPHX_` or
+`GST_` variable), the package's own `onnxruntime.dll`, which must be a regular file in the stage, and
+on DirectML the adapter index that `verify-dxgi-adapter.py` checked. The photo must match its SHA-256.
+A consumer's `scripts/windows/check_gpu_detector_parity.py` keeps only the launcher command and its
+model check, and calls `check_parity(hub, stage, device, index, work, launch, run)`.
+`linux/scripts/tests/test-detector-parity.sh` runs both with a fake detector as a real subprocess.
+
 ## A package on your own GPU
 
 No hosted runner has a GPU, so a package has run on one only where someone ran it. On Windows, unpack

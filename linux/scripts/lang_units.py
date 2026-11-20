@@ -302,6 +302,11 @@ def functions(text: str, lang: str) -> list[tuple[str, int, int]]:
     return out
 
 
+def is_test_body(rel: str, lang: str, name: str) -> bool:
+    """A Dart test file's main(): its length is the number of tests, not product code."""
+    return lang == "dart" and name == "main" and rel.endswith("_test.dart")
+
+
 def _blank_span(lines: list[list[str]], start: tuple[int, int], end: tuple[int, int],
                 stub: str) -> None:
     """Blank a token span in place, leaving `stub` at its start so a string still reads as one."""

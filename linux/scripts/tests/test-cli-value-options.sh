@@ -60,7 +60,7 @@ while read -r mode flags; do
   done
 done <<'FLAGS'
 app-runner --exe-name --build-dir --build-type
-ctest-run --vulkan-version --vulkan-setup-script --vulkan-sdk --build-dir --build-type --ctest-exclude
+ctest-run --vulkan-version --vulkan-setup-script --vulkan-sdk --build-dir --build-type --ctest-exclude --fail-on-skipped
 cmake-build --preset --build-dir --clean-build-dir --build-config --build-target --cargo-cache-dir --parallel --mb-per-job --vulkan-version --vulkan-setup-script --vulkan-sdk
 FLAGS
 t_summary

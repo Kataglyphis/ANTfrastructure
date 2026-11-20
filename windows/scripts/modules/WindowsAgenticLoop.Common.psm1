@@ -864,13 +864,40 @@ function Remove-CheckedBacklogTasks {
 }
 
 # -- Git helpers ----------------------------------------------------------
+$script:AgenticStageMaxKiB = 500  # verify_large_files.py's LIMIT_KIB; a larger or binary new file is left for a person
+
+# Tracked changes, plus new text files under the limit; each file left out is logged. $false when git refuses.
+function Invoke-AgenticStage {
+    param([Parameter(Mandatory)][string]$RepoRoot)
+    $out = & git -C $RepoRoot add -u 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-AgenticLog "Auto-commit: git add -u refused: $out" -Level ERROR; return $false }
+    $untracked = @(& git -C $RepoRoot ls-files -o --exclude-standard -z) -join '' -split "`0" | Where-Object { $_ }
+    foreach ($rel in $untracked) {
+        $path = Join-Path $RepoRoot $rel
+        $item = Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        $head = if ($item -and -not $item.LinkType -and -not $item.PSIsContainer) { [byte[]](Get-Content -LiteralPath $path -AsByteStream -TotalCount 8000) } else { $null }
+        if ($null -eq $item -or $item.LinkType -or $item.PSIsContainer -or ($item.Length / 1KB) -gt $script:AgenticStageMaxKiB -or ($head -and $head -contains 0)) {
+            Write-AgenticLog "Auto-commit: left out $rel (binary, a link or over $($script:AgenticStageMaxKiB) KiB); stage it by hand if it belongs" -Level WARN
+            continue
+        }
+        $out = & git -C $RepoRoot add -- $rel 2>&1
+        if ($LASTEXITCODE -ne 0) { Write-AgenticLog "Auto-commit: git add $rel refused: $out" -Level ERROR; return $false }
+    }
+    return $true
+}
+
+# Twin of invoke_git_auto_commit: $true committed or nothing to commit, $false when git refuses (logged).
 function Invoke-GitAutoCommit {
     param([string]$Message, [string]$RepoRoot = (Get-Location).Path, [bool]$Enabled = $true)
-    if (-not $Enabled) { return }
-    if ($script:AgenticDryRun) { Write-AgenticLog "[DRY RUN] git commit -m '$Message'"; return }
-    Push-Location $RepoRoot
-    try { & git add -A 2>&1 | Out-Null; & git commit -m $Message 2>&1 | Out-Null; Write-AgenticLog "Committed: $Message"
-    } finally { Pop-Location }
+    if (-not $Enabled) { return $true }
+    if ($script:AgenticDryRun) { Write-AgenticLog "[DRY RUN] git commit -m '$Message'"; return $true }
+    if (-not (Invoke-AgenticStage -RepoRoot $RepoRoot)) { return $false }
+    & git -C $RepoRoot diff --cached --quiet
+    if ($LASTEXITCODE -eq 0) { Write-AgenticLog 'Auto-commit: nothing to commit'; return $true }
+    $out = & git -C $RepoRoot commit -q -m $Message 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-AgenticLog "Auto-commit refused: $out" -Level ERROR; return $false }
+    Write-AgenticLog "Committed: $Message"
+    return $true
 }
 
 # -- Build / Test / Quality wrappers (the config's command runs in a child pwsh: clean exit code, no session mutation) --
@@ -942,6 +969,20 @@ function Invoke-TestCommand {
 function Invoke-QualityCommand {
     param([string]$Command, [string]$RepoRoot)
     Invoke-AgenticCommandPhase -Command $Command -Title 'QUALITY' -Label 'quality' -UseRepoRoot -RepoRoot $RepoRoot -Advisory
+}
+
+# git.commitGate before the auto-commit: 'pass', 'held' (the task stays uncommitted) or 'stop' after MaxFailures in a row.
+function Invoke-AgenticCommitGate {
+    param([Parameter(Mandatory)][string]$Command, [string]$RepoRoot, [int]$MaxFailures = 3)
+    if (Invoke-AgenticCommandPhase -Command $Command -Title 'COMMIT GATE' -Label 'commit-gate' -Verdict 'COMMIT GATE' -UseRepoRoot -RepoRoot $RepoRoot) {
+        $script:consecutiveGateFailures = 0
+        return 'pass'
+    }
+    $script:consecutiveGateFailures++
+    Write-AgenticLog "Consecutive commit-gate failures: $($script:consecutiveGateFailures)/$MaxFailures; the task stays uncommitted" 'WARN'
+    if ($script:consecutiveGateFailures -lt $MaxFailures) { return 'held' }
+    Write-AgenticLog 'Commit gate failed too often - stopping queue drain' -Level ERROR
+    return 'stop'
 }
 
 # -- Build-failure fixer --------------------------------------------------
@@ -1087,6 +1128,8 @@ function Invoke-AgenticLoop {
     $gitCfg = Get-AgenticConfigValue $Config 'git' $null
     $autoCommit = [bool](Get-AgenticConfigValue $gitCfg 'autoCommit' $true)
     $commitPrefix = Get-AgenticConfigValue $gitCfg 'commitPrefix' 'agentic-loop'
+    $commitGate = Get-AgenticConfigValue $gitCfg 'commitGate' $null
+    $maxConsecutiveGateFailures = [int](Get-AgenticConfigValue $intervals 'maxConsecutiveGateFailures' 3)
     $backlogCfg = Get-AgenticConfigValue $Config 'backlog' $null
     $skipPlannerWhenPending = [bool](Get-AgenticConfigValue $backlogCfg 'skipPlannerWhenTasksPending' $true)
     $deleteCompleted = [bool](Get-AgenticConfigValue $backlogCfg 'deleteCompletedTasks' $true)
@@ -1116,6 +1159,7 @@ function Invoke-AgenticLoop {
     $script:AgenticTasksCompleted = 0
     $script:buildIdx = 0
     $script:consecutiveBuildFailures = 0
+    $script:consecutiveGateFailures = 0
 
     # On a build failure the fixer may run, then the build is retried once.
     function Invoke-BuildAndTestForEntry {
@@ -1169,9 +1213,15 @@ function Invoke-AgenticLoop {
         $null = Invoke-AgenticAgent -Role 'executor' -Message $ExecutorPrompt -EngineConfig $engineConfig
         Write-AgenticLog 'Executor complete'
     }
-    # Commit, build, quality; $false once the consecutive-build-failure cap is hit.
+    # Commit, build, quality; $false on a refused commit or once the consecutive-build-failure cap is hit.
     function Invoke-AfterTaskPhases {
-        Invoke-GitAutoCommit -Message "${commitPrefix}: task #${tasksDone}" -RepoRoot $RepoRoot -Enabled $autoCommit
+        $gate = if ($autoCommit -and $commitGate) { Invoke-AgenticCommitGate -Command $commitGate -RepoRoot $RepoRoot -MaxFailures $maxConsecutiveGateFailures } else { 'pass' }
+        if ($gate -eq 'stop') { return $false }
+        # Only an explicit $false is a refusal; a stub that returns nothing is not.
+        if ($gate -eq 'pass' -and $false -eq (Invoke-GitAutoCommit -Message "${commitPrefix}: task #${tasksDone}" -RepoRoot $RepoRoot -Enabled $autoCommit)) {
+            Write-AgenticLog 'Auto-commit refused - stopping queue drain' -Level ERROR
+            return $false
+        }
         if (-not $SkipBuild -and ($tasksDone % $buildEveryN -eq 0)) { Invoke-BuildPhase }
         if (-not $SkipQuality -and ($qualityEveryN -gt 0) -and ($tasksDone % $qualityEveryN -eq 0) -and $qualityCmd) { Invoke-QualityCommand -Command $qualityCmd -RepoRoot $RepoRoot }
         return ($script:consecutiveBuildFailures -lt $maxConsecutiveBuildFailures)

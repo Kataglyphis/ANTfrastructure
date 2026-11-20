@@ -85,8 +85,25 @@ class TinyGenaiModel(unittest.TestCase):
                           "tokenizer_config.json"], names)
         self.assertEqual(self.oracle, self.config("fixture.json"))
         self.assertEqual({"prompt": "abc", "prompt_ids": [97, 98, 99], "continuation": "defg",
-                          "continuation_ids": [100, 101, 102, 103], "max_length": 7, "eos_token_id": 256},
-                         self.oracle)
+                          "continuation_ids": [100, 101, 102, 103], "max_length": 7, "eos_token_id": 256,
+                          "schema_case": {"schema": {"enum": [7]}, "answer": "7"}},
+                         {k: v for k, v in self.oracle.items() if k != "cases"})
+
+    def test_the_cases_name_one_outcome_each_in_the_contracts_terms(self) -> None:
+        cases = self.oracle["cases"]
+        self.assertEqual(len({c["name"] for c in cases}), len(cases), "names are unique")
+        kinds = {c["expect"].get("error") for c in cases} - {None}
+        self.assertEqual(kinds, {"invalid_options", "generation_failed"})
+        greedy = cases[0]["expect"]
+        self.assertEqual((greedy["text"], greedy["ids"], greedy["finish"]),
+                         (self.oracle["continuation"], self.oracle["continuation_ids"], "length"))
+        for case in cases:
+            self.assertTrue(("error" in case["expect"]) != ("text" in case["expect"]), case["name"])
+
+    def test_the_schema_case_names_an_answer_the_model_never_predicts(self) -> None:
+        case = self.oracle["schema_case"]
+        self.assertEqual(json.loads(case["answer"]), case["schema"]["enum"][0])
+        self.assertNotIn(case["answer"], self.oracle["continuation"], "only a live mask may produce it")
 
     def test_the_model_header(self) -> None:
         self.assertEqual([8], get(self.model, 1))

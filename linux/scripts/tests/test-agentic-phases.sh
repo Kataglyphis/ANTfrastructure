@@ -59,4 +59,68 @@ for counter in unchecked_task_count blocked_task_count; do
     t_assert_eq 0 "$("$counter" "$_work/missing")"
 done
 
+# _commit_repo: a clone with one commit; the auto-commit cases stage into it.
+_commit_repo() {
+    local d; d="$(mktemp -d "$_work/repo.XXXXXX")"
+    git -C "$d" init -q && git -C "$d" config user.email t@example.invalid && git -C "$d" config user.name t
+    git -C "$d" config commit.gpgsign false
+    printf 'one\n' > "$d/tracked.txt" && git -C "$d" add tracked.txt && git -C "$d" commit -qm base
+    printf '%s' "$d"
+}
+export DRY_RUN=false
+
+t_case 'auto-commit stages tracked edits and new text, leaves out a binary and a large file, and names them'
+d="$(_commit_repo)"; : > "$LOG_FILE"
+printf 'two\n' >> "$d/tracked.txt"
+printf 'new text\n' > "$d/notes.md"
+printf 'x\0y' > "$d/core"
+head -c $(( 501 * 1024 )) /dev/zero | tr '\0' 'a' > "$d/big.log"
+t_assert_eq 0 "$(t_rc invoke_git_auto_commit 'loop: task #1' "$d" true)"
+t_assert_eq 'notes.md tracked.txt' "$(git -C "$d" show --name-only --format= HEAD | sort | xargs)" 'only the rule\'s files'
+t_assert_contains "$(cat "$LOG_FILE")" 'left out core'
+t_assert_contains "$(cat "$LOG_FILE")" 'left out big.log'
+t_assert_contains "$(cat "$LOG_FILE")" 'Committed: loop: task #1'
+
+t_case 'nothing to commit is no failure'
+d="$(_commit_repo)"; : > "$LOG_FILE"
+t_assert_eq 0 "$(t_rc invoke_git_auto_commit 'loop: task #2' "$d" true)"
+t_assert_contains "$(cat "$LOG_FILE")" 'nothing to commit'
+
+t_case 'a refused commit fails the phase and says why'
+d="$(_commit_repo)"; : > "$LOG_FILE"
+mkdir -p "$d/.git/hooks" && printf '#!/bin/sh\necho refused-by-hook >&2\nexit 1\n' > "$d/.git/hooks/pre-commit"
+chmod +x "$d/.git/hooks/pre-commit"
+printf 'three\n' >> "$d/tracked.txt"
+t_assert_eq 1 "$(t_rc invoke_git_auto_commit 'loop: task #3' "$d" true)" 'a silent refusal let the next task pile onto it'
+t_assert_contains "$(cat "$LOG_FILE")" 'Auto-commit refused: refused-by-hook'
+
+t_case 'disabled or dry-run commits nothing'
+d="$(_commit_repo)"; printf 'four\n' >> "$d/tracked.txt"
+t_assert_eq 0 "$(t_rc invoke_git_auto_commit 'x' "$d" false)"
+t_assert_eq 0 "$(DRY_RUN=true t_rc invoke_git_auto_commit 'x' "$d" true)"
+t_assert_eq 1 "$(git -C "$d" rev-list --count HEAD)" 'still the base commit'
+
+t_case 'the commit gate: a pass commits, a failure holds the task uncommitted, the cap stops the drain'
+d="$(_commit_repo)"; : > "$LOG_FILE"
+declare -A _AL  # the sourced lib declares it; shellcheck cannot follow that source
+_AL[auto_commit]=true; _AL[commit_prefix]=loop; _AL[repo_root]="$d"; _AL[tasks_completed]=1
+_AL[commit_gate]="test -f $d/gate-ok"; _AL[max_consecutive_gate_failures]=2; _AL[consecutive_gate_failures]=0
+_AL[build_every_n]=1000; _AL[quality_every_n]=1000; _AL[quality_cmd]=''
+export SKIP_BUILD=true SKIP_QUALITY=true
+printf 'two\n' >> "$d/tracked.txt"
+t_assert_eq 0 "$(t_rc _agentic_after_task_phases 1)" 'one failure holds, it does not stop'
+_agentic_after_task_phases 1 >/dev/null || true
+t_assert_eq 1 "$(git -C "$d" rev-list --count HEAD)" 'a failed gate commits nothing'
+t_assert_contains "$(cat "$LOG_FILE")" 'Consecutive commit-gate failures: 1/2; the task stays uncommitted'
+t_assert_eq 1 "$(t_rc _agentic_after_task_phases 1)" 'the second failure in a row reaches the cap'
+_AL[consecutive_gate_failures]=1
+: > "$d/gate-ok"; printf 'gate-ok\n' >> "$d/.git/info/exclude"
+t_assert_eq 0 "$(t_rc _agentic_after_task_phases 1)"
+_agentic_after_task_phases 1 >/dev/null
+t_assert_eq 2 "$(git -C "$d" rev-list --count HEAD)" 'a passing gate commits the held work'
+t_assert_eq 0 "${_AL[consecutive_gate_failures]}" 'a pass resets the count'
+_AL[commit_gate]=''
+t_assert_eq 0 "$(t_rc _agentic_commit_gate)" 'no gate set is a pass'
+unset SKIP_BUILD SKIP_QUALITY
+
 t_summary

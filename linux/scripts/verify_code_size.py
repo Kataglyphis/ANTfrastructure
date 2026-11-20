@@ -350,21 +350,28 @@ def _extra_languages(root: str, tops: Sequence[str] | None) -> dict[str, object]
     import lang_units  # Imported here: the default scan must not depend on the extra readers.
 
     per_file: dict[str, dict[str, int | str]] = {}
-    over = 0
+    over = tests = 0
     for path, rel in subjects(root, lambda fn: fn.endswith(tuple(lang_units.LANGUAGES)), tops):
         lang = lang_units.LANGUAGES[os.path.splitext(rel)[1]]
         with open(path, encoding="utf-8", errors="replace") as source:
             found = lang_units.functions(source.read(), lang)
         big = [(name, first, n) for name, first, n in found if n > LIMIT]
+        test_bodies = [b for b in big if lang_units.is_test_body(rel, lang, b[0])]
         for name, first, n in big:
-            print(f"REPORT-ONLY: {lang} function {rel}:{first}:{name} = {n} lines")
-        per_file[rel] = {"language": lang, "functions": len(found), "oversized_functions": len(big)}
-        over += len(big)
+            kind = "test body" if (name, first, n) in test_bodies else "function"
+            print(f"REPORT-ONLY: {lang} {kind} {rel}:{first}:{name} = {n} lines")
+        per_file[rel] = {"language": lang, "functions": len(found),
+                         "oversized_functions": len(big) - len(test_bodies),
+                         "oversized_test_bodies": len(test_bodies)}
+        over += len(big) - len(test_bodies)
+        tests += len(test_bodies)
     functions_seen = sum(int(row["functions"]) for row in per_file.values())
     print(f"REPORT-ONLY: {over} oversized Rust, Dart or C/C++ functions in "
           f"{functions_seen} functions, {len(per_file)} files (never fatal)")
+    print(f"REPORT-ONLY: {tests} oversized Dart test main() bodies, counted apart")
     return {"limit": LIMIT, "files": per_file, "totals": {
-        "files": len(per_file), "functions": functions_seen, "oversized_functions": over}}
+        "files": len(per_file), "functions": functions_seen, "oversized_functions": over,
+        "oversized_test_bodies": tests}}
 
 
 def _gate(longest: dict[tuple[str, str], int], file_lengths: list[tuple[tuple[str], int]],

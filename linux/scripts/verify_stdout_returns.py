@@ -14,7 +14,8 @@ import gate_scope
 ROOT = Path(__file__).resolve().parents[2]
 # log()/info() reach fd 1; warn()/err()/die() reach fd 2 and are therefore safe.
 STDOUT_LOGGERS = re.compile(r"^\s*(log|info)\s")
-FUNC_DEF = re.compile(r"^([a-z_][a-z0-9_]*)\(\)\s*\{(.*?)^\}", re.DOTALL | re.MULTILINE)
+# A one-line body ends on its own line; otherwise the next column-0 brace closes it, a later function's.
+FUNC_DEF = re.compile(r"^([a-z_][a-z0-9_]*)\(\)\s*\{(?:([^\n]*)\}[ \t]*$|(.*?)^\})", re.DOTALL | re.MULTILINE)
 SUBST = re.compile(r"\$\(\s*([a-z_][a-z0-9_]*)\b")
 
 
@@ -31,6 +32,19 @@ def _tracked_files(root: Path) -> list[Path]:
 def scan_files(root: Path) -> list[Path]:
     """The hub grades its historical walk; any other root grades its tracked shell."""
     return _hub_files(root) if root == ROOT else _tracked_files(root)
+
+
+def stdout_logging(p: Path, root: Path, consumed: set[str]) -> list[tuple[str, str, str]]:
+    """(file, function, line) for each stdout log line inside a function whose stdout is consumed."""
+    found = []
+    for name, one_line, block in FUNC_DEF.findall(p.read_text(errors="replace")):
+        # The loggers themselves print by definition; what this gate catches is their call in a value function.
+        if name not in consumed or STDOUT_LOGGERS.match(name + " "):
+            continue
+        for line in (one_line or block).splitlines():
+            if STDOUT_LOGGERS.match(line) and ">&2" not in line:
+                found.append((p.relative_to(root).as_posix(), name, line.strip()[:88]))
+    return found
 
 
 def main() -> int:
@@ -62,14 +76,7 @@ def main() -> int:
     for p in files:
         consumed |= set(SUBST.findall(p.read_text(errors="replace")))
 
-    findings = []
-    for p in files:
-        for name, body in FUNC_DEF.findall(p.read_text(errors="replace")):
-            if name not in consumed:
-                continue
-            for lineno, line in enumerate(body.splitlines(), 1):
-                if STDOUT_LOGGERS.match(line) and ">&2" not in line:
-                    findings.append((p.relative_to(root).as_posix(), name, line.strip()[:88]))
+    findings = [hit for p in files for hit in stdout_logging(p, root, consumed)]
 
     if not findings:
         print(f"stdout-return gate OK: {len(consumed)} substituted function name(s), "

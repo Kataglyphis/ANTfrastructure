@@ -228,12 +228,42 @@ default_planner_prompt() { _default_prompt planner; }
 default_refactor_planner_prompt() { _default_prompt refactor-planner; }
 default_executor_prompt() { _default_prompt executor; }
 
-# Git auto-commit, twin of Invoke-GitAutoCommit; a commit error never fails the loop.
+# The LIMIT_KIB of verify_large_files.py: a new file over it, or a binary one, is left for a person to stage.
+AGENTIC_STAGE_MAX_KIB=500
+
+# <repo_root>: tracked changes, plus new text files under the limit; each file left out is logged. 1 when git refuses.
+_agentic_stage() {
+    local repo_root="$1" rel path out kib nuls
+    out="$(git -C "$repo_root" add -u 2>&1)" || { log "Auto-commit: git add -u refused: $out" "ERROR"; return 1; }
+    while IFS= read -r -d '' rel; do
+        path="${repo_root}/${rel}"
+        kib=0 nuls=1
+        if [[ -f "$path" && ! -L "$path" ]]; then
+            kib=$(( $(stat -c %s "$path") / 1024 ))
+            nuls=$(head -c 8000 "$path" | tr -d -c '\000' | wc -c)
+        fi
+        if [[ "$nuls" -gt 0 || "$kib" -gt "$AGENTIC_STAGE_MAX_KIB" ]]; then
+            log "Auto-commit: left out ${rel} (binary, a link or over ${AGENTIC_STAGE_MAX_KIB} KiB); stage it by hand if it belongs" "WARN"
+            continue
+        fi
+        out="$(git -C "$repo_root" add -- "$rel" 2>&1)" || { log "Auto-commit: git add ${rel} refused: $out" "ERROR"; return 1; }
+    done < <(git -C "$repo_root" ls-files -o --exclude-standard -z)
+}
+
+# Git auto-commit, twin of Invoke-GitAutoCommit: 0 committed or nothing to commit, 1 when git refuses (logged).
 invoke_git_auto_commit() {
-    local message repo_root enabled; message="$1"; repo_root="${2:-$(pwd)}"; enabled="${3:-true}"
+    local message repo_root enabled out; message="$1"; repo_root="${2:-$(pwd)}"; enabled="${3:-true}"
     [[ "$enabled" != "true" || "${DRY_RUN:-false}" == "true" ]] && return 0
-    git -C "$repo_root" add -A 2>/dev/null || true
-    git -C "$repo_root" commit -m "$message" 2>/dev/null || true
+    _agentic_stage "$repo_root" || return 1
+    if git -C "$repo_root" diff --cached --quiet; then
+        log "Auto-commit: nothing to commit"
+        return 0
+    fi
+    if ! out="$(git -C "$repo_root" commit -q -m "$message" 2>&1)"; then
+        log "Auto-commit refused: $out" "ERROR"
+        return 1
+    fi
+    log "Committed: $message"
 }
 
 # Main loop. Env flags: DRY_RUN, SKIP_BUILD, SKIP_TESTS, SKIP_QUALITY, PLANNER_ONLY, EXECUTOR_ONLY, MAX_ITERATIONS_OVERRIDE.
@@ -252,7 +282,7 @@ _agentic_load_loop_config() {
         max_iterations max_retries loop_delay auto_commit commit_prefix \
         full_matrix_every_n fix_build_failures max_consecutive_build_failures \
         skip_planner_when_pending delete_completed test_cmd quality_cmd \
-        build_script; do
+        build_script commit_gate max_consecutive_gate_failures; do
         _AL[$_al_key]=""
     done
     local _al_cfg
@@ -272,7 +302,9 @@ _agentic_load_loop_config() {
         @sh "_AL[delete_completed]=\(.backlog.deleteCompletedTasks // true | v)",
         @sh "_AL[test_cmd]=\(.build[$p + "TestCommand"] // .build.linuxTestCommand // "" | v)",
         @sh "_AL[quality_cmd]=\(.build[$p + "QualityCommand"] // .build.linuxQualityCommand // "" | v)",
-        @sh "_AL[build_script]=\(.build[$p + "Script"] // .build.linuxScript // "" | v)"
+        @sh "_AL[build_script]=\(.build[$p + "Script"] // .build.linuxScript // "" | v)",
+        @sh "_AL[commit_gate]=\(.git.commitGate // "" | v)",
+        @sh "_AL[max_consecutive_gate_failures]=\(.intervals.maxConsecutiveGateFailures // 3 | v)"
     ' "$config_json")
     eval "$_al_cfg"
     if [[ -n "${MAX_ITERATIONS_OVERRIDE:-}" ]]; then
@@ -283,6 +315,20 @@ _agentic_load_loop_config() {
     _AL[tasks_completed]=0
     _AL[build_cycle_index]=0
     _AL[consecutive_build_failures]=0
+    _AL[consecutive_gate_failures]=0
+}
+
+# git.commitGate before the auto-commit: 0 passed or none set, 1 failed (the task stays uncommitted), 2 failed too often.
+_agentic_commit_gate() {
+    [[ "${_AL[auto_commit]}" == "true" && -n "${_AL[commit_gate]}" ]] || return 0
+    if _agentic_run_phase "${_AL[commit_gate]}" "COMMIT GATE" "commit gate" "COMMIT GATE"; then
+        _AL[consecutive_gate_failures]=0
+        return 0
+    fi
+    _AL[consecutive_gate_failures]=$(( _AL[consecutive_gate_failures] + 1 ))
+    log "Consecutive commit-gate failures: ${_AL[consecutive_gate_failures]}/${_AL[max_consecutive_gate_failures]}; the task stays uncommitted" "WARN"
+    [[ "${_AL[consecutive_gate_failures]}" -lt "${_AL[max_consecutive_gate_failures]}" ]] || return 2
+    return 1
 }
 
 # On build failure, optionally runs the fixer agent and retries the build once.
@@ -331,16 +377,22 @@ _agentic_build_phase() {
     fi
 }
 
-# After-task phases (commit, build, quality).
+# After-task phases (gate, commit, build, quality); 1 when the commit is refused or its gate failed too often.
 _agentic_after_task_phases() {
-    local matrix_count="$1"
-    invoke_git_auto_commit "${_AL[commit_prefix]}: task #${_AL[tasks_completed]}" "${_AL[repo_root]}" "${_AL[auto_commit]}"
+    local matrix_count="$1" gate=0
+    _agentic_commit_gate || gate=$?
+    [[ "$gate" -ne 2 ]] || return 1
+    if [[ "$gate" -eq 0 ]]; then
+        invoke_git_auto_commit "${_AL[commit_prefix]}: task #${_AL[tasks_completed]}" "${_AL[repo_root]}" "${_AL[auto_commit]}" || return 1
+    fi
     if [[ "${SKIP_BUILD:-false}" != "true" && $(( _AL[tasks_completed] % _AL[build_every_n] )) -eq 0 ]]; then
         _agentic_build_phase "$matrix_count"
     fi
     if [[ "${SKIP_QUALITY:-false}" != "true" && $(( _AL[tasks_completed] % _AL[quality_every_n] )) -eq 0 && -n "${_AL[quality_cmd]}" ]]; then
         invoke_quality "${_AL[quality_cmd]}"
     fi
+    # Build and quality report through their own counters; only a refused commit stops the drain here.
+    return 0
 }
 
 # Non-zero only when persistent build failures stop it; empty or stuck-at-max-retries is 0.
@@ -367,7 +419,10 @@ _agentic_drain_executor_queue() {
             log "Task complete. Total: ${_AL[tasks_completed]} | Remaining: $unchecked"
             # Prune any leftover checked entries before the auto-commit
             [[ "${_AL[delete_completed]}" == "true" ]] && remove_checked_tasks "$backlog"
-            _agentic_after_task_phases "$matrix_count"
+            if ! _agentic_after_task_phases "$matrix_count"; then
+                log "Auto-commit refused or its gate failed too often — stopping queue drain" "ERROR"
+                return 1
+            fi
             if [[ "${_AL[consecutive_build_failures]}" -ge "${_AL[max_consecutive_build_failures]}" ]]; then
                 log "Too many consecutive build failures — stopping queue drain" "ERROR"
                 return 1

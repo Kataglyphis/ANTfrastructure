@@ -642,7 +642,7 @@ on 2026-10-05 (CON55), so each consumer links one list instead of keeping its ow
 | Tool guards, workspace paths, a hub pin from `versions.env` | `Assert-Command`, `Resolve-WorkspacePath`, `Get-ANTfrastructurePin` | [`WindowsScripts.Shared.psm1`](../windows/scripts/modules/WindowsScripts.Shared.psm1) | a second implementation, or a `versions.env` regex |
 | Logging inside a container | `Start-ContainerLog`, `Write-ContainerLog`, `Invoke-ContainerLoggedCommand` | [`WindowsContainerLog.Common.psm1`](../windows/scripts/modules/WindowsContainerLog.Common.psm1) | a `Say`/`Run-Logged` pair per script |
 | CI version stamping (bash) | `version_util.sh --github-env`, `--resolve-ci`, `--normalize` | [`version_util.sh`](../linux/scripts/02-toolchain/rust/version_util.sh) | re-reading `VERSION.txt` or `Cargo.toml` yourself |
-| In-container cargo steps | `cargo_debug.sh`, `cargo_release.sh`, `cargo_test.sh`, `cargo_coverage.sh`, `cargo_fmt_clippy.sh` (`CARGO_CLIPPY_ARGS`), … | [`02-toolchain/rust/`](https://github.com/Kataglyphis/ANTfrastructure/tree/develop/linux/scripts/02-toolchain/rust) | inline cargo invocations |
+| In-container cargo steps | `cargo_debug.sh`, `cargo_release.sh`, `cargo_test.sh` (writes `logs/test-results/cargo-test.txt` and its JUnit `cargo-test.xml`; `CARGO_TEST_RESULTS_DIR` moves them, empty writes neither), `cargo_coverage.sh`, `cargo_fmt_clippy.sh` (`CARGO_CLIPPY_ARGS`), … | [`02-toolchain/rust/`](https://github.com/Kataglyphis/ANTfrastructure/tree/develop/linux/scripts/02-toolchain/rust) | inline cargo invocations |
 | Publishing a GitHub release: `v<version>` from `pubspec.yaml`, `Cargo.toml` or `VERSION.txt`, the CHANGELOG section as notes, a `SHA256SUMS` | `publish-github-release.sh --check` / `--assets` | [`publish-github-release.sh`](../linux/scripts/06-packaging/publish-github-release.sh) | a per-repo release script |
 | A `release.yml`'s version check and release job | `release-publish.yml`, `stage: check` and `stage: publish` | [`release-publish.yml`](../.github/workflows/release-publish.yml) | copying another repo's two jobs |
 | The lanes' uploads as one flat directory of release files | `collect-release-assets.sh` with `--include`, `--rename`, `--zip`, `--expect`, … | [`collect-release-assets.sh`](../linux/scripts/06-packaging/collect-release-assets.sh) | a per-repo `collect-release-assets.sh` |
@@ -705,11 +705,17 @@ Small decisions that were folklore until 2026-09-15, one line each.
 
 ### The git hooks, by reference
 
-One config line per clone, and no copied file:
+One config line per clone, run from its top level, and no copied file:
 
 ```bash
-git config core.hooksPath third_party/ANTfrastructure/shared/linux/templates/git-hooks
+git config core.hooksPath "$PWD/third_party/ANTfrastructure/shared/linux/templates/git-hooks"
 ```
+
+The path is absolute (owner decision 2026-11-19, CON269): a relative one resolves inside each
+working tree, so a linked worktree whose hub submodule is not checked out finds no hooks
+directory, and git commits without a word. With the absolute path the main clone's hooks run
+there too, and the repo's bootstrap checks out the submodule or stops with its
+`git submodule update` hint. A clone that moves sets the line again.
 
 That directory holds a `pre-commit` and a `pre-push`. Each calls the repo's own
 `scripts/linux/run-lint-gates.sh` when the repo has one, so the flags that wrapper passes
@@ -721,16 +727,11 @@ That directory holds a `pre-commit` and a `pre-push`. Each calls the repo's own
 | `pre-commit` | `<wrapper> --staged --index <the index of this commit>`: the large-file check (only when the wrapper passes `--ratchets`) and the secret scan over the staged blobs ([the staged checks](shared-script-libraries.md#the-staged-checks---staged)) | 2.4 to 3.0 s, one staged file in a clone of OxidANT; 5 to 16 s in a clone of OrchestrANT with all four cores busy |
 | `pre-push` | `<wrapper>`, the full gates, then `scripts/linux/pre-push-checks.sh` when the repo has that file | 127 to 188 s in the clone of OxidANT and 47 to 84 s in the one of OrchestrANT, beside other builds |
 
-The commit hook leaves every whole-tree gate to the push, mutation staleness included. Neither hook
-checks line endings: the aggregator has no such gate for a consumer (`BACKLOG.md` CON269).
+The commit hook leaves every whole-tree gate to the push, mutation staleness included. Both check
+shell line endings: the commit hook the staged bytes, the push hook the working tree.
 The push hook reads the working tree, not the pushed commits, and prints how many paths are
 uncommitted. It checks nothing when the push updates no ref or only deletes refs. A run by hand
 without a terminal (`git hook run pre-push`) hands it no ref either: run the wrapper to check by hand.
-
-The path is relative to the top level of each working tree. A linked worktree (`git worktree add`)
-has no hook until `third_party/ANTfrastructure` is checked out in it: git finds no hooks directory
-there and says nothing, and the warning below stays silent because the setting is not empty
-(`BACKLOG.md` CON269).
 
 **The extension point.** `scripts/linux/pre-push-checks.sh` is the one place for what a repo
 checks before a push beyond lint, for example the script suites its CI lint lane runs. The contract:
@@ -753,8 +754,9 @@ checks before a push beyond lint, for example the script suites its CI lint lane
 `scripts/linux/run-lint-gates.sh` by hand before the push then.
 
 **A clone without the config line** gets one line from every local run of the gates:
-`run-lint-gates.sh: WARNING: core.hooksPath is unset in <root>, …`. CI (`CI` set) gets none, and
-neither does a clone whose `core.hooksPath` names any other directory.
+`run-lint-gates.sh: WARNING: core.hooksPath is unset in <root>, …`, and a clone that still has the
+relative line gets `… core.hooksPath is relative in <root> …` with the absolute line to set. CI
+(`CI` set) gets none, and neither does a clone whose `core.hooksPath` names any other directory.
 
 A repo that keeps its own hooks directory calls these from its own hooks, a `pre-commit` before
 it unsets `GIT_INDEX_FILE`:
@@ -857,7 +859,7 @@ Still hub-only: the hub's own git hooks; consumers get the pair of § 8
 - [ ] `code-quality-report.yml` wired; `/logs/` ignored; `python-static.yml` and `python-refactor.yml` wired when Python is tracked
 - [ ] PowerShell quality and mutation workflows wired when those languages and recipes are present
 - [ ] `submodule-pins.yml` lane called (any repo with a submodule; `hub-checkout: true` if the hub is separate)
-- [ ] `core.hooksPath` pointed at `third_party/ANTfrastructure/shared/linux/templates/git-hooks` (§ 8)
+- [ ] `core.hooksPath` pointed at the absolute path of `third_party/ANTfrastructure/shared/linux/templates/git-hooks` (§ 8)
 - [ ] `BACKLOG.md` + loop config + thin runners in place, prompts left upstream
 - [ ] Role prompts are overlays only; `.opencode/agents/` gitignored, never hand-edited
 - [ ] Workflows call the composite actions, FTP publishes through `deploy-over-ftp`

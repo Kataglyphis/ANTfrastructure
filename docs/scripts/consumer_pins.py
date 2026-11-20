@@ -203,6 +203,30 @@ def _grade_pin(
     return 0
 
 
+def _uv_floor(versions: dict[str, str], root: Path) -> tuple[int, int]:
+    """(bad, compared) for `[tool.uv] required-version`: a lower bound the image's uv meets, never an exact pin."""
+    path = root / "pyproject.toml"
+    try:
+        floor = tomllib.loads(path.read_text(encoding="utf-8")).get("tool", {}).get("uv", {}).get("required-version")
+    except (OSError, tomllib.TOMLDecodeError):
+        return 0, 0  # a missing file declares nothing; an invalid one is graded by the pin rows
+    if floor is None:
+        return 0, 0
+    pinned = _bare(versions.get("UV_VERSION", ""))
+    match = re.fullmatch(r">=\s*(\d+(?:\.\d+)*)", str(floor).strip())
+    if not match:
+        print(f"{path}: [tool.uv] required-version is {floor!r}; write it as a lower bound, >=X.Y.Z, so the "
+              f"image's uv {pinned} and a newer one both pass.", file=sys.stderr)
+        return 1, 1
+    def parts(v: str) -> tuple[int, ...]:
+        return tuple(int(x) for x in v.split("."))
+    if not pinned or parts(match.group(1)) > parts(pinned):
+        print(f"{path}: [tool.uv] required-version is {floor}, above versions.env UV_VERSION={pinned}: the image's "
+              f"uv refuses the project. Lower the floor, or raise the pin first.", file=sys.stderr)
+        return 1, 1
+    return 0, 1
+
+
 def _check_root(versions: dict[str, str], root: Path) -> tuple[int, int, list[str]]:
     """(bad, compared, files looked for) for one checkout, counted per root so its verdict line cannot read green over a drift."""
     compared = 0
@@ -241,7 +265,8 @@ def _check_root(versions: dict[str, str], root: Path) -> tuple[int, int, list[st
             continue
         compared += 1
         bad += _grade_pin(path, text, value_rx, what, key, expected)
-    return bad, compared, looked_for
+    floor_bad, floor_compared = _uv_floor(versions, root)
+    return bad + floor_bad, compared + floor_compared, looked_for
 
 
 def _report_root(label: str, bad: int, compared: int, looked_for: list[str]) -> None:

@@ -199,6 +199,7 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    Fixture cleanup uses `Remove-TestDir` with literal paths; bracketed diagnostic prefixes must leave no temporary roots.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
+   `ctest-run.sh --fail-on-skipped` fails on every matching JUnit skip but never on ctest's Disabled tests; a missing or stale report fails rather than passes.
    Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; the local driver also requires `renovate-node.sh`, `renovate-submodules.sh` and `renovate-uv-exports.sh`. `renovate_planner.py` carries `renovate_uv_exports.py`. Preserve dry-run, rollback and nonempty-list policies.
    Reject invalid Renovate entrypoints before executing their help probe; valid wrappers still require the live delegation check.
    Exact `--submodule-path` selections filter writes only; retain the complete direct-gitlink scan and reject unknown or repeated paths.
@@ -208,7 +209,7 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    Renovate planner companions belong in the strict ty and ANN001/ANN201 scopes; the isolated type fixture must detect their removal.
    Gradle wrapper updates change only the version in one distribution URL; duplicate properties and checksum-pinned archives refuse before writing.
    Shared harness mutation suites stay host-portable; native batch execution remains in the separately discovered Windows suite.
-   Consumer-hook fixtures retain Git's canonical root spelling when checking native Git Bash output.
+   Consumer-hook fixtures retain Git's canonical root spelling and a checked discovery ceiling above their empty-directory cases; prove isolation with an owned parent repository.
    Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order.
    Copied `app-packaging.sh` carries `app-packaging-license.sh`; both it and `pe-icon-tools.sh` carry `log-bootstrap.sh` in the shared lib layout. Package the original project license and validate declared texts in built artifacts.
    Native and Python app DEBs use gzip compression and root-owned payloads; retain both properties when changing their builders.
@@ -234,6 +235,7 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    The native ONNX finalizer stages the checked-out LICENSE and ThirdPartyNotices before deleting its source; consumers must carry those files with the corresponding native output.
    Cargo license collection retains original files and source provenance; absent or unreviewed sources fail rather than fabricating notices, and the dependency graph is not proof of linkage.
    Copied `stage-cargo-licenses.py` carries `cargo_license_tree.py`; live tree selection preserves the build's target and feature flags and records both tree and metadata scopes.
+   Its `--forbid-package` and `--max-runtime-packages` gates fail before staging; the budget counts the live normal-edge tree, never the metadata graph, and both stay off by default.
    Child Windows test reports create the requested result directory, including in isolated mutation mirrors, and failures to write remain fatal. Mutation recipes call that runner directly without shell-specific directory setup.
    Copied `WindowsPythonApp.Common.psm1` carries `WindowsIcon.Common.psm1` and `WindowsMsix.Common.psm1`; unforced imports and re-exports keep their icon and license APIs visible.
    Windows packages that carry the VC++ runtime ship its notice; copied `WindowsCrossBundle.Common.psm1` carries `WindowsMsvcRuntimeNotice.Common.psm1`, `WindowsMsiLicense.Common.psm1` and `cmake/msvc-runtime-notice.txt` in the hub layout.
@@ -1364,8 +1366,8 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
     TensorRT EP is NVIDIA's plugin (`37-build-tensorrt-plugin-ep.sh`, `/usr/local/lib/onnxruntime-ep-tensorrt`,
     `ORT_TENSORRT_EP_ROOT`, G2 + census contract), and the rocm variant's MIGraphX EP is AMD's plugin over the CPU
     prefix; the rocm variant has no ORT GPU build. Never pass `--use_tensorrt` or `--use_migraphx` again, never
-    ship `libonnxruntime_providers_tensorrt.so` or `libonnxruntime_providers_migraphx.so` (the verify stages and
-    the runtime smoke fail both), and keep the plugin EP check free of `grep -q`: it closes the pipe on a module
+    ship `libonnxruntime_providers_tensorrt.so` or `libonnxruntime_providers_migraphx.so` (the media verify stage
+    fails the TensorRT one, the runtime smoke both), and keep the plugin EP check free of `grep -q`: it closes the pipe on a module
     with thousands of symbols and `pipefail` fails `readelf`
     ([the plugin pages](docs/linux-accelerator-images.md#the-cuda-plugin-ep)).
   - Qualcomm's plugin QNN EP (`36-build-qnn-plugin-ep.sh`, arm64) is the chain's build of Qualcomm's ORT fork, from

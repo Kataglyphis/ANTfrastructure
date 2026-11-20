@@ -108,14 +108,15 @@ def measure_repo(co: tree.Checkout, clients: dict[str, Any], work: str,
     if names:
         lane, where = gh.measurements_artifact(general, co.repo, co.sha, os.path.join(work, "lane"))
         metrics = tree.overlay(metrics, names, lane, where)
-    metrics.update(gh.ci_runs(general, co.repo))
+    metrics.update(gh.ci_runs(general, co.repo, tree.image_tags(co), clients["images"]))
     metrics.update(gh.dependabot(alerts, co.repo, token))
     metrics.update(gh.code_scanning(alerts, co.repo, token, co.exists, now))
     metrics.update(gh.secret_scanning(alerts, co.repo, token))
     metrics.update(gh.develop_red_issues(general, co.repo, cache))
     metrics.update(gh.hub_pin_lag(general, tree.hub_pin(co)))
+    metrics.update(gh.sibling_pin_lag(general, tree.sibling_pins(co)))
     metrics.update(gh.security_audit(general, co.repo, os.path.join(work, "audit")))
-    metrics.update(gh.bench_history(general, co.repo, tree.benchmark_keys(conf), os.path.join(work, "bench")))
+    metrics.update(gh.bench_history(general, co.repo, tree.benchmark_keys(conf), os.path.join(work, "bench"), now))
     metrics.update(gh.ai_regression(general, co.repo))
     entry["metrics"] = metrics
     return entry
@@ -186,7 +187,8 @@ def clients_for(args: argparse.Namespace) -> dict[str, Any]:
             replay = json.load(fh)
     general = gh_token()
     token = os.environ.get("FLEET_HEALTH_TOKEN") or general
-    return {"general": develop_red.Client(general, True, replay),
+    images_client = develop_red.Client(general, True, replay)
+    return {"general": develop_red.Client(general, True, replay), "images": gh.image_published(images_client),
             "alerts": develop_red.Client(token, True, replay), "token": token, "cache": {}}
 
 

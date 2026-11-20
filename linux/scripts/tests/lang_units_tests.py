@@ -115,6 +115,15 @@ class BraceLanguages(unittest.TestCase):
             self.assertEqual(text.count("\n"), masked.count("\n"))
 
 
+class TestBodies(unittest.TestCase):
+    def test_only_a_dart_test_files_main_is_a_test_body(self) -> None:
+        self.assertTrue(lang_units.is_test_body("test/widget_test.dart", "dart", "main"))
+        self.assertTrue(lang_units.is_test_body("integration_test/app_test.dart", "dart", "main"))
+        self.assertFalse(lang_units.is_test_body("lib/main.dart", "dart", "main"), "product main")
+        self.assertFalse(lang_units.is_test_body("test/widget_test.dart", "dart", "helper"))
+        self.assertFalse(lang_units.is_test_body("tests/it_test.rs", "rust", "main"))
+
+
 class PythonUnits(unittest.TestCase):
     def test_units_and_masking(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

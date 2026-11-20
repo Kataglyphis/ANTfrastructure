@@ -69,6 +69,13 @@ t_assert_fails grep -q -F -e "outside the lint-shell.sh scope" <<<"$(
   "${PREFLIGHT_PYTHON:-python3}" "${TESTS_DIR}/../verify_shellcheck_warnings.py" \
     --files "${LIVE_HOOK}" 2>&1)"
 
+t_case "the DEFAULT sweep lints the consumer hook templates and the copied bootstrap"
+_default_scope="$(bash "${SUBJECT}" --list-files)"
+for _template in shared/linux/templates/git-hooks/pre-commit shared/linux/templates/git-hooks/pre-push \
+  shared/linux/templates/antfrastructure.sh; do
+  t_assert_contains "${_default_scope}" "${_template}" "every consumer runs this file, and no gate linted it"
+done
+
 t_case "the default sweep includes every Ansible shell script in this tree"
 _default_scope="$(bash "${SUBJECT}" --list-files)"
 _ansible_count=0

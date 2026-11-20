@@ -1,6 +1,7 @@
 # Changelog
 
 > **Older entries** are archived, newest archive first:
+> [`2026-11-13 … 2026-11-14`](docs/changelog-archive-2026-11-14.md) ·
 > [`2026-11-07 … 2026-11-12`](docs/changelog-archive-2026-11-12.md) ·
 > [`2026-11-05 … 2026-11-06`](docs/changelog-archive-2026-11-06.md) ·
 > [`2026-11-05`](docs/changelog-archive-2026-11-05.md) ·
@@ -16,6 +17,13 @@
 > [`2026-08-14 … 2026-08-28`](docs/changelog-archive-2026-08-28.md) ·
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
+
+## 2026-11-20 — isolate consumer-hook fixture ancestry
+
+- Bound Git discovery above empty-directory cases, using Git's native root
+  spelling and an owned parent repository even when TMPDIR is inside a checkout.
+  Retain all hook assertions and prove the isolation with a ceiling-removal mutation.
+  Use the same native spelling for the image-runner configuration diagnostic.
 
 ## 2026-11-20 — stabilize QNN query receipt fixtures
 
@@ -43,6 +51,30 @@
 - Document private public-registry client configuration for rootless preflight;
   credential-helper failures cannot be ignored just because an image is public.
 
+## 2026-11-20 — the chain names an absent asset mirror; stale GPU texts fixed (CON153, CON256 h, CON260)
+
+- `append_asset_mirror_secret` prints `[INFO] asset mirror: none (<file> is missing)` once per chain: a missing env file
+  was silent and hid an absent mirror for two rounds (CON153 closed). `test-asset-mirror.sh` holds the once-only line.
+- CON256 (h): the accelerator page names `/usr/local/lib/onnxruntime-gpu` instead of the undefined `${ORT_GPU_DIR}` and
+  the runtime gate's real plugin-EP checks instead of a provider list; the consumer contract sends only NVIDIA consumers
+  to `onnxruntime-gpu/lib`; `AGENTS.md` says which gate fails which in-tree provider.
+- CON260: the FFmpeg OpenVINO probe drops its stale `2026.2.1` literal and takes the passed pin.
+- `test-deepstream.sh` and `test-gpu-variant.sh` pin the amd64 target and build host their fixtures model; on an arm64
+  host they failed unmutated (8 assertions), which turned the commit hook's mutation sample vacuous there.
+
+## 2026-11-20 — CON237 closed: every binding replays the shared text cases
+
+- `fixture.json`'s `cases` are replayed by AccelerANTgine 7f8cb17 (C++ and Python), OxidANT 9e0f589 and OrchestrANT
+  585f40c, which now names a schema object llguidance cannot compile `generation_failed` as C++ and Rust do. The stream
+  lines reach Dart too: OmniAccelerANT e6b1898's `endpoint_reply.dart` replays them and fails on an `error:` line.
+
+## 2026-11-20 — the test model's `fixture.json` lists its cases (CON237 item 4)
+
+- `tiny-genai-model.py` writes `cases`: seven requests with their answer or their error kind (`invalid_options`,
+  `generation_failed`), measured on the image's GenAI: greedy to the budget (`defg`, `length`), the schema case
+  (`7`, `stop`), a schema that is an array or a number, an object the grammar compiler refuses, no messages and no
+  budget. Owner decision 2026-11-20: all three bindings replay it.
+
 ## 2026-11-19 — keep media module reads independent of cached directory views
 
 - Extend the existing narrow per-file delivery to the five media-core RUNs and TVM, preserving the same seven shared modules plus TVM's private leaf. The current NVIDIA CUDA repeat reproduced an unreadable cached view before ONNX compilation; isolated direct mounts read, hash and import those seven bytes correctly.
@@ -63,6 +95,155 @@
 
 - Fetch GenAI's exact upstream extensions commit before CMake, retaining primary retries, recursive checkout and fatal commit checks through the shared clone implementation.
 - Route FetchContent to that verified tree; metadata and disposable Git regressions cover refusal paths. Full final-source quality, producer and device acceptance remain required.
+
+## 2026-11-19 — `ctest-run.sh --fail-on-skipped REGEX`: a skip is not a pass (BeschleunigerBallett X2)
+
+- BeschleunigerBallett's llvmpipe lane counted its hardware ray-tracing `GTEST_SKIP`s as passes. After ctest,
+  `ctest-run.sh` now reads ctest's JUnit report and fails the run on each test matching REGEX that was skipped,
+  printing its name and ctest's reason; ctest's own failing status wins. Disabled tests never count. The report is
+  the caller's `--output-junit` or a temporary one, and a missing one fails; `CTEST_FAIL_ON_SKIPPED` sets the pattern
+  from the environment. The suite reads a report ctest 4.4.3 wrote and runs the host's ctest too. See
+  [`ctest-run.sh`](docs/shared-script-libraries.md#ctest-runsh--run-a-cmake-projects-test-suite-in-a-container).
+
+## 2026-11-19 — the Cargo license stager gates the crate graph it stages (BeschleunigerBallett X4)
+
+- Only a comment in a manifest kept wgpu out of BeschleunigerBallett's C++ bridge. `stage-cargo-licenses.py` gains
+  `--forbid-package PATTERN`, a repeatable case-sensitive glob over the selected graph's names that fails with each
+  match's shortest dependency path, and `--max-runtime-packages N`, which counts live `cargo tree --edges normal` and
+  fails above N with the count. Both run before staging and stay off by default. On 2026-11-19 OxidANT's
+  `kataglyphis_cxx_bridge` staged 129 to 130 packages and held 55 in its normal tree on all three of its targets. See
+  [`third-party-licenses.md`](docs/third-party-licenses.md#checking-delivered-package-licences).
+
+## 2026-11-19 — one file of OpenAI stream lines for every binding (CON237 item 3)
+
+- Rust and Python read stream lines differently: a chunk that is no JSON failed Rust's stream and was skipped by
+  Python, and an `error:` line failed Python's and was ignored by Rust. `shared/contracts/openai-stream-lines.json`
+  holds eleven cases with their events or error; owner decision 2026-11-19: both fail the stream.
+  `test-openai-stream-lines.sh` holds its shape.
+- OxidANT 2afd994 reads an `error:` line as the server's error and OrchestrANT 985c0d6 fails a chunk that is no JSON;
+  both replay all eleven cases.
+
+## 2026-11-19 — Home Assistant keeps the cat cams' model time (CON253, in source)
+
+- `configuration.yaml` reads each cam's `/healthz` `stats` as Modellzeit, Bildrate and CPU sensors with
+  `state_class: measurement`; `packages/catcam_performance.yaml` adds each cam's median model time over a day and a
+  week and `catcam_model_time_rise`, which notifies when the day's median stays about 25 % above the week's for an
+  hour; the 21:00 summary names each cam's day median. `check_config` of `home-assistant:stable` passes. The live
+  instance takes it when its owner deploys it.
+
+## 2026-11-19 — the three detectors' golden tests read the same pixels (CON234)
+
+- ModelANT bd4094a carries `contracts/fixtures/two_cats.png`, the lossless decode of `two_cats.jpg`, its digest in
+  `fixtures/NOTICE`. OxidANT (d518ad4), AccelerANTgine (30ba9a8) and OrchestrANT (d926992) read it at that pin.
+  AccelerANTgine's `jpegdec` and `videoconvert` had given the second cat 0.721 where OpenCV gave 0.564; on the PNG
+  both give 0.564, and its recording is redone. Fleet-health's contract rows read 0 on 2026-11-19. CON234 is done.
+
+## 2026-11-19 — CON218 is done: the perf baselines record the shipped text default
+
+- OxidANT, AccelerANTgine and OrchestrANT build their perf model with `genai-model-threads.py --threads text`, the
+  owner's text rule of 2026-11-17, so a baseline quotes the default the apps ship. OxidANT's Raspberry Pi 5 baseline
+  (e893433) measured 115 tok/s and a 171 ms first token with it. `fleet-health.md` now says that a lane run through
+  `on-request.yml` counts its debt from its last direct run.
+
+## 2026-11-19 — the text contract's schema case is typed once, and the page names each binding's backends (CON237 items 1, 2)
+
+- `tiny-genai-model.py` writes `schema_case` into `fixture.json`: the schema `{"enum": [7]}` and its answer, which the
+  successor rule never predicts, so only a live guidance mask yields it. `genai-guidance-smoke.py` reads it from
+  there in place of its own copy; it printed `genai-guidance-schema-ok 7` in `:latest` on 2026-11-19.
+- `language-ai.md`: `:winamd64` ships llguidance (its smoke gate runs the schema case), LAI-H2 is done, and a table
+  names each binding's backends; AccelerANTgine's C++ and C have no endpoint client.
+- `verify_mutations.py` without `--delegate-chrome` names a selected recipe whose test starts `pwsh` on a host
+  without it (`FAIL: pwsh is not on PATH, so …`) instead of running it into exit 127, a vacuous bite. The commit hook
+  reruns its sample in the image on that line (CON279), but now proves the rest on the host (`--delegate-chrome`)
+  and sends only the named pwsh tests to the image: a host-only test, such as the process-tree kill of
+  `test-mutation-gate.sh`, fails in the container for the container's reasons.
+
+## 2026-11-19 — what CON269 left: the `--index` refusal's recipe and two commits through the hook pair
+
+- `lint-gates.index-needs-staged` proves that `run-lint-gates.sh` refuses `--index` without `--staged`. Its mutant ran
+  the downloaded linters inside `test-lint-gates.sh`; `test-consumer-hooks.sh` holds the case now, over its hub copy's
+  stub linters, so the mutant ends in seconds. The same suite commits through the hook pair: a staged CRLF script
+  stops the commit, and an unstaged deletion beside a clean commit does not. CON269 is done.
+
+## 2026-11-19 — fleet-health shows lane debt, reruns and contract drift (CON247 items 1 to 3)
+
+- `lane.<workflow>.commits_since_green`: develop commits after the head of each workflow's newest green develop run,
+  so debt from a lane that runs on request shows. `ci.<workflow>.rerun_rate`: the share of the last 20 runs that
+  needed a second attempt, without the reruns `retry-disk-refusal.yml` starts on purpose.
+- `shared_facts.contract_inference_v1` and `shared_facts.contract_text_generation_v1`: ModelANT's two contracts as
+  OxidANT, AccelerANTgine and OrchestrANT see them (lock row, tracked copy or gitlink blob), distinct digests minus
+  one. All three agreed on 2026-11-19.
+- Items 4 to 6: `sibling_pin.<repo>.lag_commits` for OmniAccelerANT's OxidANT and AccelerANTgine gitlinks;
+  `bench_history.<artifact>.days_since_sample`, `stale` above 14 days; and `image_lag.lanes_without_run`, the lanes
+  whose newest develop run is older than the image tag they pull, from the package versions (`fleet-health.yml`
+  gains `packages: read`). CON247 is done.
+- Found by the first record with these rows (run 44558849413): in OxidANT, AccelerANTgine and OrchestrANT the newest
+  green run's head comes from before a history rewrite, so `compare` answered 404 and took every `ci.*` row of the
+  repo with it. The refusal stays in that lane's debt row now, not collected, and the other rows stand.
+
+## 2026-11-19 — what CON248 and CON249 had left: a real auto-commit suite and uv's floor
+
+- My BACKLOG removals of CON248 and CON249 had left their last paragraphs behind, and those named two parts not yet
+  built. `windows/scripts/tests/AgenticLoop.Commit.Tests.ps1` runs `Invoke-GitAutoCommit` against a real repository:
+  a 1 MB binary, a small binary and a 501 KiB file stay out and are logged, and a commit a hook refuses returns
+  `$false`, each with a fault control. `consumer_pins.py` reads `[tool.uv] required-version`: a lower bound at or
+  below `UV_VERSION`; an exact pin or a higher floor fails. OrchestrANT and AccelerANTgine (`>=0.11.3`) pass.
+
+## 2026-11-19 — a consumer documents its local test step through `run-in-ci-image.sh` (CON242)
+
+- OrchestrANT's AGENTS.md names `run-in-ci-image.sh . --volume orchestrant-uv-cache:/root/.cache/uv -- bash
+  scripts/linux/ci_tests.sh` (a0cff92) in place of a commented `nerdctl run`. It ran once on 2026-11-19 in the same
+  image and volume, through the Raspberry Pi's capped runner: 3410 passed, 37 skipped, 579 s.
+
+## 2026-11-19 — a read-only doctor names what is stale in a dev checkout (CON249)
+
+- A month-old local image, a uv older than the lock format and a tree about 100 commits behind each cost an hour of
+  wrong debugging, and nothing said so. `linux/scripts/dev-doctor.sh <repo-root>` prints one line each for origin's
+  develop (by `git ls-remote`, nothing fetched), the submodules, `core.hooksPath`, the local CI image's age and uv
+  against `versions.env`, and exits 1 on any. On the Raspberry Pi dev host on 2026-11-19 it named a 10-day-old
+  image and uv 0.11.3 against the pin 0.13.7. See [`dev-doctor.sh`](docs/shared-script-libraries.md#dev-doctorsh--what-is-stale-in-a-dev-checkout).
+
+## 2026-11-19 — `cargo_test.sh` records every test as JUnit (CON250 item 2)
+
+- `cargo_test.sh` ran `cargo test` and wrote no result file, so only OxidANT, through its own converter, recorded test
+  counts and failures. Its `cargo-test-junit.py` moved to `02-toolchain/rust/`, and `cargo_test.sh` writes
+  `logs/test-results/cargo-test.txt` and `cargo-test.xml` for every Rust consumer (`CARGO_TEST_RESULTS_DIR`, empty
+  writes neither). The status is cargo's; a log with no test binary in it fails. Stable libtest prints no per-test
+  time, so each binary keeps only its total.
+- OxidANT calls it since d1bcd2c and deleted its own converter, so CON250 is done.
+
+## 2026-11-19 — a hung C++ test ends named (CON250 item 1)
+
+- `ctest-run.sh` set no per-test limit, so a hung test ended at the lane's 60 to 150 minutes without a name. It passes
+  `--timeout 1500` (CTest's own default) unless the caller sets one: `--timeout`, `CTEST_TIMEOUT`,
+  `CTEST_RUN_DEFAULT_TIMEOUT` or a `--timeout` after `--`; `0` sets none.
+
+## 2026-11-19 — the agentic loop reads git's exit code and stages by rule (CON248)
+
+- `invoke_git_auto_commit` and `Invoke-GitAutoCommit` ran `git add -A` and `git commit` and read neither exit code,
+  so a refused commit was silent and a core file or test output would have gone in. Both stage tracked changes
+  (`git add -u`) and new text files of at most 500 KiB (the large-files limit), log each file they leave out, and
+  return a refusal: the queue drain stops with exit 1 before the build. Nothing to commit is no failure. The
+  executor prompt says to stage changed files by name, never `git add -A`.
+- `git.commitGate` (CON248 item 3) is a command both twins run before each auto-commit, for example
+  `bash scripts/linux/run-lint-gates.sh`. A failure keeps the task uncommitted, and
+  `intervals.maxConsecutiveGateFailures` (3) failures in a row stop the queue with exit 1, like the build cap.
+- `verify_stdout_returns.py` read a one-line function (`f() { …; }`) to the next column-0 brace, so a later function's
+  log lines counted as its own; a one-line body now ends on its line, and the loggers' own definitions are exempt.
+
+## 2026-11-19 — the consumer hooks path is absolute (CON269 item 5)
+
+- A relative `core.hooksPath` resolves inside each working tree, so a linked worktree without the hub submodule ran
+  no hook and git said nothing; a 1 MB binary went in that way. Owner decision: the adoption page's line is absolute
+  (`"$PWD/third_party/ANTfrastructure/shared/linux/templates/git-hooks"`), and every local gate run warns a clone
+  that still has the relative line, naming the absolute one.
+
+## 2026-11-19 — a consumer's shell line endings are a gate (CON269 item 1)
+
+- The hub's `crlf-guard` was a function of `preflight.sh` over the hub's own files, so no consumer hook checked line
+  endings. `linux/scripts/verify-shell-eol.sh [<root>] [--staged]` holds it; preflight calls it, and
+  `run-lint-gates.sh` runs it in the full gates (git's `w/` column) and in the staged checks (`i/`, the bytes the
+  commit carries). Every consumer passed on 2026-11-19.
 
 ## 2026-11-18 — preserve CPython zlib-ng ISA dispatch under ClangCL
 
@@ -96,6 +277,45 @@
 - Reject commit or VERSION_NUMBER mismatches and any failed fetch, checkout or submodule command before source patches or compilation. Existing non-ONNX clone behavior is unchanged.
 - Share required AST command selection, argument identity, scope and order checks across the affected wiring suites, preserving the existing call-assertion diagnostics and mutation cases.
 - Producer, hardware and hosted-CI requalification remain required for this changed source closure; earlier 0b552573 results retain their original attribution.
+
+## 2026-11-18 — the large-files gate grades the index, not the working tree (CON269 item 4)
+
+- `verify_large_files.py --root` refused a tracked file missing from disk, so a deletion not staged yet stopped every
+  commit until it was (AccelerANTgine's clone, 2026-11-12). The size already came from the blob; the NUL sniff now
+  reads the blob too, so the gate grades the index alone and a missing working-tree file is no partial tree.
+
+## 2026-11-18 — the consumer hook templates are linted (CON269 item 2)
+
+- `lint-shell.sh` without arguments swept `linux/` only, so `shared/linux/templates/git-hooks/*` and the copied
+  `antfrastructure.sh`, which every consumer runs, were linted by hand. The default sweep takes `shared/linux`;
+  the files were clean and the warning ratchet holds at 35.
+
+## 2026-11-18 — the Windows detector parity run is one hub copy (CON252)
+
+- OxidANT's and OmniAccelerANT's `scripts/windows/check_gpu_detector_parity.py` shared about 110 lines, the
+  photo's hash typed into each. `shared/python/check_detector_parity.py` holds the run: three clean child
+  processes, their profiles and the pairwise comparisons, the photo digest, the confined runtime and the
+  DirectML adapter. The launcher command is an argument. See
+  [detector parity](docs/gpu-artifact-receipts.md#detector-parity).
+- Both consumers call it: OxidANT `16890ff` and OmniAccelerANT `85eddd8` keep only their launcher and model check.
+
+## 2026-11-18 — a new oversized Rust, Dart or C++ function reads `regressed` (CON246)
+
+- `functions_over_80_lines_extra_languages` was class `report`, so `quality-report.sh --compare` never graded it and
+  fleet-health showed a rise as `moved`. It is graded now (class `code`). A Dart `main()` in a `*_test.dart` file
+  (`lang_units.is_test_body`) is counted apart as `oversized_test_bodies`: about 22 of the 76 oversized functions in
+  OxidANT, AccelerANTgine and OmniAccelerANT were such bodies, whose length is the number of tests. The scanner's own
+  exit status does not change. See
+  [extra-language readers](docs/code-quality-tooling.md#extra-language-readers-report-only).
+
+## 2026-11-18 — a `quality-report.toml` pattern row with `max` fails the lint gates (CON245)
+
+- A `kind = "pattern"` row was counted and reported only, so an AGENTS.md rule that is one pattern held by habit.
+  `verify_pattern_limits.py` fails when a row with `max` matches more often and prints `file:line` of each match;
+  `run-lint-gates.sh` runs it as its ninth gate. A `max` that is no whole number of zero or more fails too.
+  See [pattern limits](docs/code-quality-tooling.md#pattern-limits-pattern-limits).
+- The two sampled consumer rules bind: OxidANT `ef2cad1` (no `[features]` table) and
+  AccelerANTgine `bee101b` (no direct stdout diagnostic in `Src/`), each with a row, a planted-tree test and a recipe.
 
 ## 2026-11-17 — preserve readable module closures and resume completed media builds
 
@@ -202,6 +422,7 @@
 - Publish the full stage ledger and primary typed CUDA counters; preserve reused
   layers, direct compilers and unexplained counters as distinct coverage limits.
 - Keep final-source CI, device acceptance and later product lanes separate.
+
 ## 2026-11-18 — a workspace Cargo license is staged under its file name alone
 
 - `stage-cargo-licenses.py` copied a `workspace` policy text to `<name@version>/workspace/<its repo path>`.
@@ -414,338 +635,3 @@
 - `PESTER_VERSION` is annotated `datasource=github-releases depName=pester/Pester`, which the versions.env
   customManager matches, and `bump_versions.py` moves `PESTER_NUPKG_SHA256` with it (`spec_pester`, from the
   gallery's nupkg).
-
-## 2026-11-14 — isolate chain lifecycle fixtures from host pruning
-
-- Disable inherited BuildKit and image-store prune permissions before lifecycle
-  tests exercise low-disk refusals; keep explicit recovery doubles intact.
-- Check the fixture with sentinel engines so either missing override fails
-  without touching a host store or service.
-
-## 2026-11-14 — align the general cleanup fixture with decimal MB
-
-- Correct the general daemon-prune fixture's 100-GiB expectation to 107375 MB,
-  retaining its read-only, Apply and command-order assertions.
-- Document the native crash fixture's host MSVC and Visual Studio CMake
-  generator prerequisites; an unprovisioned local host remains a failed run.
-
-## 2026-11-14 — document delegated maintenance and new-host limits
-
-- Describe the verified local on-demand cleanup/recovery pilot, its fixed rights,
-  result checks, measured reclaim and remaining capacity limit.
-- Add new-host guidance and the canonical administrator fallback. The pilot's
-  ignored preparation files are not a distributed installer; portable setup and
-  clean-host acceptance remain open. No maintenance code or installed task changes.
-
-## 2026-11-14 — match BuildKit cleanup targets to disk admission units
-
-- Convert GiB to rounded-up decimal MB for regular pruning, general pruning and
-  advice. The old `* 1024` conversion understated a 100-GiB target by about 4.6 GiB.
-- Check actual daemon arguments, rounding, large values and shared wiring with
-  regression tests and mutations; retain all idle, image and compiler-cache guards.
-- Keep the unit mutations in a harness-only suite for the Pester-free Linux CI
-  shards; preserve the existing Pester reclaim controls and native failure checks.
-
-## 2026-11-14 — lavapipe 26.3.0 on Windows without the 256-bit pin; the delete guard says MIT
-
-- `LAVAPIPE_VERSION` 26.2.6 → 26.3.0, both SHA256s self-measured and equal to the release's digests. Mesa 26.3
-  deleted the BVH radix sort that needed 8-lane subgroups (`ebcfbe60`), so the Windows image,
-  `Install-LavapipeHost.ps1` and `Test-Arm64Bundle.ps1` stop setting `LP_NATIVE_VECTOR_WIDTH=256`: each arch
-  runs its native width, 128 bits on arm64, where 256 is the suspect of BeschleunigerBallett's intermittent
-  arm64 lavapipe crash. `Test-Container.ps1` now fails an image that sets it. The Linux image keeps CON44's
-  256 while its Mesa predates 26.3. Dependency table, website licence pages and curated SBOM regenerated.
-- `.claude/hooks/guard-destructive-deletes.{ps1,py}` carry `SPDX-License-Identifier: MIT`, as `LICENSE`
-  does; CON69's sweep skipped the hidden directory. Only that line changed (owner request, 2026-11-14), and
-  the hook answers the same inputs identically.
-
-## 2026-11-14 — Renovate 44.239.1; a `lockfile-only` skip is by design
-
-- Renovate's uv processor now adds every package that only `uv.lock` names (`depType: uv.lock`,
-  `skipReason: lockfile-only`). The planner listed each as NOT CHECKED, so every uv consumer's report exited 1
-  and `--apply` refused all of its real updates: BeschleunigerBallett's 41 such rows blocked its 13 updates.
-  `renovate_planner.py` counts the reason in `BY_DESIGN`. New case in `test-renovate-local.sh`, recipe
-  `renovate.lockfile-only-skips-are-by-design`.
-- The tracked Renovate baseline moves to 44.239.1: `tool-pins.env`, `renovate-npm/package.json`, and its lock
-  regenerated under Node 24.22.2 and proven with `npm ci`. 44.239.1 still pins glob 13.0.6 and minimatch
-  10.2.6, so both security overrides stay.
-
-## 2026-11-14 — each mutation mirror names itself to its tests (`MUTATION_MIRROR`)
-
-- `verify_mutations.py` hands every recipe test the mirror's directory name as `MUTATION_MIRROR`, so a recipe that
-  keeps a build cache outside the mirror can keep one per mirror. OxidANT's 13 cargo recipes shared one
-  `CARGO_TARGET_DIR`; cargo names a workspace member's artefacts without its absolute path, so parallel mirrors
-  overwrote each other's fingerprints and a mutant ran the other mirror's unmutated binary (it survived in CI and
-  bit with `--jobs 1`). `docs/code-quality-tooling.md` § One build cache per mirror names the trap; a case in
-  `test-mutation-shards.sh` and recipe `mutations.mirror-name-unset`.
-
-## 2026-11-14 — `FLET_VERSION`: one pin for Flet's SDK and client (CON103)
-
-- `FLET_VERSION=1.0.5` in `tool-pins.env` (not `versions.env`: no early image stage reads it, and a key there
-  would re-key the compiler image). `consumer_pins.py` holds OrchestrANT's `"flet[desktop]==…"`, `"flet-web==…"`
-  and its viewer job's `--with "flet==…"` to it; `default.json` groups flet, flet-web and flet-desktop into one
-  Renovate PR. Two cases in `test-consumer-pins-toml.sh`, recipe `version-snapshot.consumer-pins-flet-extras`.
-  CON102's client build takes the same key.
-- `BuildKit.ConsumerDispatch.Tests.ps1` (CON236) parses tags from a neutral `registry.example/owner/image` ref: the
-  CI image ref gate refuses a spelled-out family image ref, and the suite was untracked when that gate last ran.
-
-## 2026-11-14 — the Windows publish dispatches the consumers' lanes (CON236); CON273 found
-
-- `windows/Build-Buildkit.ps1 -PushRef` now calls `dispatch-consumer-lanes.sh --tag <tag>` after its final push,
-  as `build-runtime-manifest.sh` does after a promotion, so `:winamd64`, `:winarm64` and their GPU tags start
-  every consumer's lanes too (owner decision: the existing script through Git Bash). `Invoke-BkConsumerDispatch`
-  in `WindowsBuildKit.Common.psm1` runs it in a login shell; no Git Bash, a ref without a tag or a refused
-  dispatch only warns with the command to run by hand. Suite `BuildKit.ConsumerDispatch.Tests.ps1`, proven in the
-  image against four mutations with a throwaway Pester.
-- New BACKLOG CON273: the CI image has `pwsh` but no Pester, and the arm64 host no `pwsh`, so no `pwsh` recipe can
-  be proven off Windows.
-
-## 2026-11-14 — `recipe-pytest.sh` runs pytest with its venv active; CON272 found
-
-- `recipe-pytest.sh` exported nothing, so a test that starts `python3` itself (OrchestrANT's agent lane) found the
-  image's `/opt/venv` first, which has no pytest. It now activates the recipe venv as the test leg does
-  (`VIRTUAL_ENV`, its `bin` first on `PATH`). Case in `test-recipe-pytest.sh`, recipe
-  `recipe-pytest.venv-not-active`.
-- New BACKLOG CON272: a consumer's `uv lock` in the image needs setuptools in `/opt/venv` and a command no hub script
-  holds yet (found adding pytest-timeout to OrchestrANT). CON234's second point is done (ModelANT `7b02dfb`).
-
-## 2026-11-14 — `recipe-pytest.sh`: a consumer's mutation recipe on the pinned Python, from the hub
-
-- `linux/scripts/02-toolchain/python/recipe-pytest.sh [--extra NAME]... [--] PYTEST_ARGS` runs a recipe's pytest
-  on `DEFAULT_PYTHON_VERSION` with the venv the test leg's `uv_venv_create` and `uv_sync_project` build (chain ORT,
-  no typed Python), synced once per Python, extras and lock under `$RECIPE_PYTEST_VENV_ROOT` behind a `flock`, and
-  pytest started from the recipe's copy. OrchestrANT wrote it for itself first; the owner wants the hub as the one
-  source of such scripts. Suite `test-recipe-pytest.sh`, recipes `recipe-pytest.*`, docs `python-ci.md`
-  § Mutation recipes on the pinned Python.
-
-## 2026-11-14 — consumer mutation recipes can run in the CI image, on the pinned Python
-
-- `mutation-gates.yml` takes `in-image: true`: it pulls the family image (`prepare-linux-ci-host`, which reclaims
-  disk first) and runs `verify_mutations.py` in it, mounted at the caller's own path, the image named from
-  `IMAGE_REGISTRY_PREFIX` and `CI_IMAGE_LINUX_TAG` in `versions.env`. A recipe then gets the pinned `PYTHON_VERSION`
-  (3.15.2) and the chain-built wheels; on the bare runner PyPI has no ORT or GenAI wheel for it, which kept
-  OrchestrANT's recipes on 3.13 (owner decision of the day: the recipes use the hub's Python). Contract cases in
-  `test-mutation-workflow.sh`; docs `code-quality-tooling.md` and `adopting-in-a-new-project.md`.
-
-## 2026-11-14 — a test output that is not UTF-8 no longer crashes the mutation gate
-
-- `verify_mutations.py` read a test's output as strict UTF-8, so a fuzz test that printed the raw input it failed on
-  (AccelerANTgine's quoting property, one 0xA4 byte) ended the whole run with `UnicodeDecodeError` instead of a
-  verdict. The output is now decoded with `errors="replace"`. Case in `test-mutation-gate.sh`, recipe
-  `mutations.test-output-undecodable`.
-
-## 2026-11-14 — retain standalone HailoRT cache evidence
-
-- Give the direct Windows HailoRT stage the shared cache-session start before
-  CMake, advanced stderr counters after Ninja and an upload drain before cleanup.
-- Guard unconditional calls, ordering and statistics flags with mutations and
-  verify the existing module APIs in a cold process. Actual new compiler counts
-  and device execution still require product-build evidence.
-
-## 2026-11-14 — isolate runtime probe fixture discovery
-
-- Run synthetic consumer probes with native utility paths and their explicit fixture
-  tools, keeping the actual probe and all existing assertions. Inherited Windows PATH
-  discovery could exceed the mutation baseline's unchanged 300-second limit.
-- Add a host-tool marker assertion and a mutation that injects its directory. Preserve
-  the outer runner's PATH and QNN space-path coverage; no live image or GPU proof is implied.
-
-## 2026-11-14 — reject invalid Renovate wrappers before probing help
-
-- Refuse syntax and delegation failures before executing a wrapper. A wrapper that
-  dropped arguments previously turned the help probe into a live Renovate run,
-  which could leave node-gyp files behind during fixture cleanup.
-- Keep valid-wrapper help checks mandatory. A controlled marker reproduces the old
-  execution and proves the refusal without registry access or tool installation;
-  the registered mutation restores the old guard and must fail.
-
-## 2026-11-14 — prove the promotion boundary before consumer dispatch
-
-- Exercise a promotion refusal under a conditional shell caller and require both failure and no
-  consumer dispatch. The correct guard survived the older fixture's mutation test; the new case
-  must reject its removal. Preserve the existing advisory policy after a successful promotion.
-- Document the dispatch boundary and its fixture limits; the source route and image inputs stay unchanged.
-
-## 2026-11-14 — QNN fixture environment argument boundaries
-
-- Keep PATH, SDK cache and extraction directories as individually quoted environment values in
-  `test-qnn-community-zip.sh`; an inherited WSL PATH containing spaces previously stopped `env`
-  before the resolver ran. Production QNN SDK code and dependency pins are unchanged.
-- Preserve the original selection cases, exercise plain and spaced layouts, and verify the fake
-  cache bytes and complete downloader arguments: 24 assertions and three valid unquoting mutants.
-  Controlled clean-PATH diagnostics do not turn the earlier failed full preflight green.
-
-## 2026-11-13 — after a publish, the consumers' lanes run on the new image (CON236, CON235)
-
-- Owner decision of the day: `linux/scripts/dispatch-consumer-lanes.sh --tag TAG` dispatches each consumer's
-  `on-request.yml` with the lanes that image changes, and for `:latest` its `linux-x64.yml`, from the plan
-  `shared/config/image-consumer-lanes.json`. `build-runtime-manifest.sh` calls it after a promotion; a refused
-  dispatch prints its command and a warning, and the promotion stands. The Windows publish does not call it yet (CON236 stays for that).
-  Suites `test-dispatch-consumer-lanes.sh` and `test-manifest-acceptance.sh`, recipes `dispatch-lanes.*`, docs
-  `image-acceptance.md`.
-- CON235 is done: one default score threshold, 0.25, in every detector and in ModelANT's `contracts/README.md`
-  (OxidANT, OrchestrANT, ModelANT b108dd4).
-
-## 2026-11-13 — a refused download of the earlier measurements is tried again (CON271)
-
-- Owner decision of the same day: `quality_report_github.download` tries a download three times, 5 s apart, and
-  only the last failure is `Broken`; the module's "never retries" rule goes. A refusal by the artifact store made
-  OmniAccelerANT's quality-report lane red (run 43453000910). An API lookup is still not tried again.
-  `bench-history.py fetch` keeps its own loop and asks the helper for one try per call.
-- Tests: three `Download` cases in `quality_report_tests.py`; recipes `quality-report.download-*` and
-  `bench-history.download-tries-once-per-loop`.
-- BACKLOG: CON235 and CON236 carry the owner's decisions of the day (one default score threshold of 0.25; every
-  consumer's lanes once after each image publish).
-
-## 2026-11-13 — BACKLOG: CON234 cut down to what is left, with the day's consumer evidence
-
-- CON234 named four steps; three are done in ModelANT and the consumers (decode cases and their replay, the
-  metadata keys in the contract, and since today the check of those keys in C++ and Rust). The entry now holds the
-  lossless `two_cats` copy and the note on where the no-suppression rule has a recipe.
-- CON271, new: a refused download of the earlier measurements made OmniAccelerANT's quality-report lane red (run
-  43453000910); the helper never retries by its own rule, so the entry asks the owner.
-
-## 2026-11-13 — `run-in-ci-image.sh` takes a volume, an environment variable and `--privileged` (CON242)
-
-- `--volume NAME:/PATH` and `--env NAME=VALUE` (both repeatable) and `--privileged`: a local test run with warm
-  caches is one command through the helper. A named volume is handed to the run's user by one short root container
-  when that user is not root; without `--user` the image's own user is read from the local copy, pulled first when
-  there is none. A malformed value is refused before any engine call.
-- Under a rootless engine on Linux the helper passes `--user 0:0` and `TAR_OPTIONS=--no-same-owner` by itself; an
-  explicit `--user` and a caller's `TAR_OPTIONS` are kept. Rootful Docker, CI and Windows hosts are unchanged.
-- Every run prints `run-in-ci-image.sh: image <ref>, local copy created <date>` (or `no local copy`) on stderr.
-- Four tests on the recording engine and fifteen recipes (`host.run-image-*`); each path also ran once for real
-  on the rootless arm64 dev host, as root and as uid 1001 on a fresh volume. The adoption page's cargo-cache run uses
-  the helper. Left in CON242: no consumer documents its local test run through it yet.
-- **CON256 (j), new:** OrchestrANT's first AMD bundle on the plugin-only image stops in the bundle's library
-  closure, before the registration gate (run 43409294907).
-
-## 2026-11-13 — three small gate faults: the hub hook under `git commit -a`, a section number in prose, one failed download (CON270, CON251, CON255)
-
-- **CON270.** `linux/host-config/git-hooks/pre-commit` reads the staged list once, from the index git names in
-  `GIT_INDEX_FILE`, before it unsets the variable for everything it starts. Under `git commit -a` and
-  `git commit <path>` git builds the commit's index in a lock file, so the hook's staged `shellcheck`, its doc gates
-  and its mutation sample saw no file and said OK. A list that cannot be read now stops the commit.
-  `test-precommit-hook.sh` commits for real with `-a`, with a path and plain. OmniAccelerANT's own hook already
-  reads the list before its `unset`.
-- **CON251.** `verify_doc_links.py` passes a `§` reference that goes on as a sentence after a section number
-  ("`AGENTS.md` § 5 re-records the golden") when the page it names has a numbered heading with that number. A
-  number no section carries still fails, and so does a renamed heading cited by name. Not covered: the words behind
-  a number that still exists are not compared.
-- **CON255.** `bench-history.py fetch` tries the download of one earlier record three times, `--retry-pause` (5 s)
-  apart, and goes on without a record that still fails: a `Benchmark history incomplete` warning names it and the
-  count line ends in `, <n> left out`. An artifact list that cannot be read still exits 2. Consumers take it at
-  their next pin bump.
-- Ten recipes hold the three (`pre-commit.*`, `doc-links.numbered-mention-*`, `bench-history.*`), each proved on the
-  arm64 dev host. Details in `docs/code-quality-tooling.md`.
-- **CON269** loses its first item: none of the four consumer wrappers holds a `--stale-check` loop any more.
-- **CON130** is closed by its run: AccelerANTgine's `linux-riscv64.yml` passed on 2026-11-13 (run 43403278204, hub
-  pin `ed3d1707`), the first run since 2026-10-15 and the first after both fixes. CMake resolved GStreamer through
-  pkg-config, 239 of 239 tests passed under QEMU, and the log has no `x86_64-linux-gnu` line and no plugin that
-  failed to load. AccelerANTgine does not build gtk4, so no `gtk4.pc` was there to resolve.
-
-## 2026-11-13 — retain standalone OpenCV plugin cache evidence
-
-- Report OpenCV GStreamer plugin counters and complete the sccache server before
-  deleting its source, preserving the preceding GStreamer log. Add portable
-  regression and mutation checks for the lifecycle wiring.
-- Bind the incoming benchmark-history fetch replay to its Bash fake explicitly,
-  preventing Windows Python from falling through to an installed GitHub CLI.
-  Retain every fetch, retry and report assertion and allow repeated fixture setup.
-- Document that retained cache-log copies must use a consumed ARG nonce instead
-  of `--no-cache`, which can reset even read-only cache-mount associations.
-  Keep actual prefix counters separate from pending producer/device evidence.
-
-## 2026-11-13 — run TVM-FFI metadata mutation tests on Linux
-
-- Use shared harness fixtures with case-scoped cleanup instead of Pester-only
-  lifecycle keywords; Linux mutation shards do not install Pester. Keep real
-  metadata checks, callbacks and all negative cases unchanged.
-
-## 2026-11-13 — preserve the vendored TVM-FFI release metadata
-
-- Share source-version selection across Windows native and cross builds; scope
-  the GIL/twin SCM override to FFI and restore the environment on failure.
-- Reject incorrect installed or archived metadata, with real metadata fixtures
-  and mutation coverage. Source pins stay unchanged; product qualification remains open.
-- Invoke two existing TVM mutation runners directly; they already create result
-  directories. This preserves their assertions on both Windows and Linux.
-
-## 2026-11-13 — preserve native Git root spelling in consumer-hook tests
-
-- Compare the fallback hook's root argument with Git's canonical fixture path.
-  This retains the full commit/push assertions on Git Bash, where `/tmp/...`
-  and `C:/...` can name the same fixture. Hook behavior and gate coverage stay
-  unchanged.
-
-## 2026-11-13 — scrub temporary QNN SDK payloads before Windows export
-
-- Remove the default extracted QNN SDK after source-chain runtime staging.
-  Preserve cached archives, copied runtime and CPython; refuse relative roots,
-  reparse metadata, removal errors and leftovers before layer export.
-- Add private-tree regression and mutation checks. The earlier `0a822337`
-  TVM/IREE compile and wheel gates passed, but its image import exhausted disk
-  while copying unused Android SDK files; the corrected producer remains to be
-  qualified.
-
-## 2026-11-13 — bind private Windows results and the public ARM64 replay
-
-- Record frozen `5bd443ea` CPU, ARM64 cross, NVIDIA and ROCm image evidence,
-  retaining disk-stopped raw exits and hardware skips. The ROCm three-part audit
-  checks 21 digest handoffs and rejects 87 invalid-evidence controls.
-- Keep the actual 6,304-hit CUDA compiler repeat separate from layer reuse and
-  cumulative counters. Record the negative Pad/MaxPool controls and complete
-  ARM64 ZIP transport without claiming final-source device acceptance.
-- Verify the public `7c575e34` ARM64 image's later native run 43154553839: all
-  22 cases pass, including real ONNX frames; DirectML reports no adapter and
-  supplies no GPU inference proof. The private newer image remains unpromoted.
-- The ordinary ROCm runtime's complete tar transport and host hash checks pass
-  after the original client was lost across a host reboot. A separate native probe
-  compiles against its real ORT/HIP headers and passes five independently profiled
-  CPU runs, with five corrupt-model and three invalid-setting refusals. The AMD
-  invocation reports no ROCm-capable device; AMD execution remains open. CON228
-  stays open and its text remains a draft for qualified review.
-
-## 2026-11-13 — preserve explicit zero padding before Windows MIGraphX MaxPool
-
-- Apply the shared source patch to the pinned MIGraphX tree before dependencies
-  configure. Keep average and max pads explicit while preserving LP-norm folding.
-- Mount only the patch in the MIGraphX RUN and forward its path; retain the
-  original source pin, archive checksum and separate EP cache boundary.
-- Add real upstream source fixtures, required-failure and wiring checks, and
-  mutation recipes. Share parameter-default and build-mount assertions with the
-  existing harness consumers, retaining their broader filename exclusivity.
-  The seven-case upstream C++ reference proof is recorded in
-  the ROCm and upstream patch pages. Corrected Windows compilation and AMD device
-  acceptance remain pending.
-
-## 2026-11-13 — BACKLOG CON256: what the first complete AMD package build on `:latest-rocm` showed
-
-- OxidANT's candidate lane (run 43345664993, hub pin ed3d170): the census passes with `--library-path lib/glibc:lib`;
-  registering the packaged module on a runner without a card fails with HIP error 100, is refused by name and
-  leaves `auto` on the CPU; the tarball and the DEB pass the wheel proof. It stops at
-  `verify-ort-appimage-payload.sh`, which asks an AMD AppImage for the wheel's exact bytes although the image strips
-  its CPU core. CON256 (a) and (i) record both; the fix needs an x86-64 host for the suite's AMD leg.
-
-## 2026-11-13 — the bundle census takes the launcher's library path (`--library-path`)
-
-- `check-ort-provenance.sh --library-path DIR[:DIR...] <bundle>` states the library path the bundle's launcher hands
-  the loader, relative to the bundle root, and the probe searches it where `ld.so` searches `LD_LIBRARY_PATH`. Two
-  hub gates contradicted each other in OxidANT run 43314831939 (2026-11-12): a native AMD package keeps
-  `libmigraphx-ep.so` byte for byte the image's (`ort_assert_plugin_module`), so the module has no run path, and G6
-  called its `libonnxruntime.so.1` import UNRESOLVED. What an import resolves to is graded as before, and without
-  the option no caller sees a difference. An absolute path, a `..`, an empty entry, a directory the bundle lacks, an
-  entry that is a link out of the bundle and the option beside `--image` are usage errors; the PASS and FAILED lines
-  name the path.
-- On a stated path a file of the import's name that is a link out of the bundle, a link loop or a directory ends
-  the search unproven, as the loader's open would, and the finding names it. On an importer's own RUNPATH list such
-  a name still counts as absent, an older limit ([§ E](docs/cross-build-verification.md#e-ort-single-source)).
-- The entries reach the probe as paths below its `--root` (`/lib/glibc:/lib`), which is how it prints every path of
-  a bundle; joined to the host path they would find nothing.
-- `--help` and a usage error print the usage again: the function read `# Usage:` comment lines the file no longer has.
-- `python-app-bundle.sh` is unchanged. A Python AMD bundle keeps the module in `onnxruntime/capi`, which no launcher
-  path names; read in the scripts and seen on a fixture, its `libonnxruntime.so.1` is the closure's copy in
-  `runtime/lib`, on the launcher's path only through the bundled loader and otherwise preloaded by
-  `sitecustomize.py`. BACKLOG CON256 (i) holds the open point.
-- `test-ort-census.sh` gains three cases; recipes `ort-census.library-path-*` (nine) and
-  `ort-census.probe-ldpath-before-runpath` hold them, each seen to bite. Not run in the x64 rocm image or on a real
-  `libmigraphx-ep.so`. Contract: [`consumer-image-contract.md`](docs/consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime).

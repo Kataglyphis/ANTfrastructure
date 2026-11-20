@@ -683,6 +683,29 @@ desktop entry. Measured 2026-10-06 in `:latest`, OxidANT's release `kataglyphis_
   `flatpak run --command=oxidant` runs, with its desktop entry and 128×128 icon
   exported.
 
+## `dev-doctor.sh` — what is stale in a dev checkout
+
+```bash
+bash third_party/ANTfrastructure/linux/scripts/dev-doctor.sh "$PWD"
+```
+
+Read-only: it fetches nothing and writes nothing. One line per item, `STALE` for a finding, `ok` for a
+pass and `note` for what this host cannot answer or what no gate depends on. Exit 1 on any finding,
+2 for a root that is no git checkout. A month-old image, a uv older than the lock format and a tree
+about 100 commits behind each cost an hour of wrong debugging on 2026-11-12, and nothing said so.
+
+| Check | STALE when |
+| --- | --- |
+| origin's `develop` | its tip, read with `git ls-remote` on the public https URL, is not in the clone, or HEAD lacks commits of it |
+| submodules | one is not checked out, not at its recorded commit, or in conflict |
+| `core.hooksPath` | unset, or relative ([the git hooks](adopting-in-a-new-project.md#the-git-hooks-by-reference)) |
+| the CI image | no local copy, or one older than `DOCTOR_IMAGE_MAX_DAYS` (7) days |
+| uv | the one on PATH differs from `UV_VERSION` in `versions.env` |
+
+shellcheck, actionlint, gitleaks and ruff on PATH against `tool-pins.env` are notes: the gates fetch their
+pinned copies, and only a run by hand takes the PATH one. `DOCTOR_ENGINE` names the container engine
+(default `nerdctl`, else `docker`). `tests/test-dev-doctor.sh` covers each line on fixture clones.
+
 ## `ctest-run.sh` — run a CMake project's test suite in a container
 
 The twin of `cmake-build.sh` for the test phase, and **deliberately a separate
@@ -697,9 +720,21 @@ uses.
 | `CTEST_RUN_DEFAULT_BUILD_DIR` | build tree to `cd` into; empty means "stay here" | `build` |
 | `CTEST_RUN_DEFAULT_BUILD_TYPE` | value for `ctest -C` | `Debug` |
 | `CTEST_RUN_DEFAULT_EXCLUDE` | default `ctest -E` regex | none |
+| `CTEST_RUN_DEFAULT_TIMEOUT` | per-test `ctest --timeout` in seconds (`--timeout`, env `CTEST_TIMEOUT`); `0` sets none, and a `--timeout` after `--` replaces it. A test's own `TIMEOUT` property wins over both | `1500`, CTest's own `DART_TESTING_TIMEOUT`: a hung test ends named, not at the lane's limit |
 | `CTEST_RUN_DEFAULT_ARGS` | ctest flags when the caller does not override them | maximally loud on purpose — a container test run is only debuggable through its log |
 | `CTEST_RUN_SAFE_DIRECTORY` | git `safe.directory`; empty disables | `/workspace` |
 | `CTEST_RUN_USAGE_INTRO` | one-line description shown in `--help` | — |
+
+**`--fail-on-skipped REGEX` (env `CTEST_FAIL_ON_SKIPPED`): a skip is not a pass.** After ctest, each test whose name
+matches REGEX (an extended regular expression, matched anywhere, as `-R` does) and whose
+JUnit record says skipped is printed with ctest's reason (`SKIP_REGULAR_EXPRESSION_MATCHED`,
+`SKIP_RETURN_CODE=77`) and fails the run: status 1, or ctest's own when that already
+failed. A GoogleTest `GTEST_SKIP` under `gtest_discover_tests` is such a skip. ctest's
+Disabled tests (`Not Run (Disabled)`) never count; its other Not Run tests do, and ctest
+fails those anyway. The report is the caller's last `--output-junit`, removed before the
+run so an old one cannot stand in, or a temporary one the library appends and deletes; no
+readable report fails the run. It needs `python3`, and an invalid pattern stops before
+ctest starts.
 
 A GPU test suite needs the loader and the layers on the same terms the build had,
 which is why the Vulkan environment is resolved here too.
@@ -1288,7 +1323,7 @@ package and OxidANT a Rust crate, neither has a single `.py`, and refusing an em
 Python scope made both lanes exit 1 on every push for a reason nothing in either tree
 could change. A permanently red lane is a tolerated failure by construction.
 
-### `run-lint-gates.sh` — eight gates over a consumer tree, plus the opt-in ratchets
+### `run-lint-gates.sh` — ten gates over a consumer tree, plus the opt-in ratchets
 
 ```bash
 bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD"
@@ -1298,7 +1333,8 @@ bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD" --ratche
 
 shellcheck, actionlint (+ the CI image-ref check), gitleaks, ruff (error tier),
 the shared-config drift check, the consumer pin-forwarding check, the
-[README length](code-quality-tooling.md#readme-length-readme-length) and mutation
+[README length](code-quality-tooling.md#readme-length-readme-length), the
+[pattern limits](code-quality-tooling.md#pattern-limits-pattern-limits) and mutation
 staleness, in one command, every gate running even after one fails. Three consumers had grown their own copy
 — two of them as `run:` blocks inside a workflow, so the gate blocking their
 deploy could not be reproduced locally at all.
@@ -1318,6 +1354,16 @@ are the consumer's own, and dropping the whole prefix excluded them silently.
 The pin *preconditions* the copies carried ("does the pinned `lint-secrets.sh`
 understand a scan root yet?") are gone by construction: this script ships in the
 same commit as the gates it calls.
+
+**Shell line endings** runs `verify-shell-eol.sh <consumer-root>`, the hub's own
+[`crlf-guard`](code-quality-tooling.md#crlf-guard-the-worked-example): no tracked shell script
+(by `lint-shell.sh --list-files`, so a hook without a suffix counts) with `w/crlf`, `w/mixed` or
+`w/-text`. The staged checks run it with `--staged`, which reads the `i/` column of the staged
+scripts: the bytes the commit carries.
+
+**Pattern limits** runs `verify_pattern_limits.py --root <consumer-root>`: a
+`quality-report.toml` row `kind = "pattern"` with `max = 0` fails on its first match and prints
+file and line. Without such a row it passes with one line.
 
 **Mutation staleness** runs `verify_mutations.py --stale-check --root <consumer-root>` over
 every tracked `scripts/linux/tests/*mutations*.json`, directly in that directory, and runs no

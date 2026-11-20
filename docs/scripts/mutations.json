@@ -1393,9 +1393,9 @@
  },
  {
   "id": "crlf-guard.pattern-neutered",
-  "target": "linux/scripts/preflight.sh",
-  "find": "if (c[2] == \"w/crlf\" || c[2] == \"w/mixed\" || c[2] == \"w/-text\")",
-  "replace": "if (c[2] == \"never-matches\")",
+  "target": "linux/scripts/verify-shell-eol.sh",
+  "find": "if (c[n] == p \"crlf\" || c[n] == p \"mixed\" || c[n] == p \"-text\")",
+  "replace": "if (c[n] == \"never-matches\")",
   "test": "bash linux/scripts/tests/test-crlf-guard.sh",
   "why": "the CRLF guard must actually select CR-bearing rows: neutering the awk condition makes every dirty working tree look clean"
  },
@@ -2097,25 +2097,25 @@
  },
  {
   "id": "crlf-guard.mixed-blind",
-  "target": "linux/scripts/preflight.sh",
-  "find": "c[2] == \"w/crlf\" || c[2] == \"w/mixed\" || c[2] == \"w/-text\"",
-  "replace": "c[2] == \"w/crlf\" || c[2] == \"w/-text\"",
+  "target": "linux/scripts/verify-shell-eol.sh",
+  "find": "c[n] == p \"crlf\" || c[n] == p \"mixed\" || c[n] == p \"-text\"",
+  "replace": "c[n] == p \"crlf\" || c[n] == p \"-text\"",
   "test": "bash linux/scripts/tests/test-crlf-guard.sh",
   "why": "git says w/crlf only when EVERY line ends CRLF; a file an editor or merge half-rewrote is w/mixed, the realistic accident that produces \"$'\\r': command not found\" in the containers"
  },
  {
   "id": "crlf-guard.lone-cr-blind",
-  "target": "linux/scripts/preflight.sh",
-  "find": "|| c[2] == \"w/-text\"",
-  "replace": "|| c[2] == \"never-emitted\"",
+  "target": "linux/scripts/verify-shell-eol.sh",
+  "find": "|| c[n] == p \"-text\"",
+  "replace": "|| c[n] == \"never-emitted\"",
   "test": "bash linux/scripts/tests/test-crlf-guard.sh",
   "why": "a bare CR (no LF after it) makes git report w/-text, not w/crlf; it breaks bash the same way and no tracked *.sh is legitimately binary"
  },
  {
   "id": "crlf-guard.index-column",
-  "target": "linux/scripts/preflight.sh",
-  "find": "if (c[2] == \"w/crlf\"",
-  "replace": "if (c[1] == \"i/crlf\"",
+  "target": "linux/scripts/verify-shell-eol.sh",
+  "find": "root=\".\" column=\"w\" field=2 staged=0",
+  "replace": "root=\".\" column=\"i\" field=1 staged=0",
   "test": "bash linux/scripts/tests/test-crlf-guard.sh",
   "why": "buildkit snapshots the WORKING TREE, so only git's w/ column decides; reading i/ turns a CRLF-in-index/LF-on-disk file into a false positive and misses the real one"
  },
@@ -2553,23 +2553,23 @@
  },
  {
   "id": "crlf-guard.scope-sh-suffix-only",
-  "target": "linux/scripts/preflight.sh",
-  "find": "git ls-files -z 2>/dev/null \\\n    | xargs -0r bash linux/scripts/lint-shell.sh --list-files 2>/dev/null \\\n    | tr '\\n' '\\0' \\\n    | xargs -0r git ls-files --eol -- 2>/dev/null \\\n",
-  "replace": "git ls-files --eol -- '*.sh' 2>/dev/null \\\n",
+  "target": "linux/scripts/verify-shell-eol.sh",
+  "find": "  \"${list[@]}\" 2>/dev/null \\\n    | xargs -0r bash \"${_EOL_DIR}/lint-shell.sh\" --list-files 2>/dev/null \\\n    | tr '\\n' '\\0' \\\n    | xargs -0r git ls-files --eol -- 2>/dev/null \\\n",
+  "replace": "  git ls-files --eol -- '*.sh' 2>/dev/null \\\n",
   "test": "bash linux/scripts/tests/test-crlf-guard.sh",
   "why": "a *.sh pathspec cannot see an extension-less script on a shell shebang, so the commit hook that runs this very gate was outside it while the neighbouring shellcheck gate covered it"
  },
  {
   "id": "crlf-guard.scope-not-classified",
-  "target": "linux/scripts/preflight.sh",
-  "find": "xargs -0r bash linux/scripts/lint-shell.sh --list-files 2>/dev/null",
+  "target": "linux/scripts/verify-shell-eol.sh",
+  "find": "xargs -0r bash \"${_EOL_DIR}/lint-shell.sh\" --list-files 2>/dev/null",
   "replace": "xargs -0r printf '%s\\n' 2>/dev/null",
   "test": "bash linux/scripts/tests/test-crlf-guard.sh",
   "why": "the scope must be lint-shell.sh's answer to 'what is a shell script'; taking every tracked path instead turns CR in prose, patches and fixtures into gate failures"
  },
  {
   "id": "crlf-guard.pipefail-pin",
-  "target": "linux/scripts/preflight.sh",
+  "target": "linux/scripts/verify-shell-eol.sh",
   "find": "set -uo pipefail",
   "replace": "set -u",
   "test": "bash linux/scripts/tests/test-crlf-guard.sh",
@@ -3522,8 +3522,8 @@
  {
   "id": "stdout-returns.unconsumed-not-a-finding",
   "target": "linux/scripts/verify_stdout_returns.py",
-  "find": "            if name not in consumed:",
-  "replace": "            if False:",
+  "find": "        if name not in consumed or STDOUT_LOGGERS.match(name + \" \"):",
+  "replace": "        if STDOUT_LOGGERS.match(name + \" \"):",
   "test": "bash linux/scripts/tests/test-stdout-returns.sh",
   "why": "only a function whose stdout is someone's return value can leak a log line into it"
  },
@@ -36123,7 +36123,7 @@
  {
   "id": "genai-guidance.schema-unchecked",
   "target": "windows/scripts/build/genai-guidance-smoke.py",
-  "find": "    if json.loads(answer) != 7:\n",
+  "find": "    if json.loads(answer) != json.loads(expected):\n",
   "replace": "    if False:\n",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiGuidance.Tests.ps1 -ResultFile logs/code-quality/genai-guidance-mutation.json",
   "why": "valid JSON that breaks the schema must not print the sentinel"
@@ -37267,8 +37267,8 @@
  {
   "id": "lint-gates.hook-notice-only-when-unset",
   "target": "linux/scripts/run-lint-gates.sh",
-  "find": "  [ -z \"$(git -C \"${_LINT_GATES_ROOT}\" config --get core.hooksPath 2>/dev/null)\" ] || return 0\n",
-  "replace": "",
+  "find": "  if [ -z \"${set_to}\" ]; then\n",
+  "replace": "  if true; then\n",
   "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k notice",
   "why": "a clone with hooks, the template's or its own, must not be told to set them"
  },
@@ -42815,5 +42815,549 @@
   "replace": "if ($false)",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
   "why": "Untagged image records require separate review"
+ },
+ {
+  "id": "crlf-guard.staged-reads-index",
+  "target": "linux/scripts/verify-shell-eol.sh",
+  "find": "    --staged) staged=1 column=\"i\" field=1 ;;",
+  "replace": "    --staged) staged=1 ;;",
+  "test": "bash linux/scripts/tests/test-crlf-guard.sh",
+  "why": "the commit carries the index's bytes; a staged CR with LF on disk must stop the commit, which the w/ column never sees"
+ },
+ {
+  "id": "version-snapshot.consumer-pins-uv-floor-above",
+  "target": "docs/scripts/consumer_pins.py",
+  "find": "    if not pinned or parts(match.group(1)) > parts(pinned):",
+  "replace": "    if not pinned:",
+  "test": "bash linux/scripts/tests/test-consumer-pins-toml.sh",
+  "why": "a required-version above the image's uv makes every uv command in the image refuse the project"
+ },
+ {
+  "id": "version-snapshot.consumer-pins-uv-floor-form",
+  "target": "docs/scripts/consumer_pins.py",
+  "find": "    match = re.fullmatch(r\">=\\s*(\\d+(?:\\.\\d+)*)\", str(floor).strip())",
+  "replace": "    match = re.search(r\"(\\d+(?:\\.\\d+)*)\", str(floor).strip())",
+  "test": "bash linux/scripts/tests/test-consumer-pins-toml.sh",
+  "why": "an exact uv pin breaks on the next image; only a lower bound passes"
+ },
+ {
+  "id": "stdout-returns.one-line-function-body",
+  "target": "linux/scripts/verify_stdout_returns.py",
+  "find": "(?:([^\\n]*)\\}[ \\t]*$|(.*?)^\\})",
+  "replace": "(?:()(?!)|(.*?)^\\})",
+  "test": "bash linux/scripts/tests/test-stdout-returns.sh",
+  "why": "a one-line function read to the next column-0 brace takes a later function's log lines as its own"
+ },
+ {
+  "id": "lint-gates.pattern-limits-limit-enforced",
+  "target": "linux/scripts/verify_pattern_limits.py",
+  "find": "    if len(hits) <= limit:",
+  "replace": "    if True:",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "a match of a max = 0 row must fail the lint gates, or the AGENTS.md rule holds by habit only"
+ },
+ {
+  "id": "lint-gates.pattern-limits-limit-not-off-by-one",
+  "target": "linux/scripts/verify_pattern_limits.py",
+  "find": "    if len(hits) <= limit:",
+  "replace": "    if len(hits) <= limit + 1:",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "max is the most matches allowed; one more than max must fail"
+ },
+ {
+  "id": "lint-gates.pattern-limits-bad-max-refused",
+  "target": "linux/scripts/verify_pattern_limits.py",
+  "find": "        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 0:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "max = true, -1 or \"0\" is a typo, and reading it as some limit lets matches through"
+ },
+ {
+  "id": "lint-gates.pattern-limits-consumer-half-grades",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  _lint_gates_hub linux/scripts/verify_pattern_limits.py || return 1",
+  "replace": "  return 0",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "the consumer half must run the gate and return its verdict, or lint-gates.yml passes every planted match"
+ },
+ {
+  "id": "lint-gates.pattern-limits-consumer-half-registered",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  run_gate \"pattern limits\" _lint_gates_pattern_limits\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "a gate function nothing registers never runs in a consumer lane"
+ },
+ {
+  "id": "lint-gates.shell-eol-registered",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  run_gate \"shell line endings\" _lint_gates_shell_eol\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh",
+  "why": "a consumer's CR-bearing script breaks bash in its container; a gate nothing registers never runs in its lane"
+ },
+ {
+  "id": "lint-gates.shell-eol-staged-registered",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  run_gate \"shell line endings (staged)\" _lint_gates_shell_eol --staged\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh",
+  "why": "the commit hook is where a CR is cheapest to stop; without the staged gate it reaches the push"
+ },
+ {
+  "id": "lint-gates.relative-hooks-path-named",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  elif [ \"${set_to}\" = ",
+  "replace": "  elif false && [ \"${set_to}\" = ",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh",
+  "why": "a relative hooks path runs no hook in a worktree without the hub, and git says nothing; only this line names it"
+ },
+ {
+  "id": "large-files.blob-sniffed",
+  "target": "linux/scripts/verify_large_files.py",
+  "find": "    return b\"\\0\" in out.stdout[:SNIFF]",
+  "replace": "    with open(os.path.join(root, rel), \"rb\") as fh:\n        return b\"\\0\" in fh.read(SNIFF)",
+  "test": "bash linux/scripts/tests/test-large-files.sh",
+  "why": "the index is graded: a working-tree read stops every commit on an unstaged deletion and misses a binary staged before an edit"
+ },
+ {
+  "id": "lib.tiny-genai-schema-case",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "              \"eos_token_id\": EOS_ID, \"schema_case\": SCHEMA_CASE, \"cases\": cases()}",
+  "replace": "              \"eos_token_id\": EOS_ID, \"cases\": cases()}",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "the schema case is typed once, in fixture.json; without it the image smoke and five consumer tests retype it"
+ },
+ {
+  "id": "lib.tiny-genai-cases-error-kinds",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "         \"options\": {\"max_new_tokens\": 1, \"json_schema\": REFUSED_SCHEMA}, \"expect\": {\"error\": \"generation_failed\"}},",
+  "replace": "         \"options\": {\"max_new_tokens\": 1, \"json_schema\": REFUSED_SCHEMA}, \"expect\": {\"error\": \"invalid_options\"}},",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "a refused schema object is the generator's failure (owner, 2026-11-13); three bindings replay this kind"
+ },
+ {
+  "id": "shellcheck.consumer-hook-templates-linted",
+  "target": "linux/scripts/lint-shell.sh",
+  "find": "    \"${REPO_ROOT}/shared/linux\" \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
+  "why": "every consumer runs the hook templates and the copied bootstrap; outside the sweep no gate lints them"
+ },
+ {
+  "id": "rust.cargo-test-junit-crash-counted",
+  "target": "linux/scripts/02-toolchain/rust/cargo-test-junit.py",
+  "find": "        if not suite.finished:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-cargo-test-junit.sh",
+  "why": "a test binary that died mid-run, as a SIGSEGV does, is a failure; without it the record reads green"
+ },
+ {
+  "id": "rust.cargo-test-status-kept",
+  "target": "linux/scripts/02-toolchain/rust/cargo_test.sh",
+  "find": "rc=\"${PIPESTATUS[0]}\"",
+  "replace": "rc=0",
+  "test": "bash linux/scripts/tests/test-cargo-test-junit.sh",
+  "why": "the JUnit record must not hide a failing cargo test; the step's status is cargo's"
+ },
+ {
+  "id": "rust.cargo-test-empty-record-fails",
+  "target": "linux/scripts/02-toolchain/rust/cargo_test.sh",
+  "find": "[ \"${rc}\" != 0 ] || rc=\"${junit_rc}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cargo-test-junit.sh",
+  "why": "a log with no test binary in it records nothing, and nothing is no pass"
+ },
+ {
+  "id": "packaging.detector-parity-gpu-only",
+  "target": "shared/python/check_detector_parity.py",
+  "find": "        device not in {\"cuda\", \"directml\"}",
+  "replace": "        False",
+  "test": "bash linux/scripts/tests/test-detector-parity.sh",
+  "why": "the parity run compares a GPU with the CPU; a cpu device would compare the CPU with itself"
+ },
+ {
+  "id": "packaging.detector-parity-photo-digest",
+  "target": "shared/python/check_detector_parity.py",
+  "find": "    if hashlib.sha256(fixture.read_bytes()).hexdigest() != FIXTURE_SHA256:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-detector-parity.sh",
+  "why": "the expected detections belong to one photo; another photo makes every verdict meaningless"
+ },
+ {
+  "id": "packaging.detector-parity-runtime-confined",
+  "target": "shared/python/check_detector_parity.py",
+  "find": "        raise ValueError(\"ONNX Runtime escapes the extracted package\")",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-detector-parity.sh",
+  "why": "a runtime reached through a link is not the package's, so the run would prove another build"
+ },
+ {
+  "id": "packaging.detector-parity-overrides-stripped",
+  "target": "shared/python/check_detector_parity.py",
+  "find": "            del env[key]",
+  "replace": "            pass",
+  "test": "bash linux/scripts/tests/test-detector-parity.sh",
+  "why": "an inherited KATAGLYPHIS_ or ORT_ override changes what the child runs, so CPU and GPU would differ by setting"
+ },
+ {
+  "id": "packaging.detector-parity-directml-adapter",
+  "target": "shared/python/check_detector_parity.py",
+  "find": "        env[\"KATAGLYPHIS_DIRECTML_DEVICE_ID\"] = index",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-detector-parity.sh",
+  "why": "DirectML picks adapter 0 by default; the verified adapter must be the one the child uses"
+ },
+ {
+  "id": "lib.ctest-run-default-timeout",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "  CTEST_TIMEOUT=\"${CTEST_TIMEOUT:-${CTEST_RUN_DEFAULT_TIMEOUT:-1500}}\"",
+  "replace": "  CTEST_TIMEOUT=\"${CTEST_TIMEOUT:-${CTEST_RUN_DEFAULT_TIMEOUT:-0}}\"",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "without a default a hung C++ test ends at the lane's 60 to 150 minute limit, without its name"
+ },
+ {
+  "id": "lib.ctest-run-caller-timeout-wins",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": " && \" ${CTEST_RUN_PASSTHROUGH[*]:-} \" != *\" --timeout \"* ]]; then",
+  "replace": " ]]; then",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "a caller's own --timeout after -- must be the one ctest applies, not a second competing one"
+ },
+ {
+  "id": "lib.agentic-commit-refusal-read",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "    if ! out=\"$(git -C \"$repo_root\" commit -q -m \"$message\" 2>&1)\"; then",
+  "replace": "    if ! out=\"$(git -C \"$repo_root\" commit -q -m \"$message\" 2>&1 || true)\"; then",
+  "test": "bash linux/scripts/tests/test-agentic-phases.sh",
+  "why": "a refused commit read as success lets every later task pile onto it, silently"
+ },
+ {
+  "id": "lib.agentic-binary-left-out",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "        if [[ \"$nuls\" -gt 0 || \"$kib\" -gt \"$AGENTIC_STAGE_MAX_KIB\" ]]; then",
+  "replace": "        if [[ \"$kib\" -gt \"$AGENTIC_STAGE_MAX_KIB\" ]]; then",
+  "test": "bash linux/scripts/tests/test-agentic-phases.sh",
+  "why": "a core file or a binary test output must not be committed by the loop"
+ },
+ {
+  "id": "lib.agentic-large-left-out",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "        if [[ \"$nuls\" -gt 0 || \"$kib\" -gt \"$AGENTIC_STAGE_MAX_KIB\" ]]; then",
+  "replace": "        if [[ \"$nuls\" -gt 0 ]]; then",
+  "test": "bash linux/scripts/tests/test-agentic-phases.sh",
+  "why": "a new file over the large-files limit stops the next push; the loop must not commit it"
+ },
+ {
+  "id": "lib.agentic-refusal-stops-drain",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "            if ! _agentic_after_task_phases \"$matrix_count\"; then",
+  "replace": "            if ! _agentic_after_task_phases \"$matrix_count\" && false; then",
+  "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+  "why": "a refused commit must stop the queue drain with exit 1, not run the next task"
+ },
+ {
+  "id": "lib.agentic-commit-gate-holds",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "    if [[ \"$gate\" -eq 0 ]]; then\n        invoke_git_auto_commit",
+  "replace": "    if true; then\n        invoke_git_auto_commit",
+  "test": "bash linux/scripts/tests/test-agentic-phases.sh",
+  "why": "a task whose gate failed must stay uncommitted; committing it anyway makes the gate decorative"
+ },
+ {
+  "id": "lib.agentic-commit-gate-capped",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "    [[ \"${_AL[consecutive_gate_failures]}\" -lt \"${_AL[max_consecutive_gate_failures]}\" ]] || return 2",
+  "replace": "    true",
+  "test": "bash linux/scripts/tests/test-agentic-phases.sh",
+  "why": "a gate that keeps failing must stop the queue, as the build failure cap does, not hold tasks forever"
+ },
+ {
+  "id": "fleet-health.lane-debt-from-newest-green",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "    green = next((r for r in runs if r[\"conclusion\"] == \"success\"), None)",
+  "replace": "    green = next((r for r in reversed(runs) if r[\"conclusion\"] == \"success\"), None)",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "the debt counts from the newest green head; an older one overstates what the lane has not run on"
+ },
+ {
+  "id": "fleet-health.lane-without-green-not-collected",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "    if green is None:\n        return gap(",
+  "replace": "    if False:\n        return gap(",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a lane with no green run has no head to count from; a value there is invented"
+ },
+ {
+  "id": "fleet-health.rerun-retry-actor-left-out",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "             and (r.get(\"triggering_actor\") or {}).get(\"login\") != RETRY_ACTOR]",
+  "replace": "]",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "the retry workflow reruns a disk refusal on purpose; counting it reads infrastructure as flakiness"
+ },
+ {
+  "id": "fleet-health.contract-digest-drift-counted",
+  "target": "linux/scripts/fleet_health_tree.py",
+  "find": "        metrics[name] = {**rec(len(digests) - 1, \"digests\", LOWER, CODE, source),",
+  "replace": "        metrics[name] = {**rec(0, \"digests\", LOWER, CODE, source),",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "two repos testing against different contract files is the drift this row exists to show"
+ },
+ {
+  "id": "fleet-health.contract-absent-not-collected",
+  "target": "linux/scripts/fleet_health_tree.py",
+  "find": "        if unmeasured or absent:",
+  "replace": "        if unmeasured:",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a repo without the contract is not a repo that agrees; it must not read as 0"
+ },
+ {
+  "id": "fleet-health.contract-lock-row-read",
+  "target": "linux/scripts/fleet_health_tree.py",
+  "find": "                if len(cols) >= 2 and not cols[0].startswith(\"#\") and cols[1] == name:",
+  "replace": "                if False:",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "OrchestrANT holds the contracts as lock rows only; without them it reads as absent"
+ },
+ {
+  "id": "fleet-health.sibling-pin-lag-read",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "            ahead = get(client, f\"/repos/{OWNER}/{sibling}/compare/{pin}...develop\")[\"ahead_by\"]",
+  "replace": "            ahead = 0",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "OmniAccelerANT's OxidANT and AccelerANTgine gitlinks lag silently without this row"
+ },
+ {
+  "id": "fleet-health.sibling-pins-found",
+  "target": "linux/scripts/fleet_health_tree.py",
+  "find": "    return {s: pin for s in SIBLINGS if s != co.repo and (pin := gitlink(co, f\"third_party/{s}\"))}",
+  "replace": "    return {}",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a gitlink nobody reads cannot show its lag"
+ },
+ {
+  "id": "fleet-health.bench-sample-stale",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "\"stale\": days > BENCH_STALE_DAYS}}",
+  "replace": "\"stale\": False}}",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "an on-request lane whose history stopped moving must read stale after two weeks"
+ },
+ {
+  "id": "fleet-health.image-lag-compares-runs",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "              if tag_of.get(name, \"latest\") in published and when < published[tag_of.get(name, \"latest\")]]",
+  "replace": "              if False]",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a lane that has not run since its image was published has the new image untried"
+ },
+ {
+  "id": "fleet-health.image-lag-not-collected-without-scope",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "    if not published:\n        return gap(",
+  "replace": "    if False:\n        return gap(",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "without read:packages there are no dates; 0 lanes would read as all lanes current"
+ },
+ {
+  "id": "fleet-health.lane-debt-refusal-stays-in-its-row",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "    except NotCollected as exc:\n        # A head from before a history rewrite",
+  "replace": "    except KeyError as exc:\n        # A head from before a history rewrite",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a 404 for one compare took every ci row of three repos down on 2026-11-19; it must stay in the debt row"
+ },
+ {
+  "id": "lint-gates.index-needs-staged",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  [ -z \"${_LINT_GATES_INDEX}\" ] || _lint_gates_die \"--index belongs to --staged; the full gates read the working tree\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k notice",
+  "why": "the full gates read the working tree; an --index there is ignored in silence, so a caller who meant the staged checks gets the wrong ones"
+ },
+ {
+  "id": "lib.dev-doctor-unfetched-tip",
+  "target": "linux/scripts/dev-doctor.sh",
+  "find": "    _finding \"origin's develop is at ${tip:0:10}, a commit this clone does not have: fetch, then fast-forward\"",
+  "replace": "    _ok \"origin's develop is at ${tip:0:10}\"",
+  "test": "bash linux/scripts/tests/test-dev-doctor.sh",
+  "why": "a tree 100 commits behind cost an hour of wrong debugging; a tip the clone lacks must be named"
+ },
+ {
+  "id": "lib.dev-doctor-behind-counted",
+  "target": "linux/scripts/dev-doctor.sh",
+  "find": "  if [ \"${behind}\" -gt 0 ]; then _finding",
+  "replace": "  if false; then _finding",
+  "test": "bash linux/scripts/tests/test-dev-doctor.sh",
+  "why": "a fetched but not merged origin is still behind, and the count says by how much"
+ },
+ {
+  "id": "lib.dev-doctor-hooks-unset",
+  "target": "linux/scripts/dev-doctor.sh",
+  "find": "    '') _finding \"core.hooksPath is unset",
+  "replace": "    '') _ok \"core.hooksPath is unset",
+  "test": "bash linux/scripts/tests/test-dev-doctor.sh",
+  "why": "a clone without hooks runs the gates only when someone remembers"
+ },
+ {
+  "id": "lib.dev-doctor-old-image",
+  "target": "linux/scripts/dev-doctor.sh",
+  "find": "  if [ \"${age_days}\" -gt \"${DOCTOR_IMAGE_MAX_DAYS}\" ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-dev-doctor.sh",
+  "why": "a month-old local image reads as broken code; over a week is named"
+ },
+ {
+  "id": "lib.dev-doctor-uv-pin",
+  "target": "linux/scripts/dev-doctor.sh",
+  "find": "  elif [ \"${have}\" != \"${uv_pin}\" ]; then",
+  "replace": "  elif false; then",
+  "test": "bash linux/scripts/tests/test-dev-doctor.sh",
+  "why": "a uv older than the lock format fails as a broken lock, so a pin mismatch is a finding"
+ },
+ {
+  "id": "lib.dev-doctor-exit-on-finding",
+  "target": "linux/scripts/dev-doctor.sh",
+  "find": "    printf 'dev-doctor: %d stale item(s); nothing was changed\\n' \"${DOCTOR_FINDINGS}\"\n    exit 1\n",
+  "replace": "    printf 'dev-doctor: %d stale item(s); nothing was changed\\n' \"${DOCTOR_FINDINGS}\"\n    exit 0\n",
+  "test": "bash linux/scripts/tests/test-dev-doctor.sh",
+  "why": "a doctor that lists findings and exits 0 reads as clean to any caller"
+ },
+ {
+  "id": "lib.openai-stream-lines-shape",
+  "target": "shared/contracts/openai-stream-lines.json",
+  "find": "\"expect\": {\"text\": \"cut\", \"thinking\": \"\", \"finish\": \"length\"",
+  "replace": "\"expect\": {\"text\": \"cut\", \"thinking\": \"\", \"finish\": \"truncated\"",
+  "test": "bash linux/scripts/tests/test-openai-stream-lines.sh",
+  "why": "two readers in two languages replay this file; a finish reason neither knows must fail here, not as a skipped case there"
+ },
+ {
+  "id": "pre-commit.image-reruns-only-pwsh-tests",
+  "target": "linux/host-config/git-hooks/pre-commit",
+  "find": "        for _id in ${_ps}; do _again+=(--only \"${_id}\"); done\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+  "why": "a test written for the host fails in the container for the container's reasons; only the pwsh tests need the image"
+ },
+ {
+  "id": "mutations.pwsh-test-named-on-a-host-without-it",
+  "target": "docs/scripts/mutation_push.py",
+  "find": "    _here, wanting = split_pwsh(entries, root, host_has_pwsh)\n    if wanting:\n        # The commit hook",
+  "replace": "    wanting: list[E] = []\n    if wanting:\n        # The commit hook",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "a recipe whose test starts pwsh exits 127 on a host without it, a vacuous bite the commit hook cannot tell from a weak test"
+ },
+ {
+  "id": "quality-report.extra-language-size-graded",
+  "target": "linux/scripts/quality_report_tree.py",
+  "find": "                   \"functions\", CODE, True)),",
+  "replace": "                   \"functions\", REPORT, True)),",
+  "test": "bash linux/scripts/tests/test-quality-report.sh",
+  "why": "a new oversized Rust, Dart or C++ function must read regressed in --compare, not moved"
+ },
+ {
+  "id": "quality-report.dart-test-main-is-test-body",
+  "target": "linux/scripts/lang_units.py",
+  "find": "    return lang == \"dart\" and name == \"main\" and rel.endswith(\"_test.dart\")",
+  "replace": "    return False",
+  "test": "bash linux/scripts/tests/test-lang-units.sh",
+  "why": "a Dart test file's main() grows with its tests; graded as product code it drowns the real count"
+ },
+ {
+  "id": "quality-report.test-body-only-in-test-files",
+  "target": "linux/scripts/lang_units.py",
+  "find": "    return lang == \"dart\" and name == \"main\" and rel.endswith(\"_test.dart\")",
+  "replace": "    return lang == \"dart\" and name == \"main\"",
+  "test": "bash linux/scripts/tests/test-lang-units.sh",
+  "why": "an app's own lib/main.dart is product code and stays graded"
+ },
+ {
+  "id": "code-size.extra-language-test-bodies-left-out",
+  "target": "linux/scripts/verify_code_size.py",
+  "find": "        over += len(big) - len(test_bodies)",
+  "replace": "        over += len(big)",
+  "test": "bash linux/scripts/tests/test-quality-report.sh",
+  "why": "the graded total leaves Dart test main() bodies out, or an added test reads as a regression"
+ },
+ {
+  "id": "rust.cargo-license-forbidden-package",
+  "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
+  "find": "        if not hits:\n            continue\n",
+  "replace": "        if True:\n            continue\n",
+  "test": "bash linux/scripts/tests/test-stage-cargo-licenses.sh",
+  "why": "A forbidden package in the staged graph must fail before staging and name its dependency path."
+ },
+ {
+  "id": "rust.cargo-license-runtime-budget",
+  "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
+  "find": "        if runtime > args.max_runtime_packages:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-stage-cargo-licenses.sh",
+  "why": "A runtime graph over its package budget must fail with the count."
+ },
+ {
+  "id": "rust.cargo-license-runtime-normal-edges",
+  "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
+  "find": "workspace, args.target, args.root_package, feature_args, \"normal\"\n",
+  "replace": "workspace, args.target, args.root_package, feature_args\n",
+  "test": "bash linux/scripts/tests/test-stage-cargo-licenses.sh",
+  "why": "The budget counts the live normal-edge tree; build dependencies never ship in the binary."
+ },
+ {
+  "id": "rust.cargo-license-forbidden-build-path",
+  "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
+  "find": "kinds = {None, \"build\"} if args.graph_scope",
+  "replace": "kinds = {None} if args.graph_scope",
+  "test": "bash linux/scripts/tests/test-stage-cargo-licenses.sh",
+  "why": "A forbidden build dependency in the tree scope must print the build edge that reaches it."
+ },
+ {
+  "id": "lib.ctest-run-fail-on-skipped-verdict",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "  if [[ \"${skipped}\" -gt 0 ]]; then\n",
+  "replace": "  if false; then\n",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "A skipped test that --fail-on-skipped names must fail the run."
+ },
+ {
+  "id": "lib.ctest-run-fail-on-skipped-disabled-exempt",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "      disabled) disabled=$((disabled + 1)) ;;\n",
+  "replace": "      disabled) skipped=$((skipped + 1)) ;;\n",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "ctest's Disabled tests are deliberate and must never fail a --fail-on-skipped run."
+ },
+ {
+  "id": "lib.ctest-run-fail-on-skipped-status",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": " || [[ \"${rc}\" -ne 0 ]] || rc=1\n",
+  "replace": "\n",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "The skip verdict must reach the status a passing ctest returned."
+ },
+ {
+  "id": "lib.ctest-run-fail-on-skipped-missing-report",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "no readable JUnit report at ${report}\"\n    return 1\n",
+  "replace": "no readable JUnit report at ${report}\"\n    return 0\n",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "Without a report the gate saw nothing, and that must not pass."
+ },
+ {
+  "id": "lib.ctest-run-fail-on-skipped-stale-report",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "    rm -f \"${CTEST_RUN_JUNIT_REPORT}\" || err \"Cannot remove the old JUnit report: ${CTEST_RUN_JUNIT_REPORT}\"\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "An earlier run's report must not stand in for a run that wrote none."
+ },
+ {
+  "id": "lint-gates.fixture-ceiling-isolates-parent",
+  "target": "linux/scripts/tests/test-consumer-hooks.sh",
+  "find": "export GIT_CEILING_DIRECTORIES",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh",
+  "why": "empty-directory refusal cases must not inherit the fixture parent repository when TMPDIR is inside a checkout"
  }
 ]
