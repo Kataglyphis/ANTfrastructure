@@ -1598,6 +1598,8 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   `prune-safe.sh` cannot reach:
   [`linux-host-setup.md` § B7](docs/linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches).
 
+- **Unused QA environments may be removed automatically** under the owner's standing authorization (2026-11-19), using `linux/host-config/cleanup-qa-venvs.py` with an explicit reviewed list and protected paths. Require fresh unit, container, BuildKit, process and mount observations, unchanged source/lock/input snapshots and an exact removal receipt. Preserve sources, caches, required images, finished packages, archives, logs and the current shared QA environment. Copy `qa_venv_cleanup.py` and `relocate-quality-venv.py` beside the entry, with `linux/scripts/qa_venv_usage.py`, `host_commands.py` and `source_ci/common.py` in their original layout. See [scope and limitations](docs/local-proof-workflows.md#unused-qa-environments); this authorizes neither arbitrary output deletion nor a scheduled service.
+
 - **Host toolchain: install from the nerdctl-full bundle, and on a rootless-only host into
   `$HOME/.local`.** There is no separate buildkit package, so bumping buildkitd means installing
   a newer bundle; `linux/host-config/install-nerdctl-full.sh` dry-runs by default, verifies the

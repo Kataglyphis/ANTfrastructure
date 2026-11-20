@@ -110,6 +110,11 @@
   (`7`, `stop`), a schema that is an array or a number, an object the grammar compiler refuses, no messages and no
   budget. Owner decision 2026-11-20: all three bindings replay it.
 
+## 2026-11-19 — remove approved unused QA environments reproducibly
+
+- Preserve a default-preview cleanup helper for explicitly reviewed ignored QA virtualenvs under the owner's standing authorization. Reuse canonical environment/inode validation, require fresh usage observations and exact source/input snapshots, and retain empty mountpoints and per-path receipts.
+- Preserve sources, caches, images, packages, archives, logs and the current shared QA environment. Add disposable-tree and fake-host regressions and actual refusal mutations; supplied authorization is not authenticated and usage observations do not lock concurrent writers or establish build/runtime acceptance.
+
 ## 2026-11-19 — `ctest-run.sh --fail-on-skipped REGEX`: a skip is not a pass (BeschleunigerBallett X2)
 
 - BeschleunigerBallett's llvmpipe lane counted its hardware ray-tracing `GTEST_SKIP`s as passes. After ctest,
