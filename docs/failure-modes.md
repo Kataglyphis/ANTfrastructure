@@ -1675,13 +1675,14 @@ leak in a `pthread_once` frame of an `<unknown module>`, under the loader's `set
 clang job hit it on GitHub's `ubuntu-26.04` runner image 20261116.202.1 (runs 44753690114, 44761639606), with the
 container image of the green run before on 20261111.196.1.
 
-**Cause.** A driver the loader opens while it enumerates devices allocates once and keeps it to exit; the loader
-has unloaded it by then, so LSan names no module and a module suppression cannot match. Which ICD it is was not
-narrowed down (CON284 lists the image's ICDs).
+**Cause.** On that runner one of the image's other ICDs finds a DRM node (Mesa's PowerVR ICD stops warning that
+it found none), allocates while the loader enumerates devices and keeps it, with its threads' memory, to exit;
+the loader has unloaded it by then, so LSan names no module and a module suppression cannot match.
 
-**Fix.** Suppress by the loader frame, `leak:setup_loader_term_phys_devs`; LSan's rerun drops the indirect leaks
-the suppressed block holds (BeschleunigerBallett ef6503a3, `lsanSuppressions.cpp`). Selecting only lavapipe with
-`VK_DRIVER_FILES` (CON284) may avoid it at the source.
+**Fix.** Load lavapipe only in the llvmpipe run: `VK_LOADER_DRIVERS_SELECT='*lvp*'` unless the caller names an ICD
+(BeschleunigerBallett 712ed01d, its `run-ctest.sh --virtual-display`; run 44784592908 passed 899 of 899 on that
+runner with no leak). A suppression of the loader frame (`leak:setup_loader_term_phys_devs`, ef6503a3) removes
+only the direct block: the threads' blocks it holds are still reported as indirect leaks (run 44770349057).
 
 ### A Linux AMD package returns fewer, drifting detections on MIGraphX
 

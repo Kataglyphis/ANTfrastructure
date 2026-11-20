@@ -2057,9 +2057,11 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       a container without `/dev/dri` (checked 2026-11-20 with `vulkaninfo --summary`), so every llvmpipe golden log
       carries it once per test. Either select the driver in the llvmpipe runs (`VK_DRIVER_FILES` naming
       `lvp_icd.json` in `ctest-run.sh --virtual-display` and `cargo_test.sh`) or drop the ICD where no PowerVR
-      device is expected; the riscv64 image may want it for boards with a PowerVR GPU. Check with it whether the
-      driver-setup leak under `setup_loader_term_phys_devs` that ASan GPU tests met on runner image 20261116.202.1
-      (`docs/failure-modes.md`) goes too.
+      device is expected; the riscv64 image may want it for boards with a PowerVR GPU. Selecting the driver also
+      ends the leak ASan GPU tests met on runner image 20261116.202.1 (`docs/failure-modes.md`):
+      BeschleunigerBallett 712ed01d sets `VK_LOADER_DRIVERS_SELECT='*lvp*'` in its `run-ctest.sh --virtual-display`
+      unless the caller names an ICD, and run 44784592908 on that runner passed 899 of 899 with no leak report.
+      Left: a shared home for that default (the llvmpipe recipe or `ctest-run.sh`) so other consumers get it.
 
 ## Open — Linux arm64 and riscv64
 
