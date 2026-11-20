@@ -1914,8 +1914,9 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       **Probe in source since 2026-11-20 (owner OK for the scratch package):** `zstd-pull-probe.yml`, dispatch only,
       copies `:latest`'s amd64 image to `ghcr.io/kataglyphis/antfrastructure-zstd-probe` with zstd layers, times a
       serial `docker pull` of each on a fresh runner (the prepare action's `pull-seconds`), and deletes the package with
-      `GHCR_TOKEN` even when a leg fails. Both legs print the same image id when they pulled the same image. Left: run
-      it, record both times here, then decide.
+      `GHCR_TOKEN` even when a leg fails. Both legs print the same image id when they pulled the same image. The first
+      run (44812697921) took the tag's index digest for the amd64 image and stopped before the pulls; the cleanup
+      deleted the package (HTTP 204). Left: run it again, record both times here, then decide.
 
 - [ ] **CON90 — finish the Python 3.15 rollout and remaining measurements** [L, ★★★].
       The default-image and x64 consumer rollout is recorded under

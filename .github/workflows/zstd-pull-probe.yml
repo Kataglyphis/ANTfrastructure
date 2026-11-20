@@ -52,12 +52,17 @@ jobs:
           # The family image's one owner is versions.env, as the container actions read it.
           env_file=linux/scripts/01-core/versions.env
           repo="$(sed -n 's/^IMAGE_REGISTRY_PREFIX=//p' "${env_file}")"
-          src="$(skopeo inspect --override-os linux --override-arch amd64 --format '{{.Digest}}' \
-            "docker://${repo}:$(sed -n 's/^CI_IMAGE_LINUX_TAG=//p' "${env_file}")")"
+          ref="${repo}:$(sed -n 's/^CI_IMAGE_LINUX_TAG=//p' "${env_file}")"
+          # The tag names a multi-arch index (run 44812697921 listed it and failed); amd64 is what a hosted runner pulls.
+          src="$(skopeo inspect --raw "docker://${ref}" | python3 -c '
+          import json, sys
+          index = json.load(sys.stdin).get("manifests", [])
+          print(next((m["digest"] for m in index if m.get("platform", {}).get("architecture") == "amd64"), ""))
+          ')"
+          [ -n "${src}" ] || src="$(skopeo inspect --format '{{.Digest}}' "docker://${ref}")"
           echo "source-digest=${src}" >> "${GITHUB_OUTPUT}"
           start=$(date +%s)
-          skopeo copy --override-os linux --override-arch amd64 --dest-compress-format zstd "${force[@]}" \
-            "docker://${repo}@${src}" "docker://${PROBE_IMAGE}"
+          skopeo copy --dest-compress-format zstd "${force[@]}" "docker://${repo}@${src}" "docker://${PROBE_IMAGE}"
           seconds=$(( $(date +%s) - start ))
           for ref in "${repo}@${src}" "${PROBE_IMAGE}"; do
             skopeo inspect --raw "docker://${ref}" | python3 -c '

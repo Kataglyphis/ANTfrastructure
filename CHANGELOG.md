@@ -22,7 +22,9 @@
 - `zstd-pull-probe.yml` (dispatch only, owner OK for a scratch package) recompresses `:latest`'s amd64 image to zstd
   in `ghcr.io/kataglyphis/antfrastructure-zstd-probe`, times a serial `docker pull` of the published gzip image and
   of the copy on two fresh runners through `prepare-linux-ci-host`'s `pull-seconds`, and deletes the package with
-  `GHCR_TOKEN` whatever the legs did. The copy fails unless its layers are `tar+zstd`.
+  `GHCR_TOKEN` whatever the legs did. The copy fails unless its layers are `tar+zstd`. Its first run (44812697921)
+  read the tag's multi-arch index as the amd64 image and stopped before the pulls; the copy now takes the amd64
+  manifest out of the index, and the cleanup's delete answered 204.
 - CON283: OxidANT's Pester suites speak 3.4 too; AccelerANTgine, OmniAccelerANT and OxidANT each record the migration
   as blocked on the chain that brings Pester 6.2.0.
 
