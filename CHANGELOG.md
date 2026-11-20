@@ -15,6 +15,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — the contract follows `ort` 2.0.0-rc.15 (CON95 step 2)
+
+- OxidANT f76b7f9 pins `ort` 2.0.0-rc.15. The consumer contract's Rust registration names the one `Environment` a
+  consumer builds with `ort::init_from(dylib)?.build()?`, keeps alive (rc.15 holds only a weak reference) and passes
+  to every `Session::builder`; the `ort-sys` build-script rules it quotes are re-read from rc.15 and unchanged.
+
+## 2026-11-20 — CON148 closed: jotrockenmitlocken checks both dev domains live
+
+- jotrockenmitlocken a80c562 runs `check-live-site.py` after each develop upload (the WASM domain before the CanvasKit
+  build replaces `build/web`, then the dev domain), with the URLs from the owner's new `DEV_WASM_SITE_URL` and
+  `DEV_SITE_URL` secrets; run 44716391170 passed both checks.
+
 ## 2026-11-20 — the chain names an absent asset mirror; stale GPU texts fixed (CON153, CON256 h, CON260)
 
 - `append_asset_mirror_secret` prints `[INFO] asset mirror: none (<file> is missing)` once per chain: a missing env file

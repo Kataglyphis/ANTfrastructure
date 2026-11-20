@@ -468,14 +468,6 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       System32 `amdhip64_7.dll` before TheRock's (llama.cpp#26929): prove it serves TheRock 10.1's hipBLAS, or
       re-bundle TheRock's three runtime DLLs and the byte-identity check that went with them.
 
-- [ ] **CON148 — jotrockenmitlocken's live-site check on its two dev domains** [S, ★★]. Found
-      2026-10-21: `web.yml` runs `scripts/check-live-site.py` after main's upload only, because the
-      dev domains are secret and no secret holds their URL (`DEV_USERNAME`, `DEV_WASM_USERNAME` are
-      FTP logins). Owner first: add `DEV_WASM_SITE_URL` and `DEV_SITE_URL`. Then one step after each
-      dev upload, passing the URL by name (`-e DEV_WASM_SITE_URL`); the WASM check must run before
-      the CanvasKit build replaces `build/web`. Done when a develop push shows both checks green.
-      **Owner 2026-11-20:** he adds the two secrets and says so; the steps follow then.
-
 - [ ] **CON150 — the uncaught `postMessage` TypeError on jonasheinle.de's landingPage and error404** [S, ★★].
       Found 2026-10-21, when jotrockenmitlocken 1.4.1 went to main: the live check saw one
       `Uncaught TypeError: Cannot read properties of undefined (reading 'postMessage')` on
@@ -1938,7 +1930,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Every image carries chain ORT 1.31.0, `:latest-rocm` `05518138…` included (`ONNXRUNTIME_VERSION=v1.31.0` in its
       history; OrchestrANT run 41491524238 installed its MIGraphX wheel, census PASS). Left:
       1. A real consumer session on the right device: the GPU core and provider on an AMD GPU, not the CPU twin's version.
-      2. OxidANT moves off its exact `ort` 2.0.0-rc.13 pin (`Cargo.toml:53`) to rc.14 or newer, with its own tests.
+      2. Done 2026-11-20: OxidANT f76b7f9 pins `ort` 2.0.0-rc.15 (owner OK), its inference and observant tests green.
 
       ORT configure still builds onnx from source: v1.31.0 fails on a found ONNX package with a different protobuf.
 - [ ] **CON96 — the arm64 and riscv64 children without the x86_64 host payload** [S, ★★]. Owner request

@@ -1029,7 +1029,7 @@ name, `/usr/local/lib/onnxruntime-gpu/lib/libonnxruntime_providers_cuda.so`, and
 `onnxruntime-gpu` wheel in `/opt/venv` registers it on import, so Python's
 `providers=["CUDAExecutionProvider"]` is unchanged. A C++ or Rust consumer registers that path under
 the name `CUDAExecutionProvider` once per process before it creates a session
-(`Ort::Env::RegisterExecutionProviderLibrary`; in Rust `Environment::register_ep_library`, `ort` 2.0.0-rc.13);
+(`Ort::Env::RegisterExecutionProviderLibrary`; in Rust `Environment::register_ep_library`, `ort` 2.0.0-rc.15);
 the legacy `OrtSessionOptionsAppendExecutionProvider_CUDA` bridge is gone with `GetProvider`.
 
 ## NVIDIA's plugin TensorRT EP
@@ -1063,7 +1063,9 @@ device it reports; the EP's name is the registration name you choose:
   `so.add_provider_for_devices([d for d in ort.get_ep_devices() if d.ep_name == "MIGraphX"], {})`.
 - C++: `Ort::Env::RegisterExecutionProviderLibrary("MIGraphX", path)`, then
   `SessionOptions::AppendExecutionProvider_V2` with the matching `OrtEpDevice`.
-- Rust (`ort` 2.0.0-rc.13): `Environment::current()?.register_ep_library("MIGraphX", path)`, then the device
+- Rust (`ort` 2.0.0-rc.15): the one `Environment` that `ort::init_from(dylib)?.build()?` returns, kept alive by the
+  consumer (`ort` holds only a weak reference) and passed to every `Session::builder(&env)`:
+  `env.register_ep_library("MIGraphX", path)`, then the device
   from `Environment::devices()` whose `ep()` is `"MIGraphX"`, appended with `SessionBuilder::with_devices` (its
   option keys need the `MIGraphX.` prefix; a key without it is dropped) or the raw
   `SessionOptionsAppendExecutionProvider_V2`. The crate has no `register_execution_provider_library`.
@@ -1157,10 +1159,10 @@ pyke's prebuilt one (G3 of the
 | `ORT_SKIP_DOWNLOAD` | `1` | `1` |
 | `ORT_DYLIB_PATH` | `$ONNX_ROOT\bin\onnxruntime.dll` | `${ONNXRUNTIME_OUTPUT_DIR}/lib/libonnxruntime.so` |
 
-Why these four, read from `ort-sys` 2.0.0-rc.13 (the checksum OxidANT's
-`Cargo.lock` pins) and `ort` 2.0.0-rc.13:
-- `build/main.rs:47-68` reads `ORT_LIB_PATH`, then `ORT_LIB_LOCATION`, before the
-  download branch. With `ORT_PREFER_DYNAMIC_LINK` set to `1` or `true` the build
+Why these four, read from `ort-sys` 2.0.0-rc.15 (the checksum OxidANT's
+`Cargo.lock` pins since 2026-11-20; rc.13 read the same) and `ort` 2.0.0-rc.15:
+- `build/main.rs:47-67` reads `ORT_LIB_PATH`, then `ORT_LIB_LOCATION`, before the
+  download branch (an enabled `pkg-config` feature is tried before both; no consumer enables it). With `ORT_PREFER_DYNAMIC_LINK` set to `1` or `true` the build
   script emits `rustc-link-lib=onnxruntime` from that directory; without it,
   ort-sys tries a static link the chain does not ship.
 - The first SET one of `CARGO_NET_OFFLINE`, `ORT_SKIP_DOWNLOAD` and `ORT_OFFLINE`
@@ -1169,7 +1171,7 @@ Why these four, read from `ort-sys` 2.0.0-rc.13 (the checksum OxidANT's
   `ORT_LIB_PATH` still outranks `ORT_LIB_LOCATION`.
 - `ort`'s load-dynamic opens `ORT_DYLIB_PATH`, otherwise a bare file name, which on
   Windows reaches `System32\onnxruntime.dll` (Windows ML 1.17) before PATH.
-- `ort`'s default features include `download-binaries`.
+- `ort`'s default features include `download-binaries` (and, in rc.15, `copy-dylibs` and `api-31`).
 
 **What it means for a consumer.**
 - An `ort-sys` build in the image links the chain import library, so a shipped
