@@ -1893,7 +1893,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       a container without `/dev/dri` (checked 2026-11-20 with `vulkaninfo --summary`), so every llvmpipe golden log
       carries it once per test. Either select the driver in the llvmpipe runs (`VK_DRIVER_FILES` naming
       `lvp_icd.json` in `ctest-run.sh --virtual-display` and `cargo_test.sh`) or drop the ICD where no PowerVR
-      device is expected; the riscv64 image may want it for boards with a PowerVR GPU.
+      device is expected; the riscv64 image may want it for boards with a PowerVR GPU. Check with it whether the
+      driver-setup leak under `setup_loader_term_phys_devs` that ASan GPU tests met on runner image 20261116.202.1
+      (`docs/failure-modes.md`) goes too.
 
 ## Open — Linux arm64 and riscv64
 
