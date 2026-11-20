@@ -50,6 +50,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Windows host maintenance portability
 
+- [ ] Accept the complete successor qualification after the QNN fixture ordering
+  correction. The `121e2b86` rootless script gate failed its unchanged 120-case
+  receipt comparison on directory enumeration; its successful Windows quality
+  proof remains scoped to that commit and platform. Preserve the original
+  failure and require a new whole native result; targeted fixture checks do
+  not replace it. See [the diagnosed discrepancy](docs/failure-modes.md#qnn-query-receipts-differ-between-filesystems).
+
 - [x] Add the versioned bounded installer, normal-user preview/Apply/status,
   fixed protected policy, explicit disposable-container marker and canonical
   selected removal. Retain current final images, SDKs/toolchains, all unrelated

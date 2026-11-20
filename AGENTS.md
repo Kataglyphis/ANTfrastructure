@@ -946,6 +946,8 @@ Guard empty arguments before associative-array lookups; an empty positional CMak
 preset retains the caller-default behavior and its positional-array entry.
 Shell fixture environment values remain individually quoted arguments, including
 PATH and SDK directories with spaces; do not word-split a string of assignments.
+Keep QNN's frozen query receipts independent of directory enumeration while retaining
+raw tool status, argument boundaries and all 120 original cases.
 
 Each of these killed or falsified a real build before it was fixed. The full stories:
 [`changelog-archive-2026-08-13.md`](docs/changelog-archive-2026-08-13.md) (2026-08-08);

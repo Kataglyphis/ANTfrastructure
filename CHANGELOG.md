@@ -17,6 +17,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — stabilize QNN query receipt fixtures
+
+- Order the fixture's captured `find` output under the C locale while retaining
+  its original arguments, raw status and injected failures. Keep all 120 frozen
+  receipts byte-identical. A reverse-enumeration control and valid sort-removal
+  mutation cover the rootless overlay discrepancy; real SDK/EP acceptance is separate.
+
 ## 2026-11-20 — version bounded Stevedore delegation
 
 - Add host-specific one-time SYSTEM task setup, ordinary-user preview/Apply/status,

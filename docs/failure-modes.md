@@ -3176,6 +3176,23 @@ find out, and an isolated build offline has no setuptools to download. `check_do
 **Fix.** `uv lock --project docs` and commit the one-line change with the gitlink that caused it. Do not add
 `--no-build-isolation` or lower the theme's bound: the check would still read the lock as stale.
 
+### QNN query receipts differ between filesystems
+
+`test-qnn-runtime-query.sh` can fail its original 120-case receipt comparison
+while the other QNN assertions pass. In the 2026-11-20 rootless preflight,
+40 cases selected `target/lib` instead of the recorded `target/deep` after an
+injected query failure. Both contained matching files, and the fixture inherited
+the filesystem's unsorted enumeration before the production fallback took its
+first match.
+
+The fixture captures the real `find` output in a private per-process file and
+sorts that output under `LC_ALL=C`, preserving the tool's raw status before the
+configured fault is returned. Its argument trace and all original receipt bytes
+remain checked. The suite also forces reverse tool output; a valid mutation
+that removes the fixture sort must break those same receipts. These synthetic
+checks cover query, transport and status policies. Real SDK staging, provider
+loading and device inference require their own evidence.
+
 ### QNN Community test fails with a spaced PATH
 
 The last `test-qnn-community-zip.sh` case reports empty output, no `rc=0` and zero fake downloads,
