@@ -85,7 +85,8 @@ t_assert_contains "$(SNIPPET='echo reached' _graph CROSS_VARIANT=cuda)" "unknown
 
 t_case "the refusals, run through the REAL entry points (read-only modes)"
 CHAIN="${TESTS_DIR}/../build-cross-chain.sh"; STAGE_SH="${TESTS_DIR}/../build-cross-stage.sh"
-_ENV_CLEAN=(env -u CROSS_VARIANT -u CROSS_NVIDIA_SBSA -u ENABLE_NVIDIA -u ENABLE_AMD -u ENABLE_DEEPSTREAM -u ENABLE_TENSORRT -u CROSS_NO_PUSH -u CROSS_BUILD_PLATFORM -u IMAGE_REPO)
+# BUILDARCH=amd64: the dry runs model the amd64 build host; an arm64 host would tag -hostarm64 (tag-naming.sh).
+_ENV_CLEAN=(env -u CROSS_VARIANT -u CROSS_NVIDIA_SBSA -u ENABLE_NVIDIA -u ENABLE_AMD -u ENABLE_DEEPSTREAM -u ENABLE_TENSORRT -u CROSS_NO_PUSH -u CROSS_BUILD_PLATFORM -u IMAGE_REPO BUILDARCH=amd64)
 # Leading VAR=value words are the environment; the rest runs time-boxed.
 _chain() {
   local -a _e=(); while [[ "${1:-}" == *=* ]]; do _e+=("$1"); shift; done
@@ -221,7 +222,7 @@ t_assert_eq "" "$(bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nru
 _RT="${TESTS_DIR}/../build-runtime-artifacts.sh"
 t_assert_contains "$(env -u CROSS_VARIANT ENABLE_NVIDIA=true timeout 60 bash "${_RT}" --image-prefix example.io/r:latest --target-arches amd64 --dry-run 2>&1)" \
   "carries no -nvidia" "a GPU wrapper can never land on the default :latest-<arch>"
-t_assert_contains "$(env -u CROSS_VARIANT ENABLE_NVIDIA=true timeout 60 bash "${_RT}" --target-arches amd64 --dry-run 2>&1)" \
+t_assert_contains "$(env -u CROSS_VARIANT ENABLE_NVIDIA=true BUILDARCH=amd64 timeout 60 bash "${_RT}" --target-arches amd64 --dry-run 2>&1)" \
   "latest-nvidia-base-amd64" "and the helper's default prefix is the variant's own"
 
 t_case "one chain at a time: the pidfile is claimed atomically at the check"

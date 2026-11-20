@@ -141,7 +141,8 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
 - [ ] **CON260 — OpenVINO, its ORT provider as a chain-built plugin, and the NPU driver** [L, ★★★].
       `OPENVINO_VERSION=2026.4.1` is pinned and Renovate-tracked, yet nothing fetches OpenVINO:
       `ffmpeg_probe_libopenvino` always skips, the image's FFmpeg has no `--enable-libopenvino`, and the
-      probe's fallback literal `2026.2.1` differs from the pin. Read 2026-11-10:
+      probe had a fallback literal `2026.2.1` (gone 2026-11-20: it takes the passed pin or the synthetic
+      `.pc`'s default). Read 2026-11-10:
       1. ORT v1.31.1's tree carries the provider's `OrtEpFactory` (`core/providers/openvino/ov_factory.cc`);
          nobody built it here.
       2. Intel's `onnxruntime-ep-openvino` 1.8.1 is binary-only (52.6 MB Linux, 75.8 MB Windows) and
@@ -153,7 +154,7 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
 
       Build OpenVINO at the pin and the provider as a plugin over the chain's CPU prefix, with QNN's
       export, census and verify contracts; add the NPU user-space driver; then wire FFmpeg's
-      backend at the pin (owner 2026-11-12) and drop the probe's literal. amd64 only. Done when `verify_ort_profile.py` shows operators on the
+      backend at the pin (owner 2026-11-12). amd64 only. Done when `verify_ort_profile.py` shows operators on the
       OpenVINO provider on the owner's Intel GPU and NPU, and a device-less check reports registration only.
 - [b] **CON261 — PyTorch on Intel GPUs: a torch-only `-intel` tag** [M, ★★]. **Postponed indefinitely**
       (owner 2026-11-12): the approach below is approved, and it is built only if he gets an Intel GPU. `torch` 2.14.1+xpu for cp315 is 861 MB on Linux and 768 MB on Windows,
@@ -467,14 +468,6 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       System32 `amdhip64_7.dll` before TheRock's (llama.cpp#26929): prove it serves TheRock 10.1's hipBLAS, or
       re-bundle TheRock's three runtime DLLs and the byte-identity check that went with them.
 
-- [ ] **CON148 — jotrockenmitlocken's live-site check on its two dev domains** [S, ★★]. Found
-      2026-10-21: `web.yml` runs `scripts/check-live-site.py` after main's upload only, because the
-      dev domains are secret and no secret holds their URL (`DEV_USERNAME`, `DEV_WASM_USERNAME` are
-      FTP logins). Owner first: add `DEV_WASM_SITE_URL` and `DEV_SITE_URL`. Then one step after each
-      dev upload, passing the URL by name (`-e DEV_WASM_SITE_URL`); the WASM check must run before
-      the CanvasKit build replaces `build/web`. Done when a develop push shows both checks green.
-      **Owner 2026-11-20:** he adds the two secrets and says so; the steps follow then.
-
 - [ ] **CON150 — the uncaught `postMessage` TypeError on jonasheinle.de's landingPage and error404** [S, ★★].
       Found 2026-10-21, when jotrockenmitlocken 1.4.1 went to main: the live check saw one
       `Uncaught TypeError: Cannot read properties of undefined (reading 'postMessage')` on
@@ -723,11 +716,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★]. In source (CHANGELOG 2026-11-03,
       `_disk_guard_release_stale_records`), tested with stubs only. Done when the next chain resumed after a stop
       logs `left by a stopped chain: restarting buildkitd` and reclaims without a hand restart.
-- [ ] **CON153 leftover — the chain says at start whether the asset-mirror secret is present** [S, ★]. The mirror
-      itself is proved: with the keys installed, the rocm media stage of 2026-11-07 (run 20261107-192205) logged
-      `asset-mirror| hit` for all ten plugin-EP archives that `fill-asset-mirror.sh --apply` had mirrored from the
-      previous run's misses. What stayed invisible for two rounds was the ABSENCE of the host env file:
-      `host_secret_file_ready` is silent on a missing file. One `[INFO] asset mirror: none` line at chain start.
 - [ ] **CON129 — finish GTK 4 validation on foreign arches and GPU variants** [M, ★★★].
       The mandatory `gui_unix` feature is enabled in OxidANT. On the recorded `3c558d88` index,
       its x64 run `39865676735` passed 728 normal and 728 instrumented tests with real Xvfb/GTK;
@@ -1405,7 +1393,10 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       which nothing defines; `docs/consumer-image-contract.md` 1114-1116 points every GPU consumer at
       `onnxruntime-gpu/lib`, which rocm no longer has; `AGENTS.md` 1243-1244 says the verify stages fail an in-tree
       MIGraphX provider, which only the runtime smoke does; CON233 names per-language registration helpers that
-      `shared/` does not hold.
+      `shared/` does not hold. **Fixed 2026-11-20:** the accelerator page names `/usr/local/lib/onnxruntime-gpu` and
+      the runtime gate's real plugin-EP checks (root, module, both exports, closure), the contract sends only NVIDIA
+      consumers to `onnxruntime-gpu/lib`, `AGENTS.md` says the verify stage fails the in-tree TensorRT provider and the
+      smoke both; CON233 no longer names such helpers.
       (j) **The Python bundle's library closure, seen 2026-11-13.** OrchestrANT's first AMD bundle on the
       plugin-only image (run 43409294907, job *inventory (amd, x64, latest-rocm)*, hub pin ed3d170) stops in
       `elf-closure.sh`: `runtime/lib/python3.15/site-packages/onnxruntime/capi/libmigraphx-ep.so: libonnxruntime.so.1`
@@ -2043,6 +2034,33 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       throwaway container's root may; a non-root run refuses. Shipping them in `Dockerfile.torch` makes that step a
       no-op. Done when an image built from it answers `import setuptools, wheel` from `/opt/venv/bin/python`.
 
+- [ ] **CON281 — GCC 16.2 segfaults on a module unit's `std::span<const unsigned int>` members** [S, ★★]. Found
+      2026-11-19 by BeschleunigerBallett's x64 and arm64 GCC jobs (runs 44628923878, 44634321158): an internal
+      compiler error at the end of `GltfLoader.cpp`'s first mem-initializer list; clang builds the tree. Bisected
+      in the image under a 4 GB cgroup (one object, `-j1`): only the two `std::span<const unsigned int>` data
+      members bring it back, and smaller module graphs of the same shape compile. BB f7e9c7fc holds them as a
+      pointer and a count; `docs/failure-modes.md` has the entry. Next: reduce it with `-freport-bug` from BB's
+      eca6b274..f7e9c7fc tree, report it to GCC, and drop the note once the image's GCC compiles the span form.
+
+- [ ] **CON282 — GNU `time` in the Linux image** [S, ★]. `/usr/bin/time` is missing on every arch, so a peak-RSS
+      measurement inside the image needs a Python `getrusage(RUSAGE_CHILDREN)` wrapper (BB's I13 measurement,
+      2026-11-19). Done when `/usr/bin/time -v true` prints `Maximum resident set size` in `:latest`.
+
+- [ ] **CON283 — Pester in the Linux image's `pwsh`** [S, ★]. `pwsh` is installed but `Get-Module -ListAvailable
+      Pester` lists nothing (checked 2026-11-20 on arm64), so the hub's Pester 5 suites and a consumer's Pester
+      suites run only on Windows. BB's agents fetched Pester 3.4.0 into a scratch directory and patched its
+      `Get-WmiObject` lookup to run its 3.4 suites on Linux. Install Pester 5.7 at the version the Windows lanes
+      pin; Pester 3.4 needs WMI and stays a Windows tool.
+
+- [ ] **CON284 — Mesa's PowerVR ICD warns on every Vulkan instance** [S, ★]. `powervr_mesa_icd.json` in
+      `/usr/share/vulkan/icd.d` prints `pvr_instance.c:92 ... Failed to enumerate drm devices` twice per instance in
+      a container without `/dev/dri` (checked 2026-11-20 with `vulkaninfo --summary`), so every llvmpipe golden log
+      carries it once per test. Either select the driver in the llvmpipe runs (`VK_DRIVER_FILES` naming
+      `lvp_icd.json` in `ctest-run.sh --virtual-display` and `cargo_test.sh`) or drop the ICD where no PowerVR
+      device is expected; the riscv64 image may want it for boards with a PowerVR GPU. Check with it whether the
+      driver-setup leak under `setup_loader_term_phys_devs` that ASan GPU tests met on runner image 20261116.202.1
+      (`docs/failure-modes.md`) goes too.
+
 ## Open — Linux arm64 and riscv64
 
 - [ ] **CON145 — `cxxbridge` in the Linux and Windows images** [S, ★★]. Found 2026-10-21 with
@@ -2103,7 +2121,7 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       Every image carries chain ORT 1.31.0, `:latest-rocm` `05518138…` included (`ONNXRUNTIME_VERSION=v1.31.0` in its
       history; OrchestrANT run 41491524238 installed its MIGraphX wheel, census PASS). Left:
       1. A real consumer session on the right device: the GPU core and provider on an AMD GPU, not the CPU twin's version.
-      2. OxidANT moves off its exact `ort` 2.0.0-rc.13 pin (`Cargo.toml:53`) to rc.14 or newer, with its own tests.
+      2. Done 2026-11-20: OxidANT f76b7f9 pins `ort` 2.0.0-rc.15 (owner OK), its inference and observant tests green.
 
       ORT configure still builds onnx from source: v1.31.0 fails on a found ONNX package with a different protobuf.
 - [ ] **CON96 — the arm64 and riscv64 children without the x86_64 host payload** [S, ★★]. Owner request
@@ -2332,6 +2350,18 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       and GenAI tags under Kataglyphis, which source builds try first; (2) until then `Test-PatchesApplyClean.ps1`
       reports a patch whose upstream answers 404 as `NOT CHECKED` with a warning, not a failure (done 2026-11-18).
       Done when the mirrors exist and the builds read them.
+
+- [ ] **CON285 — `run-in-ci-image.sh` takes a memory limit** [S, ★★]. An 8 GB WSL host (BB's dev host since
+      2026-11-19) died three times on GCC module builds; a hard cgroup limit kills only the container
+      (`nerdctl run --memory 4g --memory-swap 4g`, enforced by rootless nerdctl, checked 2026-11-20), but the runner
+      passes no such option, so BB's coordinator called nerdctl by hand. Add `--memory <size>` (with an equal
+      `--memory-swap`) and a test that a run over the limit exits 137 while the host keeps running.
+
+- [ ] **CON286 — the gitleaks gate scans git-ignored files** [S, ★]. `run-lint-gates.sh` on a hub worktree failed
+      `gitleaks` on two `generic-api-key` hits in `quality/.venv/.../playwright/.../coreBundle.js` (2026-11-20), an
+      ignored virtualenv left by a local `quality` run; CI's fresh checkout has none, so the gate is green there
+      and red on the dev host. Scan the tracked and untracked-but-not-ignored files (`git ls-files -co
+      --exclude-standard`) instead of the scope directories.
 
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.

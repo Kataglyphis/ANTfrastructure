@@ -45,6 +45,29 @@
 - Preserve both explicit ORT census loader-path interfaces and their exemption arguments. Keep the platform grouping in the shared ISA module so the runtime smoke stays within its existing size limit.
 - Preserve both histories and their mutation recipes; rebase archived changelog links and keep all original entries.
 
+## 2026-11-20 — the contract follows `ort` 2.0.0-rc.15 (CON95 step 2)
+
+- OxidANT f76b7f9 pins `ort` 2.0.0-rc.15. The consumer contract's Rust registration names the one `Environment` a
+  consumer builds with `ort::init_from(dylib)?.build()?`, keeps alive (rc.15 holds only a weak reference) and passes
+  to every `Session::builder`; the `ort-sys` build-script rules it quotes are re-read from rc.15 and unchanged.
+
+## 2026-11-20 — CON148 closed: jotrockenmitlocken checks both dev domains live
+
+- jotrockenmitlocken a80c562 runs `check-live-site.py` after each develop upload (the WASM domain before the CanvasKit
+  build replaces `build/web`, then the dev domain), with the URLs from the owner's new `DEV_WASM_SITE_URL` and
+  `DEV_SITE_URL` secrets; run 44716391170 passed both checks.
+
+## 2026-11-20 — the chain names an absent asset mirror; stale GPU texts fixed (CON153, CON256 h, CON260)
+
+- `append_asset_mirror_secret` prints `[INFO] asset mirror: none (<file> is missing)` once per chain: a missing env file
+  was silent and hid an absent mirror for two rounds (CON153 closed). `test-asset-mirror.sh` holds the once-only line.
+- CON256 (h): the accelerator page names `/usr/local/lib/onnxruntime-gpu` instead of the undefined `${ORT_GPU_DIR}` and
+  the runtime gate's real plugin-EP checks instead of a provider list; the consumer contract sends only NVIDIA consumers
+  to `onnxruntime-gpu/lib`; `AGENTS.md` says which gate fails which in-tree provider.
+- CON260: the FFmpeg OpenVINO probe drops its stale `2026.2.1` literal and takes the passed pin.
+- `test-deepstream.sh` and `test-gpu-variant.sh` pin the amd64 target and build host their fixtures model; on an arm64
+  host they failed unmutated (8 assertions), which turned the commit hook's mutation sample vacuous there.
+
 ## 2026-11-20 — CON237 closed: every binding replays the shared text cases
 
 - `fixture.json`'s `cases` are replayed by AccelerANTgine 7f8cb17 (C++ and Python), OxidANT 9e0f589 and OrchestrANT

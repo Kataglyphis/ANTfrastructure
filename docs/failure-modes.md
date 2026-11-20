@@ -430,6 +430,8 @@ See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 - [apt `gpgv` exits 111 after a `COPY --link` into `/tmp`](#apt-gpgv-exits-111-after-a-copy---link-into-tmp)
 - [nvcc rejects the image's GCC 16](#nvcc-rejects-the-images-gcc-16)
 - [A CUDA compile is `Killed` though average memory looked fine](#a-cuda-compile-is-killed-though-average-memory-looked-fine)
+- [GCC 16.2 segfaults in a module unit's constructor over a `std::span` member](#gcc-162-segfaults-in-a-module-units-constructor-over-a-stdspan-member)
+- [Every ASan GPU test leaks under `setup_loader_term_phys_devs` on a new runner image](#every-asan-gpu-test-leaks-under-setup_loader_term_phys_devs-on-a-new-runner-image)
 - [An exception through std::call_once segfaults in libunwind](#an-exception-through-stdcall_once-segfaults-in-libunwind)
 - [A Linux AMD package returns fewer, drifting detections on MIGraphX](#a-linux-amd-package-returns-fewer-drifting-detections-on-migraphx)
 - [lavapipe segfaults building an acceleration structure on arm64](#lavapipe-segfaults-building-an-acceleration-structure-on-arm64)
@@ -1647,6 +1649,39 @@ cannot reopen the 2026-08-27 path, where the guess pulled a distro
 **Cause.** Heavy CUDA translation units are staggered, so the average RSS hides the peak.
 
 **Fix.** `CUDA_MB_PER_CICC` (default 3500) sizes the GPU job count against the peak. Raise it before adding swap.
+
+### GCC 16.2 segfaults in a module unit's constructor over a `std::span` member
+
+**Symptom.** `internal compiler error: Segmentation fault` at the end of a constructor's mem-initializer list
+in a C++23 module implementation unit, on x64 and arm64 alike, while clang builds the same tree.
+BeschleunigerBallett runs 44628923878 and 44634321158 stopped in `GltfLoader.cpp`'s first constructor.
+
+**Cause.** The exported class held two `std::span<const unsigned int>` data members, and the unit imported
+modules whose functions take that span type too. Bisected in the image with the one object under a 4 GB
+cgroup: vector members compiled, a `std::span<const Vertex>` member compiled, and the two
+`std::span<const unsigned int>` members alone brought the crash back. Smaller module graphs of the same shape
+compiled, so it is not reduced to a standalone case.
+
+**Fix.** Hold such a view as a pointer and a count and build the `std::span` in the getter (BeschleunigerBallett
+f7e9c7fc). To bisect on a small host, build one object with `ninja -j1 <object>` in a container started with
+`--memory 4g --memory-swap 4g`, so an overrun kills the container only; a `ulimit -v` cap is no signal, since a
+module unit that includes `vulkan.hpp` parses at about 3.3 GB.
+
+### Every ASan GPU test leaks under `setup_loader_term_phys_devs` on a new runner image
+
+**Symptom.** LeakSanitizer fails every Vulkan test of an ASan build on llvmpipe in the Linux image: one direct
+leak in a `pthread_once` frame of an `<unknown module>`, under the loader's `setup_loader_term_phys_devs` and
+`terminator_EnumeratePhysicalDevices`, plus indirect leaks from that module's threads. BeschleunigerBallett's x64
+clang job hit it on GitHub's `ubuntu-26.04` runner image 20261116.202.1 (runs 44753690114, 44761639606), with the
+container image of the green run before on 20261111.196.1.
+
+**Cause.** A driver the loader opens while it enumerates devices allocates once and keeps it to exit; the loader
+has unloaded it by then, so LSan names no module and a module suppression cannot match. Which ICD it is was not
+narrowed down (CON284 lists the image's ICDs).
+
+**Fix.** Suppress by the loader frame, `leak:setup_loader_term_phys_devs`; LSan's rerun drops the indirect leaks
+the suppressed block holds (BeschleunigerBallett ef6503a3, `lsanSuppressions.cpp`). Selecting only lavapipe with
+`VK_DRIVER_FILES` (CON284) may avoid it at the source.
 
 ### A Linux AMD package returns fewer, drifting detections on MIGraphX
 

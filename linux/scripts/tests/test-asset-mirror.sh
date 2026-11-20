@@ -128,7 +128,10 @@ t_case "the RUN's secret file is found without any knob"
 t_assert_contains "$(sed -n '/^download_mirror_config_file()/,/^}/p' "${DOWNLOADS}")" "/run/secrets/asset_mirror"
 
 t_case "the build secret: passed for a private file with a URL, withheld otherwise"
-_secret() { env -i PATH=/usr/bin:/bin HOME="${WORK}/home" "$@" bash -c 'source "$1/01-core/build-helpers.sh"; a=(); append_asset_mirror_secret a; printf "%s" "${a[*]}"' _ "${SCRIPTS}" 2>/dev/null; }
+# Two stages ask, as a chain's do; stdout is the first stage's secret arguments, stderr what both said.
+_mirror() { env -i PATH=/usr/bin:/bin HOME="${WORK}/home" "$@" bash -c 'source "$1/01-core/build-helpers.sh"; a=(); b=(); append_asset_mirror_secret a; append_asset_mirror_secret b; printf "%s" "${a[*]}"' _ "${SCRIPTS}"; }
+_secret() { _mirror "$@" 2>/dev/null; }
+_said() { { _mirror "$@" >/dev/null; } 2>&1; }
 t_assert_eq "--secret id=asset_mirror,src=${CFG}" "$(_secret KATAGLYPHIS_ASSET_MIRROR_FILE="${CFG}")"
 t_assert_eq "" "$(_secret KATAGLYPHIS_ASSET_MIRROR_FILE="${CFG}" KATAGLYPHIS_ASSET_MIRROR=off)"
 cp "${CFG}" "${WORK}/open.env"; chmod 644 "${WORK}/open.env"
@@ -136,6 +139,11 @@ t_assert_eq "" "$(_secret KATAGLYPHIS_ASSET_MIRROR_FILE="${WORK}/open.env")" "a 
 printf 'AWS_ACCESS_KEY_ID=x\n' > "${WORK}/nourl.env"; chmod 600 "${WORK}/nourl.env"
 t_assert_eq "" "$(_secret KATAGLYPHIS_ASSET_MIRROR_FILE="${WORK}/nourl.env")"
 t_assert_eq "" "$(_secret KATAGLYPHIS_ASSET_MIRROR_FILE="${WORK}/missing.env")"
+
+t_case "a missing mirror file says so once per chain, not once per stage"
+t_assert_eq "[INFO] asset mirror: none (${WORK}/missing.env is missing)" "$(_said KATAGLYPHIS_ASSET_MIRROR_FILE="${WORK}/missing.env")"
+t_assert_eq "" "$(_said KATAGLYPHIS_ASSET_MIRROR_FILE="${WORK}/missing.env" KATAGLYPHIS_ASSET_MIRROR_REPORTED=1)" "a chain that already said it stays quiet"
+t_assert_eq "" "$(_said KATAGLYPHIS_ASSET_MIRROR_FILE="${CFG}")" "a present mirror adds no line"
 t_assert_contains "$(sed -n '/^append_common_build_args()/,/^}/p' "${SCRIPTS}/01-core/build-helpers.sh")" "append_asset_mirror_secret" \
   "every stage and runtime build gets the secret through append_common_build_args"
 

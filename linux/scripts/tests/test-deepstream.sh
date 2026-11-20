@@ -13,7 +13,8 @@ trap 'rm -rf "${_T}"' EXIT
 # _ds <snippet> [VAR=value...]: deepstream.sh sourced (main does not run), the real pins loaded, then the snippet.
 _ds() {
   local snippet="$1"; shift
-  env "$@" bash -c 'source "$1"; source "$2"; load_versions_env "$3"; eval "$4"' _ \
+  # The fixtures model an amd64 target, so a test on an arm64 host must not take its host's arch.
+  env TARGET_ARCH=amd64 "$@" bash -c 'source "$1"; source "$2"; load_versions_env "$3"; eval "$4"' _ \
     "${DS}" "${TESTS_DIR}/../01-core/load-versions-env.sh" "${ENVF}" "${snippet}" 2>&1
 }
 

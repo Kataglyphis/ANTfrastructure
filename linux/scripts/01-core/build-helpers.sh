@@ -138,6 +138,12 @@ append_asset_mirror_secret() {
   local -n _aams_out=$1
   local file="${KATAGLYPHIS_ASSET_MIRROR_FILE:-${XDG_CONFIG_HOME:-${HOME:-/root}/.config}/kataglyphis/asset-mirror.env}"
   case "${KATAGLYPHIS_ASSET_MIRROR:-on}" in 0|off|false|no) return 0 ;; esac
+  if [ ! -f "${file}" ]; then
+    # A missing file was silent and hid an absent mirror for two rounds (CON153); once per chain, as every stage asks.
+    [ -n "${KATAGLYPHIS_ASSET_MIRROR_REPORTED:-}" ] || printf '[INFO] asset mirror: none (%s is missing)\n' "${file}" >&2
+    export KATAGLYPHIS_ASSET_MIRROR_REPORTED=1
+    return 0
+  fi
   host_secret_file_ready "${file}" "asset mirror" "" ASSET_MIRROR_URL || return 0
   _aams_out+=(--secret "id=asset_mirror,src=${file}")
 }

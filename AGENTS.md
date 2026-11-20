@@ -1435,8 +1435,8 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
     TensorRT EP is NVIDIA's plugin (`37-build-tensorrt-plugin-ep.sh`, `/usr/local/lib/onnxruntime-ep-tensorrt`,
     `ORT_TENSORRT_EP_ROOT`, G2 + census contract), and the rocm variant's MIGraphX EP is AMD's plugin over the CPU
     prefix; the rocm variant has no ORT GPU build. Never pass `--use_tensorrt` or `--use_migraphx` again, never
-    ship `libonnxruntime_providers_tensorrt.so` or `libonnxruntime_providers_migraphx.so` (the verify stages and
-    the runtime smoke fail both), and keep the plugin EP check free of `grep -q`: it closes the pipe on a module
+    ship `libonnxruntime_providers_tensorrt.so` or `libonnxruntime_providers_migraphx.so` (the media verify stage
+    fails the TensorRT one, the runtime smoke both), and keep the plugin EP check free of `grep -q`: it closes the pipe on a module
     with thousands of symbols and `pipefail` fails `readelf`
     ([the plugin pages](docs/linux-accelerator-images.md#the-cuda-plugin-ep)).
   - Qualcomm's plugin QNN EP (`36-build-qnn-plugin-ep.sh`, arm64) is the chain's build of Qualcomm's ORT fork, from
