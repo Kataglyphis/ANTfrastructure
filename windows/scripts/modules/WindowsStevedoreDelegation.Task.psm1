@@ -26,15 +26,20 @@ function New-DelegatedMaintenanceTask {
     return $definition
 }
 
-function Assert-DelegatedMaintenanceTask {
-    param($Task, $Expected, [string]$ReaderSid)
-    $actual = $Task.Definition
+function Assert-DelegatedMaintenanceTaskDefinition {
+    param($Actual, $Expected)
     if ($actual.Principal.UserId -notin @('SYSTEM', 'S-1-5-18') -or $actual.Principal.LogonType -ne 5 -or $actual.Principal.RunLevel -ne 1) { throw 'Task principal differs.' }
     if ($actual.Actions.Count -ne 1 -or $actual.Triggers.Count -ne 0 -or $actual.Settings.MultipleInstances -ne 2) { throw 'Task action or trigger scope differs.' }
     if ($actual.Settings.AllowHardTerminate -or $actual.Settings.ExecutionTimeLimit -cne 'PT0S' -or $actual.Settings.StopIfGoingOnBatteries -or $actual.Settings.DisallowStartIfOnBatteries) { throw 'Task lifetime policy differs.' }
     $action = $actual.Actions.Item(1)
     $expectedAction = $Expected.Actions.Item(1)
     if ($action.Path -cne $expectedAction.Path -or $action.Arguments -cne $expectedAction.Arguments -or $action.WorkingDirectory -cne $expectedAction.WorkingDirectory) { throw 'Task command differs.' }
+}
+
+function Assert-DelegatedMaintenanceTask {
+    param($Task, $Expected, [string]$ReaderSid)
+    $actual = $Task.Definition
+    Assert-DelegatedMaintenanceTaskDefinition $actual $Expected
     $descriptor = [Security.AccessControl.RawSecurityDescriptor]::new($Task.GetSecurityDescriptor(7))
     if ($descriptor.Owner.Value -cne 'S-1-5-32-544') { throw 'Task owner differs.' }
     $reader = @($descriptor.DiscretionaryAcl | Where-Object { $_.SecurityIdentifier.Value -ceq $ReaderSid })
@@ -140,6 +145,20 @@ function Get-DelegatedMaintenanceConnection {
     [pscustomobject]@{ Layout = $layout; Manifest = $manifest; Service = Connect-DelegatedMaintenanceScheduler }
 }
 
+function Read-DelegatedMaintenanceCompletion {
+    param($Task, [string]$Latest, [datetime]$Started, [string]$InstanceGuid)
+    if ($task.GetInstances(0).Count -eq 0 -and (Test-Path -LiteralPath $latest)) {
+        $result = Get-Content -LiteralPath $latest -Raw | ConvertFrom-Json -ErrorAction Stop
+        if (([datetimeoffset]$result.started_utc).UtcDateTime -ge $started -and $result.task_instance -ieq $InstanceGuid) {
+            if ($task.LastTaskResult -ne 267009) {
+                if ($task.LastTaskResult -ne $result.raw_exit) { throw 'Scheduler and worker raw results differ.' }
+                return $result
+            }
+        }
+    }
+    return $null
+}
+
 function Start-DelegatedMaintenance {
     param([switch]$Apply, [ValidateRange(0, 3600)][int]$WaitSeconds = 300)
     $connection = Get-DelegatedMaintenanceConnection
@@ -155,15 +174,8 @@ function Start-DelegatedMaintenance {
     $deadline = $started.AddSeconds($WaitSeconds)
     $latest = Join-Path $layout.Root ('logs\' + $(if ($Apply) { 'latest.json' } else { 'latest-preview.json' }))
     do {
-        if ($task.GetInstances(0).Count -eq 0 -and (Test-Path -LiteralPath $latest)) {
-            $result = Get-Content -LiteralPath $latest -Raw | ConvertFrom-Json -ErrorAction Stop
-            if (([datetimeoffset]$result.started_utc).UtcDateTime -ge $started -and $result.task_instance -ieq $instance.InstanceGuid) {
-                if ($task.LastTaskResult -ne 267009) {
-                    if ($task.LastTaskResult -ne $result.raw_exit) { throw 'Scheduler and worker raw results differ.' }
-                    return $result
-                }
-            }
-        }
+        $result = Read-DelegatedMaintenanceCompletion -Task $task -Latest $latest -Started $started -InstanceGuid $instance.InstanceGuid
+        if ($null -ne $result) { return $result }
         if ([datetime]::UtcNow -ge $deadline) { break }
         Start-Sleep -Seconds 2
     } while ($true)

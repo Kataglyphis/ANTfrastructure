@@ -323,14 +323,19 @@ function Assert-StevedoreAdmin {
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Administrator rights are required.' }
 }
 
-function Invoke-StevedoreReclaim {
-    param([object[]]$Targets, [bool]$PruneRegular, [int]$TargetGB, [bool]$DoApply,
-        [string]$Nerdctl, [string]$Buildctl, [string]$Namespace, [string]$Address, [string]$ContainerdAddress, [object[]]$Containers = @())
+function Assert-StevedoreReclaimOptions {
+    param([object[]]$Targets, [object[]]$Containers, [bool]$PruneRegular, [int]$TargetGB, [string]$Namespace, [string]$Address, [string]$ContainerdAddress)
     if (-not $Targets.Count -and -not $PruneRegular -and -not $Containers.Count) { throw 'Select image tags or -RegularCache.' }
     if ($TargetGB -lt 1 -or $TargetGB -gt 2097151) { throw 'KeepGB is outside the supported range.' }
     if ($Namespace -cnotmatch '^[a-zA-Z0-9][a-zA-Z0-9_.-]*$') { throw 'Invalid Stevedore namespace.' }
     if ($Address -notmatch '^(npipe|unix|tcp)://\S+$') { throw 'Invalid BuildKit address.' }
     if ($ContainerdAddress -notmatch '^(?:(npipe|unix|tcp)://\S+|\\\\\.\\pipe\\[^\s]+)$') { throw 'Invalid containerd address.' }
+}
+
+function Invoke-StevedoreReclaim {
+    param([object[]]$Targets, [bool]$PruneRegular, [int]$TargetGB, [bool]$DoApply,
+        [string]$Nerdctl, [string]$Buildctl, [string]$Namespace, [string]$Address, [string]$ContainerdAddress, [object[]]$Containers = @())
+    Assert-StevedoreReclaimOptions -Targets $Targets -Containers $Containers -PruneRegular $PruneRegular -TargetGB $TargetGB -Namespace $Namespace -Address $Address -ContainerdAddress $ContainerdAddress
     $store = [pscustomobject]@{ Tool = $Nerdctl; Namespace = $Namespace; Address = $ContainerdAddress }
     foreach ($container in $Containers) { Assert-StevedoreContainerTarget -Store $store -Target $container }
     foreach ($target in $Targets) {

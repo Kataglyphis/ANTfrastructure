@@ -73,9 +73,9 @@ function Get-DelegationFixtureFunctions {
         Inventory { @('modules/WindowsStevedoreDelegation.Inventory.psm1', @('Assert-DelegatedStoreIdle', 'ConvertTo-DelegatedImageTags', 'ConvertTo-DelegatedImageInventory')) }
         Policy { @('modules/WindowsStevedoreDelegation.Policy.psm1', @('Get-DelegatedRetirementPlan', 'Assert-DelegatedPreservation')) }
         Containers { @('modules/WindowsHostMaintenance.Common.psm1', @('Assert-HostIdentityPairs', 'Get-HostDisposableContainerLabel', 'ConvertTo-HostContainerRecord')); @('host/Clear-DiskSpace.ps1', @('Get-StevedoreTargets', 'Get-StevedoreInspection', 'Assert-StevedoreContainerTarget', 'Invoke-StevedoreRemoval')) }
-        Flow { @('tests/Stevedore.Delegation.Flow.Tests.ps1', @('Invoke-DelegationFlowFixture', 'New-DelegationFlowState', 'Invoke-DelegationCacheDrift', 'Assert-DelegationFlowApply', 'Invoke-DelegationFlowResult')); @('modules/WindowsStevedoreDelegation.Policy.psm1', @('Get-DelegatedRetirementPlan')) }
-        Manifest { @('tests/Stevedore.Delegation.Manifest.Tests.ps1', @('New-DelegationManifestState', 'Invoke-DelegationManifestFixture', 'Get-DelegationManifestCases', 'Assert-DelegationManifestRefusal')); @('modules/WindowsStevedoreDelegation.Security.psm1', @('Get-DelegatedMaintenancePayload')) }
-        Task { @('modules/WindowsStevedoreDelegation.Security.psm1', @('Get-DelegatedMaintenanceSddl')); @('modules/WindowsStevedoreDelegation.Task.psm1', @('New-DelegatedMaintenanceTask', 'Assert-DelegatedMaintenanceTask')) }
+        Flow { @('tests/Stevedore.Delegation.Flow.Tests.ps1', @('New-DelegationFlowState', 'Invoke-DelegationCacheDrift', 'Assert-DelegationFlowApply', 'Invoke-DelegationFlowResult')); @('modules/WindowsStevedoreDelegation.Policy.psm1', @('Get-DelegatedRetirementPlan')) }
+        Manifest { @('tests/Stevedore.Delegation.Manifest.Tests.ps1', @('New-DelegationManifestState', 'Get-DelegationManifestCases', 'Assert-DelegationManifestRefusal')); @('modules/WindowsStevedoreDelegation.Security.psm1', @('Get-DelegatedMaintenancePayload')) }
+        Task { @('modules/WindowsStevedoreDelegation.Security.psm1', @('Get-DelegatedMaintenanceSddl')); @('modules/WindowsStevedoreDelegation.Task.psm1', @('New-DelegatedMaintenanceTask', 'Assert-DelegatedMaintenanceTaskDefinition', 'Assert-DelegatedMaintenanceTask')) }
     }
     $parts = for ($i = 0; $i -lt $entries.Count; $i += 2) {
         Get-ScriptFunctionDefinition -ScriptPath ('windows/scripts/' + $entries[$i]) -FunctionName $entries[$i + 1]
@@ -109,6 +109,58 @@ function New-DelegationFixtureResult {
     return @{ before = $State.Before; plan = $State.Plan; after = $null; preservation_verified = $false; target_met = $false; state = 'failed'; raw_exit = 1 }
 }
 
+function New-DelegationCompletionState {
+    param([ValidateSet('none', 'missing', 'active', 'stale', 'foreign', 'scheduler-running')][string]$Fault = 'none')
+    $task = [pscustomobject]@{ ActiveInstances = 0; LastTaskResult = 0 }
+    $task | Add-Member -MemberType ScriptMethod -Name GetInstances -Value { param($Flags) [pscustomobject]@{ Count = $this.ActiveInstances } }
+    $state = [pscustomobject]@{ Task = $task; Exists = $true; ProbeMode = ''; Started = [datetimeoffset]::Parse('2026-11-20T00:00:00Z').UtcDateTime; Instance = 'instance-one';
+        Result = [pscustomobject]@{ started_utc = '2026-11-20T00:00:01Z'; task_instance = 'instance-one'; raw_exit = 0 } }
+    switch ($Fault) {
+        missing { $state.Exists = $false }
+        active { $state.Task.ActiveInstances = 1 }
+        stale { $state.Result.started_utc = '2026-11-19T00:00:00Z' }
+        foreign { $state.Result.task_instance = 'another-instance' }
+        scheduler-running { $state.Task.LastTaskResult = 267009 }
+    }
+    return $state
+}
+
+function Invoke-DelegationModuleFixture {
+    param([ValidateSet('Flow', 'Manifest', 'Completion')][string]$Kind, $State, [scriptblock]$Body, [string]$Find = '', [string]$Replace = '')
+    switch ($Kind) {
+        Flow {
+            $module = 'WindowsStevedoreDelegation.Task.psm1'
+            $names = @('Complete-DelegatedMaintenanceRun')
+            $prelude = @'
+Import-Module $State.Policy -ErrorAction Stop
+function Invoke-DelegatedCanonicalReclaim { param($Root,$Plan,[switch]$Apply) $State.Calls.Add($(if($Apply){'apply'}else{'preview'})) }
+function Assert-DelegatedMaintenanceOverlap { $State.Calls.Add('idle') }
+function Get-DelegatedStoreSnapshot { param($Manifest,$LogRoot,$Name) if($Name -ceq 'pre-apply'){return $State.Fresh};return $State.After }
+'@
+        }
+        Manifest {
+            $module = 'WindowsStevedoreDelegation.Security.psm1'
+            $names = @('Read-DelegatedMaintenanceManifest', 'Assert-DelegatedMaintenancePolicy', 'Get-DelegatedMaintenancePayload', 'Get-DelegatedMaintenanceSddl')
+            $prelude = @'
+function Get-DelegatedMaintenanceLayout { [pscustomobject]@{Root=$State.Root;Tools=$State.ToolsRoot} }
+function Assert-DelegatedMaintenancePath { param($Path,[switch]$Trusted) }
+function Get-Content { param($LiteralPath,[switch]$Raw) $State.Manifest | ConvertTo-Json -Depth 12 }
+function Get-FileHash { param($LiteralPath,$Algorithm) [pscustomobject]@{Hash=('a'*64)} }
+'@
+        }
+        Completion {
+            $module = 'WindowsStevedoreDelegation.Task.psm1'
+            $names = @('Read-DelegatedMaintenanceCompletion')
+            $prelude = @'
+function Test-Path { param($LiteralPath) $State.Exists }
+function Get-Content { param($LiteralPath,[switch]$Raw) $State.Result | ConvertTo-Json }
+'@
+        }
+    }
+    Invoke-WithFunctionModule -ScriptPath ('windows/scripts/modules/' + $module) -FunctionName $names `
+        -FixtureState $State -Prelude $prelude -Body $Body -Find $Find -Replace $Replace
+}
+
 function Assert-DelegationFixtureRemovalCommand {
     $ast = Get-TestScriptAst -ScriptPath (Join-Path (Get-RepoRoot) 'windows/scripts/host/Clear-DiskSpace.ps1')
     $function = @($ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-StevedoreRemoval' }, $true))[0]
@@ -119,4 +171,4 @@ function Assert-DelegationFixtureRemovalCommand {
     Assert-Match ([regex]::Escape("$" + "command = if (`$Container) { 'rm' } else { 'rmi' }")) $function.Body.Extent.Text
 }
 
-Export-ModuleMember -Function Assert-DelegationFixtureRemovalCommand, Get-DelegationFixtureFunctions, New-DelegationFixtureRetainedSnapshot, Assert-DelegationFixtureSelection, New-DelegationFixtureMutation, New-DelegationFixtureResult, New-DelegationFixtureImage, New-DelegationFixtureSnapshot, New-DelegationFixtureContainer, New-DelegationFixtureService, New-DelegationFixtureTask
+Export-ModuleMember -Function New-DelegationCompletionState, Invoke-DelegationModuleFixture, Assert-DelegationFixtureRemovalCommand, Get-DelegationFixtureFunctions, New-DelegationFixtureRetainedSnapshot, Assert-DelegationFixtureSelection, New-DelegationFixtureMutation, New-DelegationFixtureResult, New-DelegationFixtureImage, New-DelegationFixtureSnapshot, New-DelegationFixtureContainer, New-DelegationFixtureService, New-DelegationFixtureTask

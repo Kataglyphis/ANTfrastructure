@@ -113,6 +113,22 @@ function Write-DelegatedMaintenanceManifest {
     finally { $stream.Dispose() }
 }
 
+function Get-DelegatedMaintenanceRuntimeFiles {
+    Assert-DelegatedMaintenancePath $PSHOME -Trusted
+    $runtimeFiles = @(Get-ChildItem -LiteralPath $PSHOME -Recurse -File -Force -ErrorAction Stop)
+    if (-not $runtimeFiles.Count) { throw 'PowerShell runtime is empty.' }
+    foreach ($item in Get-ChildItem -LiteralPath $PSHOME -Recurse -Force -ErrorAction Stop) {
+        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'PowerShell runtime contains a reparse point.' }
+    }
+    return $runtimeFiles
+}
+
+function Assert-DelegatedMaintenanceRuntimeReady {
+    param([string]$Root)
+    $runtime = @(& (Join-Path $Root 'runtime\pwsh.exe') -NoLogo -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()')
+    if ($LASTEXITCODE -ne 0 -or $runtime.Count -ne 1 -or $runtime[0] -notmatch '^7\.') { throw 'Protected PowerShell runtime cannot start.' }
+}
+
 function Get-DelegatedMaintenancePayload {
     return @(
         'Clear-DiskSpace.ps1', 'Invoke-StevedoreMaintenanceWorker.ps1',
@@ -122,6 +138,14 @@ function Get-DelegatedMaintenancePayload {
     )
 }
 
+function Assert-DelegatedMaintenancePolicy {
+    param($Manifest)
+    if ($manifest.schema -ne 1 -or $manifest.keep_gib -ne 100 -or $manifest.namespace -cne 'buildkit') { throw 'Installed maintenance policy differs.' }
+    if ($manifest.buildkit -cne 'npipe:////./pipe/buildkitd' -or $manifest.containerd -cne '\\.\pipe\containerd-containerd') { throw 'Installed daemon endpoints differ.' }
+    if ($manifest.files.Count -lt 9 -or $manifest.tools.Count -ne 2) { throw 'Installed closure is incomplete.' }
+    if ((@($manifest.tools | ForEach-Object name | Sort-Object) -join '|') -cne 'buildctl.exe|nerdctl.exe') { throw 'Installed tool names differ.' }
+}
+
 function Read-DelegatedMaintenanceManifest {
     param([Parameter(Mandatory)][string]$Root)
     $layout = Get-DelegatedMaintenanceLayout
@@ -129,10 +153,7 @@ function Read-DelegatedMaintenanceManifest {
     $path = Join-Path $Root 'installed.json'
     Assert-DelegatedMaintenancePath $path -Trusted
     $manifest = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -ErrorAction Stop
-    if ($manifest.schema -ne 1 -or $manifest.keep_gib -ne 100 -or $manifest.namespace -cne 'buildkit') { throw 'Installed maintenance policy differs.' }
-    if ($manifest.buildkit -cne 'npipe:////./pipe/buildkitd' -or $manifest.containerd -cne '\\.\pipe\containerd-containerd') { throw 'Installed daemon endpoints differ.' }
-    if ($manifest.files.Count -lt 9 -or $manifest.tools.Count -ne 2) { throw 'Installed closure is incomplete.' }
-    if ((@($manifest.tools | ForEach-Object name | Sort-Object) -join '|') -cne 'buildctl.exe|nerdctl.exe') { throw 'Installed tool names differ.' }
+    Assert-DelegatedMaintenancePolicy $manifest
     $paths = @($manifest.files | ForEach-Object path)
     if (@($paths | Sort-Object -Unique).Count -ne $paths.Count) { throw 'Installed closure contains duplicates.' }
     foreach ($required in Get-DelegatedMaintenancePayload) {

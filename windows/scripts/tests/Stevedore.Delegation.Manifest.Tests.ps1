@@ -12,19 +12,6 @@ function New-DelegationManifestState {
     [pscustomobject]@{ Root = $root; ToolsRoot = $toolsRoot; Manifest = $manifest }
 }
 
-function Invoke-DelegationManifestFixture {
-    param($State, [scriptblock]$Body, [string]$Find = '', [string]$Replace = '')
-    $prelude = @'
-function Get-DelegatedMaintenanceLayout { [pscustomobject]@{Root=$State.Root;Tools=$State.ToolsRoot} }
-function Assert-DelegatedMaintenancePath { param($Path,[switch]$Trusted) }
-function Get-Content { param($LiteralPath,[switch]$Raw) $State.Manifest | ConvertTo-Json -Depth 12 }
-function Get-FileHash { param($LiteralPath,$Algorithm) [pscustomobject]@{Hash=('a'*64)} }
-'@
-    Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsStevedoreDelegation.Security.psm1' `
-        -FunctionName 'Read-DelegatedMaintenanceManifest', 'Get-DelegatedMaintenancePayload', 'Get-DelegatedMaintenanceSddl' `
-        -FixtureState $State -Prelude $prelude -Body $Body -Find $Find -Replace $Replace
-}
-
 function Get-DelegationManifestCases {
     return @(
             @{Find='if ($manifest.schema -ne 1 -or $manifest.keep_gib -ne 100 -or $manifest.namespace -cne ''buildkit'')';Change={param($x) $x.Manifest.keep_gib=1}},
@@ -51,7 +38,7 @@ Describe 'Delegated maintenance closure and policy manifest' {
     }
 
     It 'loads the complete fixed policy through the same production reader' {
-        Invoke-DelegationManifestFixture -State (New-DelegationManifestState) -Body {
+        Invoke-DelegationModuleFixture -Kind Manifest -State (New-DelegationManifestState) -Body {
             param($State)
             $manifest = Read-MutDelegatedMaintenanceManifest $State.Root
             Assert-Equal 100 $manifest.keep_gib
@@ -64,7 +51,7 @@ Describe 'Delegated maintenance closure and policy manifest' {
         foreach ($recipe in Get-DelegationManifestCases) {
             $state = New-DelegationManifestState
             & $recipe.Change $state
-            Invoke-DelegationManifestFixture -State $state -Body { param($State) Assert-DelegationManifestRefusal $State }
+            Invoke-DelegationModuleFixture -Kind Manifest -State $state -Body { param($State) Assert-DelegationManifestRefusal $State }
         }
     }
 
@@ -74,7 +61,7 @@ Describe 'Delegated maintenance closure and policy manifest' {
             $state=New-DelegationManifestState
             & $recipe.Change $state
             Assert-Throws {
-                Invoke-DelegationManifestFixture -State $state -Find $recipe.Find -Replace 'if ($false)' -Body {
+                Invoke-DelegationModuleFixture -Kind Manifest -State $state -Find $recipe.Find -Replace 'if ($false)' -Body {
                     param($State)
                     Assert-DelegationManifestRefusal $State
                 }

@@ -43,12 +43,7 @@ Assert-DelegatedMaintenanceAdministrator 'One-time installation requires an actu
 if (Test-Path -LiteralPath $layout.Root) { throw 'Installation already exists; verify it, or revoke and archive it before replacing protected code.' }
 $service = Connect-DelegatedMaintenanceScheduler
 if ($null -ne (Get-DelegatedMaintenanceFolder $service $layout.Folder)) { throw 'Task folder already exists; do not replace another installation.' }
-Assert-DelegatedMaintenancePath $PSHOME -Trusted
-$runtimeFiles = @(Get-ChildItem -LiteralPath $PSHOME -Recurse -File -Force -ErrorAction Stop)
-if (-not $runtimeFiles.Count) { throw 'PowerShell runtime is empty.' }
-foreach ($item in Get-ChildItem -LiteralPath $PSHOME -Recurse -Force -ErrorAction Stop) {
-    if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'PowerShell runtime contains a reparse point.' }
-}
+$runtimeFiles = @(Get-DelegatedMaintenanceRuntimeFiles)
 New-DelegatedMaintenanceDirectory $layout.Root $ReaderSid
 $installedFiles = [Collections.Generic.List[object]]::new()
 foreach ($file in $files) {
@@ -68,8 +63,7 @@ $manifest = [ordered]@{ schema = 1; installed_utc = [datetime]::UtcNow.ToString(
     store_root = $StoreRoot; source_bundle_sha256 = $bundleSha; files = $installedFiles.ToArray(); tools = $tools }
 Write-DelegatedMaintenanceManifest $layout.Root $ReaderSid $manifest
 $null = Read-DelegatedMaintenanceManifest $layout.Root
-$runtime = @(& (Join-Path $layout.Root 'runtime\pwsh.exe') -NoLogo -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()')
-if ($LASTEXITCODE -ne 0 -or $runtime.Count -ne 1 -or $runtime[0] -notmatch '^7\.') { throw 'Protected PowerShell runtime cannot start.' }
+Assert-DelegatedMaintenanceRuntimeReady $layout.Root
 $sddl = Get-DelegatedMaintenanceSddl $ReaderSid -Task
 $folder = $service.GetFolder('\').CreateFolder($layout.Folder.TrimStart('\'), $sddl)
 $registered = @(

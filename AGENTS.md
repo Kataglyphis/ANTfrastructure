@@ -1447,6 +1447,8 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 
 ## Validation
 
+- Rootless nerdctl QA for a pinned public base uses a per-run empty `DOCKER_CONFIG` and the native Linux CLI; retain the user's authentication/context files and distinguish a failed preparatory pull from a started build ([failure](docs/failure-modes.md#error-getting-credentials---err-exit-status-1)).
+
 - **Four places run the gates, deliberately not the same set.**
 
   | when | what runs | cost |

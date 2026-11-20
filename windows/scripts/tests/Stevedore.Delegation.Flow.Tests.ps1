@@ -1,18 +1,6 @@
 #requires -Version 7.0
 # NOT covered: live native commands, privileged scheduler state, filesystem ACLs or real free bytes.
 
-function Invoke-DelegationFlowFixture {
-    param($State, [scriptblock]$Body, [string]$Find = '', [string]$Replace = '')
-    $prelude = @'
-Import-Module $State.Policy -ErrorAction Stop
-function Invoke-DelegatedCanonicalReclaim { param($Root,$Plan,[switch]$Apply) $State.Calls.Add($(if($Apply){'apply'}else{'preview'})) }
-function Assert-DelegatedMaintenanceOverlap { $State.Calls.Add('idle') }
-function Get-DelegatedStoreSnapshot { param($Manifest,$LogRoot,$Name) if($Name -ceq 'pre-apply'){return $State.Fresh};return $State.After }
-'@
-    Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsStevedoreDelegation.Task.psm1' `
-        -FunctionName 'Complete-DelegatedMaintenanceRun' -FixtureState $State -Prelude $prelude -Body $Body -Find $Find -Replace $Replace
-}
-
 function New-DelegationFlowState {
     $before = New-DelegationFixtureSnapshot
     $plan = Get-DelegatedRetirementPlan $before
@@ -26,7 +14,7 @@ function Invoke-DelegationCacheDrift {
     $state = New-DelegationFlowState
     $original = $state.$Stage
     $state.$Stage = [pscustomobject]@{ Images = $original.Images; Containers = $original.Containers; CacheMounts = @(); FreeBytes = 110GB }
-    Invoke-DelegationFlowFixture -State $state -Find $Find -Replace $Replace -Body {
+    Invoke-DelegationModuleFixture -Kind Flow -State $state -Find $Find -Replace $Replace -Body {
         param($State)
         $result = New-DelegationFixtureResult $State
         Assert-Throws { Complete-MutDelegatedMaintenanceRun -Root fixture -Manifest @{} -Result $result -LogRoot fixture } -MessagePattern 'cache identities differ'
@@ -58,7 +46,7 @@ Describe 'Delegated maintenance execution flow' {
     }
 
     It 'previews rechecks applies and verifies before reporting capacity' {
-        Invoke-DelegationFlowFixture -State (New-DelegationFlowState) -Body {
+        Invoke-DelegationModuleFixture -Kind Flow -State (New-DelegationFlowState) -Body {
             param($State)
             Assert-DelegationFlowApply $State
         }
@@ -68,7 +56,7 @@ Describe 'Delegated maintenance execution flow' {
         $state = New-DelegationFlowState
         $state.Before.Images = @(); $state.Before.Containers = @(); $state.Before.UnusedPrivateRegularBytes = 0
         $state.Fresh = $state.Before; $state.After = $state.Before; $state.Plan = Get-DelegatedRetirementPlan $state.Before
-        Invoke-DelegationFlowFixture -State $state -Body {
+        Invoke-DelegationModuleFixture -Kind Flow -State $state -Body {
             param($State)
             $result = Invoke-DelegationFlowResult $State
             Assert-Equal 0 $State.Calls.Count 'exhausted storage must not be pruned again'
@@ -91,7 +79,7 @@ Describe 'Delegated maintenance execution flow' {
             Assert-DelegationFlowApply $State
         }
         Assert-Throws {
-            Invoke-DelegationFlowFixture -State $state -Body $exercise -Find 'Invoke-DelegatedCanonicalReclaim -Root $Root -Plan $Result.plan -Apply' -Replace 'Invoke-DelegatedCanonicalReclaim -Root $Root -Plan $Result.plan'
+            Invoke-DelegationModuleFixture -Kind Flow -State $state -Body $exercise -Find 'Invoke-DelegatedCanonicalReclaim -Root $Root -Plan $Result.plan -Apply' -Replace 'Invoke-DelegatedCanonicalReclaim -Root $Root -Plan $Result.plan'
         } -MessagePattern 'apply must stay selected'
         foreach ($stage in @('Fresh', 'After')) {
             $anchor = if ($stage -ceq 'Fresh') { 'Assert-DelegatedPreservation -Plan $unchanged -Snapshot $fresh' } else { 'Assert-DelegatedPreservation -Plan $Result.plan -Snapshot $Result.after' }

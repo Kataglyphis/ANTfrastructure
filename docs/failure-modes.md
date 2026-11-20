@@ -2347,7 +2347,21 @@ and reverses them to the canonical export; it proves no plugin compilation.
 
 **Cause.** wincred credential helper fails because dockerd runs as SYSTEM without interactive session
 
-**Fix.** OK to ignore for public images (MCR, GitHub). Use `nerdctl pull` instead for images that need auth, or set `"credsStore":""` in docker config.
+**Fix.** Treat the helper failure as a failed registry setup even for a public image.
+The containerd 2.4.2 transfer client logs a credential error and continues without
+answering the pending authentication request ([source](https://github.com/containerd/containerd/blob/v2.4.2/core/transfer/registry/registry.go#L253-L256)).
+The 2026-11-20 rootless Linux preflight stopped making progress before creating a
+container; the same pinned Ubuntu image pulled in 17 seconds with a private empty
+Docker configuration. This supports the credential-stream diagnosis; it does not
+prove every registry stall has that cause.
+
+For a pinned **public** base, use a per-run `DOCKER_CONFIG` containing
+`{"auths":{}}`, and select the native Linux nerdctl rather than a Windows/Rancher
+wrapper inherited through PATH. Keep the user's credential and context files
+unchanged. Start a new client after the failed preparatory pull has ended; verify
+its exact PID/command and that no build/container started before cancelling it.
+Active builds and exports remain protected. Private registries still require their
+normal authenticated configuration. See the [local proof workflow](code-quality-tooling.md#preserved-local-proof-workflows).
 
 ### `failed to extract layer ... failed to find link target` pulling servercore
 

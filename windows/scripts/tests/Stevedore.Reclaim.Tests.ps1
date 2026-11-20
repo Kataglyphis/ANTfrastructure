@@ -7,7 +7,7 @@ Describe 'Stevedore selected reclaim' {
     BeforeAll {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1' -FunctionName 'Assert-HostIdentityPairs')
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/host/Clear-DiskSpace.ps1' -FunctionName `
-        'Get-StevedoreTargets', 'Assert-StevedoreTarget', 'Invoke-StevedoreReclaim', 'Assert-StevedoreSelectors')
+        'Get-StevedoreTargets', 'Assert-StevedoreTarget', 'Assert-StevedoreReclaimOptions', 'Invoke-StevedoreReclaim', 'Assert-StevedoreSelectors')
 
     function Get-StevedoreImageId { param($Store, $Tag) $script:inspectionCount++; if ($script:changeAfter -and $script:inspectionCount -gt $script:changeAfter) { return ('sha256:' + ('b' * 64)) }; return $script:currentImageId }
     function Assert-StevedoreAdmin { $script:events.Add('admin') }

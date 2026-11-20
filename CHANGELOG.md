@@ -30,6 +30,11 @@
   updates, scope and required independent acceptance on another host.
 - Keep the exclusive maintenance lock in the host module so the shared module
   copied into build images remains byte-identical to the preceding source.
+- Split reclaim options, runtime readiness, manifest policy, task definitions and
+  fresh completion reads to meet the strict PowerShell complexity gate. Retain
+  every refusal and raw status; test stale/foreign receipts and scheduler mismatch.
+- Document private public-registry client configuration for rootless preflight;
+  credential-helper failures cannot be ignored just because an image is public.
 
 ## 2026-11-19 — keep media module reads independent of cached directory views
 

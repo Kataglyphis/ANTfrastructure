@@ -60,6 +60,14 @@ signal exit separately. Missing container evidence or failed cleanup cannot pass
 wrap the same command with `systemd-run --user --unit=ant-preflight-001
 --property=RuntimeMaxSec=14400 --property=TimeoutStopSec=120`; the latter allows bounded cleanup.
 
+For rootless nerdctl, prepare a private client directory containing `config.json`
+with `{"auths":{}}` and pass its path as `DOCKER_CONFIG` for the invocation. The
+base is public and pinned; this avoids a Windows credential helper inherited from
+the user's Docker configuration. Select the native Linux CLI and wait for the
+existing rootless daemon to become ready. Preserve the user's authentication and
+context files. A hanging preparatory pull is not a started preflight; retain its
+failure before a fresh invocation ([observed failure](failure-modes.md#error-getting-credentials---err-exit-status-1)).
+
 ```bash
 python3 linux/scripts/watch-build-units.py --unit rebuild-sequence-37.service \
   --chain-status chain-status-nvidia.json --log logs/build-logs/rebuild-sequence.log \

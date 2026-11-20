@@ -66,4 +66,52 @@ Describe 'Bounded delegated maintenance tasks' {
             Assert-Match '-NoLogo -NoProfile -NonInteractive' $definition.Actions.Item(1).Arguments 'NoProfile must remain fixed'
         }
     }
+
+    It 'accepts only a fresh completed receipt from the submitted instance' {
+        Invoke-DelegationModuleFixture -Kind Completion -State (New-DelegationCompletionState) -Body {
+            param($State)
+            $result = Read-MutDelegatedMaintenanceCompletion $State.Task fixture $State.Started $State.Instance
+            Assert-Equal 0 $result.raw_exit
+        }
+        foreach ($fault in @('missing', 'active', 'stale', 'foreign', 'scheduler-running')) {
+            $state = New-DelegationCompletionState -Fault $fault
+            Invoke-DelegationModuleFixture -Kind Completion -State $state -Body {
+                param($State)
+                Assert-Equal $null (Read-MutDelegatedMaintenanceCompletion $State.Task fixture $State.Started $State.Instance) 'uncompleted receipts must remain pending'
+            }
+        }
+    }
+
+    It 'retains a completed worker failure without converting it to success' {
+        $state = New-DelegationCompletionState
+        $state.Task.LastTaskResult = 1
+        $state.Result.raw_exit = 1
+        Invoke-DelegationModuleFixture -Kind Completion -State $state -Body {
+            param($State)
+            Assert-Equal 1 (Read-MutDelegatedMaintenanceCompletion $State.Task fixture $State.Started $State.Instance).raw_exit
+        }
+    }
+
+    It 'mutation-tests foreign receipts and scheduler disagreement with healthy controls' {
+        $recipes = @(
+            @{ Mode = 'raw'; Find = 'if ($task.LastTaskResult -ne $result.raw_exit)'; Replace = 'if ($false)'; Expected = 'expected an exception' }
+            @{ Mode = 'foreign'; Find = 'if (([datetimeoffset]$result.started_utc).UtcDateTime -ge $started -and $result.task_instance -ieq $InstanceGuid)'; Replace = 'if ($true)'; Expected = 'foreign receipt must remain pending' }
+        )
+        foreach ($recipe in $recipes) {
+            $state = New-DelegationCompletionState
+            $state.ProbeMode = $recipe.Mode
+            if ($recipe.Mode -ceq 'raw') { $state.Task.LastTaskResult = 1 } else { $state.Result.task_instance = 'another-instance' }
+            $exercise = { param($State)
+                if ($State.ProbeMode -ceq 'raw') {
+                    Assert-Throws { Read-MutDelegatedMaintenanceCompletion $State.Task fixture $State.Started $State.Instance } -MessagePattern 'raw results differ'
+                } else {
+                    Assert-Equal $null (Read-MutDelegatedMaintenanceCompletion $State.Task fixture $State.Started $State.Instance) 'foreign receipt must remain pending'
+                }
+            }
+            Invoke-DelegationModuleFixture -Kind Completion -State $state -Body $exercise
+            Assert-Throws {
+                Invoke-DelegationModuleFixture -Kind Completion -State $state -Body $exercise -Find $recipe.Find -Replace $recipe.Replace
+            } -MessagePattern $recipe.Expected
+        }
+    }
 }
