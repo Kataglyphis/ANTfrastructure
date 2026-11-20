@@ -16,7 +16,7 @@
 [![Composite actions self-test](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/actions-selftest.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/actions-selftest.yml)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/paypalme/JonasHeinle)
 
-[**Docs site**](https://containerization.jonasheinle.de)
+[**Docs site**](https://containerization.jonasheinle.de) · [Automatic cleanup of unused QA environments](docs/local-proof-workflows.md#unused-qa-environments)
 Prebuilt Linux and Windows Server Core images provide [pinned GCC, LLVM tools and loader priority](docs/cross-build-verification.md#native-compiler-selection), Vulkan, MSVC,
 media and inference libraries, nginx, and an arm64 artifact bundle. The composite
 actions, reusable workflows, shell libraries and gates serve the family at `@develop`; [working-source copies and archives](docs/local-proof-workflows.md#working-consumer-sources) preserve staged files, gitlinks and original shallow metadata over an explicit base; [archive deduplication](docs/local-proof-workflows.md#reviewed-oci-archive-deduplication) protects bound receipts, and [loader checks](docs/consumer-image-contract.md#onnx-runtime-loader-evidence) resolve parent segments only against existing package roots.
