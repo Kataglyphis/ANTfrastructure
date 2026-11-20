@@ -87,7 +87,8 @@ Describe 'ORT chain directory indexing' {
     It 'keeps an unreadable-file sentinel for G2 and throws for GenAI''s stricter reference reads' {
         Invoke-OrtDirectoryIndexFixture -Body {
             param($dir)
-            $locked = [IO.File]::Open((Join-Path $dir 'lib\onnxruntime.lib'), [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+            Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsScripts.Shared.psm1') -ErrorAction Stop
+            $locked = Open-ExclusiveFile -LiteralPath (Join-Path $dir 'lib\onnxruntime.lib')
             try {
                 $index = Get-OrtGateDirectoryIndex -OrtRoot $dir
                 Assert-True $index.Sha['onnxruntime.lib'].Contains('unreadable')

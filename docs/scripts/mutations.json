@@ -42695,5 +42695,125 @@
   "replace": "$modules = @($stages['buildmods'].MountedModules)\n        $modules[0] = $modules[1]",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.MountStub.Tests.ps1 -ResultFile logs/code-quality/media-direct-module-mutation.json",
   "why": "Seven module entries with a duplicate cannot stand in for seven unique required modules."
+ },
+ {
+  "id": "windows-lane.delegation-selector",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Policy.psm1",
+  "find": "if ($image.Tag -cnotmatch $pattern) { continue }",
+  "replace": "if ($image.Tag -cnotmatch $pattern) { $Matches = @{ lane = '-nvidia'; arch = '' } }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "Final SDK and unrelated tags must remain protected"
+ },
+ {
+  "id": "windows-lane.delegation-merge",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Policy.psm1",
+  "find": "if (-not @($Snapshot.Images | Where-Object { ($_.Tag -creplace '^docker.io/', '') -ceq $merge }).Count) { continue }",
+  "replace": "if ($false) { continue }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "A corresponding merged image is required before branch retirement"
+ },
+ {
+  "id": "windows-lane.delegation-reference",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Policy.psm1",
+  "find": "if ($image.Config -cin @($protectedContainers | ForEach-Object Image) -or $image.Manifest -cin @($protectedContainers | ForEach-Object Image)) { continue }",
+  "replace": "if ($false) { continue }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "Retained containers protect their referenced image"
+ },
+ {
+  "id": "windows-lane.delegation-marked",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Policy.psm1",
+  "find": "$_.Disposable -and -not $_.Running",
+  "replace": "$true -and -not $_.Running",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "Unmarked stopped containers have no deletion authorization"
+ },
+ {
+  "id": "windows-lane.delegation-stopped",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Policy.psm1",
+  "find": "-not $_.Running -and $_.Status",
+  "replace": "$true -and $_.Status",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "A running container never becomes a retirement candidate"
+ },
+ {
+  "id": "windows-lane.delegation-cache-preservation",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Policy.psm1",
+  "find": "if ((@($Plan.CacheMounts | Sort-Object) -join \"`n\") -cne (@($Snapshot.CacheMounts | Sort-Object) -join \"`n\"))",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "Compiler cache identity drift must fail completion"
+ },
+ {
+  "id": "windows-lane.delegation-marker-value",
+  "target": "windows/scripts/modules/WindowsHostMaintenance.Common.psm1",
+  "find": "$label.Value -ceq 'true'",
+  "replace": "$label.Value -eq 'true'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "The disposable label value is exact and case-sensitive"
+ },
+ {
+  "id": "windows-lane.delegation-marker-key",
+  "target": "windows/scripts/modules/WindowsHostMaintenance.Common.psm1",
+  "find": "$label.Name -ceq (Get-HostDisposableContainerLabel)",
+  "replace": "$true",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "The disposable label name is exact and case-sensitive"
+ },
+ {
+  "id": "windows-lane.delegation-running-type",
+  "target": "windows/scripts/modules/WindowsHostMaintenance.Common.psm1",
+  "find": "if ($Container.State.Running -isnot [bool])",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "A string false does not prove a stopped container"
+ },
+ {
+  "id": "windows-lane.delegation-no-force",
+  "target": "windows/scripts/host/Clear-DiskSpace.ps1",
+  "find": "$Store.Namespace $command $Tag",
+  "replace": "$Store.Namespace $command --force $Tag",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "The fixed daemon removal must not force or delete volumes"
+ },
+ {
+  "id": "windows-lane.delegation-no-volume-removal",
+  "target": "windows/scripts/host/Clear-DiskSpace.ps1",
+  "find": "$Store.Namespace $command $Tag",
+  "replace": "$Store.Namespace $command --volumes $Tag",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "The fixed daemon removal must not force or delete volumes"
+ },
+ {
+  "id": "windows-lane.delegation-idle-usage",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Inventory.psm1",
+  "find": "if ($row.inUse -isnot [bool] -or $row.inUse -or -not $row.id -or -not $row.recordType)",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "Unknown or active BuildKit usage blocks all maintenance"
+ },
+ {
+  "id": "windows-lane.delegation-known-storage",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Inventory.psm1",
+  "find": "if ($row.shared -isnot [bool] -or ($row.size -isnot [long] -and $row.size -isnot [int]) -or $row.size -lt 0)",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "Unknown or negative byte accounting is not zero"
+ },
+ {
+  "id": "windows-lane.delegation-finished-history",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Inventory.psm1",
+  "find": "if (-not $historyEvent.record.CompletedAt -or $historyEvent.record.CompletedAt.seconds -lt $historyEvent.record.CreatedAt.seconds)",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "A running BuildKit history cannot become idle"
+ },
+ {
+  "id": "windows-lane.delegation-untagged",
+  "target": "windows/scripts/modules/WindowsStevedoreDelegation.Inventory.psm1",
+  "find": "if ($Matches[1] -ceq '<none>' -or $Matches[2] -ceq '<none>')",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1",
+  "why": "Untagged image records require separate review"
  }
 ]

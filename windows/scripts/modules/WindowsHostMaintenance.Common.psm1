@@ -185,7 +185,39 @@ function Get-HostMaintenanceBuildCtlPath {
     return $null
 }
 
+function Get-HostNonReparseItem {
+    param([Parameter(Mandatory)][string]$Path)
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Reparse point refused: $Path" }
+    return $item
+}
+
+function Assert-HostIdentityPairs {
+    param([string[]]$Values, [string[]]$ExpectedIds, [string]$Kind)
+    if ($Values.Count -ne $ExpectedIds.Count) { throw "Each $Kind needs one expected image ID." }
+    $seen = @{}
+    foreach ($value in $Values) {
+        if ($seen.ContainsKey($value)) { throw "Duplicate ${Kind}: $value" }
+        $seen[$value] = $true
+    }
+}
+
+function Get-HostDisposableContainerLabel {
+    return 'org.kataglyphis.antfrastructure.disposable'
+}
+
+function ConvertTo-HostContainerRecord {
+    param([Parameter(Mandatory)]$Container)
+    if ($Container.Id -cnotmatch '^[0-9a-f]{64}$' -or $Container.Image -cnotmatch '^sha256:[0-9a-f]{64}$') { throw 'Container identity is unknown.' }
+    if ($Container.State.Running -isnot [bool]) { throw 'Container running state is unknown.' }
+    if ($Container.State.Status -cnotin @('created', 'exited', 'stopped', 'dead', 'running', 'paused', 'restarting')) { throw 'Container status is unknown.' }
+    $label = if ($null -ne $Container.Config.Labels) { $Container.Config.Labels.PSObject.Properties[(Get-HostDisposableContainerLabel)] } else { $null }
+    [pscustomobject]@{ Id = $Container.Id; Image = $Container.Image; Status = $Container.State.Status;
+        Running = $Container.State.Running; Disposable = ($null -ne $label -and $label.Name -ceq (Get-HostDisposableContainerLabel) -and $label.Value -ceq 'true') }
+}
+
 Export-ModuleMember -Function @(
+    'Get-HostNonReparseItem', 'Assert-HostIdentityPairs', 'Get-HostDisposableContainerLabel', 'ConvertTo-HostContainerRecord',
     'New-HostMaintenanceLog',
     'Write-HostStep',
     'Write-HostMaintenanceMessage',

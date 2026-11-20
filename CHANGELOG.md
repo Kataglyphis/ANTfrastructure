@@ -17,6 +17,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — version bounded Stevedore delegation
+
+- Add host-specific one-time SYSTEM task setup, ordinary-user preview/Apply/status,
+  protected payload/runtime hashes, read/execute-only delegation and revocation
+  with archived logs. No timer or automatic service restart is installed.
+- Retire only allowed completed media branches with a merged image and no
+  retained container reference, plus explicitly disposable stopped containers.
+  Canonical cleanup rechecks exact IDs and idle state; no force or volume removal.
+  Preserve all other tags and compiler mounts, keep the100-GiB target, and report
+  target attainment separately from worker/scheduler success. Document setup,
+  updates, scope and required independent acceptance on another host.
+
 ## 2026-11-19 — keep media module reads independent of cached directory views
 
 - Extend the existing narrow per-file delivery to the five media-core RUNs and TVM, preserving the same seven shared modules plus TVM's private leaf. The current NVIDIA CUDA repeat reproduced an unreadable cached view before ONNX compilation; isolated direct mounts read, hash and import those seven bytes correctly.

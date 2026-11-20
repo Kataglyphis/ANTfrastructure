@@ -5,6 +5,7 @@
 
 Describe 'Stevedore selected reclaim' {
     BeforeAll {
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1' -FunctionName 'Assert-HostIdentityPairs')
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/host/Clear-DiskSpace.ps1' -FunctionName `
         'Get-StevedoreTargets', 'Assert-StevedoreTarget', 'Invoke-StevedoreReclaim', 'Assert-StevedoreSelectors')
 
@@ -32,7 +33,7 @@ Describe 'Stevedore selected reclaim' {
     }
 
     It 'rejects daemon-only parameters instead of falling into general cleanup' {
-        foreach ($name in @('ImageTag', 'ExpectedImageId', 'RegularCache', 'StevedoreNamespace', 'BuildkitAddress', 'ContainerdAddress')) {
+        foreach ($name in @('ImageTag', 'ExpectedImageId', 'ContainerId', 'ExpectedContainerImageId', 'RegularCache', 'StevedoreNamespace', 'BuildkitAddress', 'ContainerdAddress')) {
             Assert-Throws { Assert-StevedoreSelectors -Selected $false -BoundParameters @($name) } -MessagePattern 'requires -StevedoreOnly'
         }
         Assert-StevedoreSelectors -Selected $false -BoundParameters @('Apply')
@@ -45,7 +46,7 @@ Describe 'Stevedore selected reclaim' {
         Assert-Equal 0 $script:events.Count
         Invoke-StevedoreReclaim -Targets $script:target -PruneRegular $false -TargetGB 100 -DoApply $true `
             -Nerdctl 'nerdctl' -Buildctl 'buildctl' -Namespace 'custom' -Address 'npipe:////./pipe/test' -ContainerdAddress 'npipe://containerd'
-        Assert-Equal 'admin|idle:npipe:////./pipe/test|remove:npipe://containerd:custom:local/example:stage' ($script:events -join '|')
+        Assert-Equal 'admin|idle:npipe:////./pipe/test|idle:npipe:////./pipe/test|remove:npipe://containerd:custom:local/example:stage' ($script:events -join '|')
         $script:events.Clear()
         Invoke-StevedoreReclaim -Targets @() -PruneRegular $true -TargetGB 120 -DoApply $true `
             -Nerdctl 'nerdctl' -Buildctl 'buildctl' -Namespace 'custom' -Address 'npipe:////./pipe/test' -ContainerdAddress 'npipe://containerd'
@@ -64,7 +65,7 @@ Describe 'Stevedore selected reclaim' {
             Invoke-StevedoreReclaim -Targets $script:target -PruneRegular $true -TargetGB 100 -DoApply $true `
                 -Nerdctl 'nerdctl' -Buildctl 'buildctl' -Namespace 'buildkit' -Address 'npipe://bk' -ContainerdAddress 'npipe://ctr'
         } -MessagePattern 'changed since review'
-        Assert-Equal 'admin|idle:npipe://bk' ($script:events -join '|')
+        Assert-Equal 'admin|idle:npipe://bk|idle:npipe://bk' ($script:events -join '|')
         $script:inspectionCount = 0
         $script:events.Clear()
         $other = @(Get-StevedoreTargets -Tags @('local/example:other') -Ids @($script:currentImageId))
@@ -73,7 +74,7 @@ Describe 'Stevedore selected reclaim' {
             Invoke-StevedoreReclaim -Targets @($script:target[0], $other[0]) -PruneRegular $true -TargetGB 100 -DoApply $true `
                 -Nerdctl 'nerdctl' -Buildctl 'buildctl' -Namespace 'buildkit' -Address 'npipe://bk' -ContainerdAddress 'npipe://ctr'
         } -MessagePattern 'changed since review'
-        Assert-Equal 'admin|idle:npipe://bk|remove:npipe://ctr:buildkit:local/example:stage' ($script:events -join '|')
+        Assert-Equal 'admin|idle:npipe://bk|idle:npipe://bk|remove:npipe://ctr:buildkit:local/example:stage|idle:npipe://bk' ($script:events -join '|')
     }
 
     It 'rejects empty selections and option-shaped namespace or address' {
@@ -87,7 +88,7 @@ Describe 'Stevedore selected reclaim' {
 Describe 'Stevedore daemon calls' {
     BeforeAll {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/host/Clear-DiskSpace.ps1' -FunctionName `
-        'Get-BuildkitFreeTargetMB', 'Invoke-StevedoreRead', 'ConvertFrom-StevedoreJson', 'Assert-BuildkitIdle', 'Assert-StevedoreIdle', 'Get-StevedoreImageId', 'Invoke-StevedoreRemoval', 'Invoke-StevedoreRegularPrune')
+        'Get-BuildkitFreeTargetMB', 'Invoke-StevedoreRead', 'ConvertFrom-StevedoreJson', 'Assert-BuildkitIdle', 'Assert-StevedoreIdle', 'Get-StevedoreInspection', 'Get-StevedoreImageId', 'Invoke-StevedoreRemoval', 'Invoke-StevedoreRegularPrune')
 
     function Invoke-FakeDaemon {
         $script:calls.Add(($args -join '|'))

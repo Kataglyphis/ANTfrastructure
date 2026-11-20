@@ -50,16 +50,19 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Windows host maintenance portability
 
-- [ ] Ship a versioned installer for the bounded Stevedore maintenance pilot.
-  The tested actions currently exist only in ignored local handoff files; they
-  are absent from a clean clone. Parameterize user identity, checkout/tool paths,
-  task configuration and preservation expectations instead of copying a sealed
-  bundle from another machine. Retain canonical regular-only pruning, fixed
-  protected actions and separate image-retirement approval. Prove fresh-machine
-  installation, non-admin invocation, logs, idle refusal, interrupted setup and
-  before/after preservation, including an empty initial store and different
-  cache-mount counts. Existing-host success and a cleanup exit zero are not this
-  acceptance. See [current scope and new-host procedure](docs/windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts).
+- [x] Add the versioned bounded installer, normal-user preview/Apply/status,
+  fixed protected policy, explicit disposable-container marker and canonical
+  selected removal. Retain current final images, SDKs/toolchains, all unrelated
+  tags, volumes and compiler caches. Setup derives host identity and paths;
+  its configured policy is not writable by the agent. See [the runbook](docs/windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts).
+- [ ] Accept the versioned delegation on the current host: actual UAC setup,
+  ordinary-user preview and Apply, scheduler/ACL readback, retained identities
+  and measured free bytes. The earlier local pilot does not prove v2 acceptance.
+- [ ] Preserve an independent fresh-machine acceptance: real administrator
+  setup, non-admin invocation, ACL/task readback, idle refusal, interrupted
+  setup recovery, before/after identities and actual capacity. Cover an empty
+  initial store and different mount counts. Existing-host success and synthetic
+  task/daemon tests do not prove these facts for another machine.
 
 ## Windows resume after completed media branches
 

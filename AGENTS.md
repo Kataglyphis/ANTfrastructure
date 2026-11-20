@@ -1047,6 +1047,20 @@ connection and initial DevTools failures must release the group, profile and hoo
 orphans heavy on CPU or memory or shaped like test leftovers
 ([`linux-host-setup.md` § B10](docs/linux-host-setup.md#b10-ghost-watch)).
 
+## Delegated Windows storage maintenance
+
+Owner-approved v2 installation grants continuing permission to invoke its fixed
+preview and reclaim tasks without per-tag confirmation. Keep its exact policy:
+seven completed media-branch tag families require a merged Media image and no
+retained container reference; only stopped explicitly disposable containers may
+retire. Preserve Final/Torch/Media, SDK/toolchain/base, unrelated tags, volumes
+and compiler caches. Use the canonical selectors with full expected IDs; never
+force removal, lower a disk floor, terminate a build or restart containerd.
+Require real idle checks, fresh task/worker receipts, before/after preservation
+and measured headroom. Never execute SYSTEM code from a writable checkout or
+accept writable task/configuration files. A new host needs its own administrator
+installation and non-admin acceptance; see [the runbook](docs/windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts).
+
 ## Caching discipline (do not regress)
 
 Torchvision ROCm wires only its build-venv host CXX through the reviewed PyTorch

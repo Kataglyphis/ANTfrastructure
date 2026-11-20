@@ -2180,7 +2180,10 @@ profile, and the host had to be rebuilt by hand).
   A successful prune does not prove the target was met: remeasure actual free bytes.
 - `-StevedoreOnly` selects a separate daemon-only path: provide matching `-ImageTag` and
   `-ExpectedImageId` arrays for explicit local tags and their full `sha256:` image IDs, and/or
-  select `-RegularCache` to prune unused regular BuildKit cache. Run without `-Apply` to preview;
+  select `-RegularCache` to prune unused regular BuildKit cache. Matching `-ContainerId` and
+  `-ExpectedContainerImageId` arrays select full IDs of stopped containers carrying exactly
+  `org.kataglyphis.antfrastructure.disposable=true`; removal uses neither force nor volume deletion.
+  Run without `-Apply` to preview;
   after review, repeat with `-Apply` from an elevated shell. For example:
 
   ```pwsh
@@ -2210,7 +2213,13 @@ profile, and the host had to be rebuilt by hand).
   looks live unless `-AllowDuringBuild`.
 - Parameters: `-Apply`, `-KeepGB` (buildkit free-space target, default 100), `-TempOlderThanDays`,
   `-AllowDuringBuild`, `-NoDaemonPrune`, `-StoreHusksOnly`, `-StevedoreOnly`, `-ImageTag`,
-  `-ExpectedImageId`, `-RegularCache`, `-StevedoreNamespace`, `-ContainerdAddress`, `-BuildkitAddress`.
+  `-ExpectedImageId`, `-ContainerId`, `-ExpectedContainerImageId`, `-RegularCache`,
+  `-StevedoreNamespace`, `-ContainerdAddress`, `-BuildkitAddress`.
+- For recurring agent operation, use the versioned `Install-StevedoreMaintenance.ps1`,
+  `Invoke-StevedoreMaintenance.ps1` and `Remove-StevedoreMaintenance.ps1` entrypoints.
+  The [delegated maintenance runbook](windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts)
+  defines the fixed retention policy, one-time administrator setup, ordinary-user acceptance,
+  protected logs and revocation on this host or a new machine.
 - Enforced from outside the script too, by the `PreToolUse` guard in
   `.claude/hooks/guard-destructive-deletes.ps1`; behaviour pinned by
   `windows/scripts/tests/Guard.DestructiveDeletes.Tests.ps1`.

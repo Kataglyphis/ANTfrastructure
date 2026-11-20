@@ -36,107 +36,141 @@ removing anything.
 
 ## Delegated maintenance and new hosts
 
-### Availability and verified limits
+The versioned `Install-StevedoreMaintenance.ps1` installs two fixed SYSTEM
+tasks under `\ANTfrastructureMaintenanceV2\`. An administrator approves the
+installation once; the selected ordinary Windows user can then request a
+preview or bounded cleanup without another UAC prompt. Agents may use this
+installed policy without asking for every tag again. This does not give the
+agent a general administrator token or let it submit commands to SYSTEM.
 
-The delegated cleanup is a **local pilot, not a portable feature installed by a
-fresh clone or `Install-NewHost.ps1`**. Its preparation and tests currently live
-in ignored `logs/handoff/stevedore-auto-cleanup/` on the provisioned machine.
-Those files are not distributed by this repository. Copying their old installer
-is not a new-host setup: its reviewed bundle contains a particular user SID,
-paths and file hashes; idle recovery also expects six cache mounts and a specific
-service topology. Fresh or different hosts need their own reviewed configuration
-and acceptance. A portable installer remains an open backlog item.
+### Retention policy
 
-Two fixed, on-demand Task Scheduler actions were verified on 2026-11-14:
+The fixed policy is intentionally narrower than `system prune`:
 
-| Task under `\ANTfrastructureMaintenance\` | Trigger and identity | Fixed scope |
-| --- | --- | --- |
-| `RegularCache` | Agent or operator starts it; runs as SYSTEM | Preview, then canonical unused regular-cache cleanup with a 100-GiB target; preserves image tags and compiler-cache mounts |
-| `IdleRecovery` | Agent or operator starts it; runs as SYSTEM | On proven idle state, restore BuildKit and dependent Stevedore; compare images, mounts, containerd PID and CNI; no pruning |
+- Only the `buildkit` namespace is inspected. Every native query must succeed;
+  unknown identities or state refuse the entire action.
+- A completed media-branch tag may retire only when its corresponding merged
+  Media tag exists and no retained container references its configuration or manifest ID.
+  The seven allowed stage names are `windows-media-core-onnx`,
+  `windows-media-core-ffmpeg`, `windows-media-core-opencv`,
+  `windows-media-core-hailo`, `windows-media-core`, `windows-media-litert` and
+  `windows-media-tvm`, under `local/kataglyphis:bk-`, with the existing CPU,
+  NVIDIA/ROCm and ARM64 suffixes. These complete intermediate images are not
+  archived; rebuilding them can take hours. Existence of a merged image is a
+  retention condition, not whole-product or device acceptance.
+- Only a stopped container carrying
+  `org.kataglyphis.antfrastructure.disposable=true` may retire. Our diagnostic
+  callers should add that label when creating an intentionally disposable
+  container. Legacy unmarked containers remain protected. The command does
+  not force removal and does not delete volumes or bind-mounted host data.
+- Current Final/Torch/Media, SDK/toolchain/base tags, unrelated tags and
+  compiler-cache mounts remain protected. Aliases and full before/after image
+  identities are compared; an in-use or unknown cache record refuses cleanup.
+- Filesystem cleanup is not part of this policy. Regular cache pruning uses
+  only the canonical `Clear-DiskSpace.ps1 -StevedoreOnly -RegularCache`, with
+  the existing 100-GiB free-space target and decimal-MB conversion. There is no
+  `--all`, service restart, containerd restart, force-stop or build cancellation.
 
-This is not a timer, a low-space watcher, or an automatic call from every build.
-The separate BuildKit daemon GC policy is described in the
-[host setup](windows-host-setup.md#c3-deploy-the-gc-policy--build-history-cap-required--not-optional-tuning).
-Normal-user starts work because an administrator once installed protected code
-and granted that user read/execute permission on the fixed tasks. No unrestricted
-administrator rights, writable SYSTEM scripts or arbitrary task arguments are
-granted. Updating pinned tools or protected task files needs another reviewed
-administrator installation.
+`InspectBuildStorage` only reports. `ReclaimBuildStorage` applies this exact
+policy when below the target. When the target is already met, or no eligible
+images, containers or private regular cache remain, it records a no-op rather
+than repeating an exhausted prune. It measures actual free bytes afterwards;
+exit zero means maintenance completed, not that 100 GiB became available.
 
-The actual pilot recovery released 31 held references. Its following regular
-cleanup increased filesystem free space by 10.03 GiB; 27 image identities and six
-compiler-cache mounts were unchanged, and both workers and scheduler results were
-zero. Only 14.43 GiB remained free, so the 100-GiB target was **not met**. A busy-client
-attempt also refused before Apply. These are single-host results, not clean-host
-or universal reliability evidence. In-use state, unknown responses, changed IDs,
-service drift or changed tool hashes must stop maintenance.
+The tasks have no timer or low-space watcher. An agent can request them before
+the next build. Existing BuildKit GC is separate. Idle checks are observations,
+not a global engine transaction: coordinate other sessions, retain the
+per-operation checks, and never run maintenance beside a build.
 
-### Operating an already provisioned pilot
+### One-time setup on each host
 
-Keep other sessions' container work paused; the idle probes are observations,
-not a machine-wide lock. From the original pilot checkout, a normal PowerShell 7
-session can submit the existing cleanup:
+Finish [Windows host bring-up](windows-host-setup.md), including Stevedore,
+BuildKit GC, CNI and endpoints. Use PowerShell 7 and this checkout; the installer
+derives the user SID, Windows directories, trusted tools and runtime locally.
+It copies a protected, hashed payload/runtime under
+`C:\Program Files\ANTfrastructure Maintenance v2` on a normal Windows install.
+It never schedules a file directly from the writable checkout. No package or
+credential download is needed.
+
+First inspect the installation plan in an ordinary shell:
 
 ```pwsh
-pwsh -NoProfile -File .\logs\handoff\stevedore-auto-cleanup\Start-DelegatedCleanup.ps1
+pwsh -NoProfile -File .\windows\scripts\host\Install-StevedoreMaintenance.ps1
 ```
 
-If a completed build leaves only immutable/shared regular references held, the
-separately approved recovery can be submitted first:
+Then run once from **Administrator PowerShell 7**:
 
 ```pwsh
-pwsh -NoProfile -File .\logs\handoff\stevedore-auto-cleanup\idle-recovery-20261114\Start-IdleRecovery.ps1
+pwsh -NoProfile -File .\windows\scripts\host\Install-StevedoreMaintenance.ps1 -Apply
 ```
 
-Submission is not completion. Read the new run under
-`C:\Program Files\ANTfrastructure Maintenance\logs\`: cleanup writes `latest.json`,
-recovery `latest-recovery.json`, each pointing to its detailed run directory.
-Require a run started after submission, worker `raw_exit = 0`, scheduler
-`LastTaskResult = 0`, no running instance, and matching before/after image and
-cache identities. Recovery additionally needs unchanged containerd PID and
-successful network validation. Its success precedes a separate regular cleanup;
-it is not itself proof of space reclaimed. Measure current free bytes against
-the next build's unchanged admission limit before restarting that build.
+`-ReaderSid` selects another specific local/domain/Entra user if setup runs
+under a different administrator account. `-StoreRoot` must match the existing
+BuildKit store on a nondefault host; it only selects the volume to measure and
+does not move any store. Tool paths use the local Program Files directory;
+the bounded tasks use the standard local containerd/BuildKit pipes.
+`-ExpectedBundleSha256` can seal a reviewed source payload. A different or
+partial installation refuses replacement; revoke and archive it first.
 
-When tags hold all remaining shared layers, another cache-only run cannot promise
-more space. Image retirement is a separate reviewed selection with full expected
-IDs; compiler caches and unrelated images stay protected. Do not repeat an
-exhausted prune, lower a disk guard, kill a live build or restart containerd to
-make the space check pass.
+Setup creates disabled tasks, verifies their fixed SYSTEM principal, action,
+ACL and zero triggers, and only then enables them. The caller receives
+read/execute rights. Files, tool hashes, runtime and task configuration remain
+protected from the ordinary user. Setup itself starts no cleanup.
 
-### Bringing another machine into service
+### Ordinary-user operation and logs
 
-1. Complete [Windows host bring-up](windows-host-setup.md), including daemon GC
-   sizing, endpoints, CNI and host checks. Do not transplant the old machine's
-   task XML, user SID, PowerShell installation path or installed manifests.
-2. Until a portable delegation package is shipped, use the versioned
-   [inventory](#stevedore-disk-inventory) and
-   [canonical cleanup](windows-builds.md#clear-diskspaceps1) from an actual
-   **Administrator PowerShell 7** at the new checkout root. Review the inventory
-   and establish idle state, then preview:
+```pwsh
+# Preview only; the privileged read uses its separate fixed task.
+pwsh -NoProfile -File .\windows\scripts\host\Invoke-StevedoreMaintenance.ps1
+# Apply the already approved retention policy.
+pwsh -NoProfile -File .\windows\scripts\host\Invoke-StevedoreMaintenance.ps1 -Apply
+# Read both task states and their latest receipts without starting a task.
+pwsh -NoProfile -File .\windows\scripts\host\Invoke-StevedoreMaintenance.ps1 -Status
+```
 
-   ```pwsh
-   pwsh -NoProfile -File .\windows\scripts\host\Clear-DiskSpace.ps1 -StevedoreOnly -RegularCache -KeepGB 100
-   if ($LASTEXITCODE -ne 0) { throw 'Cleanup preview failed.' }
-   ```
+The client waits up to 300 seconds by default. Exit 2 means submitted but not
+completed; it does not stop the worker. Use `-Status` and the protected logs,
+not a second submission. `-WaitSeconds` changes only this client wait and is
+never forwarded as a task argument. Operational maintenance has no timeout
+that kills a native prune. Tasks ignore overlapping instances, use a shared
+file lock and refuse another active v2 or legacy maintenance task.
 
-   After reviewing that preview, apply only the same cache scope:
+Each run has a fresh directory under the installation's `logs\`, with a full
+transcript, native stdout/stderr, the plan, before/after identities and
+`result.json`. `latest-preview.json` and `latest.json` point to the latest
+respective result. Accept completion only for the returned task-instance GUID
+and a run started after submission, with worker and scheduler raw exits both
+zero, no remaining instance and verified preservation. `target_met` is a
+separate observation. Recheck the next build's unchanged disk floor yourself.
+No source/image publication or GPU inference is proved by maintenance.
 
-   ```pwsh
-   pwsh -NoProfile -File .\windows\scripts\host\Clear-DiskSpace.ps1 -StevedoreOnly -RegularCache -KeepGB 100 -Apply
-   if ($LASTEXITCODE -ne 0) { throw 'Cleanup failed; retain its diagnostics.' }
-   Get-PSDrive -Name C | Select-Object Name, Free
-   ```
+First verify preview and Apply from a **genuinely non-elevated** shell on the
+host. The tests use fake daemons/tasks and cover selectors, refusal paths and
+mutations; they do not prove another machine's ACLs, UAC, daemon layout or
+physical space gain. Preserve an actual host acceptance receipt. Zero or a
+different number of cache mounts is supported; unknown is never treated as
+zero. A fresh-machine acceptance remains distinct from existing-host success.
 
-   Keep the terminal output or a transcript in the new checkout's logs. Use the
-   documented daemon address overrides if that host differs. Preview and Apply
-   retain their own refusal checks; exit zero alone is not a capacity receipt.
-3. Before claiming delegation on that machine, provide a versioned installer
-   closure, derive its local user/paths/tools and preservation baseline, install
-   once with UAC/admin approval, and prove the first start from a genuinely
-   non-elevated session. Verify protected file/task ACLs, hashes, fixed actions,
-   fresh logs, idle refusal, preservation and measured capacity there. The pilot's
-   tests and old receipts do not replace that new-host test.
+### Revocation, updates and the old pilot
+
+To revoke the delegation, use Administrator PowerShell 7:
+
+```pwsh
+pwsh -NoProfile -File .\windows\scripts\host\Remove-StevedoreMaintenance.ps1
+pwsh -NoProfile -File .\windows\scripts\host\Remove-StevedoreMaintenance.ps1 -Apply
+```
+
+An active task refuses revocation. The script unregisters only the two fixed
+v2 tasks and archives the protected directory beside its old location; logs
+are retained and no container, image or store is touched. Reinstall after
+review when payload, tools or policy change. Do not make SYSTEM scripts or
+their configuration writable to avoid the administrator installation step.
+
+The earlier local pilot under ignored `logs/handoff/stevedore-auto-cleanup/`
+is historical and is not copied to another host. Its `RegularCache` and
+`IdleRecovery` tasks are separate; v2 does not overwrite or expand them. Its
+measured results and recovery permissions are single-host evidence, not
+acceptance of this versioned installer or proof of universal reliability.
 
 ## Stevedore Setup Fixes
 
