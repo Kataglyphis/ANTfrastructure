@@ -1485,6 +1485,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   issue names the repository, workflow and jobs that are red, with their runs. `develop-red.yml`
   opens it within half an hour of the red run and closes it when the jobs pass again
   ([`github-cli-pipeline-monitoring.md` § A red develop opens an issue](docs/github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue)).
+- Shared Git-hook diagnostics import `log-bootstrap.sh`; standalone library checks must publish the real logging API before any mutation can count.
 - `build-runtime-artifacts.sh --push` pushes only the final per-arch wrapper images.
 - `build-runtime-manifest.sh --push` pushes wrappers + the final manifest.
 - `--push-all` only when explicitly requested (it publishes the `base`/`package` intermediates).

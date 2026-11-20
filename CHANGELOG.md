@@ -17,6 +17,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — shared hook diagnostics load the canonical logger
+
+- Import `log-bootstrap.sh` from `hook-host-red.sh` so standalone library checks see the real logging API. The missing import made the hosted preflight fail three library assertions and invalidated twelve mutation baselines in run 44819008926.
+- Add a removal mutation against the existing library suite; retain failed-positive-control refusals and normal hook scope. Local source checks remain separate from the subsequent hosted CI result.
+
 ## 2026-11-20 — a probe for zstd layers (CON99); CON283 names OxidANT's Pester suites
 
 - `zstd-pull-probe.yml` (dispatch only, owner OK for a scratch package) recompresses `:latest`'s amd64 image to zstd

@@ -2615,3 +2615,16 @@ receipts cover strict/conditional calls and usage aliases, with separate empty/s
 ### Cargo native helper transport
 
 `06-packaging/stage-cargo-native-helper.py` stages one exact OUT_DIR helper using successful Cargo JSON and the selected native artifact. Copies include `ort_census_probe.py`; the wheel-license stager imports the same ELF identity function. [The staging contract](linux-build-basics.md#cargo-native-helper-staging) states its target, no-replace and evidence limits.
+
+## Hook host diagnostics
+
+`linux/scripts/lib/hook-host-red.sh` imports its sibling `log-bootstrap.sh` before
+defining the hook diagnostic helper. Standalone sourcing therefore publishes the
+canonical `info`, `warn` and `err` functions, just as it does for other libraries.
+Callers copying this helper must retain the shared bootstrap and its logging owner.
+
+The existing `test-lib-modules.sh` checks standalone loading, real logging and the
+bootstrap import. Removing that import must fail those positive checks; the dedicated
+removal mutation proves the regression. A failing unmutated suite invalidates a
+mutation result rather than proving that a mutant was caught. These source controls
+do not establish a successful hosted workflow, image or consumer build.
