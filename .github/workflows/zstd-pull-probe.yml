@@ -1,0 +1,142 @@
+# Copyright (c) 2026 Kataglyphis
+# SPDX-License-Identifier: MIT
+
+# CON99: recompresses :latest's amd64 image to zstd in a scratch package, times a fresh runner's pull of each, then deletes the package.
+
+name: GHCR · zstd pull probe
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: zstd-pull-probe
+  cancel-in-progress: false
+
+env:
+  PROBE_IMAGE: ghcr.io/kataglyphis/antfrastructure-zstd-probe:latest
+
+jobs:
+  copy:
+    name: recompress to zstd
+    runs-on: ubuntu-26.04
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      source-digest: ${{ steps.copy.outputs.source-digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          sparse-checkout: linux/scripts/01-core/versions.env
+          sparse-checkout-cone-mode: false
+
+      - name: Copy the amd64 image with zstd layers
+        id: copy
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          command -v skopeo > /dev/null || { sudo apt-get update -q && sudo apt-get install -y -q skopeo; }
+          skopeo --version
+          printf '%s' "${TOKEN}" | skopeo login ghcr.io -u "${ACTOR}" --password-stdin
+          # Without the force flag skopeo may keep a gzip blob as it is; the layer check below proves it did not.
+          force=()
+          if skopeo copy --help | grep -q -- '--dest-force-compress-format'; then force=(--dest-force-compress-format); fi
+          # The family image's one owner is versions.env, as the container actions read it.
+          env_file=linux/scripts/01-core/versions.env
+          repo="$(sed -n 's/^IMAGE_REGISTRY_PREFIX=//p' "${env_file}")"
+          src="$(skopeo inspect --override-os linux --override-arch amd64 --format '{{.Digest}}' \
+            "docker://${repo}:$(sed -n 's/^CI_IMAGE_LINUX_TAG=//p' "${env_file}")")"
+          echo "source-digest=${src}" >> "${GITHUB_OUTPUT}"
+          start=$(date +%s)
+          skopeo copy --override-os linux --override-arch amd64 --dest-compress-format zstd "${force[@]}" \
+            "docker://${repo}@${src}" "docker://${PROBE_IMAGE}"
+          seconds=$(( $(date +%s) - start ))
+          for ref in "${repo}@${src}" "${PROBE_IMAGE}"; do
+            skopeo inspect --raw "docker://${ref}" | python3 -c '
+          import json, sys
+          layers = json.load(sys.stdin)["layers"]
+          kinds = sorted({layer["mediaType"].rsplit(".", 1)[-1] for layer in layers})
+          print("%s: %d layers, %.2f GB, %s" % (sys.argv[1], len(layers), sum(layer["size"] for layer in layers) / 1e9, kinds))
+          ' "${ref}" | tee -a "${GITHUB_STEP_SUMMARY}"
+          done
+          skopeo inspect --raw "docker://${PROBE_IMAGE}" | grep -q 'tar+zstd' || { echo "::error::the copy kept gzip layers"; exit 1; }
+          echo "copy and recompress: ${seconds} s" | tee -a "${GITHUB_STEP_SUMMARY}"
+
+  pull:
+    name: pull (${{ matrix.leg }})
+    needs: copy
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      # Each leg's time is evidence on its own.
+      fail-fast: false
+      matrix:
+        leg: [gzip, zstd]
+    steps:
+      # Serial, so the pull's seconds overlap nothing; the gzip leg pulls the digest the copy read.
+      - name: Pull the published image (gzip)
+        if: matrix.leg == 'gzip'
+        id: gzip
+        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-linux-ci-host@develop
+        with:
+          checkout: 'false'
+          pull-first: 'false'
+          pull-attempts: '1'
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the scratch package (zstd)
+        if: matrix.leg == 'zstd'
+        id: zstd
+        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-linux-ci-host@develop
+        with:
+          image: ${{ env.PROBE_IMAGE }}
+          checkout: 'false'
+          pull-first: 'false'
+          pull-attempts: '1'
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Record the pull
+        env:
+          LEG: ${{ matrix.leg }}
+          SECONDS_TAKEN: ${{ steps.gzip.outputs.pull-seconds || steps.zstd.outputs.pull-seconds }}
+          SOURCE_DIGEST: ${{ needs.copy.outputs.source-digest }}
+        run: |
+          set -euo pipefail
+          # Recompression keeps the config, so both legs print the same image id when they pulled the same image.
+          image="$(docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep '^ghcr.io/kataglyphis/' | head -n 1)"
+          driver="$(docker info --format '{{.Driver}}')"
+          echo "${LEG}: ${SECONDS_TAKEN} s, ${image}, docker $(docker version --format '{{.Server.Version}}'), ${driver}; copied from ${SOURCE_DIGEST}" \
+            | tee -a "${GITHUB_STEP_SUMMARY}"
+
+  cleanup:
+    name: delete the scratch package
+    needs: [copy, pull]
+    if: always()
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      # GITHUB_TOKEN cannot delete a user's package; GHCR_TOKEN is the cleanup workflow's PAT with delete:packages.
+      - name: Delete the scratch package
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          set -euo pipefail
+          name="${PROBE_IMAGE#ghcr.io/kataglyphis/}"
+          name="${name%:*}"
+          code="$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer ${GHCR_TOKEN}" \
+            -H 'Accept: application/vnd.github+json' "https://api.github.com/user/packages/container/${name}")"
+          echo "DELETE ${name}: HTTP ${code}" | tee -a "${GITHUB_STEP_SUMMARY}"
+          case "${code}" in 204|404) ;; *) echo "::error::the scratch package ${name} is still there"; exit 1 ;; esac

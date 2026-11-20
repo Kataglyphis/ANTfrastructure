@@ -17,6 +17,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — a probe for zstd layers (CON99); CON283 names OxidANT's Pester suites
+
+- `zstd-pull-probe.yml` (dispatch only, owner OK for a scratch package) recompresses `:latest`'s amd64 image to zstd
+  in `ghcr.io/kataglyphis/antfrastructure-zstd-probe`, times a serial `docker pull` of the published gzip image and
+  of the copy on two fresh runners through `prepare-linux-ci-host`'s `pull-seconds`, and deletes the package with
+  `GHCR_TOKEN` whatever the legs did. The copy fails unless its layers are `tar+zstd`.
+- CON283: OxidANT's Pester suites speak 3.4 too; AccelerANTgine, OmniAccelerANT and OxidANT each record the migration
+  as blocked on the chain that brings Pester 6.2.0.
+
 ## 2026-11-20 — the staged test runner waits for WER's record of a fail-fast abort
 
 - `Invoke-StagedTests.ps1` looked for Windows Error Reporting's event 1000 once, right after a binary died. That

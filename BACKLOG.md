@@ -1911,6 +1911,11 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       and the zstd tag in two fresh jobs, and delete the scratch package. The cost is one full re-push of every layer per arch at the build host's
       ~4.5 MB/s uplink, and every consumer re-downloading once; Docker 23+, containerd and podman
       all read zstd layers.
+      **Probe in source since 2026-11-20 (owner OK for the scratch package):** `zstd-pull-probe.yml`, dispatch only,
+      copies `:latest`'s amd64 image to `ghcr.io/kataglyphis/antfrastructure-zstd-probe` with zstd layers, times a
+      serial `docker pull` of each on a fresh runner (the prepare action's `pull-seconds`), and deletes the package with
+      `GHCR_TOKEN` even when a leg fails. Both legs print the same image id when they pulled the same image. Left: run
+      it, record both times here, then decide.
 
 - [ ] **CON90 — finish the Python 3.15 rollout and remaining measurements** [L, ★★★].
       The default-image and x64 consumer rollout is recorded under
@@ -2062,7 +2067,8 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       **In source since 2026-11-15 (CON273):** `install_pwsh` installs Pester 6.2.0 (windows-x64.yml's floor) into
       `$PSHOME/Modules` and fails the stage without it; the `:latest` checked here predates that source. Left: the
       next chain, then decide 5.7 against 6.2. AccelerANTgine's and OmniAccelerANT's suites still use 3.4's
-      dash-less `Should Be`, which neither runs.
+      dash-less `Should Be`, which neither runs, and so do OxidANT's; each of the three BACKLOGs holds the migration
+      as blocked on this chain.
 
 - [ ] **CON287 — a slangc newer than the Vulkan SDK's** [S, ★]. Found 2026-11-20 from OxidANT's BACKLOG
       ("Texture streaming past the mip tail"): the image's slangc is the Vulkan SDK's (1.4.363.0 = Slang
