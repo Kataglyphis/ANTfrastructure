@@ -209,6 +209,27 @@ HOOK_TEST_DELEGATED_RC=1 t_assert_fails _run_hook_runner "fake-runner --" \
 t_assert_eq "-- python3 docs/scripts/verify_mutations.py --only lib.one" "$(cat "${_RUNNER_ARGV}")" \
   "a survivor on the host stops the commit, after the image had its say"
 
+t_case "tests red here before any mutation: only those ids go to the image, and the image decides"
+# <n/m> <id>: the gate's line for a test that was red before any mutation.
+_red() { printf '[%s] FAIL: %s -- baseline test already fails unmutated (vacuous bite)\n' "$1" "$2"; }
+_two_failed="FAILED: 2 of 3 entr(ies), in manifest order: lib.one, lib.two"
+_vac="$(_red 1/2 lib.one; _red 2/2 lib.two; printf '%s' "${_two_failed}")"
+_out="$(_run_hook_runner "fake-runner --" "${_vac}" 0)"
+t_assert_contains "${_out}" "pre-commit: OK"
+t_assert_contains "${_out}" "fail unmutated on this host; proven again in the image"
+t_assert_eq "-- python3 docs/scripts/verify_mutations.py --only lib.one --only lib.two" "$(cat "${_RUNNER_ARGV}")"
+t_assert_fails _run_hook_runner "fake-runner --" "${_vac}" 1
+t_assert_fails _run_hook_runner "" "${_vac}" 0
+t_case "a pwsh test and host-red tests in one sample: both kinds go to the image, together"
+_out="$(HOOK_TEST_DELEGATED_RC=1 HOOK_TEST_DELEGATED_SAY="${_vac}" _run_hook_runner "fake-runner --" \
+  "FAIL: pwsh is not on PATH, so 1 selected test(s) cannot run here: lib.ps" 0)"
+t_assert_contains "${_out}" "pre-commit: OK"
+t_assert_eq "-- python3 docs/scripts/verify_mutations.py --only lib.ps --only lib.one --only lib.two" "$(cat "${_RUNNER_ARGV}")"
+
+t_case "one vacuous test beside a real survivor: the commit stops and the image is not asked"
+t_assert_fails _run_hook_runner "fake-runner --" "$(_red 1/2 lib.one; printf '[2/2] SURVIVED: lib.two\n%s' "${_two_failed}")" 0
+t_assert_fails test -e "${_RUNNER_ARGV}"
+
 t_case "CON279: no runner set, or a real survivor: the commit stops and the image is not asked"
 t_assert_fails _run_hook_runner "" "${_no_pwsh}" 0
 t_assert_fails _run_hook_runner "fake-runner --" "SURVIVED: lib.example" 0

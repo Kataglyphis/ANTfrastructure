@@ -15,6 +15,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — Flutter 3.50.1 in source; CON150's cause named
+
+- `FLUTTER_VERSION` 3.47.9 to 3.50.1 (owner OK; `bump_versions.py --write --only FLUTTER_VERSION`, with
+  `FLUTTER_SDK_SHA256` and `FLUTTER_COMMIT` from `releases_linux.json`; `sync_versions.py --write` and the curated
+  SBOM follow). 3.50.1 fixes multi-threaded skwasm (flutter/flutter#196127), the source of CON150's worker
+  `TypeError` on jonasheinle.de, which jotrockenmitlocken 80f5716 works around with `forceSingleThreadedSkwasm`
+  until the image carries 3.50.1. Images change with the next chain.
+- The pre-commit hook proves a sample in the image when every failing recipe's test is red before any mutation on
+  this host (`baseline test already fails unmutated`), as it already does for a missing pwsh: three hub tests trip
+  over Debian 13's bash 5.2.37 (`pop_var_context: head of shell_variables not a function context`) and pass under the
+  image's bash 5.3.9, so they said nothing about a mutation here. A real survivor beside them still stops the commit.
+
 ## 2026-11-20 — gitleaks in the image for an offline secret scan (CON222, in source)
 
 - `install-lint-tools.sh` installs gitleaks at `GITLEAKS_VERSION` on amd64 and arm64 beside shellcheck and hadolint,

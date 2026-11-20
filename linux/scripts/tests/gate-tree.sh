@@ -81,6 +81,8 @@ import sys
 with open(os.environ["HOOK_TEST_ARGV"], "a", encoding="utf-8", newline="\n") as fh:
     fh.write(" ".join(sys.argv[1:]) + "\n")
 if "--delegate-chrome" in sys.argv and os.environ.get("HOOK_TEST_DELEGATED_RC"):
+    if os.environ.get("HOOK_TEST_DELEGATED_SAY"):
+        print(os.environ["HOOK_TEST_DELEGATED_SAY"])
     sys.exit(int(os.environ["HOOK_TEST_DELEGATED_RC"]))
 if os.environ.get("HOOK_TEST_GATE_SAY"):
     print(os.environ["HOOK_TEST_GATE_SAY"])

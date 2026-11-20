@@ -482,6 +482,14 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       navigation and cookie notice, so reproduce by loading `/#/landingPage` 50 times at 1280x800
       with the console captured. Done when the cause is named and fixed in its own repo, and the
       retry logs no `flaky:` line on 50 consecutive runs.
+      **Cause named 2026-11-20:** a skwasm web worker throws it (`Log.entryAdded` source `worker`,
+      `canvaskit/skwasm.js:33`, the `S` send `C[l].postMessage` with no worker `l` in that context); the site is
+      cross-origin isolated (COOP/COEP in jotrockenmitlocken's `web/.htaccess`), so skwasm runs multi-threaded, and
+      Flutter 3.50.1 fixes that path (flutter/flutter#196127, merged 2026-11-18). Reproduced 8 times in 13 cold
+      loads on the Pi with the live check's own settings. Owner decision: workaround first, then the upgrade.
+      jotrockenmitlocken 80f5716 sets `forceSingleThreadedSkwasm: true` (its first develop deploy checked both dev
+      domains with no `flaky:` line); the hub pins Flutter 3.50.1 in source. Left: the next chain, the Flutter
+      consumers green on 3.50.1, then the workaround out again and 50 consecutive clean runs on the main domain.
 
 - [ ] **CON236 — the Windows publish dispatches the consumers' lanes too** [S, ★★]. Owner decision 2026-11-13:
       after each publish every consumer's lanes run once on the new image. `build-runtime-manifest.sh`

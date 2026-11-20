@@ -120,7 +120,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | PyTorch | v2.14.1 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
 | TorchVision | v0.29.1 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
-| Flutter SDK | 3.47.9 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.50.1 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### Test runtimes (`Dockerfile.package`)
 
@@ -181,7 +181,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Vulkan SDK | 1.4.363.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
-| Flutter SDK | 3.47.9 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.50.1 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### GPU Layer
 

@@ -795,7 +795,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Flutter-SDK-36007425",
       "name": "Flutter SDK",
-      "versionInfo": "3.47.9",
+      "versionInfo": "3.50.1",
       "downloadLocation": "https://flutter.dev/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1120,7 +1120,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-Flutter-SDK-0ac793ed",
       "name": "Flutter SDK",
-      "versionInfo": "3.47.9",
+      "versionInfo": "3.50.1",
       "downloadLocation": "https://flutter.dev/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
