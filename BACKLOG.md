@@ -50,6 +50,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Windows host maintenance portability
 
+- [ ] Replay whole qualification with the isolated worker's pinned FT runtime.
+  The `cc284e79` script command returned zero but its real free-threaded extension
+  case printed a missing-interpreter skip. Preserve that limitation; prerequisite
+  fixtures do not replace the completed native and Windows successor results.
+
 - [ ] Accept the complete successor qualification after the QNN fixture ordering
   correction. The `121e2b86` rootless script gate failed its unchanged 120-case
   receipt comparison on directory enumeration; its successful Windows quality

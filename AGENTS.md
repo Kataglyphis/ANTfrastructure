@@ -262,6 +262,7 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    Use `docs/scripts/merge_mutation_recipes.py` to preview or merge recurring mutation recipe updates; stale anchors and unintended replacements fail before writing.
    Core disk probes share validation without merging zero-disabled and nonnegative-free-space policies.
    Test workers use the harness optional-function emitter; keep required definitions mandatory.
+   Isolated preflight installs the source-pinned managed FT interpreter, retains it across env-i and refuses wrong versions, enabled GILs or missing headers before running gates.
    Stream receipt suites carry `stream-receipt-fixture.sh`; keep their expected results independent of production code.
    Wheelhouse stderr fixtures pin child locale to C.UTF-8; retain both parent-locale controls and original receipt bytes.
    Named mutation-check suites carry their case-executor companion; failed controls and invalid recipes remain failed results.

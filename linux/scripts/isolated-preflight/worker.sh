@@ -12,4 +12,5 @@ cd "${task_source}"
 printf 'preflight revision=%s uid=%s\n' "$(git rev-parse HEAD)" "$UID"
 for task_tool in jq shellcheck rsync ps cc readelf ldconfig patchelf pytest uv pwsh node chromium; do command -v "${task_tool}"; done
 python3 -I -c 'import importlib.metadata, pathlib, sysconfig; print("pip", importlib.metadata.version("pip")); assert pathlib.Path(sysconfig.get_paths()["include"], "Python.h").is_file()'
+"${FT_PYTHON:?}" -I -c 'import pathlib, sys, sysconfig; assert sysconfig.get_config_var("Py_GIL_DISABLED") == 1; assert not sys._is_gil_enabled(); assert pathlib.Path(sysconfig.get_paths()["include"], "Python.h").is_file(); print("FT Python", sys.version.split()[0])'
 exec make preflight

@@ -43359,5 +43359,77 @@
   "replace": ":",
   "test": "bash linux/scripts/tests/test-consumer-hooks.sh",
   "why": "empty-directory refusal cases must not inherit the fixture parent repository when TMPDIR is inside a checkout"
+ },
+ {
+  "id": "host.proof-ft-source-pin-cleared",
+  "target": "linux/scripts/isolated-preflight/bootstrap.sh",
+  "find": "unset UV_VERSION PYTHON_VERSION",
+  "replace": "unset UV_VERSION",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The isolated full preflight must retain source-pinned genuine free-threaded prerequisites and raw refusals so its real extension case cannot silently skip."
+ },
+ {
+  "id": "host.proof-ft-install",
+  "target": "linux/scripts/isolated-preflight/bootstrap.sh",
+  "find": "UV_PYTHON_INSTALL_DIR=/opt/preflight-ft-python uv python install \"${PYTHON_VERSION:?}t\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The isolated full preflight must retain source-pinned genuine free-threaded prerequisites and raw refusals so its real extension case cannot silently skip."
+ },
+ {
+  "id": "host.proof-ft-managed-resolution",
+  "target": "linux/scripts/isolated-preflight/bootstrap.sh",
+  "find": "uv python find --managed-python \"${PYTHON_VERSION}t\"",
+  "replace": "uv python find \"${PYTHON_VERSION}t\"",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The isolated full preflight must retain source-pinned genuine free-threaded prerequisites and raw refusals so its real extension case cannot silently skip."
+ },
+ {
+  "id": "host.proof-ft-version-check",
+  "target": "linux/scripts/isolated-preflight/bootstrap.sh",
+  "find": "\"${task_ft_python}\" -I -c 'import sys; assert sys.version.split()[0] == sys.argv[1]' \"${PYTHON_VERSION}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The isolated full preflight must retain source-pinned genuine free-threaded prerequisites and raw refusals so its real extension case cannot silently skip."
+ },
+ {
+  "id": "host.proof-ft-worker-environment",
+  "target": "linux/scripts/isolated-preflight/bootstrap.sh",
+  "find": "FT_PYTHON=\"${task_ft_python}\"",
+  "replace": "FT_PYTHON=\"\"",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The isolated full preflight must retain source-pinned genuine free-threaded prerequisites and raw refusals so its real extension case cannot silently skip."
+ },
+ {
+  "id": "host.proof-ft-worker-probe",
+  "target": "linux/scripts/isolated-preflight/worker.sh",
+  "find": "\"${FT_PYTHON:?}\" -I -c 'import pathlib, sys, sysconfig; assert sysconfig.get_config_var(\"Py_GIL_DISABLED\") == 1; assert not sys._is_gil_enabled(); assert pathlib.Path(sysconfig.get_paths()[\"include\"], \"Python.h\").is_file(); print(\"FT Python\", sys.version.split()[0])'",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The isolated full preflight must retain source-pinned genuine free-threaded prerequisites and raw refusals so its real extension case cannot silently skip."
+ },
+ {
+  "id": "host.proof-ft-worker-config",
+  "target": "linux/scripts/isolated-preflight/worker.sh",
+  "find": "assert sysconfig.get_config_var(\"Py_GIL_DISABLED\") == 1; ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The isolated full preflight must retain source-pinned genuine free-threaded prerequisites and raw refusals so its real extension case cannot silently skip."
+ },
+ {
+  "id": "host.proof-ft-worker-gil",
+  "target": "linux/scripts/isolated-preflight/worker.sh",
+  "find": "assert not sys._is_gil_enabled(); ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The isolated full preflight must retain source-pinned genuine free-threaded prerequisites and raw refusals so its real extension case cannot silently skip."
+ },
+ {
+  "id": "host.proof-ft-worker-headers",
+  "target": "linux/scripts/isolated-preflight/worker.sh",
+  "find": "assert pathlib.Path(sysconfig.get_paths()[\"include\"], \"Python.h\").is_file(); ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The isolated full preflight must retain source-pinned genuine free-threaded prerequisites and raw refusals so its real extension case cannot silently skip."
  }
 ]

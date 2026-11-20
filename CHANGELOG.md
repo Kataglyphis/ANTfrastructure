@@ -18,6 +18,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — complete isolated preflight's free-threading prerequisites
+
+- Install managed free-threaded CPython from the existing source pin, keep its
+  path through the clean worker environment and refuse wrong versions, enabled
+  GILs or missing headers before any gate. Preserve the real extension/GIL test;
+  fixture controls and mutations cover provisioning, forwarding and raw refusals.
+
 ## 2026-11-20 — isolate consumer-hook fixture ancestry
 
 - Bound Git discovery above empty-directory cases, using Git's native root

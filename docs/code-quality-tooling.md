@@ -47,7 +47,11 @@ The runner preserves a complete Git clone at the selected commit in `source/`, e
 working tree has later edits. It uses that commit's pinned Ubuntu base and versioned
 `isolated-preflight/bootstrap.sh` and `worker.sh`, then runs every `make preflight` slug as a
 nonroot user. Setup reuses the canonical uv, PowerShell, PE-tool and locked quality-tool installers;
-`en_US.UTF-8`, Python headers, pip and Chromium are checked prerequisites. No selection or shard
+`en_US.UTF-8`, Python headers, pip and Chromium are checked prerequisites. Setup also installs
+free-threaded CPython from the same `PYTHON_VERSION` pin and passes its managed path through
+the clean worker environment. Version drift, a GIL-enabled interpreter or missing FT headers
+fails before the gates; the real extension/GIL case must run rather than print its optional skip.
+No selection or shard
 knob is inherited. `preflight.log` preserves raw output; `run.json`, `container.cid` and `reports/`
 retain source, base digest, bootstrap hash, tool versions and results. This is a local gate proof,
 not image acceptance or a hardware test. An apt repository or tool download must remain available.
@@ -1105,7 +1109,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5418 entries** over **699 distinct test commands**; both digits are
+manifest holds **5427 entries** over **699 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
