@@ -898,11 +898,6 @@ function Resolve-BuildCtlPath {
         ) -Required)
 }
 
-function Open-ExclusiveFile {
-    param([Parameter(Mandatory)][string]$LiteralPath, [IO.FileMode]$Mode = [IO.FileMode]::Open)
-    return [IO.File]::Open($LiteralPath, $Mode, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
-}
-
 function Test-Elevated {
     <#
     .SYNOPSIS
@@ -966,7 +961,7 @@ function ConvertTo-NormalizedVersion {
 Export-ModuleMember -Function @(
     'Assert-Command',
     'Assert-Elevated',
-    'Open-ExclusiveFile', 'Test-Elevated',
+    'Test-Elevated',
     'ConvertTo-NormalizedVersion',
     # Before removing an export, see docs/consumer-inventory.md § Why a grep was not enough
     'Add-DirectoriesToPath',

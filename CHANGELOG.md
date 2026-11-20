@@ -25,9 +25,11 @@
 - Retire only allowed completed media branches with a merged image and no
   retained container reference, plus explicitly disposable stopped containers.
   Canonical cleanup rechecks exact IDs and idle state; no force or volume removal.
-  Preserve all other tags and compiler mounts, keep the100-GiB target, and report
+  Preserve all other tags and compiler mounts, keep the 100-GiB target, and report
   target attainment separately from worker/scheduler success. Document setup,
   updates, scope and required independent acceptance on another host.
+- Keep the exclusive maintenance lock in the host module so the shared module
+  copied into build images remains byte-identical to the preceding source.
 
 ## 2026-11-19 — keep media module reads independent of cached directory views
 

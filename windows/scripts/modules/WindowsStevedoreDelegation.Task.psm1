@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis. SPDX-License-Identifier: MIT
 Set-StrictMode -Version Latest
-foreach ($moduleFile in @('WindowsScripts.Shared.psm1', 'WindowsStevedoreDelegation.Security.psm1', 'WindowsStevedoreDelegation.Inventory.psm1', 'WindowsStevedoreDelegation.Policy.psm1')) {
+foreach ($moduleFile in @('WindowsHostMaintenance.Common.psm1', 'WindowsStevedoreDelegation.Security.psm1', 'WindowsStevedoreDelegation.Inventory.psm1', 'WindowsStevedoreDelegation.Policy.psm1')) {
     Import-Module (Join-Path $PSScriptRoot $moduleFile) -ErrorAction Stop
 }
 

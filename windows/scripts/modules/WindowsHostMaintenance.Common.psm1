@@ -185,6 +185,11 @@ function Get-HostMaintenanceBuildCtlPath {
     return $null
 }
 
+function Open-ExclusiveFile {
+    param([Parameter(Mandatory)][string]$LiteralPath, [IO.FileMode]$Mode = [IO.FileMode]::Open)
+    return [IO.File]::Open($LiteralPath, $Mode, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+}
+
 function Get-HostNonReparseItem {
     param([Parameter(Mandatory)][string]$Path)
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
@@ -217,7 +222,7 @@ function ConvertTo-HostContainerRecord {
 }
 
 Export-ModuleMember -Function @(
-    'Get-HostNonReparseItem', 'Assert-HostIdentityPairs', 'Get-HostDisposableContainerLabel', 'ConvertTo-HostContainerRecord',
+    'Open-ExclusiveFile', 'Get-HostNonReparseItem', 'Assert-HostIdentityPairs', 'Get-HostDisposableContainerLabel', 'ConvertTo-HostContainerRecord',
     'New-HostMaintenanceLog',
     'Write-HostStep',
     'Write-HostMaintenanceMessage',

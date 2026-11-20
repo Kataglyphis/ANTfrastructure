@@ -3,6 +3,19 @@
 Set-StrictMode -Version Latest
 
 Describe 'Portable delegated maintenance controls' {
+    It 'holds an exclusive file lock and rejects a sharing mutation' {
+        Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1' -FunctionName 'Open-ExclusiveFile' `
+            -Find '[IO.FileShare]::None' -Replace '[IO.FileShare]::ReadWrite' -IncludeControl -Expected 'expected an exception' -Body {
+                Invoke-InTestDir {
+                    param($dir)
+                    $path = Join-Path $dir 'maintenance.lock'
+                    $lock = Open-MutExclusiveFile -LiteralPath $path -Mode OpenOrCreate
+                    try { Assert-Throws { $probe = Open-MutExclusiveFile -LiteralPath $path -Mode Open; $probe.Dispose() } }
+                    finally { $lock.Dispose() }
+                }
+            }
+    }
+
     It 'accepts empty image and container inventories under strict mode' {
         $prelude = 'function Invoke-DelegatedContainerdCommand { param($Manifest,$Arguments,$LogRoot,$Name) return @() }'
         Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsStevedoreDelegation.Inventory.psm1' `
