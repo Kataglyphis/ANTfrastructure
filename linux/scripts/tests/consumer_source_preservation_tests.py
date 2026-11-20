@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
+import runpy
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 HERE = Path(__file__).resolve().parent
@@ -21,6 +24,7 @@ SPEC = importlib.util.spec_from_file_location(
 assert SPEC is not None and SPEC.loader is not None
 M = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(M)
+ARCHIVE = runpy.run_path(str(HERE.parent / "restore-consumer-archive.py"))
 
 
 class SourcePreservationTests(unittest.TestCase):
@@ -46,6 +50,9 @@ class SourcePreservationTests(unittest.TestCase):
         self.base = M.head(self.source)
         self.working_destination = self.root / "working-copy"
         self.working_output = self.root / "working-proof"
+        self.archive = self.root / "archive"
+        self.destination = self.root / "restored"
+        self.receipt = self.root / "archive-receipt.json"
 
     def preserve(self) -> dict:
         return M.preserve(self.checkouts, self.plan, self.output)
@@ -61,8 +68,14 @@ class SourcePreservationTests(unittest.TestCase):
 
     def commit_fixture(self, root: Path, message: str) -> None:
         M.git(
-            root, "-c", "user.name=Fixture", "-c",
-            "user.email=fixture@example.invalid", "commit", "-m", message,
+            root,
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-m",
+            message,
         )
 
     def invoke_cli(self, arguments: list[str]) -> subprocess.CompletedProcess[str]:
@@ -167,7 +180,9 @@ class SourcePreservationTests(unittest.TestCase):
                 self.source, self.working_destination, self.working_output, "HEAD"
             )
 
-    def test_working_copy_retains_staged_gitlink_instead_of_child_checkout(self) -> None:
+    def test_working_copy_retains_staged_gitlink_instead_of_child_checkout(
+        self,
+    ) -> None:
         child = self.source / "third_party/ANTfrastructure"
         original = M.head(child)
         self.stage_working_change()
@@ -179,13 +194,17 @@ class SourcePreservationTests(unittest.TestCase):
                 indexed = M.head(child)
                 M.git(self.source, "add", "third_party/ANTfrastructure")
         self.assertEqual(len({original, indexed, M.head(child)}), 3)
-        before, child_before = M.working_snapshot(self.source), M.working_snapshot(child)
+        before, child_before = (
+            M.working_snapshot(self.source),
+            M.working_snapshot(child),
+        )
         record = self.working()
         self.assertEqual(M.working_snapshot(self.source), before)
         self.assertEqual(M.working_snapshot(child), child_before)
         self.assertEqual(M.working_snapshot(self.working_destination), before)
         self.assertEqual(
-            record["versioned_paths"]["third_party/ANTfrastructure"]["revision"], indexed
+            record["versioned_paths"]["third_party/ANTfrastructure"]["revision"],
+            indexed,
         )
         self.assertFalse(record["recursive_children_preserved"])
 
@@ -194,8 +213,12 @@ class SourcePreservationTests(unittest.TestCase):
 
         def changing_index(source: Path, destination: Path, revision: str) -> None:
             clone(source, destination, revision)
-            M.git(destination, "update-index", "--cacheinfo",
-                  f"160000,{self.base},third_party/ANTfrastructure")
+            M.git(
+                destination,
+                "update-index",
+                "--cacheinfo",
+                f"160000,{self.base},third_party/ANTfrastructure",
+            )
 
         with (
             mock.patch.object(M, "clone_checkout", changing_index),
@@ -443,6 +466,226 @@ class SourcePreservationTests(unittest.TestCase):
             self.preserve()
         with self.assertRaisesRegex(ValueError, "overlaps"):
             M.preserve(self.checkouts, self.plan, self.checkouts / "inside")
+
+    def make_archive(self, *, shallow: bool = False) -> str:
+        if shallow:
+            (self.source / "committed.txt").write_text("second commit\n")
+            M.git(self.source, "add", "committed.txt")
+            SourcePreservationTests.commit_fixture(self, self.source, "second")
+            target = self.root / "shallow-source"
+            subprocess.run(
+                ["git", "clone", "--depth=1", self.source.as_uri(), str(target)],
+                capture_output=True,
+                check=True,
+            )
+            self.source = target
+        SourcePreservationTests.stage_working_change(self)
+        (self.source / "source.txt").chmod(0o744)
+        if os.name != "nt":
+            (self.source / "source-link").symlink_to("source.txt")
+        M.git(self.source, "add", "--all")
+        self.archive.mkdir()
+        self.expected = M.working_snapshot(self.source)
+        (self.archive / "working.patch").write_bytes(
+            M.git(self.source, "diff", "--cached", "--binary", "--full-index", "HEAD")
+        )
+        (self.archive / "working-index.bin").write_bytes(self.expected[1])
+        (self.archive / "versioned-files.json").write_text(json.dumps(self.expected[2]))
+        M.git(
+            self.source, "bundle", "create", str(self.archive / "base.bundle"), "HEAD"
+        )
+        names = set(ARCHIVE["INPUTS"])
+        if shallow:
+            (self.archive / "original-shallow.bin").write_bytes(
+                (self.source / ".git/shallow").read_bytes()
+            )
+            names.add("original-shallow.bin")
+        self.manifest: dict[str, Any] = {
+            "schema": 1,
+            "base": self.expected[0],
+            "origin": "https://github.com/example/fixture.git",
+            "shallow": shallow,
+            "files": {name: "" for name in names},
+        }
+        return self.refresh_manifest()
+
+    def refresh_manifest(self) -> str:
+        for name in self.manifest["files"]:
+            self.manifest["files"][name] = hashlib.sha256(
+                (self.archive / name).read_bytes()
+            ).hexdigest()
+        path = self.archive / "archive.json"
+        path.write_text(json.dumps(self.manifest))
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    def restore(self, digest: str) -> dict:
+        return ARCHIVE["restore_archive"](
+            self.archive, digest, self.destination, self.receipt
+        )
+
+    def test_archive_restores_exact_staged_bytes_modes_links_and_independent_objects(
+        self,
+    ) -> None:
+        record = self.restore(self.make_archive())
+        self.assertEqual(M.working_snapshot(self.destination), self.expected)
+        self.assertEqual(record, json.loads(self.receipt.read_text()))
+        self.assertFalse(record["recursive_dependencies_restored"])
+        self.assertFalse(record["full_Git_history_claimed"])
+        for original in (self.source / ".git/objects").glob("??/*"):
+            duplicate = self.destination / original.relative_to(self.source)
+            if duplicate.exists():
+                self.assertFalse(original.samefile(duplicate))
+
+    def test_archive_retains_original_shallow_metadata_before_checkout_and_fsck(
+        self,
+    ) -> None:
+        record = self.restore(self.make_archive(shallow=True))
+        self.assertTrue(record["original_shallow_metadata_restored"])
+        self.assertEqual(
+            (self.destination / ".git/shallow").read_bytes(),
+            (self.source / ".git/shallow").read_bytes(),
+        )
+        self.assertEqual(M.working_snapshot(self.destination), self.expected)
+        M.verify_objects(self.destination)
+
+    def test_archive_refuses_manifest_digest_mismatch_before_allocation(self) -> None:
+        self.make_archive()
+        with self.assertRaisesRegex(ValueError, "manifest digest differs"):
+            self.restore("0" * 64)
+        self.assertFalse(self.destination.exists())
+
+    def test_archive_refuses_changed_input_before_allocation(self) -> None:
+        digest = self.make_archive()
+        with (self.archive / "working.patch").open("ab") as stream:
+            stream.write(b"changed\n")
+        with self.assertRaisesRegex(ValueError, "input digest differs"):
+            self.restore(digest)
+        self.assertFalse(self.destination.exists())
+
+    def test_archive_requires_the_exact_restored_index(self) -> None:
+        self.make_archive()
+        (self.archive / "working-index.bin").write_bytes(b"wrong index")
+        with self.assertRaisesRegex(ValueError, "archive index differs"):
+            self.restore(self.refresh_manifest())
+        self.assertFalse(self.receipt.exists())
+
+    def test_archive_requires_actual_working_bytes(self) -> None:
+        self.make_archive()
+        files = json.loads((self.archive / "versioned-files.json").read_text())
+        files["source.txt"]["sha256"] = "0" * 64
+        (self.archive / "versioned-files.json").write_text(json.dumps(files))
+        with self.assertRaisesRegex(ValueError, "bytes, modes or links differ"):
+            self.restore(self.refresh_manifest())
+        self.assertFalse(self.receipt.exists())
+
+    def test_archive_object_verification_is_required(self) -> None:
+        digest = self.make_archive()
+        probe = mock.Mock(side_effect=ValueError("archive object probe failed"))
+        with (
+            mock.patch.dict(ARCHIVE["PRESERVER"], {"verify_objects": probe}),
+            self.assertRaisesRegex(ValueError, "archive object probe failed"),
+        ):
+            self.restore(digest)
+        probe.assert_called_once()
+        self.assertFalse(self.receipt.exists())
+
+    def test_archive_rechecks_inputs_after_restoration_before_receipt(self) -> None:
+        digest = self.make_archive()
+        original = ARCHIVE["PRESERVER"]["restore_working_modes"]
+
+        def changed_input(destination: Path, files: dict) -> None:
+            original(destination, files)
+            with (self.archive / "working.patch").open("ab") as stream:
+                stream.write(b"changed after restoration\n")
+
+        with (
+            mock.patch.dict(
+                ARCHIVE["PRESERVER"], {"restore_working_modes": changed_input}
+            ),
+            self.assertRaisesRegex(ValueError, "input digest differs"),
+        ):
+            self.restore(digest)
+        self.assertFalse(self.receipt.exists())
+
+    def test_archive_metadata_cannot_change_outside_paths_kinds_or_invalid_modes(
+        self,
+    ) -> None:
+        self.make_archive()
+        original = json.loads((self.archive / "versioned-files.json").read_text())
+        marker = self.root / "outside"
+        marker.write_text("outside the checkout")
+        marker.chmod(0o644)
+        cases = {
+            "paths": {
+                **original,
+                "../outside": {"git_mode": "100644", "mode": 0, "sha256": "0" * 64},
+            },
+            "kinds": {
+                **original,
+                "source.txt": {**original["source.txt"], "git_mode": "120000"},
+            },
+            "mode": {**original, "source.txt": {**original["source.txt"], "mode": -1}},
+            "mode-upper": {
+                **original,
+                "source.txt": {**original["source.txt"], "mode": 0o10000},
+            },
+            "mode-bool": {
+                **original,
+                "source.txt": {**original["source.txt"], "mode": True},
+            },
+        }
+        for name, files in cases.items():
+            with self.subTest(name=name):
+                self.destination = self.root / ("invalid-" + name)
+                (self.archive / "versioned-files.json").write_text(json.dumps(files))
+                with self.assertRaisesRegex(
+                    ValueError, "Archive metadata " + name.split("-")[0] + " differ"
+                ):
+                    self.restore(self.refresh_manifest())
+                self.assertEqual(marker.stat().st_mode & 0o7777, 0o644)
+                self.assertFalse(self.receipt.exists())
+
+    def test_archive_preserves_existing_destination(self) -> None:
+        digest = self.make_archive()
+        self.destination.mkdir()
+        marker = self.destination / "keep"
+        marker.write_text("original")
+        with self.assertRaisesRegex(ValueError, "existing archive destination"):
+            self.restore(digest)
+        self.assertEqual(marker.read_text(), "original")
+
+    def test_archive_refuses_overlapping_destination(self) -> None:
+        digest = self.make_archive()
+        self.destination = self.archive / "inside"
+        with self.assertRaisesRegex(ValueError, "destination overlaps inputs"):
+            self.restore(digest)
+        self.assertFalse(self.destination.exists())
+
+    def test_archive_cli_writes_the_checked_receipt(self) -> None:
+        digest = self.make_archive()
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(HERE.parent / "restore-consumer-archive.py"),
+                "--archive",
+                str(self.archive),
+                "--expected-manifest-sha256",
+                digest,
+                "--destination",
+                str(self.destination),
+                "--receipt",
+                str(self.receipt),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout), json.loads(self.receipt.read_text())
+        )
+        self.assertEqual(M.working_snapshot(self.destination), self.expected)
 
 
 if __name__ == "__main__":

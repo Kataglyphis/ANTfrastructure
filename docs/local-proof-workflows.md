@@ -61,6 +61,37 @@ Under a nonblocking file lock, it verifies the exact expected prefix, preserves 
 
 The optional working-source command requires every tracked regular-file edit to be staged. It copies the selected committed base into an independent Git store, applies a binary patch from the source index, and verifies the complete index and actual file bytes, permissions and literal links. The original owner HEAD and selected base are recorded separately; neither is substituted for the staged overlay.
 
+When permanent materialized copies consume the source reserve, keep a durable archive
+and restore temporary independent checkouts with `restore-consumer-archive.py`.
+Its schema-1 `archive.json` records the base, HTTPS GitHub origin, whether the original
+is shallow, and SHA256 values for `base.bundle`, `working.patch`, `working-index.bin`
+and `versioned-files.json`. Shallow originals also carry `original-shallow.bin`.
+Create the bundle from the selected base, the binary patch and index from the staged
+source, and file metadata through `preserve-consumer-sources.py:working_files`.
+These native Git operations and the existing preservation APIs do not create a consumer commit.
+
+Pass the expected manifest digest from the reviewed source plan:
+
+```bash
+python3 linux/scripts/restore-consumer-archive.py \
+  --archive /durable/source-archive --expected-manifest-sha256 "$ARCHIVE_SHA256" \
+  --destination /temporary/independent-checkout --receipt /evidence/source-restore.json
+```
+
+The helper checks every fixed archive input before allocation, restores only the exact
+original shallow metadata before checkout, applies the staged patch and compares the
+complete index and actual files, modes and literal links. Missing Git objects fail;
+metadata paths and kinds must match the index before any file mode is restored.
+Archive inputs are checked again before the receipt is written.
+do not synthesize shallow boundaries to suppress that failure. A bundle verifier's
+complete-history message alone does not prove the original has complete history.
+Copy the helper with its preservation, host-command and `source_ci/common.py` companions.
+The receipt covers the parent only; preserve and bind recursive dependencies separately.
+Temporary materializations may disappear after reboot, so retain the complete durable
+archive and restore it before reusing paths. Filesystem availability does not prove a
+tmpfs user quota has room. The expected digest selects bytes; it does not authenticate
+their producer, run a build or establish hardware acceptance.
+
 A gitlink can have three different revisions: the selected base records A, the current index records B, and the actual child checkout contains C. The copy must retain B. Reading the working-tree diff would substitute C; ignoring submodules in the patch would omit B. The index-only patch avoids both errors. The unstaged regular-file guard may ignore submodule working-tree differences because actual child HEADs, indices and file trees require separate explicit bindings.
 
 This mode does not initialize or recursively preserve child sources, authenticate a pin, or prove a build or inference. Preserve every used child independently and verify its binding before running a consumer. Existing committed-tree acceptance still requires exact recursive gitlink matches and clean sources. Temporary real Git controls exercise the staged/index/checkout distinction, refusal paths and source races; mutation controls cannot establish source authenticity or hardware acceptance.
@@ -720,3 +751,74 @@ The supplied marker is not authenticated; a seal proves command lifecycle and cl
 not artifact contents, cache success, physical GPU inference, clean-host behavior or image
 promotion. Preserve independent engine-absence and acceptance checks separately. Mocked
 regressions and their mutation recipes live under `linux/scripts/tests/`.
+
+
+## Reviewed OCI archive deduplication
+
+`linux/host-config/deduplicate-oci-archives.py` previews an explicitly reviewed
+list of immutable `blobs/sha256` files. It hashes actual bytes, requires ordinary
+owned files in literal OCI layouts, and groups only equal device, ownership, mode,
+size and modification time. Nested Git checkouts are refused. Already linked files are counted once. Outside links,
+receipt-bound file identities and receipt-bound immediate parent directories are
+excluded, including the keeper, so their ctime and link count remain untouched.
+
+Pass every operational JSON receipt root explicitly. Identity fields, positional
+identity records and escaped JSON keys are inspected; identity-bearing parse or
+read failures abort. Identity detection consumes complete quoted tokens once and examines JSON keys; unrelated malformed source manifests remain byte-fingerprinted without being treated as identity receipts. Proofs in other formats or outside those roots are not covered.
+JSON aliases pin their target contents and link value; dangling aliases remain tracked, and non-file targets fail. Receipt metadata must remain stable across reads. The operation's fresh proof directory is excluded from its own receipt scan.
+
+```bash
+python3 linux/host-config/deduplicate-oci-archives.py preview \
+  --review "$candidates" --expected-sha256 "$candidate_sha" \
+  --root "$allowed_root" --receipt-root "$allowed_root" \
+  --receipt-root "$worktrees" --directory "$proof" \
+  --authorization "$authorization" --engine "$engine"
+python3 linux/host-config/deduplicate-oci-archives.py apply \
+  --review "$proof/preview.json" --expected-sha256 "$preview_sha" \
+  --directory "$proof" --engine "$engine"
+```
+
+The authorization JSON selects `allowed_actions: ["oci-archive-dedup"]`, a nonempty
+`owner_instruction` and the exact `candidates_sha256`. It records supplied authority;
+it cannot authenticate the person supplying it. Preview and apply retain fresh
+engine/unit observations. Apply refuses changed inputs, authorization, receipts or
+file identities and never repeats an existing journal. Each replacement is atomic;
+the entire operation is not a transaction. A failure retains its journal and cannot
+produce a success receipt. Final verification checks all replaced paths, content,
+stable metadata and protected receipt bytes. Observations do not lock other writers.
+
+Copy `oci_archive_dedup.py`, `host_commands.py`, `source_ci/common.py`,
+`local-proof/native_oci_layout.py` and `local-proof/native_oci_seed.py` with the CLI
+in the shared layout; the native OCI type companion remains in that closure.
+The fixture suite uses temporary layouts and stubbed transports; it does not run
+Docker/BuildKit, authenticate receipt roots, or prove image/GPU acceptance.
+
+## Retiring closed temporary quality environments
+
+A retained `ant-quality-venv-*` directory is a disposable installation of the locked
+quality tools. Match each literal owned temporary directory to its original
+`relocate-quality-venv.py` closure receipt and `tree_digest`, and exclude live
+process or container references. Shared compiler, Cargo and uv caches, consumer
+sources and finished packages are outside this workflow.
+
+Preserve the reviewed environments in a durable archive and compare every member
+before clearing them. Keep the exact root lists, source hashes, archive hash,
+native command arguments and raw statuses in the operation receipt. Native tools
+implement the recurring operations; those lists are reviewed inputs.
+
+```bash
+tar --create --format=gnu --numeric-owner --sort=name \
+  --use-compress-program='zstd -T4 -6 --long=29' --file "$archive" \
+  -C "$temporary_root" --null --verbatim-files-from --files-from "$relative_roots"
+tar --compare --numeric-owner --use-compress-program='zstd -d --long=29' \
+  --file "$archive" -C "$temporary_root"
+xargs --null --no-run-if-empty --max-args=1 --max-procs=1 \
+  --arg-file "$absolute_roots" uv venv --clear --offline --no-project \
+  --no-python-downloads --no-managed-python --python /usr/bin/python3 \
+  --prompt antfrastructure-quality --
+```
+
+Recheck closure hashes and original receipt hashes immediately before the native
+clear operation. It leaves empty virtual environments that can be recreated from
+the owning locks; preserve the archive for exact restoration. The observations do
+not lock other writers, authenticate receipts or establish runtime acceptance.

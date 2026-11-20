@@ -31,7 +31,7 @@ _rig() {
   _g remote add origin "${_work}/remote.git"
   local r="${_work}/repo"
   mkdir -p "${r}/docs/scripts" "${r}/linux/scripts/tests"
-  cp "${REPO}/docs/scripts/"{verify_mutations,mutation_parse,mutation_shards,mutation_push}.py "${r}/docs/scripts/"
+  cp "${REPO}/docs/scripts/"{verify_mutations,mutation_parse,mutation_shards,mutation_push,mutation_workspace}.py "${r}/docs/scripts/"
   cp "${REPO}/linux/scripts/"{verify_comment_size,gate_scope,quality_allow}.py "${REPO}/linux/scripts/comment-size.allow" "${r}/linux/scripts/"
   echo 'exit 0' > "${r}/linux/scripts/tests/test-doc-numbers.sh"
   echo 'GUARD=on' > "${r}/plain.sh"

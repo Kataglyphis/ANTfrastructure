@@ -42,9 +42,9 @@ _set_sibling_client() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (153 files)"
+  t_assert_contains "$1" "ty quality gate: clean (157 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
-  t_assert_contains "$1" "Linux Python report: clean (153 files)"
+  t_assert_contains "$1" "Linux Python report: clean (157 files)"
   t_assert_contains "$1" "Windows Python report: clean (2 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -184,6 +184,11 @@ printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scr
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/image-acceptance.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/image_acceptance_local.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/preserve-consumer-sources.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/restore-consumer-archive.py"
+for path in linux/host-config/oci_archive_dedup.py linux/host-config/deduplicate-oci-archives.py linux/scripts/tests/oci_archive_dedup_tests.py; do
+  _set_answer "${ROOT}/${path}" 42
+done
+printf 'from oci_archive_dedup import answer\ndef fixture_answer() -> bool:\n    return callable(answer)\n' > "${ROOT}/linux/scripts/tests/oci_archive_dedup_tests.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/runtime_terminal_evidence.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/runtime_storage_guard.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/launch-runtime-storage-guard.py"
@@ -227,9 +232,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-  t_assert_contains "${out}" "Ruff signature annotation gate: clean (160 files)"
-  t_assert_contains "${out}" "Ruff private return gate: clean (160 files)"
-  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (148 files)"
+  t_assert_contains "${out}" "Ruff signature annotation gate: clean (164 files)"
+  t_assert_contains "${out}" "Ruff private return gate: clean (164 files)"
+  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (151 files)"
 
 for sibling in "${sibling_clients[@]}"; do
   _set_answer "${ROOT}/${sibling%%:*}" 42
@@ -244,15 +249,15 @@ t_assert_contains "${out}" "invalid-return-type"
 t_assert_contains "${out}" "rc=1"
 _set_answer "${ROOT}/linux/scripts/image_acceptance_local.py" 42
 
-for storage_target in preserve-consumer-sources.py runtime_terminal_evidence.py runtime_storage_guard.py launch-runtime-storage-guard.py launch-local-final.py local-proof/proof_subject.py local-proof/native-oci-handoff.py append-operational-memory.py operational_memory.py operational_memory_guard.py tests/operational_memory_tests.py; do
+for storage_target in linux/scripts/preserve-consumer-sources.py linux/scripts/restore-consumer-archive.py linux/scripts/runtime_terminal_evidence.py linux/scripts/runtime_storage_guard.py linux/scripts/launch-runtime-storage-guard.py linux/scripts/launch-local-final.py linux/scripts/local-proof/proof_subject.py linux/scripts/local-proof/native-oci-handoff.py linux/scripts/append-operational-memory.py linux/scripts/operational_memory.py linux/scripts/operational_memory_guard.py linux/scripts/tests/operational_memory_tests.py linux/host-config/oci_archive_dedup.py linux/host-config/deduplicate-oci-archives.py; do
   t_case "operational helper stays in the strict type scope: ${storage_target}"
-  _set_answer "${ROOT}/linux/scripts/${storage_target}" "'wrong'"
+  _set_answer "${ROOT}/${storage_target}" "'wrong'"
   out="$(_run)"
   t_assert_contains "${out}" "ty quality gate failed"
   t_assert_contains "${out}" "${storage_target}"
   t_assert_contains "${out}" "invalid-return-type"
   t_assert_contains "${out}" "rc=1"
-  _set_answer "${ROOT}/linux/scripts/${storage_target}" 42
+  _set_answer "${ROOT}/${storage_target}" 42
 done
 
 t_case "ambient checker versions cannot replace the repository pins"
@@ -535,6 +540,8 @@ parameter_targets=(
   linux/scripts/image-acceptance.py \
   linux/scripts/image_acceptance_local.py \
   linux/scripts/preserve-consumer-sources.py \
+  linux/scripts/restore-consumer-archive.py \
+  linux/host-config/oci_archive_dedup.py linux/host-config/deduplicate-oci-archives.py \
   linux/scripts/runtime_terminal_evidence.py \
   linux/scripts/runtime_storage_guard.py \
   linux/scripts/launch-runtime-storage-guard.py \

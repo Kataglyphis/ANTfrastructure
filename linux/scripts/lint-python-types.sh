@@ -194,6 +194,11 @@ mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
   'linux/scripts/quality_report_compare.py' 'linux/scripts/quality_report_github.py' \
   'linux/scripts/quality_report_model.py' 'linux/scripts/quality_report_text.py' \
   'linux/scripts/quality_report_tree.py' 'docs/scripts/code_dupes_extra.py')
+mapfile -d '' -t archive_proof_files < <(git ls-files -z -- 'linux/scripts/restore-consumer-archive.py')
+quality_files+=("${archive_proof_files[@]}")
+parameter_return_files+=("${archive_proof_files[@]}")
+mapfile -d '' -t oci_archive_files < <(git ls-files -z -- 'linux/host-config/oci_archive_dedup.py' 'linux/host-config/deduplicate-oci-archives.py')
+parameter_return_files+=("${oci_archive_files[@]}")
 # Runtime imports use their installed package environments in dedicated workflow or image gates.
 linux_environment_checked_files=(
   'docs/conf.py'
@@ -205,7 +210,7 @@ windows_environment_checked_files=('windows/scripts/build/litert-wheel-smoke.py'
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#parameter_return_files[@]}" -eq 148 ] || { echo "Expected 148 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 151 ] || { echo "Expected 151 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
 jetson_dockerfile="${ROOT}/linux/Dockerfile.torch"
 [ -f "${jetson_dockerfile}" ] || { echo "Torch Dockerfile is missing for the Jetson type gate" >&2; exit 2; }
 grep -Fq 'source=linux/jetson-webcam/app.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro' "${jetson_dockerfile}" || {
@@ -253,6 +258,7 @@ search=(--extra-search-path docs/scripts --extra-search-path linux/scripts --ext
   --extra-search-path linux/scripts/06-packaging
   --extra-search-path linux/scripts/tests
   --extra-search-path linux/llm-stack/tests/gateway_e2e
+  --extra-search-path linux/host-config
   --extra-search-path linux/scripts/local-proof)
 
 strict_scan() {

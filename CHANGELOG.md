@@ -17,6 +17,24 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — deduplicate reviewed immutable OCI archives
+
+- Add a default preview and digest-bound apply helper for explicitly selected immutable OCI blobs. Require matching content, ownership, modes and timestamps; exclude identity-bound receipts, parent directories and outside hardlinks.
+- Recheck candidate inputs, authorization, receipt protections and idle engines before atomic per-path replacement. Retain partial-operation journals and verify original paths and receipt bytes before reporting success. This is neither receipt authentication nor a lock against concurrent writers.
+- Scan complete quoted tokens once to bound large escaped source payloads. Detect identity-bearing JSON keys without mistaking unrelated strings in source manifests for identity records; retain their byte fingerprints and refusal of malformed identity receipts.
+- Reuse the qualified native OCI hashing and identity helpers and the additive full-ID host-command query. Container fixture and mutation checks cover refusal paths without touching real archives.
+
+## 2026-11-20 — restore digest-bound consumer source archives
+
+- Restore a parent snapshot from a local base bundle, staged binary patch, index, file/mode manifest and exact original shallow metadata. Check caller-selected archive digests, restored bytes/index and independent Git objects before writing a receipt.
+- Restore original shallow boundaries before checkout; never invent boundaries or claim complete history. Preserve recursive dependencies separately. The archive format and temporary materialization do not establish source authenticity, builds or hardware acceptance.
+- Extend the existing source-preservation suite with real archive round trips, shallow history, changed inputs, exact index/working bytes, required object checks and refused outputs.
+
+## 2026-11-20 — preserve private mutation worker paths
+
+- Add opt-in `verify_mutations.py --workspace-root` for stable worker paths in fresh container-private roots. Keep source copies, baseline controls, isolated workers and existing parallelism/disk caps.
+- Refuse existing paths, source overlap, symlinked parents and in-place combinations. Require root identity and successful cleanup; filesystem and child-process controls do not establish compiler hits, native Windows behavior or build acceptance.
+
 ## 2026-11-20 — consolidate the Linux proof work with current develop
 
 - Preserve both explicit ORT census loader-path interfaces and their exemption arguments. Keep the platform grouping in the shared ISA module so the runtime smoke stays within its existing size limit.
