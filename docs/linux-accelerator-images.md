@@ -186,7 +186,7 @@ whose module still exports `GetProvider` or whose wheel's build info lacks `cuda
 (the published `:latest-nvidia` of 2026-10-19 is that image). The wheel registers the plugin on
 `import onnxruntime`; `InferenceSession(..., providers=["CUDAExecutionProvider"])` then resolves
 it through the registered plugin's device, so Python code is unchanged. A C++ or Rust consumer
-registers `${ORT_GPU_DIR}/lib/libonnxruntime_providers_cuda.so` under the name
+registers `/usr/local/lib/onnxruntime-gpu/lib/libonnxruntime_providers_cuda.so` under the name
 `CUDAExecutionProvider` before it creates a session
 ([the contract](consumer-image-contract.md#the-cuda-plugin-ep)). cuDNN stays a build-time header
 dependency; kernels that need it fail with `NOT_IMPLEMENTED` where no CUDA fallback exists.
@@ -339,13 +339,14 @@ on every image, without a GPU:
 
 - **rocm**: `ROCM_PATH` and `HIP_PATH` are `/opt/rocm`, `/opt/rocm/bin` is on `PATH`, the
   `hipconfig` on `PATH` names `/opt/rocm`, `hipcc`'s clang is `/opt/rocm`'s, `hipcc` builds a HIP
-  program for gfx1201, and ORT lists `MIGraphXExecutionProvider`. Any other image advertises no
-  ROCm root.
+  program for gfx1201, `ORT_AMDGPU_EP_ROOT` is `/usr/local/lib/onnxruntime-ep-amdgpu`, and its
+  `lib/libmigraphx-ep.so` is shipped, exports `CreateEpFactories` and `ReleaseEpFactory` and resolves
+  every library it needs. Any other image advertises no ROCm root and no `ORT_AMDGPU_EP_ROOT`.
 - **`ENABLE_TENSORRT=true`**: `libnvinfer`, `libnvinfer_plugin` and `libnvonnxparser` of
   `TENSORRT_VERSION`'s major resolve from `/usr/lib/<triplet>`, `getInferLibVersion()` equals the
-  pin, its builder resources are in that dir, the ORT TensorRT EP is in the native tree and the
-  venv and resolves that TensorRT, and ORT lists `TensorrtExecutionProvider`. Without it, no
-  TensorRT of that major and no TensorRT EP.
+  pin, its builder resources are in that dir, and the plugin TensorRT EP
+  `${ORT_TENSORRT_EP_ROOT}/lib/libonnxruntime_ep_tensorrt.so` is shipped, exports both plugin entry points
+  and resolves that TensorRT. Without it, no TensorRT of that major and no TensorRT EP.
 - **Every image**: no TensorRT header (under `/usr/include`, `/usr/local/include`,
   `/usr/local/tensorrt` or `/opt/nvidia`), no dev link (in the default lib dir or DeepStream's
   TensorRT prefix), no `trtexec` and no `tensorrt` Python package ([§ Redistribution](#redistribution)).

@@ -141,7 +141,8 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
 - [ ] **CON260 — OpenVINO, its ORT provider as a chain-built plugin, and the NPU driver** [L, ★★★].
       `OPENVINO_VERSION=2026.4.1` is pinned and Renovate-tracked, yet nothing fetches OpenVINO:
       `ffmpeg_probe_libopenvino` always skips, the image's FFmpeg has no `--enable-libopenvino`, and the
-      probe's fallback literal `2026.2.1` differs from the pin. Read 2026-11-10:
+      probe had a fallback literal `2026.2.1` (gone 2026-11-20: it takes the passed pin or the synthetic
+      `.pc`'s default). Read 2026-11-10:
       1. ORT v1.31.1's tree carries the provider's `OrtEpFactory` (`core/providers/openvino/ov_factory.cc`);
          nobody built it here.
       2. Intel's `onnxruntime-ep-openvino` 1.8.1 is binary-only (52.6 MB Linux, 75.8 MB Windows) and
@@ -153,7 +154,7 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
 
       Build OpenVINO at the pin and the provider as a plugin over the chain's CPU prefix, with QNN's
       export, census and verify contracts; add the NPU user-space driver; then wire FFmpeg's
-      backend at the pin (owner 2026-11-12) and drop the probe's literal. amd64 only. Done when `verify_ort_profile.py` shows operators on the
+      backend at the pin (owner 2026-11-12). amd64 only. Done when `verify_ort_profile.py` shows operators on the
       OpenVINO provider on the owner's Intel GPU and NPU, and a device-less check reports registration only.
 - [b] **CON261 — PyTorch on Intel GPUs: a torch-only `-intel` tag** [M, ★★]. **Postponed indefinitely**
       (owner 2026-11-12): the approach below is approved, and it is built only if he gets an Intel GPU. `torch` 2.14.1+xpu for cp315 is 861 MB on Linux and 768 MB on Windows,
@@ -723,11 +724,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★]. In source (CHANGELOG 2026-11-03,
       `_disk_guard_release_stale_records`), tested with stubs only. Done when the next chain resumed after a stop
       logs `left by a stopped chain: restarting buildkitd` and reclaims without a hand restart.
-- [ ] **CON153 leftover — the chain says at start whether the asset-mirror secret is present** [S, ★]. The mirror
-      itself is proved: with the keys installed, the rocm media stage of 2026-11-07 (run 20261107-192205) logged
-      `asset-mirror| hit` for all ten plugin-EP archives that `fill-asset-mirror.sh --apply` had mirrored from the
-      previous run's misses. What stayed invisible for two rounds was the ABSENCE of the host env file:
-      `host_secret_file_ready` is silent on a missing file. One `[INFO] asset mirror: none` line at chain start.
 - [ ] **CON129 — finish GTK 4 validation on foreign arches and GPU variants** [M, ★★★].
       The mandatory `gui_unix` feature is enabled in OxidANT. On the recorded `3c558d88` index,
       its x64 run `39865676735` passed 728 normal and 728 instrumented tests with real Xvfb/GTK;
@@ -1292,7 +1288,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       which nothing defines; `docs/consumer-image-contract.md` 1114-1116 points every GPU consumer at
       `onnxruntime-gpu/lib`, which rocm no longer has; `AGENTS.md` 1243-1244 says the verify stages fail an in-tree
       MIGraphX provider, which only the runtime smoke does; CON233 names per-language registration helpers that
-      `shared/` does not hold.
+      `shared/` does not hold. **Fixed 2026-11-20:** the accelerator page names `/usr/local/lib/onnxruntime-gpu` and
+      the runtime gate's real plugin-EP checks (root, module, both exports, closure), the contract sends only NVIDIA
+      consumers to `onnxruntime-gpu/lib`, `AGENTS.md` says the verify stage fails the in-tree TensorRT provider and the
+      smoke both; CON233 no longer names such helpers.
       (j) **The Python bundle's library closure, seen 2026-11-13.** OrchestrANT's first AMD bundle on the
       plugin-only image (run 43409294907, job *inventory (amd, x64, latest-rocm)*, hub pin ed3d170) stops in
       `elf-closure.sh`: `runtime/lib/python3.15/site-packages/onnxruntime/capi/libmigraphx-ep.so: libonnxruntime.so.1`
