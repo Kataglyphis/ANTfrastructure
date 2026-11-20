@@ -149,6 +149,17 @@ The preceding history is in [the 2026-11-05 archive](changelog-archive-2026-11-0
 - Synthetic receipt and subprocess controls prove dispatch and failure accounting; actual image, both WASM flavors and final consumer acceptance require separate evidence.
 - The local default-amd64 media index `b6b654b62f92` passes the actual native/GIL/FT factory and negative controls, with the FT GIL disabled, raw zero and checked cleanup/container absence. This covers its CPU prefix, not other products, WASM or final runtime/consumer acceptance.
 
+## 2026-11-11 — prepare verified private QAIRT delivery
+
+- Add a persistent private-route SDK sender beside the endpoint key helper. Bind the recipient fingerprint, literal private address, exact archive size/hash and one preseed ZIP; bypass proxies and reject redirects.
+- Refuse mismatched existing objects, use conditional no-replace for absent objects and verify complete downloaded bytes before success. Keep a local lock, source identity checks, a whole-operation deadline and exclusive redacted receipts; preserve the receiver's original hash/cache gate.
+- Share real-key test setup and cover HTTP errors, races, stale receipts, symlinks, redaction and trickled responses with local fixtures and mutation recipes. These checks establish no Windows service, actual SDK copy, TLS or receiver acceptance.
+
+## 2026-11-11 — preserve the private QAIRT endpoint handoff
+
+- Version RSA-3072 recipient-key generation and RSA-OAEP/SHA256/MGF1-SHA256 decryption. Restrict private files to their owner outside Git and refuse overwrites, mismatched fingerprints, malformed payloads and secret-bearing diagnostics.
+- Keep SSH host identity separate and the SDK on the existing private preseed route. Real OpenSSL round trips and negative controls prove the cryptographic/file boundaries, not peer identity, reachability or SDK transfer.
+
 ## 2026-11-11 — preserve skipped GPU prefixes during WebGPU wheel delivery
 
 - The actual default-amd64 media solve reached finalization, then refused an empty skipped GPU prefix because it had no build receipt. Preserve that failed solve and its unchanged source.

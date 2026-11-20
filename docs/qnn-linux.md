@@ -13,6 +13,10 @@ follows the same contract with the same zip and pin.
 
 ## Staging
 
+For a private Windows preseed endpoint, use the [QAIRT key handoff](build-secrets.md#private-qairt-endpoint-handoff).
+The encrypted endpoint exchange does not change the SDK pin or authorize a public SDK upload.
+The preserved private transfer tool verifies source and remote bytes without replacing an existing object; the receiving build still uses its original SDK hash/cache gate.
+
 Nothing to stage: `resolve_qnn_sdk` (`01-core/qnn-sdk.sh`, loaded by `media_common_init`)
 downloads `softwarecenter.qualcomm.com/.../Qualcomm_AI_Runtime_Community/All/<v>/v<v>.zip`
 with `download_verified_file` (asset mirror first, `QNN_SDK_ZIP_SHA256` the only gate) into
