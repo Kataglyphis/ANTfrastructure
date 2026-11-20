@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Sourced by the pre-commit and pre-push hooks: a mutation test that is red on this host before any mutation proves nothing here.
+# shellcheck source=log-bootstrap.sh
+source "${BASH_SOURCE[0]%/*}/log-bootstrap.sh" || return
 
 # <log> <hook>: the ids red before any mutation (bash 5.2 here, 5.3 in the image) when they alone failed, so the image decides.
 host_red_ids() {

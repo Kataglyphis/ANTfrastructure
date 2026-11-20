@@ -159,10 +159,18 @@ static int reap_worker(pid_t worker, int *status) {
   return result == worker ? 0 : errno;
 }
 
+static int monotonic_time(struct timespec *value) {
+  if (clock_gettime(CLOCK_MONOTONIC, value) == 0) {
+    return 0;
+  }
+  return errno != 0 ? errno : EIO;
+}
+
 static int elapsed_ms(const struct timespec *started, int64_t *elapsed) {
   struct timespec now;
-  if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
-    return errno;
+  const int error = monotonic_time(&now);
+  if (error != 0) {
+    return error;
   }
   *elapsed = (int64_t)(now.tv_sec - started->tv_sec) * 1000 +
              (now.tv_nsec - started->tv_nsec) / 1000000;
@@ -246,8 +254,8 @@ static void supervise(const char *path, char *const arguments[],
     error = errno;
   }
   struct timespec started;
-  if (error == 0 && clock_gettime(CLOCK_MONOTONIC, &started) != 0) {
-    error = errno;
+  if (error == 0) {
+    error = monotonic_time(&started);
   }
   int execution[2] = {-1, -1};
   if (error == 0) {

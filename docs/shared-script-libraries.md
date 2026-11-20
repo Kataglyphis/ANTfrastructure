@@ -512,6 +512,11 @@ target-decomposition suite uses it for every host tool it fakes; dropping its
 
 ## The logging bootstrap
 
+The commit/push hooks' `hook-host-red.sh` imports this bootstrap like the other
+shared shell libraries. Its unchanged host-red selection policy cannot bypass a
+failed unmutated library control. Copies carry the bootstrap companion; the
+existing standalone-library suite checks real logger exports and repeat imports.
+
 The bootstrap also owns fallback registration for standalone Abseil, Torch
 wheelhouse and payload-copy scripts. A scoped `_LOG_BOOTSTRAP_REGISTRAR_ONLY=1`
 source imports only the registrar; it loads no real logger and leaves the
@@ -2611,6 +2616,21 @@ receipts cover strict/conditional calls and usage aliases, with separate empty/s
 ### Loaded module and isolated worker assets
 
 `shared/rust/loaded_module.rs` owns address-to-loaded-file lookup. Its exact shared asset accompanies the isolated Rust binding/tests, C source/header and HIP worker source/header. Declare consumer destinations in `.antfrastructure-shared.manifest`; retain the complete companion set. The [consumer contract](consumer-image-contract.md#amds-plugin-migraphx-ep) explains path and runtime evidence limits.
+
+The C supervisor uses one monotonic-clock helper before starting a worker and for
+elapsed time. Clock failure preserves the original nonzero errno and otherwise
+returns `EIO`, so it cannot report success with an unset timestamp. A failure
+during supervision still kills and reaps its worker before returning the error.
+`isolated-helper-compile.sh` compiles both the shared C object and clock fixture
+with `-O3 -Wall -Wextra -Werror` through the measured compiler cache. Its clock
+fixture compiler propagates failure before linking; existing native-cache paths
+stay unchanged for the Rust and Dart drivers.
+
+`test-isolated-helper-clock.sh` injects initial and elapsed clock failures with
+zero or nonzero errno into real supervised child runs. It checks error values,
+unchanged failed output, no worker on initial failure, actual reaping after an
+elapsed failure and ordinary timeout cleanup. These controls do not prove HIP,
+package placement, consumer integration or kernel-blocked process cleanup.
 
 ### Cargo native helper transport
 

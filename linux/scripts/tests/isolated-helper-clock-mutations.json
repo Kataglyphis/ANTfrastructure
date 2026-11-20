@@ -1,0 +1,65 @@
+[
+  {
+    "id": "lib.isolated-clock.zero-errno",
+    "target": "shared/native/isolated_helper.c",
+    "find": "return errno != 0 ? errno : EIO;",
+    "replace": "return errno != 0 ? errno : EINVAL;",
+    "test": "bash linux/scripts/tests/test-isolated-helper-clock.sh",
+    "why": "A failing initial or elapsed clock with errno zero must report EIO and never success.",
+    "timeout": 45
+  },
+  {
+    "id": "lib.isolated-clock.preserve-errno",
+    "target": "shared/native/isolated_helper.c",
+    "find": "return errno != 0 ? errno : EIO;",
+    "replace": "return EIO;",
+    "test": "bash linux/scripts/tests/test-isolated-helper-clock.sh",
+    "why": "Preserve actual EACCES and ERANGE rather than replace them with the fallback.",
+    "timeout": 45
+  },
+  {
+    "id": "lib.isolated-clock.initial-error",
+    "target": "shared/native/isolated_helper.c",
+    "find": "error = monotonic_time(&started);",
+    "replace": "error = monotonic_time(&started) != 0 ? EINVAL : 0;",
+    "test": "bash linux/scripts/tests/test-isolated-helper-clock.sh",
+    "why": "The initial clock error must survive before any worker is launched.",
+    "timeout": 45
+  },
+  {
+    "id": "lib.isolated-clock.elapsed-error",
+    "target": "shared/native/isolated_helper.c",
+    "find": "const int error = monotonic_time(&now);\n  if (error != 0) {\n    return error;\n  }",
+    "replace": "const int error = monotonic_time(&now);\n  if (error != 0) {\n    return EAGAIN;\n  }",
+    "test": "bash linux/scripts/tests/test-isolated-helper-clock.sh",
+    "why": "The elapsed clock error must survive worker teardown and reach its caller unchanged.",
+    "timeout": 45
+  },
+  {
+    "id": "lib.isolated-clock.error-reaping",
+    "target": "shared/native/isolated_helper.c",
+    "find": "const int waited = reap_worker(worker, &packet->status);",
+    "replace": "const int waited = error == 0 ? reap_worker(worker, &packet->status) : EIO;",
+    "test": "bash linux/scripts/tests/test-isolated-helper-clock.sh",
+    "why": "A failed elapsed clock still requires actual worker reaping before return.",
+    "timeout": 45
+  },
+  {
+    "id": "lib.isolated-clock.timeout-bound",
+    "target": "shared/native/isolated_helper.c",
+    "find": "error == 0 && !cancelled && elapsed < timeout_ms",
+    "replace": "error == 0 && !cancelled && elapsed < (int64_t)timeout_ms * 1000",
+    "test": "bash linux/scripts/tests/test-isolated-helper-clock.sh",
+    "why": "An ordinary finite timeout must kill and reap instead of letting the sleeping worker exit normally.",
+    "timeout": 45
+  },
+  {
+    "id": "lib.isolated-clock.fixture-compiler-status",
+    "target": "linux/scripts/lib/isolated-helper-compile.sh",
+    "find": "_ih_c_object \"$1\" \"$2\" clock-fixture shared/native/tests/isolated_helper_clock_test.c clock-fixture || return",
+    "replace": "_ih_c_object \"$1\" \"$2\" clock-fixture shared/native/tests/isolated_helper_clock_test.c clock-fixture",
+    "test": "bash linux/scripts/tests/test-isolated-helper-clock.sh",
+    "why": "A compiler failure cannot fall through to a successful stale-object link and hide raw status43.",
+    "timeout": 45
+  }
+]

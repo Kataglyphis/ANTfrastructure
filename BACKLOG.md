@@ -1228,6 +1228,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       passes G2 and ASan/LSan on CPU plus two real plugin GPU tiny-model sessions. Full consumer builds,
       finished packages and their detector parity/operator profiles remain open; this is not image promotion.
 
+      **Isolated-worker clock follow-up 2026-11-20:** the shared C supervisor preserves clock errors
+      before launch and during supervision, including `EIO` when failure leaves errno zero. Five real
+      clock/timeout cases pass under GCC 16.2 `-O3 -Werror`; all seven new guard mutations are caught.
+      Consumer mirror updates, complete source qualification and helper-bearing finished packages remain open.
+
 
 **Native packaging source follow-up 2026-11-11:** AccelerANTgine's prepared CPack source selects the CPU core
       and separate image plugin, preserves its full license tree and requires the shared plugin-safe AppImage

@@ -2,11 +2,21 @@
 # One fixture compiler boundary retains the raw compiler verdict and cache statistics for both test drivers.
 # shellcheck source=log-bootstrap.sh
 source "${BASH_SOURCE[0]%/*}/log-bootstrap.sh" || return
+_ih_c_object() {
+  local _ih_root="$1" _ih_output="$2" _ih_stem="$3" _ih_source="$4" _ih_object="$5"
+  bash "${_ih_root}/linux/scripts/capture-sccache-command.sh" "${_ih_output}/${_ih_stem}-cache" -- \
+    sccache cc -std=c11 -O3 -Wall -Wextra -Werror -fPIC -c \
+    "${_ih_root}/${_ih_source}" -o "${_ih_output}/${_ih_object}.o"
+}
+
 compile_isolated_helper_object() {
-  local _ih_root="$1" _ih_output="$2"
-  bash "${_ih_root}/linux/scripts/capture-sccache-command.sh" "${_ih_output}/native-cache" -- \
-    sccache cc -std=c11 -Wall -Wextra -Werror -fPIC -c \
-    "${_ih_root}/shared/native/isolated_helper.c" -o "${_ih_output}/isolated-helper.o"
+  _ih_c_object "$1" "$2" native shared/native/isolated_helper.c isolated-helper
+}
+
+compile_isolated_clock_fixture() {
+  _ih_c_object "$1" "$2" clock-fixture shared/native/tests/isolated_helper_clock_test.c clock-fixture || return
+  cc "$2/clock-fixture.o" "$2/isolated-helper.o" -pthread \
+    -Wl,--wrap=clock_gettime,--wrap=waitpid -o "$2/clock-fixture"
 }
 
 _ih_asan_object() {
