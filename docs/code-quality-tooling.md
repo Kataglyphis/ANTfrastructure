@@ -1239,7 +1239,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **7025 entries** over **821 distinct test commands**; both digits are
+manifest holds **7077 entries** over **823 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1318,6 +1318,29 @@ filesystem's free space holds: each shard is a full copy of the tree, which on t
 is RAM a build may need. The run says so when that cap bites. `--jobs 1` is the old serial
 behaviour; `--in-place` is always serial.
 
+`--workspace-root /mutation-work` opts into fixed `worker-0`, `worker-1`, … paths
+inside a fresh private root. Use the same container-private absolute path in separate
+containers: the pinned [sccache Rust implementation](https://github.com/mozilla/sccache/blob/965c01943a40c9df96264474bbe28ba98f2e1487/src/compiler/rust.rs#L1753-L1794)
+hashes Cargo environment values and the compile directory, so random mirror paths
+prevent reuse even for unchanged dependency sources. The option still copies and
+restores each mutant separately, shares the existing baselines and retains worker,
+timeout and disk caps. Worker assignment can still change cache hits.
+
+The root must not exist, overlap the source or use a symlinked parent. Allocation
+is exclusive; cleanup checks root identity and the literal parent, and a cleanup
+failure fails the run. Each invocation owns its root until cleanup completes.
+The option refuses `--in-place`; check-only modes allocate nothing. Default
+temporary mirrors retain their existing behavior. `test-mutation-workspaces.sh`
+checks real child commands, fixed parallel slots, refusals and cleanup failures;
+it does not prove compiler hits, concurrent-writer authentication or native Windows
+behavior. Measure real cache deltas separately after cleaning only the owned Cargo
+target. Source and compiler caches stay outside the disposable root.
+Copies of `verify_mutations.py` carry `mutation_workspace.py` beside
+`mutation_parse.py`, `mutation_push.py` and `mutation_shards.py`; workspace and
+relative-target path checks share that owner.
+Copy-failure coverage also injects a transport error through the shared Python
+fixture, so rootful containers exercise the same fatal-copy verdict as other users.
+
 Symlinks carry TWO properties here, not one. `mirror_tree` copies with
 `follow_symlinks=False`, so a link stays a link: dereferencing would pull whatever
 it points at — a host binary, a device node — into a copy made once per commit,
@@ -1347,6 +1370,7 @@ nothing (the common commit) copies nothing at all.
 | `--only <id>` | one entry, while writing it |
 | `--root <dir>` | which tree to copy and check. It is copied too — pointing the gate at a mirror is a second belt, not the isolation mechanism |
 | `--jobs <n>` | how many mutations to prove at once, one mirror each (default: the CPUs the process may use, capped at the entry count and at a quarter of the temp filesystem's free space). Every mutation is still applied, run and restored alone, inside its own shard's copy |
+| `--workspace-root <absolute-path>` | fresh private root with fixed per-worker paths; refuses existing paths, source overlap and symlinked parents. Cleanup failure is fatal. Use a container-private path; check-only modes allocate nothing |
 | `--shard K/N` | prove only `entries[K::N]` of the selection (`K` from 0), after `--only`/`--changed`. N runs over the same manifest prove every entry exactly once between them; a `K` outside `0..N-1` exits 2. CI's mutations jobs are the one caller, through preflight's `PREFLIGHT_MUTATION_SHARD` |
 | `--shard-costs <table>` | with `--shard`: prove shard K of the plan built from the cost table instead of `entries[K::N]` ([the shard plan](#the-shard-plan)). The hub's CI passes it through preflight's `PREFLIGHT_MUTATION_COSTS`; consumers keep the round-robin slice |
 | `--parse-check` | refuse every selected recipe whose mutant does not parse, and run no test ([mutants must parse](#mutants-must-parse)) |
@@ -1582,7 +1606,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 106 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 118 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -2051,7 +2075,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 106 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 118 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of

@@ -2089,9 +2089,9 @@
  },
  {
   "id": "mutations.workspace-cleanup",
-  "target": "docs/scripts/verify_mutations.py",
-  "find": "        shutil.rmtree(workspace, ignore_errors=True)",
-  "replace": "        pass",
+  "target": "docs/scripts/mutation_workspace.py",
+  "find": "            for root in roots:\n                shutil.rmtree(root, ignore_errors=True)",
+  "replace": "            for root in roots:\n                pass",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "one leaked ~130MB copy per invocation, and the gate runs from a pre-commit hook"
  },
@@ -56236,5 +56236,421 @@
   "replace": "name = selected_library(value, required)\n            if expected_pid is not None and not re.fullmatch(rf\"\\s*{expected_pid}:\\s*\", prefix):\n                raise ValueError(\"loader trace process differs from profile\")\n            if name is not None:",
   "test": "bash linux/scripts/tests/test-verify-ort-loader-trace.sh",
   "why": "Unrelated HIP child records may share a parent trace without supplying required ORT/plugin evidence."
+ },
+ {
+  "id": "mutations.workspace-absolute",
+  "target": "docs/scripts/mutation_workspace.py",
+  "find": "if not root.is_absolute() or os.path.abspath(requested) != requested:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-mutation-workspaces.sh",
+  "why": "Private workspace controls must reject unsafe allocation, retain fixed worker bindings and fail changed-identity or failed cleanup. They use disposable fixtures and do not prove cache hits, concurrent-writer authentication or build acceptance."
+ },
+ {
+  "id": "mutations.workspace-literal-parent",
+  "target": "docs/scripts/mutation_workspace.py",
+  "find": "if root.parent.resolve(strict=True) != root.parent:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-mutation-workspaces.sh",
+  "why": "Private workspace controls must reject unsafe allocation, retain fixed worker bindings and fail changed-identity or failed cleanup. They use disposable fixtures and do not prove cache hits, concurrent-writer authentication or build acceptance."
+ },
+ {
+  "id": "mutations.workspace-source-overlap",
+  "target": "docs/scripts/mutation_workspace.py",
+  "find": "if root.is_relative_to(source_path) or source_path.is_relative_to(root):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-mutation-workspaces.sh",
+  "why": "Private workspace controls must reject unsafe allocation, retain fixed worker bindings and fail changed-identity or failed cleanup. They use disposable fixtures and do not prove cache hits, concurrent-writer authentication or build acceptance."
+ },
+ {
+  "id": "mutations.workspace-exclusive-root",
+  "target": "docs/scripts/mutation_workspace.py",
+  "find": "explicit.mkdir(mode=0o700)",
+  "replace": "explicit.mkdir(mode=0o700, exist_ok=True)",
+  "test": "bash linux/scripts/tests/test-mutation-workspaces.sh",
+  "why": "Private workspace controls must reject unsafe allocation, retain fixed worker bindings and fail changed-identity or failed cleanup. They use disposable fixtures and do not prove cache hits, concurrent-writer authentication or build acceptance."
+ },
+ {
+  "id": "mutations.workspace-fixed-slots",
+  "target": "docs/scripts/mutation_workspace.py",
+  "find": "f\"worker-{len(roots)}\"",
+  "replace": "f\"worker-{len(roots) + 1}\"",
+  "test": "bash linux/scripts/tests/test-mutation-workspaces.sh",
+  "why": "Private workspace controls must reject unsafe allocation, retain fixed worker bindings and fail changed-identity or failed cleanup. They use disposable fixtures and do not prove cache hits, concurrent-writer authentication or build acceptance."
+ },
+ {
+  "id": "mutations.workspace-root-identity",
+  "target": "docs/scripts/mutation_workspace.py",
+  "find": "(current.st_dev, current.st_ino) != identity",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-mutation-workspaces.sh",
+  "why": "Private workspace controls must reject unsafe allocation, retain fixed worker bindings and fail changed-identity or failed cleanup. They use disposable fixtures and do not prove cache hits, concurrent-writer authentication or build acceptance."
+ },
+ {
+  "id": "mutations.workspace-parent-identity",
+  "target": "docs/scripts/mutation_workspace.py",
+  "find": "explicit.parent.resolve(strict=True) != explicit.parent",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-mutation-workspaces.sh",
+  "why": "Private workspace controls must reject unsafe allocation, retain fixed worker bindings and fail changed-identity or failed cleanup. They use disposable fixtures and do not prove cache hits, concurrent-writer authentication or build acceptance."
+ },
+ {
+  "id": "mutations.workspace-cleanup-fatal",
+  "target": "docs/scripts/mutation_workspace.py",
+  "find": "shutil.rmtree(explicit)",
+  "replace": "shutil.rmtree(explicit, ignore_errors=True)",
+  "test": "bash linux/scripts/tests/test-mutation-workspaces.sh",
+  "why": "Private workspace controls must reject unsafe allocation, retain fixed worker bindings and fail changed-identity or failed cleanup. They use disposable fixtures and do not prove cache hits, concurrent-writer authentication or build acceptance."
+ },
+ {
+  "id": "mutations.workspace-option-binding",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "getattr(args, \"workspace_root\", None)",
+  "replace": "None",
+  "test": "bash linux/scripts/tests/test-mutation-workspaces.sh",
+  "why": "Private workspace controls must reject unsafe allocation, retain fixed worker bindings and fail changed-identity or failed cleanup. They use disposable fixtures and do not prove cache hits, concurrent-writer authentication or build acceptance."
+ },
+ {
+  "id": "mutations.workspace-prover-allocator",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "costs, allocate=allocate)",
+  "replace": "costs)",
+  "test": "bash linux/scripts/tests/test-mutation-workspaces.sh",
+  "why": "Private workspace controls must reject unsafe allocation, retain fixed worker bindings and fail changed-identity or failed cleanup. They use disposable fixtures and do not prove cache hits, concurrent-writer authentication or build acceptance."
+ },
+ {
+  "id": "mutations.workspace-worker-allocator",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "allocate() if allocate else tempfile.mkdtemp(prefix=\"mutation-gate-\")",
+  "replace": "tempfile.mkdtemp(prefix=\"mutation-gate-\")",
+  "test": "bash linux/scripts/tests/test-mutation-workspaces.sh",
+  "why": "Private workspace controls must reject unsafe allocation, retain fixed worker bindings and fail changed-identity or failed cleanup. They use disposable fixtures and do not prove cache hits, concurrent-writer authentication or build acceptance."
+ },
+ {
+  "id": "mutations.workspace-in-place-refusal",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "if args.in_place and args.workspace_root:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-mutation-workspaces.sh",
+  "why": "Private workspace controls must reject unsafe allocation, retain fixed worker bindings and fail changed-identity or failed cleanup. They use disposable fixtures and do not prove cache hits, concurrent-writer authentication or build acceptance."
+ },
+ {
+  "id": "image-acceptance.consumer-archive-manifest-digest",
+  "target": "linux/scripts/restore-consumer-archive.py",
+  "find": "hashlib.sha256(manifest.read_bytes()).hexdigest() == expected",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Digest-bound parent restoration must retain original shallow metadata and exact staged bytes/index plus required object checks; real temporary repositories do not prove source authenticity, recursive dependencies or builds."
+ },
+ {
+  "id": "image-acceptance.consumer-archive-input-digest",
+  "target": "linux/scripts/restore-consumer-archive.py",
+  "find": "hashlib.sha256(data).hexdigest() == digest",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Digest-bound parent restoration must retain original shallow metadata and exact staged bytes/index plus required object checks; real temporary repositories do not prove source authenticity, recursive dependencies or builds."
+ },
+ {
+  "id": "image-acceptance.consumer-archive-shallow-metadata",
+  "target": "linux/scripts/restore-consumer-archive.py",
+  "find": "    if spec[\"shallow\"]:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Digest-bound parent restoration must retain original shallow metadata and exact staged bytes/index plus required object checks; real temporary repositories do not prove source authenticity, recursive dependencies or builds."
+ },
+ {
+  "id": "image-acceptance.consumer-archive-index",
+  "target": "linux/scripts/restore-consumer-archive.py",
+  "find": "index == expected_index",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Digest-bound parent restoration must retain original shallow metadata and exact staged bytes/index plus required object checks; real temporary repositories do not prove source authenticity, recursive dependencies or builds."
+ },
+ {
+  "id": "image-acceptance.consumer-archive-working-files",
+  "target": "linux/scripts/restore-consumer-archive.py",
+  "find": "actual == files",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Digest-bound parent restoration must retain original shallow metadata and exact staged bytes/index plus required object checks; real temporary repositories do not prove source authenticity, recursive dependencies or builds."
+ },
+ {
+  "id": "image-acceptance.consumer-archive-objects",
+  "target": "linux/scripts/restore-consumer-archive.py",
+  "find": "    PRESERVER[\"verify_objects\"](destination)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Digest-bound parent restoration must retain original shallow metadata and exact staged bytes/index plus required object checks; real temporary repositories do not prove source authenticity, recursive dependencies or builds."
+ },
+ {
+  "id": "image-acceptance.consumer-archive-existing-destination",
+  "target": "linux/scripts/restore-consumer-archive.py",
+  "find": "not destination.exists()",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Digest-bound parent restoration must retain original shallow metadata and exact staged bytes/index plus required object checks; real temporary repositories do not prove source authenticity, recursive dependencies or builds."
+ },
+ {
+  "id": "image-acceptance.consumer-archive-overlap",
+  "target": "linux/scripts/restore-consumer-archive.py",
+  "find": "not destination.is_relative_to(archive)",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Digest-bound parent restoration must retain original shallow metadata and exact staged bytes/index plus required object checks; real temporary repositories do not prove source authenticity, recursive dependencies or builds."
+ },
+ {
+  "id": "image-acceptance.consumer-archive-post-inputs",
+  "target": "linux/scripts/restore-consumer-archive.py",
+  "find": "    read_archive(archive, expected)\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Digest-bound parent restoration must retain original shallow metadata and exact staged bytes/index plus required object checks; real temporary repositories do not prove source authenticity, recursive dependencies or builds."
+ },
+ {
+  "id": "python-types.consumer-archive-strict-types",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "quality_files+=(\"${archive_proof_files[@]}\")",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The existing isolated type fixture must retain the archive restorer in strict types and public annotations; this does not restore sources or execute builds."
+ },
+ {
+  "id": "python-types.consumer-archive-public-annotations",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "parameter_return_files+=(\"${archive_proof_files[@]}\")",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The existing isolated type fixture must retain the archive restorer in strict types and public annotations; this does not restore sources or execute builds."
+ },
+ {
+  "id": "image-acceptance.consumer-archive-metadata-paths",
+  "target": "linux/scripts/restore-consumer-archive.py",
+  "find": "    validate_metadata(destination, files)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Archive metadata must not select outside files, change indexed kinds or supply invalid modes before chmod; isolated fixtures do not authenticate sources or prove builds."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-manifest",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "require(sha(review) == expected, \"Candidate manifest digest differs\")",
+  "replace": "require(True, \"Candidate manifest digest differs\")",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-bytes",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "cache[key] == path.name",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-owner",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "before.st_uid == os.getuid()",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-receipt-inodes",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "inode in protected",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-receipt-parent",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "row[\"parent_inode\"] in protected",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-external-links",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "row[\"links\"] != len(aliases)",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-mtime",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "if key != \"st_ino\"",
+  "replace": "if key not in {\"st_ino\", \"st_mtime_ns\"}",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-preview-pin",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "sha(preview) == expected",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-planned-state",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "actual == expected",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-receipt-recheck",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "receipts == plan[\"protected_receipt_sha256\"]\n        and sorted(protected) == plan[\"protected_identity_numbers\"]",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-post-verifier",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "    verify_applied(plan, directory)\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-idle-preview",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "    observe_idle(engine, directory, \"preview\")",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-idle-apply",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "    observe_idle(engine, directory, \"apply\")",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-buildkit-busy",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "not row[\"inUse\"]",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-container-state",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "row[\"Status\"].lower().startswith((\"created\", \"exited\", \"dead\"))",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-temporary-cleanup",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "        temporary.unlink(missing_ok=True)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-replacement",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "        os.replace(temporary, destination)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-authorization",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "\"oci-archive-dedup\" in record[\"allowed_actions\"]",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-receipt-scan",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "protected.update(identity_numbers(json.loads(data)))",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-receipt-bytes",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "fingerprints[str(path)] = fingerprint",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Temporary real-file controls must preserve reviewed hashes, stable metadata, receipt-bound identities and idle admission; they do not authenticate receipt roots or lock malicious writers."
+ },
+ {
+  "id": "python-types.oci-archive-dedup-annotations",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "parameter_return_files+=(\"${oci_archive_files[@]}\")",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The isolated type fixture retains both archive cleanup modules and the cross-owner test import; it does not modify real archives."
+ },
+ {
+  "id": "python-types.oci-archive-dedup-imports",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "--extra-search-path linux/host-config",
+  "replace": "--extra-search-path linux/scripts/tests",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The isolated type fixture retains both archive cleanup modules and the cross-owner test import; it does not modify real archives."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-source-checkout",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "(ancestor / \".git\").exists()",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Archive cleanup must exclude source trees and retain JSON aliases, their targets and unchanged reads; temporary fixtures do not authenticate receipt roots or lock other writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-receipt-alias",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "data, fingerprint = receipt_data(path.resolve(strict=False))",
+  "replace": "data, fingerprint = None, \"missing\"",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Archive cleanup must exclude source trees and retain JSON aliases, their targets and unchanged reads; temporary fixtures do not authenticate receipt roots or lock other writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-dangling-alias",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "except FileNotFoundError:",
+  "replace": "except NotADirectoryError:",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Archive cleanup must exclude source trees and retain JSON aliases, their targets and unchanged reads; temporary fixtures do not authenticate receipt roots or lock other writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-receipt-read-race",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "all(getattr(before, name) == getattr(after, name) for name in STAT_FIELDS)",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Archive cleanup must exclude source trees and retain JSON aliases, their targets and unchanged reads; temporary fixtures do not authenticate receipt roots or lock other writers."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-receipt-key-selection",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "if not identity_key_present(data):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "Unrelated source-manifest values must not become identity records; malformed identity and escaped-key fixtures must still refuse. This does not authenticate receipt roots."
+ },
+ {
+  "id": "image-acceptance.oci-archive-dedup-bounded-key-scan",
+  "target": "linux/host-config/oci_archive_dedup.py",
+  "find": "for match in re.finditer(rb'\"((?:[^\"\\\\]|\\\\.)*)\"(\\s*:)?', data)",
+  "replace": "for match in re.finditer(rb'\"((?:[^\"\\\\]|\\\\.)*)\"(\\s*:)', data)",
+  "test": "bash linux/scripts/tests/test-oci-archive-dedup.sh",
+  "why": "The real scanner must consume large escaped JSON values in bounded time; a five-second child bound kills the old quadratic scanner. This fixture does not prove an arbitrary receipt-root runtime."
  }
 ]

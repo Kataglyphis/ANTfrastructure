@@ -12,7 +12,7 @@ GATE="${REPO}/docs/scripts/verify_mutations.py"
 _tmp="$(mktemp -d)"
 trap 'if [ -s "${_tmp}/hold-pid" ]; then kill -TERM "$(cat "${_tmp}/hold-pid")" 2>/dev/null || :; fi; rm -rf "${_work}" "${_tmp}"' EXIT
 # Gate mutants written to "${_tmp}" import their sibling modules from there.
-cp "${REPO}/docs/scripts/mutation_parse.py" "${REPO}/docs/scripts/mutation_shards.py" "${REPO}/docs/scripts/mutation_push.py" "${_tmp}/"
+cp "${REPO}/docs/scripts/mutation_parse.py" "${REPO}/docs/scripts/mutation_shards.py" "${REPO}/docs/scripts/mutation_push.py" "${REPO}/docs/scripts/mutation_workspace.py" "${_tmp}/"
 
 # _fixture <find> <replace> <yes|witness|broken|no> [dir]: "${_work}" is outside any copy, "." inside it.
 _fixture() {
@@ -425,6 +425,8 @@ _assert_copy_paths_absent "file excluded" "file copied" \
 rm -rf "${_work}/linux"
 
 t_case "a copy that fails is a loud error, never a vacuous-bite verdict"
+t_assert_ok "${PY}" "${REPO}/linux/scripts/tests/mutation_workspace_tests.py" \
+  MutationWorkspaceTests.test_copy_failure_aborts_before_returning_an_incomplete_mirror
 if [ "$(id -u)" != 0 ] && _posix_host "an unreadable file (chmod 000)"; then
 _fixture "GUARD=on" "GUARD=off" yes .
 printf 'secret\n' > "${_work}/unreadable"; chmod 000 "${_work}/unreadable"

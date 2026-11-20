@@ -103,6 +103,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    entries are debt; remove them when the underlying finding is fixed. The function-size, complexity, comment-size
    and masked-declaration lists are empty; keep them empty. Share duplicated behavior; do not rename
    variables, reformat copies or add suppressions to evade a duplication finding.
+   Copied `restore-consumer-archive.py` carries `preserve-consumer-sources.py`, `host_commands.py` and `source_ci/common.py`; restore exact original shallow metadata before checkout, never synthesize new boundaries to hide missing objects. Archive restoration proves neither source authenticity nor recursive dependencies.
    A declared shared shell mirror may count a real command from the validated image-consumer plan as a caller; retain the executable call and the separate shared-config drift gate.
    The duplication scanner shares the code-size shell lexer so quoted braces and here-doc bodies do not merge function units.
    Mutation --root controls Git change/push selection as well as execution; an empty selection is no coverage receipt.
@@ -399,6 +400,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    A Linux job refused for disk re-runs through `retry-disk-refusal` only; it keys on the exact annotation and the one-job endpoint, so a genuine failure never re-runs.
    Windows CI installs Pester and PSScriptAnalyzer through `WindowsCi.ModuleBootstrap.psm1`; reuse an installed matching version, retry transient Gallery lookup failures, and verify the requested exact or minimum version. Exhausted retries and missing installed modules remain fatal.
    Consumer mutation jobs supply a tracked, nonempty recipe manifest; an empty shard or missing setup file cannot pass as proof. Python refactor previews target the caller root and upload a patch without publishing it.
+
+   Reviewed OCI archive deduplication uses its versioned preview/apply helper, preserves equal bytes and stable metadata, and excludes receipt-bound or externally linked inodes; copy its host-command and native-OCI companions together.
 
 ## Container Architecture
 
@@ -1108,6 +1111,8 @@ transcript. Each was a child that outlived whatever started it. So:
    every live one when it is itself killed, SIGTERM first so a runner inside can reap its own. A new
    runner that starts tests uses one of the two (`test-run-tests-reaping.sh`, the reaping cases of
    `test-mutation-gate.sh`).
+   Opt-in fixed mutation workspace roots are fresh, absolute and outside the source tree; use container-private paths. Keep exclusive allocation, per-worker isolation, identity-checked cleanup and fatal cleanup errors. Never reuse a writable host checkout as a mutation workspace.
+   Copied `verify_mutations.py` carries `mutation_workspace.py` beside its parse, push and shard companions; preserve normalized target paths and source-copy defaults.
 4. **A wait loop waits on a PID or a file, with a timeout.** `until ! pgrep -f <pattern>` matches
    its own `bash -c` and never ends; `pkill -f <pattern>` can kill the shell that runs it.
 

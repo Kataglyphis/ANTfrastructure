@@ -10,7 +10,6 @@ import argparse
 import atexit
 import concurrent.futures
 import json
-import ntpath
 import os
 import queue
 import re
@@ -38,6 +37,7 @@ from mutation_push import (
     touches,
 )
 from mutation_shards import describe, load_costs, plan
+from mutation_workspace import mutation_workspaces, relative_file_path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mutations.json")
@@ -84,15 +84,6 @@ def within(root: str, path: str) -> bool:
         return os.path.commonpath([root, os.path.realpath(path)]) == root
     except ValueError:
         return False
-
-
-def relative_file_path(path: str, label: str) -> str:
-    """Require a portable relative file name without components that could leave a mirror."""
-    if (not isinstance(path, str) or not path or "\\" in path
-            or ntpath.splitdrive(path)[0]
-            or any(part in ("", ".", "..") for part in path.split("/"))):
-        raise ValueError(f"{label} must be a normalized relative path inside the mutation root")
-    return path
 
 
 def mirror_tree(src: str, dst: str) -> str:
@@ -551,7 +542,7 @@ def _drain(todo: queue.Queue[MutationEntry]) -> Iterator[MutationEntry]:
 
 def run_shards(
     args: argparse.Namespace, entries: Sequence[MutationEntry], src: str, report: Report,
-    costs: Costs | None = None,
+    costs: Costs | None = None, allocate: Callable[[], str] | None = None,
 ) -> int:
     """--jobs mirrors draining one queue; each extra mirror is copied by its own shard, from src, which no shard mutates."""
     size = tree_bytes(args.root)
@@ -565,7 +556,7 @@ def run_shards(
     todo: queue.Queue[MutationEntry] = queue.Queue()
     for e in entries:
         todo.put(e)
-    extra = [tempfile.mkdtemp(prefix="mutation-gate-") for _ in range(jobs - 1)]
+    extra = [allocate() if allocate else tempfile.mkdtemp(prefix="mutation-gate-") for _ in range(jobs - 1)]
     baselines = Baselines()
 
     def shard(n: int, root: str) -> int:
@@ -580,8 +571,9 @@ def run_shards(
             done = [pool.submit(shard, n, root) for n, root in enumerate([args.root] + extra)]
             return max(f.result() for f in done)
     finally:
-        for root in extra:
-            shutil.rmtree(root, ignore_errors=True)
+        if allocate is None:
+            for root in extra:
+                shutil.rmtree(root, ignore_errors=True)
 
 
 def parse_refusals(entries: Iterable[MutationEntry], root: str) -> dict[str, str]:
@@ -691,15 +683,13 @@ def prove_in_mirrors(args: argparse.Namespace, runnable: list[MutationEntry], re
         rc = run_entries(args, runnable, report, costs=costs)
     else:
         src = os.path.abspath(args.root)
-        workspace = tempfile.mkdtemp(prefix="mutation-gate-")
-        try:
+        with mutation_workspaces(src, getattr(args, "workspace_root", None)) as allocate:
+            workspace = allocate()
             mirror_tree(src, workspace)
             args.root = workspace
-            rc = run_shards(args, runnable, src, report, costs) if setup_mirror(
+            rc = run_shards(args, runnable, src, report, costs, allocate=allocate) if setup_mirror(
                 workspace, args.setup_script
             ) else 1
-        finally:
-            shutil.rmtree(workspace, ignore_errors=True)
     return rc
 
 
@@ -749,6 +739,8 @@ def parser() -> argparse.ArgumentParser:
                          " here; refused with --shard, which is CI")
     ap.add_argument("--in-place", action="store_true",
                     help="mutate --root itself instead of a throwaway copy (fixtures only)")
+    ap.add_argument("--workspace-root",
+                    help="fresh absolute private root for stable worker paths; refuses existing paths and source overlap")
     ap.add_argument("--setup-script",
                     help="run this relative Bash script once inside each disposable mirror")
     ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
@@ -776,6 +768,9 @@ def main() -> int:
         return 2
     if args.in_place and args.setup_script:
         sys.stderr.write("ERROR: --setup-script requires disposable mirrors; omit --in-place\n")
+        return 2
+    if args.in_place and args.workspace_root:
+        sys.stderr.write("ERROR: --workspace-root requires disposable mirrors; omit --in-place\n")
         return 2
     if args.delegate_chrome and args.shard:
         sys.stderr.write("ERROR: --delegate-chrome with --shard: CI is what the entries are delegated to\n")
