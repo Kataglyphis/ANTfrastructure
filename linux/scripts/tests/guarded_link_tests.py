@@ -13,6 +13,8 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from typing import TypedDict
 
+from dockerfile_runs import dockerfile_script_map
+
 TESTS = Path(__file__).resolve().parent
 SCRIPTS = Path(sys.argv.pop(1)).resolve()
 DRIVER = r"""set -euo pipefail
@@ -425,7 +427,8 @@ path_symlink_missing '/missing source' "$2/absent" -s optional
                 run,
             )
         sdk = (docker / "Dockerfile.sdk").read_text()
-        self.assertIn("    linux/scripts/01-core/path-helpers.sh ", sdk)
+        self.assertEqual(dockerfile_script_map(docker.parent, "Dockerfile.sdk").get("/opt/scripts/core/path-helpers.sh"),
+                         "linux/scripts/01-core/path-helpers.sh")
         self.assertIn("    linux/scripts/02-toolchain/bootstrap-import.sh ", sdk)
         torch = (
             (docker / "Dockerfile.torch").read_text().split("FROM torch AS final", 1)[1]

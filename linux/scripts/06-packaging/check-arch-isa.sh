@@ -82,3 +82,11 @@ check_amd64_isa() {
   _shipped_arch_gate amd64 "$2" "C2: amd64 baseline of the image's compiler, OpenCV and loader" "amd64 baseline" \
     "x86-64-v3: " " baseline fact(s) agree" _x86_baseline_verdicts _x86_baseline_verdict_line
 }
+
+# Keep the platform contract together without hiding the shared verdict counters.
+check_runtime_platform_baselines() {
+  local image_tag="$1" target_arch="$2"
+    check_riscv64_isa "${image_tag}" "${target_arch}"
+    check_amd64_isa "${image_tag}" "${target_arch}"
+    check_intel_gpu_userspace "${image_tag}" "${target_arch}"
+}

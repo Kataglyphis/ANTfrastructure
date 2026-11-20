@@ -62,6 +62,20 @@ _llvm_target_repair_links() {
         printf '%s\n' "${links}" >&2; exit 1; }
 }
 
+# SDK PATH, alternatives and loader entries still name the original architecture prefix.
+_llvm_target_preserve_prefixes() {
+    local prefix="$1" arch="$2" host_arch="$3" entry
+    for entry in "${prefix}"-*; do
+        [ -e "${entry}" ] || [ -L "${entry}" ] || continue
+        if [ "${arch}" != "${host_arch}" ] && [ "${entry}" = "${prefix}-${host_arch}" ]; then
+            continue
+        fi
+        rm -rf "${entry}" || return $?
+    done
+    ln -s "${prefix}" "${prefix}-${arch}"
+}
+
+
 _arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"
 _major="${LLVM_RELEASE%%.*}"
 rm -rf /opt/llvm-target
@@ -113,7 +127,7 @@ else
     echo "ERROR: no target-clang toolchain for ${_arch} at /opt/llvm-target-${_arch}"; exit 1
 fi
 
-for _d in /opt/llvm-target-*; do [ -e "${_d}" ] && rm -rf "${_d}"; done
+_llvm_target_preserve_prefixes /opt/llvm-target "${_arch}" "${_host_arch}"
 
 # Check the ELF machine instead of running clang: a foreign-arch binary cannot execute on the builder.
 test -x /opt/llvm-target/bin/clang || {

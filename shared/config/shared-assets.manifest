@@ -32,3 +32,11 @@ web-init-js          | shared/web/javascript/init.js                     | web/j
 flutter-web-htaccess | linux/webserver/templates/flutter-web.htaccess    | web/.htaccess                               | body  |
 ort-plugin-registration-python | shared/python/ort_plugin_eps.py | runtime_support/ort_plugin_eps.py | exact |
 ort-plugin-registration-native | shared/native/ort_plugin_eps.hpp | runtime_support/ort_plugin_eps.hpp | exact |
+ort-plugin-registration-rust | shared/rust/ort_plugin_eps.rs | runtime_support/ort_plugin_eps.rs | exact |
+loaded-module-rust | shared/rust/loaded_module.rs | runtime_support/loaded_module.rs | exact |
+isolated-helper-rust | shared/rust/isolated_helper.rs | runtime_support/isolated_helper.rs | exact |
+isolated-helper-tests-rust | shared/rust/tests/isolated_helper_tests.rs | runtime_support/tests/isolated_helper_tests.rs | exact |
+isolated-helper-native-source | shared/native/isolated_helper.c | runtime_support/isolated_helper.c | exact |
+isolated-helper-native-header | shared/native/isolated_helper.h | runtime_support/isolated_helper.h | exact |
+hip-probe-native-header | shared/native/hip_copy.hpp | runtime_support/hip_copy.hpp | exact |
+hip-probe-native-main | shared/native/hip_probe_main.cpp | runtime_support/hip_probe_main.cpp | exact |

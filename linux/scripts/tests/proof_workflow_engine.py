@@ -26,6 +26,9 @@ if ARGS and ARGS[0] in ("info", "pull"):
 if ARGS and ARGS[0] == "run":
     if MODE == "name-collision":
         raise SystemExit(125)
+    reports = next((value.rsplit(":", 1)[0] for value in ARGS if value.endswith(":/evidence")), None)
+    if reports is not None and Path(reports).stat().st_mode & 0o222 != 0o222:
+        raise SystemExit("nonroot evidence mount is not writable")
     if "--label" in ARGS:
         STATE.write_text(ARGS[ARGS.index("--label") + 1])
         if MODE != "no-cid":
@@ -33,12 +36,39 @@ if ARGS and ARGS[0] == "run":
     sys.stdout.buffer.write(b"worker\xff\n")
     raise SystemExit(37 if MODE == "worker-failure" else 0)
 if ARGS and ARGS[0] == "ps":
-    selected = ARGS[ARGS.index("--filter") + 1]
-    if STATE.exists() and selected == "label=" + STATE.read_text():
+    if MODE == "list-failure":
+        raise SystemExit(24)
+    selected = ARGS[ARGS.index("--filter") + 1] if "--filter" in ARGS else ""
+    if STATE.exists() and selected in ("", "label=" + STATE.read_text()):
         print(OWNED)
-    elif not selected.startswith("label="):
+    if not selected.startswith("label="):
         print(FOREIGN)
     raise SystemExit(0)
+if ARGS[:1] == ["inspect"]:
+    if MODE == "inspect-failure":
+        raise SystemExit(23)
+    if MODE == "malformed":
+        print("[]")
+        raise SystemExit(0)
+    label, token = STATE.read_text().split("=", 1) if STATE.exists() else ("foreign", "run")
+    cid = ARGS[1]
+    if cid == FOREIGN or MODE == "wrong-label":
+        token = "foreign"
+    running = STATE.with_suffix(".running").exists()
+    print(json.dumps([{"Id": FOREIGN if MODE == "wrong-id" else cid,
+                       "Config": {"Labels": {label: token}},
+                       "State": None if MODE == "missing-state" else
+                       {"Running": running, "Pid": 42 if running else 0,
+                        "Status": "running" if running else "exited"}}]))
+    raise SystemExit(0)
 if ARGS[:2] == ["rm", "--force"]:
+    if MODE not in ("cleanup-failure", "remove-lies"):
+        STATE.unlink()
     raise SystemExit(9 if MODE == "cleanup-failure" else 0)
+if ARGS[:1] == ["stop"]:
+    if MODE == "stop-failure":
+        raise SystemExit(17)
+    if MODE != "stop-lies":
+        STATE.with_suffix(".running").unlink(missing_ok=True)
+    raise SystemExit(0)
 raise SystemExit("unexpected container fixture command")

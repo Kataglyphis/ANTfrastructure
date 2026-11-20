@@ -21,15 +21,16 @@ RECEIPT = "ort-webgpu-build.json"
 MAX_PRODUCT_BYTES = 1024 * 1024 * 1024
 
 
-def configured_mode(cache: Path, expected: str) -> dict[str, str]:
-    """Require exactly one native BOOL entry per mode flag."""
+def configured_mode(cache: Path, expected: str | dict[str, str], kind: str = "BOOL") -> dict[str, str]:
+    """Require exactly one typed entry for every requested mode flag."""
     lines = cache.read_text(encoding="utf-8").splitlines()
     flags = {}
-    for name in FLAGS:
+    wanted = dict.fromkeys(FLAGS, expected) if isinstance(expected, str) else expected
+    for name, value in wanted.items():
         entries = [line for line in lines if line.startswith(name + ":")]
-        if entries != [f"{name}:BOOL={expected}"]:
-            raise ValueError(f"{cache}: {name} does not uniquely match BOOL={expected}")
-        flags[name] = expected
+        if entries != [f"{name}:{kind}={value}"]:
+            raise ValueError(f"{cache}: {name} does not uniquely match {kind}={value}")
+        flags[name] = value
     return flags
 
 
@@ -103,7 +104,7 @@ def initial_receipt(args: argparse.Namespace, flags: dict[str, str]) -> dict:
     return previous
 
 
-def write_receipt(prefix: Path, receipt: dict) -> None:
+def write_receipt(prefix: Path, receipt: dict, filename: str = RECEIPT) -> None:
     """Validation finishes before an atomic replacement touches the prior receipt."""
     temporary = None
     try:
@@ -112,7 +113,7 @@ def write_receipt(prefix: Path, receipt: dict) -> None:
             json.dump(receipt, stream, indent=2)
             stream.write("\n")
         temporary.chmod(0o644)
-        os.replace(temporary, prefix / RECEIPT)
+        os.replace(temporary, prefix / filename)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)

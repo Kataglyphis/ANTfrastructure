@@ -22,6 +22,7 @@ Usage: $0 --arch <x64|arm64> --version <ver> [--dir <path>]
                  linux-arm64 Flutter SDK.
   --version, -v  Flutter SDK version (e.g. 3.44.4)
   --dir, -d      Installation directory (default: /opt)
+  --keep-cache   Retain the bundled Dart SDK for native test runners
   -h, --help     Show this help
 EOF
 }
@@ -29,12 +30,14 @@ EOF
 ARCH=""
 FLUTTER_VERSION=""
 INSTALL_DIR="/opt"
+KEEP_CACHE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --arch|-a)       ARCH="$2"; shift 2 ;;
     --version|-v)    FLUTTER_VERSION="$2"; shift 2 ;;
     --dir|-d)        INSTALL_DIR="$2"; shift 2 ;;
+    --keep-cache)    KEEP_CACHE=1; shift ;;
     -h|--help)       usage; exit 0 ;;
     *)               echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
@@ -146,5 +149,5 @@ fi
 # anything `flutter` cached here would be the host's Dart SDK, stamped as
 # current and never replaced on arm64. The package stage bootstraps per arch.
 # docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
-rm -rf "${FLUTTER_PATH}/bin/cache"
-echo "Flutter ${FLUTTER_VERSION} installed bare at ${FLUTTER_PATH} (Dart SDK bootstraps in the package stage)"
+if [ "${KEEP_CACHE}" == 0 ]; then rm -rf "${FLUTTER_PATH}/bin/cache"; fi
+echo "Flutter ${FLUTTER_VERSION} installed at ${FLUTTER_PATH} (keep-cache=${KEEP_CACHE})"

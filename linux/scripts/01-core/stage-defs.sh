@@ -249,6 +249,8 @@ cross_stage_build_args() {
       append_deepstream_build_arg _csba_out "${arch}" "media ${arch}"
       # CUDA_MB_PER_CICC sizes the CUDA job count; merely exported, it never reaches the container.
       append_optional_build_arg _csba_out CUDA_MB_PER_CICC "${CUDA_MB_PER_CICC:-}"
+      append_optional_build_arg _csba_out ORT_WEB_REQUIRED "${ORT_WEB_REQUIRED:-}"
+      append_optional_build_arg _csba_out ORT_WASM_WEBGPU_FLAVORS "${ORT_WASM_WEBGPU_FLAVORS:-}"
       ;;
     android)
       append_cross_per_arch_build_args _csba_out "${arch}"

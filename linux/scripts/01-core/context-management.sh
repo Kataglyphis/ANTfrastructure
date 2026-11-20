@@ -57,15 +57,60 @@ export_rootfs_from_image() {
 }
 
 export_image_to_oci_layout() {
-  local nerdctl_bin="$1"
-  local tag="$2"
-  local dest_dir="$3"
+  local nerdctl_bin="$1" tag="$2" dest_dir="$3" parent_proof="${4:-}"
+  local -a tar_args=() _oci_status=()
+  if [ -n "${parent_proof}" ]; then
+    [ ! -e "${dest_dir}" ] && [ ! -L "${dest_dir}" ] || {
+      printf 'Shared OCI destination already exists: %s\n' "${dest_dir}" >&2; return 2;
+    }
+    mkdir -p "${dest_dir}" || return
+    python3 "${_CM_DIR}/../local-proof/native_oci_seed.py" \
+      --parent-proof "${parent_proof}" --context "${dest_dir}" || return
+    tar_args+=(--skip-old-files)
+  else
+    rm -rf "${dest_dir}"
+    mkdir -p "${dest_dir}" || return
+  fi
+  printf '+ %q save %q | tar %s -xf - -C %q\n' "${nerdctl_bin}" "${tag}" "${tar_args[*]}" "${dest_dir}"
+  (
+    set +e
+    "${nerdctl_bin}" save "${tag}" | tar "${tar_args[@]}" -xf - -C "${dest_dir}"
+    _oci_status=("${PIPESTATUS[@]}")
+    if [ -n "${parent_proof}" ]; then
+      printf '{"producer_status":%s,"extractor_status":%s}\n' "${_oci_status[0]}" "${_oci_status[1]}" \
+        > "${dest_dir}.transport.json" || exit $?
+    fi
+    [ "${_oci_status[1]}" -eq 0 ] || exit "${_oci_status[1]}"
+    exit "${_oci_status[0]}"
+  )
+}
 
-  rm -rf "${dest_dir}"
-  mkdir -p "${dest_dir}"
-
-  printf '+ %q save %q | tar -xf - -C %q\n' "${nerdctl_bin}" "${tag}" "${dest_dir}"
-  "${nerdctl_bin}" save "${tag}" | tar -xf - -C "${dest_dir}"
+# The compiler receives only staged selected bytes; host source directories never become its build context.
+append_script_closure_context() {
+  local -n _sc_args="$1"
+  local _sc_dockerfile="$2" _sc_text _sc_profile _sc_helper _sc_root _sc_work _sc_key
+  [ -f "${_sc_dockerfile}" ] || return 0
+  _sc_text="$(cat "${_sc_dockerfile}")" || return
+  case "${_sc_text}" in
+    *org.kataglyphis.build-script-closure*|*hub-scripts*) ;;
+    *) return 0 ;;
+  esac
+  _sc_helper="${_CM_DIR}/../stage-script-closure.py"
+  _sc_profile="$(python3 -B "${_sc_helper}" --profile-for "${_sc_dockerfile}")" || return
+  [ -n "${_sc_profile}" ] || return 0
+  if declare -F is_dry_run >/dev/null 2>&1 && is_dry_run; then
+    _sc_args+=(--build-context "hub-scripts=<staged-${_sc_profile}>" --build-arg "HUB_SCRIPTS_KEY=<receipt-sha256>")
+    return 0
+  fi
+  _sc_root="${LOG_DIR:-${_CM_DIR}/../../../logs/build-logs}/script-contexts"
+  mkdir -p "${_sc_root}" || return
+  _sc_work="$(mktemp -d "${_sc_root}/${_sc_profile}.XXXXXX")" || return
+  _sc_key="$(python3 -B "${_sc_helper}" "${_sc_profile}" --context --output "${_sc_work}/scripts")" || return
+  [[ "${_sc_key}" =~ ^[0-9a-f]{64}$ ]] || {
+    printf 'Invalid staged script context key\n' >&2; return 2;
+  }
+  _sc_args+=(--build-context "hub-scripts=${_sc_work}/scripts" --build-arg "HUB_SCRIPTS_KEY=${_sc_key}")
+  return 0
 }
 
 remove_local_image_if_exists() {

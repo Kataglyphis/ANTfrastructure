@@ -5,6 +5,9 @@
 _APP_PACKAGING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./app-packaging-license.sh
 source "${_APP_PACKAGING_DIR}/app-packaging-license.sh" || return $?
+# shellcheck source=./app-packaging-entrypoint.sh
+source "${_APP_PACKAGING_DIR}/app-packaging-entrypoint.sh" || return $?
+declare -F app_packaging_detect_bundle_binary >/dev/null || { echo 'Error: app-packaging-entrypoint.sh lacks app_packaging_detect_bundle_binary' >&2; return 1; }
 _APP_PACKAGING_SH_LOADED=1
 # shellcheck source=./log-bootstrap.sh
 source "${_APP_PACKAGING_DIR}/log-bootstrap.sh"
@@ -191,9 +194,11 @@ app_packaging_package_bundle_outputs_tar() {
 app_packaging_package_linux_bundle_tar() {
   local matrix_arch="${1:?matrix_arch is required (x64|arm64)}"
   local app_name="${2:?app_name is required}"
+  local bundle_source_dir
+  bundle_source_dir="$(app_packaging_detect_bundle_dir "$matrix_arch")" || return $?
 
   app_packaging_prepare_workspace "$matrix_arch"
-  app_packaging_package_bundle_outputs_tar "build/linux/${matrix_arch}/release/bundle" "$app_name" "$matrix_arch"
+  app_packaging_package_bundle_outputs_tar "$bundle_source_dir" "$app_name" "$matrix_arch"
 }
 
 app_packaging_sanitize_package_name() {
@@ -205,33 +210,6 @@ app_packaging_detect_bundle_dir() {
   local matrix_arch="${1:?matrix_arch is required (x64|arm64)}"
   # A non-Flutter app hands its staged tree in here (06-packaging/package_archive.sh does).
   echo "${APP_PACKAGING_BUNDLE_DIR:-build/linux/${matrix_arch}/release/bundle}"
-}
-
-app_packaging_detect_bundle_binary() {
-  local bundle_dir="${1:?bundle_dir required}"
-  if [[ ! -d "$bundle_dir" ]]; then
-    echo "Error: bundle directory not found: $bundle_dir" >&2
-    return 1
-  fi
-
-  local binary=""
-  while IFS= read -r candidate; do
-    local base
-    base="$(basename "$candidate")"
-    # bundle-loader.sh --beside leaves the loader (ld-linux-*.so.N) and <name>.bin beside the launcher.
-    if [[ "$base" == *.so || "$base" == *.so.* || "$base" == *.sh || "$base" == *.bin ]]; then
-      continue
-    fi
-    binary="$base"
-    break
-  done < <(find "$bundle_dir" -mindepth 1 -maxdepth 1 -type f -executable | sort)
-
-  if [[ -z "$binary" ]]; then
-    echo "Error: could not detect executable in $bundle_dir" >&2
-    return 1
-  fi
-
-  echo "$binary"
 }
 
 app_packaging_get_pubspec_version() {

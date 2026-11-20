@@ -55,7 +55,7 @@ t_case "the smoke run sources the gate, emits its probe and calls it"
 _smoke_src="$(cat "${SMOKE}")"
 t_assert_contains "${_smoke_src}" 'source "${_SCRIPT_DIR}/check-intel-gpu-userspace.sh"'
 t_assert_contains "${_smoke_src}" "  _probe_intel_gpu_userspace" "a gate without its probe lines reads NONE"
-t_assert_contains "${_smoke_src}" 'check_intel_gpu_userspace "${image_tag}" "${target_arch}"' "an unwired gate is not a gate"
+t_assert_contains "$(cat "${PKG}/check-arch-isa.sh")" 'check_intel_gpu_userspace "${image_tag}" "${target_arch}"' "an unwired gate is not a gate"
 
 t_case "the package stage asks for the free builds, never the multiverse driver"
 _pkg_src="$(cat "${PKG}/setup-package-image.sh")"
@@ -87,5 +87,27 @@ t_case "the dispatcher is installed for the build and mapped for the runtime"
 t_assert_contains "$(cat "${FFMPEG}/install-deps.sh")" "install_optional_target_packages libvpl-dev"
 t_assert_eq "1" "$(grep -c -e "^libvpl\.so\.2$(printf '\t')libvpl2$" "${TESTS_DIR}/../03-media/runtime/so-package-map.txt")" \
   "FFmpeg's new NEEDED entry must resolve to a package in the runtime image"
+
+t_case "the grouped runtime platform contract keeps all checks, arguments and shared failure accounting"
+_platform_contract_fixture() (
+  local failed="$1" calls='' expected_failures=0 FAILS=0
+  eval "$(t_fn_src "${PKG}/check-arch-isa.sh" check_runtime_platform_baselines)" || return
+  _platform_record() {
+    calls+="$1:$2:$3;"
+    if [ "$1" = "${failed}" ]; then FAILS=$((FAILS + 1)); fi
+    return 0
+  }
+  check_riscv64_isa() { _platform_record riscv "$@"; }
+  check_amd64_isa() { _platform_record amd64 "$@"; }
+  check_intel_gpu_userspace() { _platform_record intel "$@"; }
+  check_runtime_platform_baselines 'image with spaces' amd64
+  [ -z "${failed}" ] || expected_failures=1
+  [ "${FAILS}" -eq "${expected_failures}" ] || return 1
+  [ "${calls}" = 'riscv:image with spaces:amd64;amd64:image with spaces:amd64;intel:image with spaces:amd64;' ]
+)
+for _platform_failure in '' riscv amd64 intel; do
+  t_assert_ok _platform_contract_fixture "${_platform_failure}"
+done
+t_assert_contains "$(t_fn_src "${SMOKE}" main)" '    check_runtime_platform_baselines "${image_tag}" "${target_arch}"' "the main must execute the grouped contract"
 
 t_summary

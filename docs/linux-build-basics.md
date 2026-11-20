@@ -425,6 +425,25 @@ RUNPATH, and a patched loader segfaults. AccelerANTgine's `.deb`, tarball and Ap
 Debian 13 (himbeere2) and Ubuntu 26.04 this way. Without `LOADER` the packages need glibc 2.43:
 Ubuntu 26.04 and newer.
 
+Native AMD packages load the CPU ORT core and carry `libmigraphx-ep.so` separately. Source
+`ort-runtime-bundle.sh` before `ort-package-proof.sh`, then call
+`ort_package_stage_amdgpu_licenses ROOT LIB_DIR NEW_LICENSE_DIR` after staging the module.
+An optional fourth `NEW_PROVENANCE_FILE` also stages the image's original `provenance.txt`.
+Keep this file outside the exact license tree, with an existing parent inside `ROOT`.
+Pass the same fourth path to `ort_package_verify_amdgpu` when checking finished payloads.
+Missing, empty or linked originals, changed or linked payloads, escaping parents and existing
+stage targets fail. Copy failures retain their raw status; staging is not atomic.
+The destination parent must already exist inside `ROOT`; stale destinations refuse. The helper
+copies the image's complete original license tree, preserving transitive texts, and requires its
+original plugin LICENSE before writing. Allocation and copy errors retain their raw statuses.
+
+Run `ort_package_verify_amdgpu ROOT LIB_DIR PLUGIN_LICENSE_DIR` on every extracted finished
+format. It refuses an escaping or different module, the legacy in-tree provider, missing or
+changed original texts and extra inventory entries. This supplements the CPU wheel's core/notice
+proof; it does not prove ELF architecture, runtime linkage, provider registration or GPU inference.
+Use `ort_package_require_program ROOT FILE` for required launchers and native companions;
+it checks regular executable files and containment, while callers bind their exact bytes separately.
+
 ### GStreamer loads from the package alone
 
 The family's packages carry the image's own GStreamer, never the host's (owner rule, 2026-10-17):
@@ -494,3 +513,11 @@ The last three were invisible until the 2026-08-08 orphan sweep: useful, and ref
 no doc included. None of `lib/` ships in the images (no Dockerfile copies it): consumers source it
 from their submodule, and in this repo `preflight.sh` and `flutter_checks.sh` source
 `lib/code-quality.sh`.
+
+### Cargo native helper staging
+
+`linux/scripts/06-packaging/stage-cargo-native-helper.py` selects one helper build script by exact Cargo package ID and requires one selected native artifact in the same successful JSON-lines build. Supply `--messages`, `--package-id`, `--module`, `--name-env`, `--path-env`, `--target` and an existing canonical `--destination`. The two environment keys name the helper basename and full path; the latter must equal that build script's exact `out_dir` plus basename. `cargo pkgid --locked -p PACKAGE` supplies the package ID without copying a version.
+
+Capture the actual `cargo build --message-format=json-render-diagnostics` stdout; a failed, incomplete, repeated or test-only build cannot identify a packaged module. The selected helper must be a regular executable, and both native headers must match the requested Linux target. The script copies and hashes the exact helper, publishes without replacing an existing file, and prints its basename. It does not scan old Cargo directories. A copied script carries `ort_census_probe.py`, which owns its ELF identity and streaming hash helpers.
+
+The JSON belongs to the caller: this is no authenticated build or linkage attestation, complete ELF validation, runtime test or finished-package proof. Packaging must place the helper beside the actual loaded module, preserve its loader/runtime closure and verify the final files. The shared source suite uses synthetic ELF headers for selection and copy controls; an actual Cargo build and target execution are separate evidence.

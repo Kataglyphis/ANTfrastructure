@@ -60,7 +60,7 @@ def save_atomic(path: Path, records: list[MutationEntry]) -> None:
     try:
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n", dir=path.parent, delete=False) as output:
             temporary = output.name
-            json.dump(records, output, indent=1, ensure_ascii=False)
+            json.dump(records, output, indent=1, ensure_ascii=True)
             output.write("\n")
         os.chmod(temporary, mode)
         os.replace(temporary, path)

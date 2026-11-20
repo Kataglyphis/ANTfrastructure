@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import TypedDict
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS = Path(sys.argv.pop(1)).resolve()
@@ -218,6 +219,7 @@ def import_receipt(
             capture_output=True,
             timeout=5,
             check=False,
+            env=dict(os.environ, BUILD_MODE="native"),
         )
         return (
             result.returncode,
@@ -326,6 +328,15 @@ class VerifiedInstallers(unittest.TestCase):
         self.assertEqual(0, rc)
         self.assertIn("STATUS:23 LOADED:\n", out)
         self.assertIn("RETRIED", out)
+
+    def test_copied_import_owns_native_mode(self) -> None:
+        valid = (SCRIPTS / "01-core/verified-script-install.sh").read_text()
+        with patch.dict(os.environ, {"BUILD_MODE": "cross"}):
+            os.environ.pop("CROSS_TARGETS", None)
+            for conditional in (False, True):
+                rc, out, err = import_receipt("rust", valid, conditional)
+                self.assertEqual((0, ""), (rc, err))
+                self.assertIn("LOADED", out)
 
     def assert_import(
         self, caller: str, label: str, body: str | None, status: int, conditional: bool

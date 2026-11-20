@@ -5,6 +5,113 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## Local Docker-loaded GPU image does not resolve by repository@digest
+
+**Symptom.** The 2026-11-14 GPU4 image is loaded and visible under its local tag,
+but `nerdctl run` or `image inspect` on its reported repository@manifest fails
+resolution. Inspection of its config ID as an image selector also fails.
+
+**Cause.** The installed local engine resolves this Docker-loaded image by its
+immutable manifest ID. A reported RepoDigest does not establish a registered
+digest-qualified local image name, and the inspected config ID is another digest.
+
+**Fix.** Query the local tag, validate its unique manifest and config, then
+independently inspect the manifest ID and require both identities to match before
+passing that ID to the bounded native GPU export. Keep failures fatal. The real
+read-only selector replay on GPU4 passes and its command fixtures refuse wrong
+cardinality/config/manifest and failed lookups. Native export bytes, SDK ancestry
+and disk admission remain separate; Media retains repository@digest together with
+its native context. Selector resolution proves neither a completed export nor
+runtime loading, full licences or hardware inference. See [the versioned handoff](local-proof-workflows.md#native-gpu-to-media-handoff).
+
+## MIGraphX core cannot find ROCm SQLite
+
+**Symptom.** Ordinary GPU4 completes and loads its local image, but a real cold
+`ctypes.CDLL` of its source core fails with `librocm_sysdeps_sqlite3.so` missing.
+
+**Cause.** The core's actual ELF NEEDED entry names the vendor soname. Its file
+exists under `/opt/rocm/core-10.1/lib/rocm_sysdeps/lib`, while the shared publisher
+only discovers HIP/MIGraphX directories. The loader cache lists distro SQLite
+under a different soname; the source backend needs the recorded vendor library.
+
+**Fix.** Discover the exact SQLite soname through the shared publisher, preserve
+source-first ordering and ASAN exclusion, publish the complete configuration and
+run `ldconfig`. The normal producer must then load all seven installed source
+entry libraries, checking containment and recorded hashes before success.
+The new gate fails on the unchanged image and passes in a disposable corrected
+publisher replay, including two independent cold source-library mappings.
+Keep the original failure, maps, statuses and checked container absence. This
+replay does not accept the original image. Exact repaired source `8c4e13b0` now
+passes its complete 6,246-mutation/42-group preflight with sealed cleanup and
+independent absence; an ordinary rebuild, full licences and final consumers
+remain required. The next build still needs fresh unchanged 180-GiB admission. See [the gate's scope](linux-accelerator-images.md#source-backend-entry-library-loads).
+
+## MIGraphX install refused: Repeated normalized install path
+
+The ordinary ROCm GPU3 run on 2026-11-14 completed all rocMLIR and MIGraphX
+backend build targets, installed them, then failed `stage-backend-install.py`
+with `MIGraphX install refused: Repeated normalized install path`. CMake can
+record one exact installed filename more than once; that is not a second payload.
+Coalesce exact manifest rows while retaining normalized-alias, complete-tree,
+nonempty-file, contained-symlink, native-ELF and original-notice checks.
+
+This installation also puts private core/frontend/target libraries under
+`lib/migraphx/lib`, beside public libraries in `lib`. Require every selected
+library exactly once across those two directories and retain both directories
+before distro paths in the GPU/runtime environment and shared `000-rocm.conf`.
+The fixtures cover those layouts and failure controls, not actual loader ABI,
+complete binary licence closure or GPU inference. A fresh ordinary GPU build and
+the subsequent Media/runtime and finished-consumer proofs remain required.
+
+## Compiler planner refuses a fourth OCI transport delta
+
+The default compiler-plan profile accepts only the original three LLVM changes.
+A source tree that also carries the reviewed OCI seeding transport therefore
+refuses that legacy input boundary. Use the explicit [native-AMDGPU planning
+profile](local-proof-workflows.md#native-amdgpu-compiler-planning), which checks
+the fixed transport ancestor and records all four deltas. Keep the original
+input reference and failed attempt; a refreshed control hash alone cannot
+turn that additional change into an unchanged input or establish a cache hit.
+
+## Early HIP compilation succeeds but ELF inspection fails
+
+The device-only driver can emit a `__CLANG_OFFLOAD_BUNDLE__` container even when
+compilation returns zero. The required probe requests `--no-gpu-bundle-output`
+and rejects non-ELF bytes with an explicit diagnostic before preserving a
+passed object. Keep the failed build and original compiler streams. A
+header-free output-format control is not a normal ROCm compatibility proof.
+The [reviewed alternate GPU source](local-proof-workflows.md#ordinary-sdk-and-gpu-stage-launch)
+can apply only this exact probe repair while retaining a qualified SDK; it
+requires a new complete source proof and never changes a running producer.
+
+## Linux HIP rejects amdgpu-internalize-symbols
+
+When the own source Clang reports `Unknown command line argument
+'-amdgpu-internalize-symbols'` at the first MIGraphX HIP object, inspect its
+`llvm-config --targets-built`. The ordinary build on 2026-11-14 had only the
+three CPU backends. Native LLVM must include AMDGPU; preserve the own pinned
+compiler and rebuild/qualify the compiler, SDK and GPU stages. The required
+[early HIP check](linux-accelerator-images.md#early-hip-device-compiler-check)
+now compiles a device object before the expensive source dependencies. Backend
+metadata and successful rocMLIR/CMake checks do not prove actual HIP codegen or
+GPU inference. Keep raw failed-build and cache evidence.
+
+## Live configure snapshot refuses changing inputs
+
+Use the actual normal GPU invocation, matching live build-image or outer RUN PID and its private relative build directory. Missing, linked, oversized or changed inputs, a reused output or a changed process start fail before a passed observation. Preserve partial evidence and choose a fresh output for a later attempt. The producer is never repaired or paused by this reader. See [live configure snapshots](local-proof-workflows.md#live-configure-snapshots).
+
+## Unchanged compiler inputs still rebuild after changing the local cache namespace
+
+A new image repository or `BUILDKIT_CACHE_DIR` selects a different stage-cache path. Byte-identical GNU mounts establish only equal input boundaries; without the old index in that path the normal driver emits no local `--cache-from`. Preserve a completed producer's cache with [the versioned transfer helper](local-proof-workflows.md#local-buildkit-cache-transfer), select the actual driver path and retain a dry run proving that import before starting the next build. Hard-link only immutable blobs and copy mutable metadata separately. Do not edit a live plan or cache export, restart a running producer for hits, or report source equality as an observed cache hit.
+
+## Live compiler-cache reader rejects a changed log inode
+
+The bounded reader refuses a missing, linked, oversized or replaced `sccache.log`. Keep that failure and inspect the original producer; do not create or replace its log to obtain a receipt. A normal MIGraphX RUN uses the explicit MIGraphX reader profile and actual build-image PID, rather than a compiler label. A partial timeout cannot prove complete retention. See [live cache log retention](local-proof-workflows.md#live-cache-log-retention).
+
+## Ordinary GPU launch refuses its SDK parent
+
+`Actual SDK OCI required`, `SDK qualification identity differs` or `Compiler descriptors or diffIDs differ` comes from the versioned normal GPU admission driver. Supply the stopped native SDK OCI receipt and its original SDK invocation, with the same clean, fully checked source. The driver rehashes both layouts and revalidates the independent SDK qualification and local engine identity before the ordinary AMD Dockerfile starts. A compiler-only receipt, changed alias, metadata-only match or component probe cannot satisfy this boundary. See [ordinary stage launch](local-proof-workflows.md#ordinary-sdk-and-gpu-stage-launch).
+
 **Start from the error message.** Every entry below is keyed by what you
 actually see, then names the cause and the fix. All of them were hit live in
 this repo; the dates are when.
@@ -31,6 +138,143 @@ checks passed, but their helper returns assertions, not file lists. Resolve
 the exact main files directly with `Find-FirstTreeFile` and fail on missing
 inputs. `cudnnGetVersion` needs no GPU, so absent container GPU access does
 not justify this skip. See [the smoke contract](windows-builds.md#smoke-testing).
+
+## Doc-link mutation baselines fail when host TMPDIR sits under repository logs
+
+The fixtures that deliberately contain no Git metadata still let Git discover a
+parent checkout. With host TMPDIR under this repository's ignored logs, the
+2026-11-13 normal hook reported stale pointer rows and a mismatched scan floor;
+the isolated image source proof passed. This is a real invalid fixture baseline,
+not a mutation bite.
+
+Run host test jobs with a fresh on-disk TMPDIR outside all Git checkouts, such as
+a task-specific directory under ~/.cache. The identical staged patch and normal
+hooks then pass all affected mutations. Retain the earlier failure; do not skip
+the test, narrow the gate or change global Git configuration.
+
+## probe-sccache reports NOCACHE despite recorded cache hits and misses
+
+The older activity sampler added every row containing cache hits or writes,
+including hit percentages, timing averages, error counts and per-language
+subtotals. A falling hit percentage could outweigh a successful cacheable miss
+and report no activity. The isolated 2026-11-13 base probe retained four actual
+compiles, two hits and two misses alongside that contradictory advisory.
+
+Count only aggregate integer executed-request, hit and write rows. Independent
+fixtures preserve the original failure and reject percentages, fractional
+values, timings, subtotals and errors as activity. Retain raw stats failures.
+The fixture is not a real compiler-cache or image acceptance receipt; repeat the
+actual probe and check its container against the expected image.
+
+## A retained Linux image inspects successfully, but the parser unit says image not available
+
+The retained ROCm image in the 2026-11-12 parser build was inspectable through
+its local tag, RepoDigest and config ID. The RepoDigest and prefixed config-ID
+spellings nevertheless failed at `nerdctl run --pull never` before a container
+started; both failed units and successful cleanup receipts are retained.
+
+The existing local tag started the same image. Inspect that tag first, record
+its expected manifest/config identity, then compare the actual container's
+`Image` field with the expected manifest. The successful parser runs passed
+that comparison. This local reference-resolution observation does not permit
+accepting an unrelated image or treating a running component as final image
+acceptance.
+
+## Media finalization requires a WebGPU receipt for a skipped GPU build
+
+**Symptom.** The default-amd64 media solve reaches `finalize-media.sh`, then reports
+`onnxruntime-gpu/ort-webgpu-build.json` missing while checking an empty wheel manifest.
+
+**Cause.** The optional GPU build was skipped, but its pre-created wheel directories
+still produced empty GIL/FT census files. Delivery treated those placeholders as
+evidence of a built prefix. Seen 2026-11-11; the first solve remains failed.
+
+**Fix.** The shared delivery API recognizes only directories and empty top-level
+census files as an unbuilt prefix, without creating a receipt. Payloads, unknown
+files, nested census files, existing receipts and symlinks still require valid proof.
+The actual check/follow fixture covers both interpreter stores and refuses damaged
+built prefixes. [WebGPU delivery](linux-accelerator-images.md#native-webgpu-static-plugin)
+describes the boundary; a successful fixture is not final-image acceptance.
+
+## A native child returns ECHILD while running under Dart
+
+**Symptom.** A Rust child runner succeeds alone but loses the native child's exit status when
+called through Dart FFI. On 2026-11-11, the actual Dart3.13.7/Rust1.99.1 Linux probe lost all
+64 statuses; its required-success invocation exited1. A separate failure-control invocation
+reproduced the same64 ECHILD errors. In the final matrix the idle-reaper control retained all64
+statuses, while the active reaper again lost all64. None exercised HIP or a finished app.
+
+**Cause.** Dart's Linux process handler calls process-wide `wait`, so an active Dart process
+reaper can collect children created by native libraries too. See the
+[upstream handler](https://github.com/dart-lang/sdk/blob/main/runtime/bin/process_linux.cc).
+Waiting for one PID in Rust does not reserve that status against another thread's wait.
+
+**Action.** Keep the generic `shared/rust/bounded_process.rs` limited to callers that own
+child reaping. The prepared `isolated_helper.rs` instead carries `isolated_helper.c` and `.h`:
+a control-only supervisor reaps the fresh executable worker and sends its raw status through
+a private pipe. It accepts an externally reaped supervisor only after the complete validated
+worker packet and EOF; the parent never signals a supervisor's numeric PID. Both parent-death
+guards, descriptor isolation, exec errno and timeout kill/reap remain required. HIP still starts
+only after worker `execve` and retains normal process teardown. Kernel-blocked waits still need
+an owning unit bound. Native fake-HIP fixtures now run the canonical executable through this
+transport with ASan/LSan: eight cleanup/error/argument paths preserve their expected exits,
+and the intentional17-byte leak must emit its real report and exit86 after normal teardown.
+A separate compiled early-exit86 fixture is refused despite matching raw statuses. The local
+default seccomp profile passes this real probe; no generic isolation opt-out is required.
+These are fake ABI cases,
+not a real driver or GPU. Cargo wiring and finished-package/hardware acceptance remain open.
+
+Repeat with `bash linux/scripts/probe-rust-child-under-dart.sh NEW_OUTPUT`. Default mode now
+checks the prepared transport and requires observed external supervisor reaping with all64
+successful workers, plus raw exit/signal/timeout/exec-error controls. `--expect-status-loss`
+selects the original runner and records its failure only; `--idle-reaper` isolates the active
+Dart child. The later native-worker matrix retains64 statuses with34 observed external reaps,
+while the original control loses64. All raw status/timeout/exec and fake-HIP controls run
+before the Dart child is stopped; their30-second probe bound is below its60-second natural
+lifetime. An earlier probe ran the raw controls after Dart cleanup, so its active-reaper
+coverage applied only to the64 ownership calls. Preserve that scope correction with its proof. Run inside a bounded owned-container unit with independent
+cleanup; none of these source fixtures establishes GPU, package or installed-bridge acceptance.
+
+**Concurrent supervisor startup.** Initial `_Fork` supervisors left some workers waiting on
+libc futexes until timeout in the16-caller test. Eager symbol binding did not fix it. Ordinary
+`fork` for the initial supervisor restores the required libc state and passes the same test;
+only its single-threaded control process uses `_Fork` for the immediate worker exec. The
+[glibc process contract](https://sourceware.org/glibc/manual/latest/html_node/Creating-a-Process.html)
+explains the different state repair. The observed waits are consistent with inherited abort-lock
+readers before `sigaction(SIGABRT)`, as suggested by glibc's
+[signal wrapper](https://github.com/bminor/glibc/blob/master/signal/sigaction.c) and
+[abort lock](https://github.com/bminor/glibc/blob/master/stdlib/abort.c); the fixture does not
+identify a libc build-specific source line. Preserve the failed sources and process snapshots.
+
+## systemd expands a Bash array before starting a detector
+
+**Symptom.** A user unit exits127 with `env: '': No such file or directory`; its journal reports
+`Invalid environment variable name evaluates to an empty string: DETECTOR_EVIDENCE_CLEAN[@]`.
+
+**Cause.** systemd expands variables in command arguments before `bash -c` sees the quoted array.
+The detector never starts, even though the host shell passed the intended arguments.
+
+**Fix.** Pass `systemd-run --expand-environment=no` for literal shell expressions. Keep the
+failed unit and log; use a new unit and output directory for the corrected attempt. Seen 2026-11-11;
+the corrected native CPU detector completed both runs and its per-run operator profile passed.
+
+## A timed-out container starter leaves the detector running
+
+**Symptom.** The native DEIM GPU user unit reached its 900-second RuntimeMax, reported `Result=timeout`
+and `MainPID=0`, but its exact container and detector process continued. Neither detections nor a
+complete profile had been written. Seen 2026-11-11; this failed source probe proves no GPU parity.
+
+**Cause.** The engine placed its payload outside the nerdctl starter's systemd unit. Terminating
+the starter therefore did not terminate the container, even though the unit was terminal.
+
+**Recovery.** Verify the saved CID against the owned container, stop that exact container, then
+check exited/PID0 and disappearance of the recorded host processes. Preserve the stopped failed
+container, cache, unit and logs for analysis. Do not restart based only on an observation timeout.
+Before another long probe, install `cleanup-owned-containers.py` as the unit's independent
+`ExecStopPost` hook, using the invocation's fresh label/token and CID file. It shares ownership
+checks with `run-isolated-preflight.py`, verifies absence or stopped/PID0 and can retain a failed
+filesystem. A unit bound alone is insufficient; real GPU inference still requires separate proof.
+See [preserved tools](code-quality-tooling.md#preserved-local-proof-workflows).
 
 ## ARM64 onnxinference crashes after requesting an unavailable ORT API
 
@@ -209,6 +453,9 @@ See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 - [The torch stage fails with `ORT-CENSUS FAIL`](#the-torch-stage-fails-with-ort-census-fail)
 - [The torch stage fails with `CHAIN-WHEEL FAIL`](#the-torch-stage-fails-with-chain-wheel-fail)
 - [A build or smoke stops on an ONNX Runtime that is not the chain's](#a-build-or-smoke-stops-on-an-onnx-runtime-that-is-not-the-chains)
+- [The compiler stage selects distro Clang after building the pinned release](#the-compiler-stage-selects-distro-clang-after-building-the-pinned-release)
+- [Source Clang works but the default LLVM soname still selects the distro](#source-clang-works-but-the-default-llvm-soname-still-selects-the-distro)
+- [Native LLVM utilities remain on the distro after Clang selection is fixed](#native-llvm-utilities-remain-on-the-distro-after-clang-selection-is-fixed)
 - [The wrapper smoke fails `clang --version` after a partial rebuild](#the-wrapper-smoke-fails-clang---version-after-a-partial-rebuild)
 - [`fatal error: sanitizer/common_interface_defs.h: No such file or directory` on arm64/riscv64](#fatal-error-sanitizercommon_interface_defsh-no-such-file-or-directory-on-arm64riscv64)
 - [A Jetson GPU container sees no GPU](#a-jetson-gpu-container-sees-no-gpu)
@@ -330,7 +577,44 @@ the store · Stevedore and the docker service · build content and toolchain.
 
 ---
 
+## Compiler planner rejects llvm-gnu-unique
+
+An older planner reports an invalid profile choice or expects the earlier
+expensive-input report shape. Use the versioned GNU_UNIQUE planner and its
+complete companion closure. It reads compiler6's preserved comparison and
+refuses a different source or any extra input; changing the old reference or
+falling back to an earlier profile cannot admit the new repair.
+See [the exact compiler profile](local-proof-workflows.md#gnu_unique-compiler-planning).
+
 ## Linux and cross-lane
+
+### Container preflight reports groups surviving KILL with only zombies
+
+**Symptom.** `ordered job process -<pgid> did not disappear after KILL`, while the group's
+remaining members have state `Z` and PPID1. The complete source check cannot pass cleanup.
+
+**Cause.** The container starts a timeout wrapper as PID1 without an orphan reaper. Killed
+grandchildren become adopted zombies; signals cannot remove them, so `kill -0` still sees the
+group. In the observed local run, 1,482 adopted zombies kept 250 failed-cleanup groups visible.
+
+**Fix.** Preserve raw logs and process evidence, stop only the owned unit, and verify its
+container is absent. Replay the complete frozen source using the engine's `--init`; nerdctl
+needs host `tini` on PATH. Keep the named-unit deadline, ownership label, CID and cleanup hook.
+Do not weaken group-disappearance checks or count partial results as complete acceptance.
+The transport regression checks the init argument; it does not prove the engine's actual reaper.
+
+### Isolated preflight cannot write its report bind
+
+**Symptom.** The nonroot worker cannot write `/evidence`; `os.access` at its actual UID returns
+false, and only the root-written prerequisite file appears. Partial stdout is insufficient evidence.
+
+**Cause.** A reconstructed engine invocation omitted the canonical runner's temporary report
+permission. Rootless container UID1000 differs from the host bind owner, even with matching names.
+
+**Fix.** Preserve the failed attempt, then invoke `run-isolated-preflight.py` directly. Its report
+bind is writable before launch and restored to0755 after cleanup. The explicit-image and retained
+SDK-cache options keep reuse inside this path. The engine fixture rejects a non-writable report
+bind; it does not model every host ACL or replace checking the real worker's write access.
 
 ### PowerShell mutation baseline aborts with a truncated assembly identity
 
@@ -387,7 +671,7 @@ until its 90- or 300-second limit.
 
 **Cause.** Disk full from cached images/artifacts
 
-**Fix.** In order: (1) `linux/host-config/prune-safe.sh` (spares compile caches), (2) `nerdctl rmi` of specific already-pushed tags, (3) `nerdctl system prune -a -f` ONLY with no chain running — it deletes ALL non-container-referenced images INCLUDING tagged cross-stage locals (bit us mid-run 2026-08-18; registry-pinned handoffs survived via re-pull)
+**Fix.** Use the [authorized cleanup controller](linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches) and preserve compiler/source cachemounts and required images. During a live build retain at least 100 GB of regular layers. Specific obsolete published local images require an idle engine and fresh immutable registry/config verification; never use broad system/builder prune. If safe cleanup is insufficient, retain the failed run and measured resource gap. The ordinary ROCm runtime now requires at least 300 GiB before output or alias allocation because Runtime7 exhausted disk on FINAL import after its required serial smoke passed. The parent plan can require more; this never relaxes the shared minimum. Runtime smoke/wrapper overlap can multiply context storage: the explicit [serial host option](local-proof-workflows.md#ordinary-local-runtime) runs the same required smoke first without disabling gates.
 
 ### `No space left on device` in a Windows RUN while the host has space
 
@@ -1448,6 +1732,21 @@ for its own tree.
 a suite and a mutation recipe (`onnx-ep-amdgpu.merge-copy-present`). Prove a new path on the PINNED media
 image (`nerdctl run … ls <path>`), not on the branch's log.
 
+### An AppImage starts a bundled helper instead of the application
+
+**Symptom.** The payload files pass verification, but AppRun exits before the
+application produces its profile. The DEB payload runs directly while its
+installed `/usr/bin` wrapper may have the same wrong target.
+
+**Cause.** Automatic bundle discovery selects the first executable alphabetically;
+a native helper can precede the application. The actual Rust package launched
+`kataglyphis-rust-hip-probe` rather than `oxidant`.
+
+**Fix.** Set `APP_PACKAGING_BINARY_NAME` to the application before invoking the
+shared packagers, then rebuild and verify the finished launchers. The explicit
+selection must exist as a regular executable; a typo must fail. Direct payload
+execution does not prove the installed DEB wrapper or AppRun target.
+
 ### An AppImage GPU profile times out while the DEB passes
 
 **Symptom.** OmniAccelerANT's `profile-gpu-packages.sh` passes the tarball and the DEB, then stops without
@@ -1702,6 +2001,19 @@ its own plugin directory.
 **Fix.** The plugin link `deepstream.sh stage-runtime` makes:
 [`linux-accelerator-images.md` § NVDEC through the distro libv4l2](linux-accelerator-images.md#nvdec-through-the-distro-libv4l2).
 
+### nerdctl build reports `OCI layout cannot have empty digest`
+
+**Symptom.** A local named-context solve stops before its first RUN with this error.
+
+**Cause.** The exported Ubuntu layout can point at a multi-platform index.
+[nerdctl 2.4.1](https://github.com/containerd/nerdctl/blob/v2.4.1/pkg/cmd/builder/build.go#L610)
+scans only direct image-manifest descriptors and selects none from that wrapper.
+
+**Fix.** The selected-context cache probe derives a new single-amd64 layout from
+the pinned input, verifies its config platform and all referenced/copied bytes,
+and preserves the original. The failed first probe remains failed. This proves
+neither compiler reuse nor image/GPU acceptance.
+
 ### A no-push wrapper build cannot find its own android image
 
 **Symptom.** In `Dockerfile.torch`'s `wheels-source` stage: `cross-android-...: not found`; with an OCI context added, `unable to get info about digest ... content sha256:...: not found`; extracting with `nerdctl cp`, `cannot use cp with stopped containers in rootless mode`.
@@ -1786,6 +2098,146 @@ Known filesystem, ZIP and metadata errors become `ORT-CENSUS FAIL` findings. Une
 **Cause.** A consumer compiled, linked, fetched or loaded an ORT that is not the chain build. An upstream bump that re-enabled a download is the usual source. The STAMP case means the consumer's layer predates the build gate or ran against another ORT build. On Linux, Ubuntu's `gstreamer1.0-plugins-bad` depends on `libonnxruntime1.x`, which is how apt pulled a distro ORT on 2026-08-27 (12 packages, 62.9 MB).
 
 **Fix.** Remove the source, never loosen the gate: restore the pre-set, `ORT_HOME` or fetch block the consumer lost; drop the package that drags a distro ORT in; replace a stray copy with a link to the chain file. For STAMP, rebuild that consumer's stage. Which gate sits where, and what each message means: [`onnxruntime-single-source.md` § Failure messages](onnxruntime-single-source.md#failure-messages).
+
+### The AMD GPU environment shadows the qualified source LLVM
+
+**Symptom.** The SDK selects the pinned native tools, but the following GPU
+stage PATH puts `/usr/lib/llvm-23/bin` before them.
+
+**Cause.** The AMD environment prepended both the distro LLVM directory and
+ROCm tools to its inherited PATH after source-backend construction.
+
+**Fix.** Keep source MIGraphX first, preserve the complete inherited PATH and
+append ROCm tools. Do not replace the selected native compiler with an apt
+driver. Executable-resolution fixtures cover this order; actual GPU image and
+consumer acceptance remain separate. See [the normal AMD entry](linux-accelerator-images.md#migraphx-source-backend-preparation).
+
+### The compiler stage selects distro Clang after building the pinned release
+
+**Symptom.** The installed-defaults probe reports Ubuntu Clang 23.1.6 when the
+producer pin is 23.1.5, even though the source build completed.
+
+**Cause.** The old alternatives helper searched major-only distro paths and missed
+the unified source install at `/opt/llvm-target-amd64`. Its smoke checked only
+the major/minor channel, hiding the wrong patch release.
+
+**Fix.** Pass the explicit native source prefix to the alternatives helper and
+rebuild the compiler stage with the full-version smoke. Preserve the failed image;
+do not admit it as an SDK parent. The late selection fix reuses the expensive source
+layers. See [compiler selection and probe limits](cross-build-verification.md#native-compiler-selection).
+
+### SDK verification loses Clang after successful LLVM materialization
+
+**Symptom.** The real SDK NEEDED walk and Vulkan installation pass, then verification
+fails `Required tool is missing: clang`. The qualified parent compiler was correct.
+
+**Cause.** Materialization copied the native LLVM tree to `/opt/llvm-target` and
+deleted its architecture prefix, which PATH, alternatives and the native loader
+configuration still referenced. A correct generic tree alone cannot satisfy them.
+
+**Fix.** Restore the selected architecture name as an alias after materialization
+and retain the distinct native host tree when selecting a foreign target. Keep
+the parent qualification and failed SDK receipts separate; retry the normal SDK
+with the repaired script and unchanged verification. See [prefix ownership and
+fixture limits](artifact-copy-completeness.md#sdk-materialization-preserves-build-host-and-target-paths).
+
+### SDK Cross-Clang wrapper cannot load the source LLVM symbols
+
+**Symptom.** Materialization and Vulkan setup complete, then SDK verification fails
+`/usr/bin/clang-23: undefined symbol: LLVMInitializeAArch64TargetInfo, version LLVM_23.1`.
+
+**Cause.** The wrapper selector preferred the major-suffixed apt driver even though
+the native source prefix existed. The intentional source-first loader cache then
+supplied the source LLVM DSO to that distro binary. The old native build carried
+only its host backend, while cross wrappers also need the configured CPU targets.
+
+**Fix.** Select the native source compiler before considering a bootstrap fallback,
+refuse incomplete source prefixes, build its configured cross backends and publish
+wrappers after those builds complete. Require
+the normal compiler's exact wrapper pins and target object/link/QEMU smokes before
+SDK retry. Preserve the original native-tool and loader receipts at their stated
+scope. The source loader priority stays in place; see [Clang cross wrappers](linux-cross-builds.md#clang-cross-wrappers).
+
+### Cross-Clang objects pass but the final compiler link smoke fails
+
+**Symptom.** Both foreign Clang drivers report the exact source pin and emit target
+objects, but the required dynamic link fails. Older common smokes discarded its stderr.
+
+**Cause.** The foreign wrapper used `/usr/<triplet>` as the sysroot even though source
+GNU uses `/`. Debian's libc/libm linker scripts contain absolute target paths; the extra
+sysroot makes the linker search for them beneath the target tree again. Actual same-image
+baseline failures and GNU-root C/C++ dynamic/static/QEMU controls established this cause.
+
+**Fix.** Use `/` in the normal wrappers and retain the foreign staged-tree existence guard.
+Preserve the failed normal producer, candidate absence and original log.
+The common smoke now retains actual linker stderr and the raw failure status. Use the
+[versioned diagnostic prefix and linker controls](local-proof-workflows.md#failed-compiler-linker-diagnostics)
+to compare the baked wrapper with GNU's reported sysroot on the same image bytes.
+A successful object or diagnostic override cannot qualify the normal wrapper. Establish
+the actual linker error before changing source, then rebuild with the required smoke intact.
+
+If that rebuilt image passes its baked link smoke but the external image probe fails with
+`Wrapper does not bind the source driver and target contract`, inspect the retained wrapper
+scripts and probe's expected roots. An old host probe may still require `/usr/<triplet>`.
+Update the versioned probe and independent refusal fixtures to require `/`, preserve the failed
+invocation and rerun against the same immutable image with fresh output and actual input hashes.
+A successful old fixture does not qualify the image; no compiler rebuild follows from a stale
+host expectation alone.
+
+### A local native OCI handoff duplicates its verified parent layers
+
+**Cause.** Saving a child image into another OCI directory writes its compressed ancestor
+layers again. Repeating a large native parent can consume the fixed build reserve even when
+compiler caches and tagged images must be preserved.
+
+**Fix.** Use the versioned SDK handoff's
+[verified parent layer sharing](local-proof-workflows.md#verified-parent-layer-reuse).
+It hashes the parent again, links only immutable layer files into a fresh context and extracts
+new child metadata with `tar --skip-old-files`. The sealer checks both transport statuses,
+worker hashes, unchanged post-link identities and the complete native blob/ancestry contract.
+A different filesystem, symlink, changed source metadata or failed transport must fail; keep
+the original evidence and use a fresh destination after fixing the cause. The normal disk
+admission and cleanup identity protections remain required.
+
+### A completed SDK fails a compiler-profile qualification on LLVM prefixes
+
+**Cause.** SDK materialization moves the selected native tree to `/opt/llvm-target` and
+preserves `llvm-target-amd64` as an alias. The native probe reports resolved paths. The
+full compiler profile describes a different component with three target-native trees.
+
+**Fix.** Use the explicit SDK invocation profile in the
+[versioned qualifier and native OCI handoff](local-proof-workflows.md#sdk-component-qualification).
+Keep the original compiler plan and successful producer intact. Require actual native tools,
+exact pins, both shell modes, two wrapper scripts, C/C++ execution, loader selection and all
+compiler ancestor layers. A parent-container replay or a renamed compiler plan does not
+qualify the built SDK; retain any failed invocation before using fresh output.
+
+### Source Clang works but the default LLVM soname still selects the distro
+
+**Symptom.** `ldd` of the explicit source Clang uses its own LLVM through RUNPATH,
+but `ldconfig -p` lists the distro copy first for the same soname.
+
+**Cause.** Executable selection and per-binary RUNPATH did not publish the source
+library directory to the default loader cache.
+
+**Fix.** Use the shared loader publisher for the late `000-llvm-native.conf` and
+run the native schema-2 cache-priority gate. Keep the runtime package's existing
+`000-llvm-target.conf` publication and its required companion. Cache selection
+is separate from actual SDK linking and runtime acceptance.
+
+### Native LLVM utilities remain on the distro after Clang selection is fixed
+
+**Symptom.** Clang reports the source pin, but `llvm-config --version` reports
+Ubuntu's newer patch and most native utility paths still resolve under `/usr`.
+
+**Cause.** Four compiler alternatives were changed without adding the complete
+native source bin tree to the final compiler image PATH.
+
+**Fix.** Put that tree behind the pinned Python and GNU bins after Python setup,
+and retain the baked native tool-selection probe. This reuses the expensive source
+RUNs and preserves ordinary GNU aliases. The failed wider SDK admission remains
+separate from the passing six-compiler check; see
+[selection scope](cross-build-verification.md#native-compiler-selection).
 
 ### The wrapper smoke fails `clang --version` after a partial rebuild
 

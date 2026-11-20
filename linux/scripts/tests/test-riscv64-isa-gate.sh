@@ -42,7 +42,7 @@ t_assert_contains "$(_rvv_verdicts "")" "NONE"
 t_assert_contains "$(_rvv_verdicts "PKG numpy")" "NONE" "unrelated probe lines must not look like coverage"
 
 t_case "the gate is wired into the smoke run and is riscv64-only"
-t_assert_contains "$(cat "${SMOKE}")" 'check_riscv64_isa "${image_tag}" "${target_arch}"' \
+t_assert_contains "$(cat "${ISA}")" 'check_riscv64_isa "${image_tag}" "${target_arch}"' \
   "an unwired gate is not a gate"
 # test-amd64-isa-gate.sh runs both ISA gates through the shared arch guard.
 t_assert_contains "$(t_fn_src "${ISA}" check_riscv64_isa)" "_shipped_arch_gate riscv64 "

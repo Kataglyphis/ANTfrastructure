@@ -56,6 +56,30 @@ default is advisory for findings; `strict: true` gates them. Missing tool setup 
 an empty Python scope fails in either mode. Local entry point:
 `bash linux/scripts/python-static.sh --root <checkout> --path . --report-only`.
 
+## Compiler caching during packaging
+
+`PYTHON_BUILD_COMPILER_CACHE=on` opts the Linux packaging driver into the shared
+`ci-compiler-cache.sh` command scope. Supply `CC` and `CXX` as single compiler executables,
+with flags in the normal flag variables. The canonical resolver selects the cache launcher;
+missing compilers, missing core APIs, an unavailable launcher or a malformed mode fail.
+Required cache initialization immediately precedes launcher resolution and retains its raw failure;
+the site check also retains the existing advisory form for optional-core consumers.
+The default `off` retains the existing host invocation.
+
+Both project syncs (which may build editable extensions), native and cross wheel builds,
+and the free-threaded build receive temporary, shell-quoted compiler prefixes. Function
+callbacks keep their published venv/ORT state and exact arguments. The original compiler
+variables return before bundle/package assembly, including after a raw command failure.
+Do not pass prefixed multiword compiler names to packaging-time runtime discovery.
+
+Copied `ci_packaging.sh` needs `ci-compiler-cache.sh` beside it; that companion initializes
+the shared `ci-common.sh` context before exporting its build API. Cache-enabled copies also
+need the full sibling core layout, including `common.sh` and its declared companions.
+This transports the launchers; it does not prove a compile or a cache hit. Preserve actual
+cache statistics with `capture-sccache-command.sh` and drain the configured shared level
+before ending a real build. The fixture suite proves scope, quoting, raw failures and
+production call wiring without a native compiler, network, S3 service or real wheel build.
+
 ## Test artifact uploads
 
 The Linux and Windows reusable jobs keep `if: always()` on their uploads so failed
@@ -936,7 +960,7 @@ Tests: `linux/scripts/tests/test-python-free-threaded-wheel.sh` and
 `windows/scripts/tests/PythonWheel.FreeThreaded.Tests.ps1`. Inside `:latest` the Linux suite also
 runs `prove` for real: it compiles two C extensions against `/opt/python-freethreaded` (or
 `FT_PYTHON`), one declaring `Py_MOD_GIL_NOT_USED` and one not. A host without a free-threaded
-interpreter logs a SKIP line for that case.
+interpreter logs a SKIP line for that case. The pure-wheel refusal uses a local distribution fixture and does not require host pip.
 
 ## Upgrading Python
 

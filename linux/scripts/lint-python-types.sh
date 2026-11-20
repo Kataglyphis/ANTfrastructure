@@ -43,6 +43,7 @@ parameter_returns_report="${report_dir}/ruff-parameters-returns-gate.txt"
 
 mapfile -d '' -t py_files < <(git ls-files -z -- '*.py')
 mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs/scripts/*.py' \
+  'linux/scripts/local-proof/proof_subject.py' 'linux/scripts/local-proof/native-oci-handoff.py' \
   'linux/ansible/scripts/*.py' 'linux/host-config/*.py' 'linux/llm-stack/gateway/*.py' \
   'linux/llm-stack/tests/*.py' \
   'linux/scripts/01-core/manifest-*.py' 'linux/scripts/01-core/registry-*.py' \
@@ -56,8 +57,15 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/05-frameworks/*.py' \
   'linux/scripts/06-packaging/free-threaded-sysconfig-tools.py' \
   'linux/scripts/06-packaging/ort_census_probe.py' \
+  'linux/scripts/06-packaging/stage-cargo-native-helper.py' \
   'linux/scripts/06-packaging/python-app-selftest.py' \
-  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' \
+  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \
+  'linux/scripts/source-ci.py' 'linux/scripts/source_ci/*.py' \
+  'linux/scripts/append-operational-memory.py' 'linux/scripts/operational_memory*.py' \
+  'linux/scripts/seal-mutation-unit.py' 'linux/scripts/audit-native-plugin-runtime.py' \
+  'linux/scripts/owned_containers.py' 'linux/scripts/cleanup-owned-containers.py' \
+  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \
+  'linux/scripts/qairt-key-handoff.py' 'linux/scripts/qairt-private-transfer.py' \
   'linux/scripts/layer-audit.py' 'linux/scripts/lib/cmakelang-py315.py' \
   'linux/scripts/lib/fetch-data-lock.py' 'linux/scripts/lib/dartdoc-guides.py' \
   'linux/scripts/renovate_audit.py' 'linux/scripts/renovate_cmake.py' \
@@ -69,9 +77,13 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/extract_embedded_python.py' 'linux/webserver/scripts/*.py' 'shared/python/*.py')
 mapfile -d '' -t windows_quality_files < <(git ls-files -z -- 'windows/scripts/certificates/*.py')
 mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
+  'linux/scripts/local-proof/proof_subject.py' \
+  'linux/scripts/local-proof/native-oci-handoff.py' \
   'linux/jetson-webcam/app.py' \
   'linux/ansible/scripts/ansible_run_status.py' \
   'linux/scripts/develop_red.py' 'linux/scripts/layer-audit.py' \
+  'linux/scripts/append-operational-memory.py' 'linux/scripts/operational_memory*.py' \
+  'linux/scripts/tests/operational_memory_tests.py' \
   'linux/scripts/renovate_audit.py' 'linux/scripts/renovate_cmake.py' 'linux/scripts/renovate_locator.py' \
   'linux/scripts/renovate_pep_git.py' 'linux/scripts/renovate_planner.py' 'linux/scripts/renovate_uv_exports.py' \
   'linux/scripts/verify_large_files.py' 'linux/scripts/verify_masked_assignments.py' \
@@ -166,6 +178,7 @@ mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
   'linux/scripts/quality_allow.py' \
   'linux/scripts/lib/fetch-data-lock.py' \
   'linux/scripts/06-packaging/ort_census_probe.py' \
+  'linux/scripts/06-packaging/stage-cargo-native-helper.py' \
   'linux/scripts/06-packaging/venv-version-probe.py' \
   'linux/scripts/verify_code_complexity.py' \
   'linux/scripts/verify_gate_registry.py' \
@@ -175,11 +188,17 @@ mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
   'linux/scripts/lib/dartdoc-guides.py' \
   'linux/scripts/tests/fleet_dependency_tests.py' \
   'linux/scripts/06-packaging/free-threaded-sysconfig-tools.py' \
-  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'docs/scripts/verify_mutations.py' \
+  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/preserve-consumer-sources.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \
+  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \
   'linux/scripts/quality_report.py' 'linux/scripts/quality_report_artifacts.py' \
   'linux/scripts/quality_report_compare.py' 'linux/scripts/quality_report_github.py' \
   'linux/scripts/quality_report_model.py' 'linux/scripts/quality_report_text.py' \
   'linux/scripts/quality_report_tree.py' 'docs/scripts/code_dupes_extra.py')
+mapfile -d '' -t archive_proof_files < <(git ls-files -z -- 'linux/scripts/restore-consumer-archive.py')
+quality_files+=("${archive_proof_files[@]}")
+parameter_return_files+=("${archive_proof_files[@]}")
+mapfile -d '' -t oci_archive_files < <(git ls-files -z -- 'linux/host-config/oci_archive_dedup.py' 'linux/host-config/deduplicate-oci-archives.py')
+parameter_return_files+=("${oci_archive_files[@]}")
 # Runtime imports use their installed package environments in dedicated workflow or image gates.
 linux_environment_checked_files=(
   'docs/conf.py'
@@ -191,7 +210,7 @@ windows_environment_checked_files=('windows/scripts/build/litert-wheel-smoke.py'
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#parameter_return_files[@]}" -eq 133 ] || { echo "Expected 133 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 151 ] || { echo "Expected 151 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
 jetson_dockerfile="${ROOT}/linux/Dockerfile.torch"
 [ -f "${jetson_dockerfile}" ] || { echo "Torch Dockerfile is missing for the Jetson type gate" >&2; exit 2; }
 grep -Fq 'source=linux/jetson-webcam/app.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro' "${jetson_dockerfile}" || {
@@ -233,7 +252,14 @@ for file in "${py_files[@]}"; do
 done
 
 ty=(uvx "ty@${TY_VERSION}" check --python "${quality_python}" --python-version 3.14 --output-format concise)
-search=(--extra-search-path docs/scripts --extra-search-path linux/scripts --extra-search-path shared/python)
+search=(--extra-search-path docs/scripts --extra-search-path linux/scripts --extra-search-path shared/python
+  --extra-search-path shared/python/tests
+  --extra-search-path linux/scripts/03-media/runtime
+  --extra-search-path linux/scripts/06-packaging
+  --extra-search-path linux/scripts/tests
+  --extra-search-path linux/llm-stack/tests/gateway_e2e
+  --extra-search-path linux/host-config
+  --extra-search-path linux/scripts/local-proof)
 
 strict_scan() {
   local label="$1" report="$2" count="$3" rc=0

@@ -151,6 +151,8 @@ The runtime helpers share initialization logic via
 `build-runtime-manifest.sh` reach it by sourcing `lib-orchestrator.sh`, which
 loads it inside `runtime_flow_preamble()`.
 
+For the reviewed local ROCm amd64 sequence, the [native Media-to-Android host profile](local-proof-workflows.md#native-media-to-android-handoff) binds a completed Media producer to its own native GPU ancestry before normal Android. The [native Android export](local-proof-workflows.md#native-android-export) then binds that completed Android image to all Media ancestors before runtime. The [ordinary local runtime profile](local-proof-workflows.md#ordinary-local-runtime) consumes that verified Android output with an exact app commit, fresh base/package/wrapper names and owned container cleanup. An explicitly reviewed runtime-source repair needs its own complete source proof while preserving the original Android/native parent bindings. These explicit handoffs preserve the no-push resume refusal below; actual runtime and digest-specific FINAL consumer receipts remain required.
+
 Standalone single-stage rebuild commands:
 [§ The command reference AGENTS.md used to carry](#the-command-reference-agentsmd-used-to-carry).
 
@@ -1247,7 +1249,24 @@ same way.
 selected host clang with `--target=<triplet>`, `--sysroot` and
 `--gcc-toolchain=<gcc_prefix>` already baked in, where `gcc_prefix` is
 `gcc_toolchain_prefix()` (`/opt/gcc-$GCC_VERSION`) or `/usr` when that directory
-is missing. These wrappers are the only path in the build where clang IS the
+is missing. Every wrapper uses the filesystem root `/`, matching the source cross GNU
+configuration: Debian target linker scripts already contain absolute `/usr/<triplet>`
+paths. Foreign targets additionally require that staged target tree before writing wrappers;
+using the tree itself as the sysroot roots those linker-script paths a second time. Wrappers are published after the unified source builds complete, so their
+baked driver paths cannot retain the earlier apt bootstrap. Selection first checks `/opt/llvm-target-<build-host>/bin`: a present
+source prefix must contain the requested executable, and dangling or incomplete
+trees fail. Only an absent source install permits the original versioned then
+unversioned bootstrap search. This prevents the distro driver from loading an
+incompatible source LLVM DSO through the intentional source-first loader cache.
+
+The native LLVM build includes its host backend and every configured cross CPU
+backend in one deduplicated CMake list. Foreign target-native builds keep only
+their own backend. The ordinary toolchain smoke checks both wrapper drivers at
+every requested target against the full successful `LLVM_RELEASE`, then reuses
+the target object, link and QEMU probes. The native architecture wrapper runs
+explicitly before the separate foreign-target loop; checking bare host Clang
+does not check the architecture wrapper's baked driver path. The common compiler probe compiles C
+input through each driver; it does not prove the complete C++ language or ABI. Failed links retain their stderr and raw status; invalid allocation and failed cleanup cannot pass. The [bounded linker diagnostic workflow](local-proof-workflows.md#failed-compiler-linker-diagnostics) preserves failed-image evidence separately from normal acceptance. These wrappers are the only path in the build where clang IS the
 compiler; nothing in the tree sets a bare `CC=clang`. They live in the build-stage
 images (the compiler stage installs them); `Dockerfile.package` does not copy
 them, so the runtime image has none, and a consumer compiling with clang in

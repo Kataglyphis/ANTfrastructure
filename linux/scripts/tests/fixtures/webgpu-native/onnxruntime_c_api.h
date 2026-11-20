@@ -25,4 +25,5 @@ typedef struct OrtApiBase {
   const OrtApi *(*GetApi)(uint32_t);
   const char *(*GetVersionString)(void);
 } OrtApiBase;
+const OrtApiBase *OrtGetApiBase(void);
 #endif

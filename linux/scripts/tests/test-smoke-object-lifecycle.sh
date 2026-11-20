@@ -79,12 +79,7 @@ unset -f rm
 command rm -rf "${TMPDIR:?}"/*
 
 t_case 'failed temporary-directory allocation never invokes the compiler'
-mktemp() {
-  case "$temporary_mode" in
-    failed) return 71 ;;
-    missing) printf '%s' "$work/absent" ;;
-  esac
-}
+mktemp() { t_failed_temp_allocation "${temporary_mode}" "${work}/absent"; }
 for temporary_mode in failed empty missing; do
   rm -f "$OBJECT_LOG"
   status=0

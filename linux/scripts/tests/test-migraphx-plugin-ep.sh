@@ -170,4 +170,51 @@ _df="${TESTS_DIR}/../../Dockerfile.media"
 t_assert_eq 1 "$(grep -cE '^COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-ep-amdgpu /usr/local/lib/onnxruntime-ep-amdgpu$' "${_df}")" "the merge stage copies the plugin tree"
 t_assert_eq "    bash /opt/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh build; \\" "$(grep -E '35-build-migraphx-plugin-ep.sh build' "${_df}")" "the call sits after the GPU if/fi, so every chain leaves the tree"
 
+
+_mgx_separate_prefix_fixture() (
+  local scenario="$1" root="${_T}/separate-$1" expected_sdk
+  mkdir -p "${root}/source/lib/cmake/migraphx" "${root}/sdk"
+  : > "${root}/source/lib/cmake/migraphx/migraphx-config.cmake"
+  expected_sdk="${root}/sdk"
+  case "${scenario}" in
+    core)
+      expected_sdk+="/core"
+      mkdir -p "${expected_sdk}/lib/cmake/hip" "${root}/sdk/zz-asan/lib/cmake/hip"
+      : > "${root}/sdk/zz-asan/lib/cmake/hip/hip-config.cmake"
+      : > "${expected_sdk}/lib/cmake/hip/hip-config.cmake"
+      ;;
+    direct)
+      mkdir -p "${expected_sdk}/lib/cmake/hip"
+      : > "${expected_sdk}/lib/cmake/hip/hip-config.cmake"
+      ;;
+    missing) ;;
+    *) return 98 ;;
+  esac
+  err() { printf '%s\n' "$*" >&2; return 1; }
+  info() { :; }
+  MGXEP_WORK_DIR="${root}/work" MGXEP_SRC='/plugin source' MGXEP_ORT_DIR='/chain ORT'
+  local -a MGXEP_DEFINES=("-DSELECTED_SEED=ON")
+  setup_host_python_environment() { export HOST_PYTHON_BIN='/selected Python'; }
+  mgxep_ort_prefix() { printf '%s\n' '/selected ORT'; }
+  append_cmake_cache_linker_args() { :; }
+  plugin_ep_configure_and_build() {
+    local -n selected="$2" selected_seeds="$3"
+    printf '%s\n' "${selected[@]}" "${selected_seeds[@]}" > "${root}/actual-arguments"
+  }
+  plugin_ep_built_module() { printf '%s\n' '/selected module'; }
+  MIGRAPHX_HOME="${root}/source" ROCM_HOME="${root}/sdk" MGXEP_COMMIT="${ORT_AMDGPU_EP_COMMIT}" JOBS=2 \
+    mgxep_compile || return $?
+  [[ "${scenario}" != missing ]] || return 0
+  grep -Fx -- "${MGXEP_DEFINES[0]}" "${root}/actual-arguments" || return
+  grep -Fx -- "-DCMAKE_PREFIX_PATH=${root}/source;${expected_sdk}" "${root}/actual-arguments"
+)
+
+t_case "source MIGraphX and HIP use independent prefixes, preferring the normal SDK core alias"
+t_assert_ok _mgx_separate_prefix_fixture core
+t_assert_ok _mgx_separate_prefix_fixture direct
+_mgx_prefix_error="$(_mgx_separate_prefix_fixture missing 2>&1)"; _mgx_prefix_status=$?
+t_assert_eq 1 "${_mgx_prefix_status}" "missing HIP must fail before configure"
+t_assert_contains "${_mgx_prefix_error}" "no hip-config.cmake"
+t_assert_ok test ! -e "${_T}/separate-missing/actual-arguments"
+
 t_summary

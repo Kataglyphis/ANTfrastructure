@@ -591,6 +591,8 @@ no network. Check this before debugging a mirror or a DNS resolver.
 
 ### B7. Reclaiming disk without losing the compile caches
 
+The versioned [authorized cleanup controller](local-proof-workflows.md#authorized-cleanup) preserves runtime snapshots, exact image/cachemount identities and independent post-cleanup checks. It retains the supplied standing authorization, skips when the reserve already passes and creates no recurring schedule. For an already live ordinary runtime, the [bounded storage guardian](local-proof-workflows.md#bounded-runtime-storage-observation) checks pressure between one-second waits and calls that same worker without agent intervention; it keeps the 100-GB live-build minimum and cannot grant build acceptance.
+
 Moved here from `AGENTS.md` on 2026-09-15: the rule lives there, the
 measurements live here.
 
@@ -621,6 +623,15 @@ BuildKit's. `PRUNE_DUP_CACHEMOUNTS=1` removes the surplus records, and refuses
 while any build holds a record. Through wave 4:
 **12 invocations, ~1 TB reclaimed, 0 cachemount losses.**
 
+Standing owner authorization dated 2026-11-13 lets agents run this canonical
+script when a build fails its disk-reserve check, without asking again. Measure
+first and skip cleanup when the reserve already passes. Use
+`PRUNE_KEEP_GB=120 PRUNE_DUP_CACHEMOUNTS=0` by default; the documented mid-run
+minimum below remains available. Preserve and compare cachemount IDs and required
+local image identities before and after, then rerun the original disk guard.
+This authorization does not cover surplus-cachemount removal, arbitrary file or
+image deletion, or a recurring timer.
+
 **Mid-run, use `PRUNE_KEEP_GB>=100`.** Smaller budgets evict the in-flight
 lanes' fresh layers and buy recompile churn; the kata-buildcache media slugs,
 rewritten every round, are the better lever when the store runs lean.
@@ -639,6 +650,34 @@ rewritten every round, are the better lever when the store runs lean.
 not-container-referenced, so it deletes TAGGED cross-stage locals too — on
 2026-08-18 the `cross-media-*` tags vanished mid-run and only the
 registry-digest-pinned handoffs survived, via a re-pull that cost ~25 minutes.
+
+The owner also authorizes autonomous local container-space cleanup (2026-11-14).
+For image removal, select explicit obsolete **published** tags and wait until no
+build/container is running and every BuildKit record type reports no in-use records.
+Read each exact `repository@sha256:...` manifest from the registry and match its
+config digest to the current local image before using the documented `nerdctl rmi`
+command without force. Preserve the current compiler/SDK/GPU parents, E30 and valid
+receipts, all compiler/source cachemounts, checkouts and outputs. A registry lookup
+proves current availability, not future registry retention; save the exact references.
+Do not delete registry versions or volumes as part of this local cleanup.
+
+Use the Git-tracked `nerdctl-full-state.py` and `watch-build-units.py` tools for
+before/after inventory and the bounded named cleanup unit. Store selected tag/digest
+inputs and original manifest readbacks under ignored `logs/host-maintenance/`; an
+input record is not a generated executable cleanup script. Verify identical
+cachemount IDs, no unexpected removed images and unchanged remaining image identities,
+then recheck the ordinary byte reserve before any producer starts. The regular-layer
+cleanup above retains its separate mid-run budget policy.
+
+Actual cleanup `owner-container-cleanup-20261114-1` removed four old published local
+SDK/NVIDIA-Android copies, freed 121,229,893,632 bytes and retained all 12 cachemounts
+and all 46 other image records. The checked reserve rose above 180 GiB and the
+prepared GPU5 launched from its exact qualified source and original SDK. This is
+local resource recovery, not image, binary-licence or finished-consumer acceptance.
+
+Actual cleanup `owner-container-cleanup-20261115-1` verified the immutable remote manifests and matching local configs for the obsolete published default ARM64 and RISC-V Android copies, then removed only those two tags without force while all engine record types and outer build units were idle. Free space rose from 189,957,455,872 to 222,812,606,464 bytes: 32,855,150,592 bytes reclaimed. All 42 cachemount IDs and their 121,139,314,688 bytes, plus all 48 unselected image identities, were preserved. The cleanup unit completed with status 0 and was stopped; its receipt is under `logs/host-maintenance/owner-container-cleanup-20261115-1/`. The unchanged 180-GiB reserve passed afterward; fresh admission remains required before another build.
+
+Runtime5's automatic guardian performed six keep-100 worker invocations. Its third cleanup reclaimed 63,756,185,600 bytes before the later failure and package import completed; both concurrent smoke and wrapper then exhausted disk while materializing native contexts. After all engine record types, containers and outer builds became idle, `runtime5-terminal-idle-reclaim-20261115-1` reclaimed another 93,190,426,624 bytes (128,614,940,672 to 221,805,367,296), preserved all 42 cachemount IDs/121,139,314,688 bytes and all 48 image identities, and was sealed/stopped. These are resource receipts, not FINAL acceptance. The existing [serial smoke option](local-proof-workflows.md#ordinary-local-runtime) retains the same test before the wrapper; fresh source qualification and resource admission remain required for another attempt.
 
 ### B8. ghcr registry hygiene
 

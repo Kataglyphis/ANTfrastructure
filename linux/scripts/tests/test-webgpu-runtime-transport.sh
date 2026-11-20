@@ -28,6 +28,7 @@ UV
 cat > "${work}/python" <<'STUB_INTERPRETER'
 #!/usr/bin/env bash
 case "$*" in
+  *free-threaded-probe-deps.py*) printf '%s\n' "$0" "$@" > "${FT_DEPS_LOG}" ;;
   *ort_webgpu_runtime.py*)
     printf '%s\n' "$0" "$@" > "${FT_FACTORY_LOG}"
     if [ "${FT_FACTORY_STATUS}" = 0 ]; then echo 'WEBGPU-FACTORY OK: actual-child-fixture'; else echo 'WEBGPU-FACTORY FAIL: child failed' >&2; fi
@@ -40,14 +41,18 @@ program="$(ft_store_probe_script)"
 program="${program//\/opt\//${work}/opt/}"
 program="${program//\/tmp\/fts./${work}/fts.}"
 for distribution in onnxruntime_dnnl onnxruntime_gpu onnxruntime onnxruntime_genai; do
-  wheel="${work}/opt/wheels-free-threaded/${distribution}-1.31.1-cp314-cp314t-linux_x86_64.whl"
+  wheel="${work}/opt/wheels-free-threaded/${distribution}-1.31.1-cp314-cp314t-linux_aarch64.whl"
   : > "${wheel}"
   for child_status in 0 7; do
-    command rm -f -- "${work}/factory-argv"
+    command rm -f -- "${work}/factory-argv" "${work}/deps-argv"
     PATH="${work}/bin:${PATH}" FT_FAKE_PY="${work}/python" FT_FACTORY_LOG="${work}/factory-argv" \
-      FT_FACTORY_STATUS="${child_status}" WEBGPU_EXPECT_REF=v1.31.1 PYTHON_MAJOR_MINOR=3.14 \
+      FT_FACTORY_STATUS="${child_status}" FT_DEPS_LOG="${work}/deps-argv" \
+      FT_PROBE_NUMPY_VERSION=2.5.4 FT_PROBE_ARCH=arm64 WEBGPU_EXPECT_REF=v1.31.1 PYTHON_MAJOR_MINOR=3.14 \
       bash -c "${program}" > "${work}/ft-output" 2>&1
+    t_assert_eq 0 "$?" "the transport must finish even when the factory reports failure"
     output="$(cat "${work}/ft-output")"
+    t_assert_ok test -s "${work}/deps-argv"
+    t_assert_eq "$(printf '%s\n' -I "${work}/opt/scripts/packaging/free-threaded-probe-deps.py" install --numpy-version 2.5.4 --arch arm64)" "$(tail -n +2 "${work}/deps-argv")"
     if [ "${distribution}" = onnxruntime_genai ]; then
       t_assert_fails test -e "${work}/factory-argv"
     else
@@ -55,7 +60,7 @@ for distribution in onnxruntime_dnnl onnxruntime_gpu onnxruntime onnxruntime_gen
       argv="$(tail -n +2 "${work}/factory-argv")"
       t_assert_eq "$(printf '%s\n' -I "${work}/opt/scripts/03-media/final/ort_webgpu_runtime.py" --phase free-threaded --source-ref v1.31.1)" "${argv}"
       interpreter="$(head -n 1 "${work}/factory-argv")"
-      [[ "${interpreter}" == "${work}/fts."*/venv/bin/python ]] || t_fail 'FT probe used a different interpreter'
+      [[ "${interpreter}" == "${work}/fts."*/venv/bin/python ]] || _t_fail 'FT probe used a different interpreter'
       if [ "${child_status}" = 0 ]; then
         t_assert_contains "${output}" "FTS WEBGPU ${distribution} WEBGPU-FACTORY OK: actual-child-fixture"
       else

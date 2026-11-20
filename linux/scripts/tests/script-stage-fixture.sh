@@ -6,7 +6,7 @@ source "${TESTS_DIR}/test-harness.sh"
 script_stage_fixture_init() {
   local -n workspace="$1" selected_source="$2"
   case "$3" in
-    40-build-wasm.sh) selected_source="${4:-${TESTS_DIR}/../03-media/build/onnxruntime/build/40-build-wasm.sh}" ;;
+    40-build-wasm.sh|web-wasm-cache.sh) selected_source="${4:-${TESTS_DIR}/../03-media/build/onnxruntime/build/$3}" ;;
     build-android.sh) selected_source="${4:-${TESTS_DIR}/../03-media/build/iree/android/build-android.sh}" ;;
     *) return 2 ;;
   esac

@@ -1,0 +1,25 @@
+name: Prepare native worker tests
+description: Reuse the pinned Flutter archive and retain Dart for the mandatory Rust/VM/sanitizer suites.
+runs:
+  using: composite
+  steps:
+    - name: Resolve the exact Flutter SDK cache key
+      id: pin
+      shell: bash
+      run: |
+        source linux/scripts/05-frameworks/flutter/flutter-pin.sh
+        unset FLUTTER_VERSION FLUTTER_SDK_SHA256
+        flutter_resolve_pin
+        echo "sha256=${FLUTTER_SDK_SHA256:?}" >> "${GITHUB_OUTPUT}"
+    - name: Restore the pinned test SDK
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/native-worker-sdk
+        key: native-worker-sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.pin.outputs.sha256 }}
+    - name: Prepare the cache and pinned VM
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends sccache build-essential xz-utils
+        bash linux/scripts/ensure-native-worker-test-tools.sh "${RUNNER_TEMP}/native-worker-sdk"
+        echo "${RUNNER_TEMP}/native-worker-sdk/flutter/bin/cache/dart-sdk/bin" >> "${GITHUB_PATH}"

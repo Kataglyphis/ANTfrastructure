@@ -13,9 +13,10 @@ _load_launcher() {
   mkdir -p "${_COMMON_SH_DIR}"
   # shellcheck disable=SC1090
   source "${TESTS_DIR}/../01-core/logging.sh"
-  # The image path follows [dir]: inside the image /opt/scripts/core holds a real launcher.
-  eval "$(sed -n '/^compiler_cache_launcher() {/,/^}/p' "${TESTS_DIR}/../01-core/common.sh" \
-    | sed "s#/opt/scripts/core#${_COMMON_SH_DIR}#g")"
+  # The real image fallback lives in the shared helper, outside the extracted resolver.
+  # shellcheck source=../01-core/compiler-cache-utils.sh
+  source <(sed "s#/opt/scripts/core#${_COMMON_SH_DIR}#g" "${TESTS_DIR}/../01-core/compiler-cache-utils.sh")
+  eval "$(t_fn_src "${TESTS_DIR}/../01-core/common.sh" compiler_cache_launcher)"
 }
 
 _launcher_stdout() (
@@ -26,6 +27,11 @@ _launcher_stdout() (
   command() { if [ "${2:-}" = ccache ]; then return 0; fi; builtin command "$@"; }
   compiler_cache_launcher 2>/dev/null
 )
+
+t_case "the extracted helper keeps the image fallback inside the fixture"
+_load_launcher
+t_assert_fails grep -qF /opt/scripts/core <<< "$(declare -f compiler_cache_guarded_launcher)"
+t_assert_contains "$(declare -f compiler_cache_guarded_launcher)" "${WORK}/empty/sccache-launcher.sh"
 
 # ── the leak that actually happened ──────────────────────────────────────────
 t_case "sccache branch: stdout carries ONLY the launcher name"
@@ -129,6 +135,16 @@ _env_quiet="$(
 )"
 t_assert_eq "${_env_quiet}" "" "callers capture the launcher next; a leak here is the 2026-08-26 CC= disaster again"
 
+# Strict callers retain failures; legacy callers retain their optional-core fallback.
+_cache_env_guarded() {
+  local call
+  call="$(printf '%s' "$1" | tr -d ' \t')"
+  case "$call" in
+    'compiler_cache_launcher_env2>/dev/null||true'|'compiler_cache_launcher_env||return$?') return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # ── drift pins: the owner has to be AT the sites, and the guard has to be mounted
 t_case "every launcher resolution in the closure is preceded by the env owner"
 _SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
@@ -138,8 +154,7 @@ while IFS=: read -r _f _n _; do
     */tests/*|*/01-core/common.sh|*/01-core/compiler-cache.sh) continue ;;
   esac
   [ -n "${_n}" ] || continue
-  # Called guarded: without 01-core a bare call is rc 127 under set -e.
-  if [ "$(sed -n "$((_n - 1))p" "${_f}" | tr -d ' \t')" != "compiler_cache_launcher_env2>/dev/null||true" ]; then
+  if ! _cache_env_guarded "$(sed -n "$((_n - 1))p" "${_f}")"; then
     _unpaired="${_unpaired} ${_f}:${_n}"
   fi
 done < <(grep -rn --include='*.sh' -F '$(compiler_cache_launcher' "${_SCRIPTS}" 2>/dev/null)
@@ -152,11 +167,13 @@ t_assert_eq \
   "$(grep -c 'source=linux/scripts/01-core/sccache-launcher.sh' "${_DF}")" \
   "without it these stages run BARE sccache, where an sccache fault ABORTS the build"
 
-t_case "every production call to compiler_cache_launcher_env tolerates 01-core being absent"
-# Each call sits above a ccache fallback that exists because 01-core may be absent.
+t_case "production environment calls preserve an explicit required or optional failure policy"
 _unguarded="$(grep -rn 'compiler_cache_launcher_env' "${TESTS_DIR}/.." --include='*.sh' \
-  | grep -v '/tests/' | grep -v '01-core/common.sh' | grep -v '2>/dev/null || true' || true)"
-t_assert_eq "" "${_unguarded}" "unguarded call site(s) would abort the stage instead of degrading to ccache"
+  | grep -v '/tests/' | grep -v '01-core/common.sh' | grep -v 'declare -F compiler_cache_launcher_env' \
+  | while IFS=: read -r _f _n _call; do
+    _cache_env_guarded "$_call" || printf '%s:%s:%s\n' "$_f" "$_n" "$_call"
+  done)"
+t_assert_eq "" "${_unguarded}" "a required call retains its raw failure; an optional call retains its fallback"
 
 # ── media half (F3): an out-variable, not $( ). See docs/cross-build-verification.md#the-media-compile-cache-launcher
 _MEDIA_COMMON="${TESTS_DIR}/../03-media/core/common.sh"

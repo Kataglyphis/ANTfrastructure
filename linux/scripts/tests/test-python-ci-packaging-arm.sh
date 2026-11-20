@@ -28,6 +28,7 @@ uv_sync_project() {
   printf 'sync-env CC=%s LDSHARED=%s SUFFIX=%s CFLAGS=%s PKGLIB=%s\n' "${CC:-}" "${LDSHARED:-}" "${SETUPTOOLS_EXT_SUFFIX:-}" "${CFLAGS:-}" "${PKG_CONFIG_LIBDIR:-}" >> "${CALLS}"
 }
 CI_COMMON
+python_ci_cache_fixture || exit 1
 
 # The cross mode's two sourced helpers: cross-env.sh's target Python resolver and riscv64-cross.sh's env.
 cat > "${TREE}/01-core/cross-env.sh" <<'CROSS_ENV'
@@ -54,6 +55,9 @@ done
 
 # The consumers the arm drives: absent on riscv64, called on amd64.
 printf '#!/usr/bin/env bash\nprintf "bundle %%s\\n" "$*" >> "${CALLS}"\n' > "${TREE}/06-packaging/python-app-bundle.sh"
+cat >> "${TREE}/06-packaging/python-app-bundle.sh" <<'ASSEMBLY'
+printf 'assembly-compilers CC=%s CXX=%s\n' "${CC:-}" "${CXX:-}" >> "${CALLS}"
+ASSEMBLY
 printf '#!/usr/bin/env bash\nprintf "package %%s\\n" "$*" >> "${CALLS}"\n' > "${TREE}/06-packaging/python-app-package.sh"
 chmod +x "${TREE}/06-packaging/python-app-bundle.sh" "${TREE}/06-packaging/python-app-package.sh"
 
@@ -147,6 +151,25 @@ if _run_cross --no-py --bare-sysroot; then
 else
   t_assert_contains "$(cat "${OUT}")" "no staged riscv64 Python and no" "the failure names both places it looked"
 fi
+
+_run_cached() {
+  PYTHON_BUILD_COMPILER_CACHE=on CC="$FIXTURE_CC" CXX="$FIXTURE_CXX" "$@"
+}
+_assert_cached_host_calls() {
+  t_assert_eq 2 "$(grep -cF "sync-env CC=$FAKE_CACHE_LAUNCHER $FIXTURE_CC" "${CALLS}")" "both editable syncs cache the host compiler"
+  t_assert_eq 2 "$(grep -cF "uv CC=$FAKE_CACHE_LAUNCHER $FIXTURE_CC" "${CALLS}")" "both uv builds cache the host compiler"
+}
+
+t_case "cache-enabled native builds restore plain compilers before app assembly"
+t_assert_ok _run_cached _run x86_64
+_assert_cached_host_calls
+t_assert_contains "$(cat "${CALLS}")" "assembly-compilers CC=$FIXTURE_CC CXX=$FIXTURE_CXX" "bundle assembly receives real executable names"
+
+t_case "cache-enabled cross builds retain target and host compiler scopes"
+cp "$FIXTURE_CC" "${BIN}/riscv64-linux-gnu-clang"
+t_assert_ok _run_cached _run_cross
+_assert_cached_host_calls
+t_assert_eq 2 "$(grep -cF "wheel CC=$FAKE_CACHE_LAUNCHER $BIN/riscv64-linux-gnu-clang" "${CALLS}")" "target wheel builds cache the selected cross compiler"
 
 t_case "the arm's LOGFILE order matches the driver's lines"
 t_assert_ok test -s "${OUT}"

@@ -31,7 +31,7 @@ _rig() {
   _g remote add origin "${_work}/remote.git"
   local r="${_work}/repo"
   mkdir -p "${r}/docs/scripts" "${r}/linux/scripts/tests"
-  cp "${REPO}/docs/scripts/"{verify_mutations,mutation_parse,mutation_shards,mutation_push}.py "${r}/docs/scripts/"
+  cp "${REPO}/docs/scripts/"{verify_mutations,mutation_parse,mutation_shards,mutation_push,mutation_workspace}.py "${r}/docs/scripts/"
   cp "${REPO}/linux/scripts/"{verify_comment_size,gate_scope,quality_allow}.py "${REPO}/linux/scripts/comment-size.allow" "${r}/linux/scripts/"
   echo 'exit 0' > "${r}/linux/scripts/tests/test-doc-numbers.sh"
   echo 'GUARD=on' > "${r}/plain.sh"
@@ -196,5 +196,28 @@ t_assert_eq "test-check-live-site.sh test-docs-sidebars.sh test-webgpu-canvas-re
 for _f in linux/scripts/preflight.sh .github/workflows/linux-x64.yml .github/workflows/mutation-gates.yml; do
   t_assert_eq "0" "$(grep -c -e '--delegate-chrome' -e '--push-range' "${REPO}/${_f}")" "${_f} proves every entry"
 done
+
+_external_gate() {
+  python3 "${REPO}/${GATE}" --root "${_work}/repo" --manifest "${_work}/repo/docs/scripts/mutations.json" "$@" 2>&1
+}
+
+t_case 'an explicit external root supplies staged change selection as well as execution'
+_rig
+printf '# external staged edit\n' >> "${_work}/repo/plain.sh"
+_g add plain.sh
+_out="$(_external_gate --changed --base HEAD)"; _rc=$?
+t_assert_eq 0 "$_rc" "$_out"
+t_assert_contains "$_out" 'bites   probe.plain'
+t_assert_contains "$_out" 'proved 1 of 1'
+
+t_case 'an explicit external root supplies push-range history as well as execution'
+_rig
+base="$(_g rev-parse HEAD)"
+printf '# external committed edit\n' >> "${_work}/repo/plain.sh"
+_g commit -qam external-scope
+_out="$(_external_gate --push-range "${base}...HEAD")"; _rc=$?
+t_assert_eq 0 "$_rc" "$_out"
+t_assert_contains "$_out" 'bites   probe.plain'
+t_assert_contains "$_out" 'proved 1 of 1'
 
 t_summary
