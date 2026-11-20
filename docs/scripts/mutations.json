@@ -14798,10 +14798,18 @@
  {
   "id": "lint-tools.contract-wants-no-hadolint-on-riscv64",
   "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
-  "find": "[ \"${arch}\" != riscv64 ] || _hl=''",
-  "replace": "true",
+  "find": "                       [ \"${arch}\" != riscv64 ] || { _hl=''; _gl=''; }",
+  "replace": "                       [ \"${arch}\" != riscv64 ] || { _gl=''; }",
   "test": "bash linux/scripts/tests/test-lint-tools.sh",
   "why": "every riscv64 image would fail the lint-tools row for a hadolint it is not meant to ship"
+ },
+ {
+  "id": "lint-tools.contract-wants-no-gitleaks-on-riscv64",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
+  "find": "                       [ \"${arch}\" != riscv64 ] || { _hl=''; _gl=''; }",
+  "replace": "                       [ \"${arch}\" != riscv64 ] || { _hl=''; }",
+  "test": "bash linux/scripts/tests/test-lint-tools.sh",
+  "why": "gitleaks publishes no riscv64 binary, so a riscv64 image must report none (CON222)"
  },
  {
   "id": "wheel-smoke.import-from-the-venv",

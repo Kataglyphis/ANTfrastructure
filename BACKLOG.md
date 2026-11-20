@@ -1895,6 +1895,20 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       suites run only on Windows. BB's agents fetched Pester 3.4.0 into a scratch directory and patched its
       `Get-WmiObject` lookup to run its 3.4 suites on Linux. Install Pester 5.7 at the version the Windows lanes
       pin; Pester 3.4 needs WMI and stays a Windows tool.
+      **In source since 2026-11-15 (CON273):** `install_pwsh` installs Pester 6.2.0 (windows-x64.yml's floor) into
+      `$PSHOME/Modules` and fails the stage without it; the `:latest` checked here predates that source. Left: the
+      next chain, then decide 5.7 against 6.2. AccelerANTgine's and OmniAccelerANT's suites still use 3.4's
+      dash-less `Should Be`, which neither runs.
+
+- [ ] **CON287 — a slangc newer than the Vulkan SDK's** [S, ★]. Found 2026-11-20 from OxidANT's BACKLOG
+      ("Texture streaming past the mip tail"): the image's slangc is the Vulkan SDK's (1.4.363.0 = Slang
+      2026.17+25), whose WGSL target emits `Texture2D t[64]` as `array<texture_2d<f32>, 64>`, which WGSL forbids, and
+      refuses `NonUniformResourceIndex`; slangc 2026.22 (release binary, 2026-11-17) emits `binding_array<...>` and
+      indexes it, which naga 30 validates once `enable wgpu_binding_array;` heads the file. SDK 1.4.363.1 carries no
+      newer Slang. Open: a separate `SLANG_VERSION` pin with per-arch release binaries and SHA256s (Slang publishes
+      linux x86_64 and aarch64, no riscv64), and which slangc `slang-compile.sh` resolves first: today
+      `$VULKAN_SDK/bin/slangc`, then `PATH`. Done when OxidANT's bindless variant of `forward.slang` compiles in the
+      image to WGSL that naga validates.
 
 - [ ] **CON284 — Mesa's PowerVR ICD warns on every Vulkan instance** [S, ★]. `powervr_mesa_icd.json` in
       `/usr/share/vulkan/icd.d` prints `pvr_instance.c:92 ... Failed to enumerate drm devices` twice per instance in

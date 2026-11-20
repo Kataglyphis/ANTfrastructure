@@ -15,6 +15,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-20 — CON287 (slangc), CON283 notes CON273, a stale lint-tools recipe re-pointed
+
+- New BACKLOG CON287: the image's slangc (Vulkan SDK, Slang 2026.17) cannot emit WGSL binding arrays; OxidANT's
+  bindless textures need 2026.22 through a separate pin. CON283 records that CON273 put Pester 6.2.0 into the image
+  source on 2026-11-15, so only the chain is left.
+- `lint-tools.contract-wants-no-hadolint-on-riscv64` follows CON222's riscv64 line, which stopped the hub push as
+  stale, and `lint-tools.contract-wants-no-gitleaks-on-riscv64` holds gitleaks off riscv64 the same way.
+
 ## 2026-11-20 — Flutter 3.50.1 in source; CON150's cause named
 
 - `FLUTTER_VERSION` 3.47.9 to 3.50.1 (owner OK; `bump_versions.py --write --only FLUTTER_VERSION`, with
