@@ -59766,5 +59766,221 @@
   "replace": "notice_status[1]",
   "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
   "why": "The text comparator's EOF failure cannot replace the archive reader's original raw failure status."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-release",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "policy.get(\"release\") == version",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "A requested build pin must match the reviewed release policy."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-paths",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "isinstance(profile[\"files\"], dict) and set(profile[\"files\"]) == expected",
+  "replace": "isinstance(profile[\"files\"], dict)",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "A policy cannot drop a required selected original silently."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-commit",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "revision == profile[\"commit\"]",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "The actual checkout must match the reviewed release commit."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-tag",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "selected == revision",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "The selected release tag cannot point at another commit."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-hash",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "hashlib.sha256(data).hexdigest() == expected",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "The exact original notice hash must match its reviewed source policy."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-git-bytes",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "git(tree, \"show\", \"HEAD:\" + relative) == data",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "A changed working original is not an original Git file even if a supplied hash agrees."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-regular",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "stat.S_ISREG(info.st_mode) and info.st_nlink == 1",
+  "replace": "info.st_nlink == 1",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "A symlink is not a selected original regular file."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-single-link",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "stat.S_ISREG(info.st_mode) and info.st_nlink == 1",
+  "replace": "stat.S_ISREG(info.st_mode)",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Shared original inodes are refused before staging."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-nonempty",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "0 < info.st_size <= 1024 * 1024",
+  "replace": "0 <= info.st_size <= 1024 * 1024",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "An empty committed original with a matching hash still cannot satisfy the notice contract."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-bounded-original",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "0 < info.st_size <= 1024 * 1024",
+  "replace": "0 < info.st_size",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Selected notice inputs stay bounded before reading."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-source-parents",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "def original_bytes(path: Path) -> bytes:\n    plain_parents(path)",
+  "replace": "def original_bytes(path: Path) -> bytes:\n    pass",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "A selected notice cannot traverse a symlinked source directory."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-output-parents",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "    plain_parents(destination)\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "A linked output parent cannot redirect the original-text payload."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-fresh-output",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "    destination.mkdir()",
+  "replace": "    destination.mkdir(exist_ok=True)",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "An existing output cannot be refreshed while retaining stale provenance or payloads."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-rust-version",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "version == profile[\"gtk4_package_version\"]",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "The Rust workspace package version remains distinct from the GStreamer release tag."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-rust-license",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "package[\"license\"] == profile[\"gtk4_license_expression\"]",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "The GTK4 manifest license expression must match its reviewed source metadata."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-unique-policy",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "len(result) == len(pairs)",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Duplicate policy keys cannot hide replaced review inputs."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-git-root",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "        == str(tree),",
+  "replace": "        is not None,",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "A nested directory cannot borrow its parent repository identity."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-outside-source",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "not destination.is_relative_to(source)",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Staged originals must survive deletion of the temporary source tree."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-bounded-patch",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "len(patch) <= 8 * 1024 * 1024",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Tracked patch retention refuses oversized input before allocation."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-limited-scope",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "\"binary_linkage_or_complete_license_source_closure_proven\": False",
+  "replace": "\"binary_linkage_or_complete_license_source_closure_proven\": True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Selected original texts must never certify complete binary licence or source closure."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-patch-bytes",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "(destination / \"source.patch\").write_bytes(patch)",
+  "replace": "(destination / \"source.patch\").write_bytes(b\"\")",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "The actual tracked patch bytes are retained rather than an empty placeholder."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-fatal-monorepo",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "stage_gstreamer_original_notices \"${BUILD_DIR}/gstreamer\" monorepo monorepo || exit \"$?\"",
+  "replace": "stage_gstreamer_original_notices \"${BUILD_DIR}/gstreamer\" monorepo monorepo",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "The actual selected handoff must fail before cleanup even when setup is conditionally sourced."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-fatal-cross-rust",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "  stage_gstreamer_original_notices \"${BUILD_DIR}/gstreamer/subprojects/gst-plugins-rs\" rust rust-monorepo || exit \"$?\"",
+  "replace": "  stage_gstreamer_original_notices \"${BUILD_DIR}/gstreamer/subprojects/gst-plugins-rs\" rust rust-monorepo",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "The actual selected handoff must fail before cleanup even when setup is conditionally sourced."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-fatal-native-rust",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "  stage_gstreamer_original_notices /opt/gst-plugins-rs rust rust-standalone || exit \"$?\"",
+  "replace": "  stage_gstreamer_original_notices /opt/gst-plugins-rs rust rust-standalone",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "The actual selected handoff must fail before cleanup even when setup is conditionally sourced."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-reviewed-context",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "if relative in CONTEXT_PATHS[kind]:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Build-context changes retain the reviewed upstream original while preserving the actual working bytes separately."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-working-payload",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "payloads.update(",
+  "replace": "dict.fromkeys(",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "The actual selected build context must be preserved as payloads, not only recorded as metadata."
+ },
+ {
+  "id": "lib.gstreamer-original-notices-working-identity",
+  "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+  "find": "rust_package(working_context, profile)",
+  "replace": "rust_package(originals, profile)",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "The actual working Cargo package identity is checked even when original upstream manifests remain unchanged."
  }
 ]

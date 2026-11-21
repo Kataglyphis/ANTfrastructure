@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-21 — preserve selected GStreamer source notices before cleanup
+
+- Retain distinct original monorepo and Rust-plugin notices, source commits, tracked patches and the GTK4 package's own version under the GStreamer prefix.
+- Require reviewed release/commit/hash bindings and unchanged original Git bytes; missing, linked or reused paths and native/cross staging failures abort before cleanup.
+- Add real-Git synthetic byte/refusal and conditional-call controls. Actual rebuilt images, finished packages and complete native/transitive licence and corresponding-source closure remain required.
+
 ## 2026-11-21 — preserve original GCC runtime notices before source cleanup
 
 - Require the original GPL and runtime-exception texts to match the same build's source archive, then retain both under the installed GCC prefix with the archive SHA512 and canonical source URL.

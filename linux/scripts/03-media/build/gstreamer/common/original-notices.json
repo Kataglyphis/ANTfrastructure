@@ -1,0 +1,31 @@
+{
+  "monorepo": {
+    "commit": "badd9563b2ac3117ea2a99348bbe46298d6992ec",
+    "files": {
+      "LICENSE": "ad2eec519ebd4b5df86ea84dff24ae3bfa2edea846a703b58902dd221ae375db",
+      "subprojects/gst-libav/COPYING": "ad2eec519ebd4b5df86ea84dff24ae3bfa2edea846a703b58902dd221ae375db",
+      "subprojects/gst-plugins-bad/COPYING": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
+      "subprojects/gst-plugins-base/COPYING": "ad2eec519ebd4b5df86ea84dff24ae3bfa2edea846a703b58902dd221ae375db",
+      "subprojects/gst-plugins-good/COPYING": "6095e9ffa777dd22839f7801aa845b31c9ed07f3d6bf8a26dc5d2dec8ccc0ef3",
+      "subprojects/gst-plugins-rs.wrap": "5440d2c13937991264d060a6996e0d5e7a25e2dccd88ffb3cc440783795b483d",
+      "subprojects/gst-plugins-ugly/COPYING": "6095e9ffa777dd22839f7801aa845b31c9ed07f3d6bf8a26dc5d2dec8ccc0ef3",
+      "subprojects/gstreamer/COPYING": "ad2eec519ebd4b5df86ea84dff24ae3bfa2edea846a703b58902dd221ae375db",
+      "subprojects/gstreamer/README.static-linking": "2958ebeac0f5a5bd05a0178d6fddef2f003c69a94213c3cf7374c004b5127642"
+    }
+  },
+  "release": "1.29.2",
+  "rust": {
+    "commit": "2859bf0fa0097651193ea4b80532d7ffe46b11e9",
+    "files": {
+      "Cargo.toml": "12b92534db6532e59aa159e493667c6508ae8d844f468cc2f392cdff318cbb47",
+      "LICENSE-APACHE": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "LICENSE-MPL-2.0": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85",
+      "video/gtk4/Cargo.toml": "4262c95505f3c29a4fb9bc890ca9d582975ccf35fd9a71a342e3a1003a2fb817",
+      "video/gtk4/LICENSE-MPL-2.0": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85"
+    },
+    "gtk4_license_expression": "MPL-2.0",
+    "gtk4_package_version": "0.16.0-alpha"
+  },
+  "schema": 1
+}

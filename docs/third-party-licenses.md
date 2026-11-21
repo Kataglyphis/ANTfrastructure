@@ -38,6 +38,38 @@ dependency licence closure. Consumers must still associate the selected runtimes
 carry the texts into their packages and verify the actual finished payloads.
 Synthetic fixture and mutation checks do not prove an actual GCC build or image.
 
+## GStreamer original source texts
+
+The Linux GStreamer setup retains selected original texts under
+`${GSTREAMER_PREFIX}/share/licenses/gstreamer-source-build/` before deleting its
+monorepo checkout. `monorepo/` contains the release's root `LICENSE`, six selected
+subprojects' `COPYING` files, its Rust wrap and static-linking guidance. The texts
+have different exact byte values; a generic LGPL copy does not replace them.
+
+`rust-monorepo/` records the wrapped cross-build source, while `rust-standalone/`
+records the native standalone source. Each retains the three root Rust license
+files, GTK4's own MPL text and both Cargo manifests. The GTK4 package's version
+comes from its workspace manifest; the GStreamer release tag is a separate value.
+
+The adjacent `original-notices.json` policy binds the selected release, both
+source commits and every original SHA256. `stage-original-notices.py` requires the
+actual checkout, matching release tag and unchanged original notice bytes. Missing,
+empty, linked, rewritten or oversized inputs, reused or linked outputs, and failed
+staging abort the setup, including conditional callers. Preserve both companions
+when copying setup; its existing Dockerfile directory mount includes them.
+
+Each output keeps `source-record.json` with original-file hashes, source URL,
+commit and the tracked `source.patch`. Reviewed original context files remain
+separate from `working-context/`, which retains the actual build's wrap/manifests.
+This permits existing Cargo workspace exclusions while checking the actual GTK4
+package identity, version and license expression. Updating `GSTREAMER_VERSION` requires
+reviewing the new commits and exact original files before updating that policy.
+The record does not verify a signature, include untracked or complete corresponding
+sources, map every installed binary, or collect all wrapped/native/Cargo licences.
+Use the existing Cargo collector for the actual selected dependency graph and
+verify original texts in finished packages separately. Synthetic source controls
+do not establish a rebuilt image, complete licence closure or GPU acceptance.
+
 ## Maintaining this list
 
 Everything between the `generated:deps-table` markers is **generated**. Editing

@@ -507,14 +507,23 @@ if command -v patch_gstreamer_sources >/dev/null 2>&1; then
   patch_gstreamer_sources "$(pwd)"
 fi
 
+stage_gstreamer_original_notices() {
+  "${HOST_PYTHON}" "${_SETUP_GST_DIR}/stage-original-notices.py" \
+    --source "$1" --kind "$2" --version "${GSTREAMER_VERSION}" \
+    --destination "${GSTREAMER_PREFIX}/share/licenses/gstreamer-source-build/$3"
+}
+
 build_gstreamer_monorepo
+stage_gstreamer_original_notices "${BUILD_DIR}/gstreamer" monorepo monorepo || exit "$?"
 
 if cross_build_is_active; then
   echo "Cross build: gst-plugins-rs is built + installed by the monorepo (-Drs=enabled"
   echo "with the target Rust linker wired via prepare_host_cargo_toolchain_env), so the"
   echo "separate standalone cargo build is redundant and skipped here."
+  stage_gstreamer_original_notices "${BUILD_DIR}/gstreamer/subprojects/gst-plugins-rs" rust rust-monorepo || exit "$?"
 else
   build_standalone_gst_plugins_rs
+  stage_gstreamer_original_notices /opt/gst-plugins-rs rust rust-standalone || exit "$?"
 fi
 
 echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly."
