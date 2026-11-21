@@ -255,8 +255,10 @@ function Assert-StevedoreContainerTarget {
 
 function Invoke-StevedoreRead {
     param($Store, [string[]]$Arguments, [string]$FailureMessage)
-    $output = @(& $Store.Tool --address $Store.Address --namespace $Store.Namespace @Arguments)
-    if ($LASTEXITCODE -ne 0) { throw $FailureMessage }
+    $output = @(& $Store.Tool --address $Store.Address --namespace $Store.Namespace @Arguments 2>&1)
+    $raw = $LASTEXITCODE
+    $diagnostics = @($output | Where-Object { $_ -is [Management.Automation.ErrorRecord] })
+    if ($raw -ne 0 -or $diagnostics.Count) { throw "$FailureMessage (exit ${raw}): $($diagnostics -join "`n")" }
     return $output
 }
 

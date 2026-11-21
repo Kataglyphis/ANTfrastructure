@@ -211,13 +211,38 @@ function Get-HostDisposableContainerLabel {
     return 'org.kataglyphis.antfrastructure.disposable'
 }
 
+function Assert-HostTaskAbsentState {
+    param($State)
+    foreach ($name in @('Running', 'Paused', 'Restarting')) {
+        if ($State.$name -isnot [bool] -or $State.$name) { throw 'Container task absence is unknown.' }
+    }
+    foreach ($name in @('Pid', 'ExitCode')) {
+        if (($State.$name -isnot [int] -and $State.$name -isnot [long]) -or $State.$name -ne 0) { throw 'Container task absence is unknown.' }
+    }
+    foreach ($name in @('Error', 'StartedAt', 'FinishedAt')) {
+        if ($State.$name -isnot [string] -or $State.$name -cne '') { throw 'Container task absence is unknown.' }
+    }
+}
+
+function Get-HostContainerStatus {
+    param($State)
+    if ($State.Status -isnot [string]) { throw 'Container status is unknown.' }
+    $status = $State.Status
+    if ($status -ceq '') {
+        Assert-HostTaskAbsentState $State
+        $status = 'created'
+    }
+    if ($status -cnotin @('created', 'exited', 'stopped', 'dead', 'running', 'paused', 'restarting')) { throw 'Container status is unknown.' }
+    return $status
+}
+
 function ConvertTo-HostContainerRecord {
     param([Parameter(Mandatory)]$Container)
     if ($Container.Id -cnotmatch '^[0-9a-f]{64}$' -or $Container.Image -cnotmatch '^sha256:[0-9a-f]{64}$') { throw 'Container identity is unknown.' }
     if ($Container.State.Running -isnot [bool]) { throw 'Container running state is unknown.' }
-    if ($Container.State.Status -cnotin @('created', 'exited', 'stopped', 'dead', 'running', 'paused', 'restarting')) { throw 'Container status is unknown.' }
+    $status = Get-HostContainerStatus $Container.State
     $label = if ($null -ne $Container.Config.Labels) { $Container.Config.Labels.PSObject.Properties[(Get-HostDisposableContainerLabel)] } else { $null }
-    [pscustomobject]@{ Id = $Container.Id; Image = $Container.Image; Status = $Container.State.Status;
+    [pscustomobject]@{ Id = $Container.Id; Image = $Container.Image; Status = $status;
         Running = $Container.State.Running; Disposable = ($null -ne $label -and $label.Name -ceq (Get-HostDisposableContainerLabel) -and $label.Value -ceq 'true') }
 }
 

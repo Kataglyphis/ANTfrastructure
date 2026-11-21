@@ -41,6 +41,20 @@ Both failures preceded any v2 removal. Install the reviewed correction and retai
 a fresh real preview/Apply receipt; unit tests do not prove protected deployment.
 See [setup, operation and updates](windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts).
 
+## Stevedore preview reports Container status is unknown for a created container
+
+The real never-started disposable control returned an empty `State.Status`,
+false activity flags, zero PID/exit status and empty error/timestamps. nerdctl's
+[Docker compatibility conversion](https://github.com/containerd/nerdctl/blob/v2.4.2/pkg/inspecttypes/dockercompat/dockercompat.go)
+leaves that state empty without a native process. Its
+[inspector](https://github.com/containerd/nerdctl/blob/v2.4.2/pkg/containerinspector/containerinspector.go)
+also emits a warning for a failed task lookup other than not-found, so a quiet
+successful query is required. Normalize only the complete typed empty state for
+selection; preserve the raw inspection and reject incomplete, active, nonempty
+unknown or diagnostic-bearing replies. The canonical per-removal check uses the
+same parser and refuses stderr even at native exit zero. Real preview/Apply,
+preservation and free-space evidence remain separate from fixture tests.
+
 ## Windows GenAI clone reports repository not found after three attempts
 
 The full NVIDIA run at `bd6bb3b2` exported ONNX, FFmpeg, OpenCV and Hailo,

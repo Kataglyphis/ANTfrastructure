@@ -67,6 +67,13 @@ The fixed policy is intentionally narrower than `system prune`:
   callers should add that label when creating an intentionally disposable
   container. Legacy unmarked containers remain protected. The command does
   not force removal and does not delete volumes or bind-mounted host data.
+  nerdctl can return an empty `State.Status` when no current task exists. Accept
+  that representation only with typed false `Running`, `Paused` and `Restarting`,
+  typed zero `Pid`/`ExitCode` and empty string `Error`/`StartedAt`/`FinishedAt`.
+  Derive `created` for selection without changing the raw inspection. This proves
+  no current task in the successful quiet query, not that it never ran. Both
+  delegated inventory and the canonical per-removal read refuse native stderr;
+  otherwise a failed task lookup can resemble task absence.
 - Current Final/Torch/Media, SDK/toolchain/base tags, unrelated tags and
   compiler-cache mounts remain protected. Aliases and full before/after image
   identities are compared; an in-use or unknown cache record refuses cleanup.

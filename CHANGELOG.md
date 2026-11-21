@@ -18,6 +18,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-21 — recognize quiet task-absent Stevedore containers
+
+- Accept nerdctl's complete typed empty process state through the shared container parser; keep raw fields, stopped/disposable selection and all image/cache protection rules.
+- Refuse native stderr in the canonical per-removal query as well as delegated inventory, since a failed task lookup can otherwise resemble task absence. Add regression and mutation controls; installation and real host acceptance remain separate.
+
 ## 2026-11-20 — preserve Stevedore image names and hidden task identity
 
 - Preserve raw nerdctl JSON names and inspect each distinct manifest to bind

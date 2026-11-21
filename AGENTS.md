@@ -1066,6 +1066,8 @@ and measured headroom. Inventory keeps raw containerd names and binds each
 distinct manifest lookup to its configuration; native warnings refuse partial
 results. Resolve hidden task instances by exact task path and GUID; filtered
 instance enumeration alone never proves completion, overlap safety or revocation.
+An empty nerdctl container status requires all typed inactive flags, zero PID/exit
+status and empty error/timestamps; retain the raw fields and refuse native stderr.
 Never execute SYSTEM code from a writable checkout or
 accept writable task/configuration files. A new host needs its own administrator
 installation and non-admin acceptance; see [the runbook](docs/windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts).

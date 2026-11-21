@@ -26,9 +26,13 @@ function New-DelegationFixtureSnapshot {
 }
 
 function New-DelegationFixtureContainer {
+    param([switch]$TaskAbsent)
+    $state = if ($TaskAbsent) {
+        [pscustomobject]@{ Status = ''; Running = $false; Paused = $false; Restarting = $false; Pid = 0; ExitCode = 0; Error = ''; StartedAt = ''; FinishedAt = '' }
+    } else { [pscustomobject]@{ Running = $false; Status = 'exited' } }
     [pscustomobject]@{
         Id = 'a' * 64; Image = 'sha256:' + ('b' * 64)
-        State = [pscustomobject]@{ Running = $false; Status = 'exited' }
+        State = $state
         Config = [pscustomobject]@{ Labels = [pscustomobject]@{ 'org.kataglyphis.antfrastructure.disposable' = 'true' } }
     }
 }
@@ -108,7 +112,7 @@ function Get-DelegationFixtureFunctions {
     $entries = switch ($Kind) {
         Inventory { @('modules/WindowsStevedoreDelegation.Inventory.psm1', @('Assert-DelegatedStoreIdle', 'ConvertTo-DelegatedImageTags', 'ConvertTo-DelegatedImageInventory')) }
         Policy { @('modules/WindowsStevedoreDelegation.Policy.psm1', @('Get-DelegatedRetirementPlan', 'Assert-DelegatedPreservation')) }
-        Containers { @('modules/WindowsHostMaintenance.Common.psm1', @('Assert-HostIdentityPairs', 'Get-HostDisposableContainerLabel', 'ConvertTo-HostContainerRecord')); @('host/Clear-DiskSpace.ps1', @('Get-StevedoreTargets', 'Get-StevedoreInspection', 'Assert-StevedoreContainerTarget', 'Invoke-StevedoreRemoval')) }
+        Containers { @('modules/WindowsHostMaintenance.Common.psm1', @('Assert-HostIdentityPairs', 'Get-HostDisposableContainerLabel', 'Assert-HostTaskAbsentState', 'Get-HostContainerStatus', 'ConvertTo-HostContainerRecord')); @('host/Clear-DiskSpace.ps1', @('Get-StevedoreTargets', 'Get-StevedoreInspection', 'Assert-StevedoreContainerTarget', 'Invoke-StevedoreRemoval')) }
         Flow { @('tests/Stevedore.Delegation.Flow.Tests.ps1', @('New-DelegationFlowState', 'Invoke-DelegationCacheDrift', 'Assert-DelegationFlowApply', 'Invoke-DelegationFlowResult')); @('modules/WindowsStevedoreDelegation.Policy.psm1', @('Get-DelegatedRetirementPlan')) }
         Manifest { @('tests/Stevedore.Delegation.Manifest.Tests.ps1', @('New-DelegationManifestState', 'Get-DelegationManifestCases', 'Assert-DelegationManifestRefusal')); @('modules/WindowsStevedoreDelegation.Security.psm1', @('Get-DelegatedMaintenancePayload')) }
         Task { @('modules/WindowsStevedoreDelegation.Security.psm1', @('Get-DelegatedMaintenanceSddl')); @('modules/WindowsStevedoreDelegation.Task.psm1', @('New-DelegatedMaintenanceTask', 'Assert-DelegatedMaintenanceTaskDefinition', 'Assert-DelegatedMaintenanceTask')) }

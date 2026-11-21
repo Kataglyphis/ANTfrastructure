@@ -43527,5 +43527,69 @@
   "replace": "",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Instance.Tests.ps1",
   "why": "Filtered enumeration cannot override queued running or unknown scheduler state."
+ },
+ {
+  "id": "windows-lane.task-absent-booleans",
+  "target": "windows/scripts/modules/WindowsHostMaintenance.Common.psm1",
+  "find": "if ($State.$name -isnot [bool] -or $State.$name)",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.ContainerState.Tests.ps1",
+  "why": "A task-absent container must have three typed false activity flags."
+ },
+ {
+  "id": "windows-lane.task-absent-numbers",
+  "target": "windows/scripts/modules/WindowsHostMaintenance.Common.psm1",
+  "find": "if (($State.$name -isnot [int] -and $State.$name -isnot [long]) -or $State.$name -ne 0)",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.ContainerState.Tests.ps1",
+  "why": "Task absence requires typed zero PID and exit status."
+ },
+ {
+  "id": "windows-lane.task-absent-text",
+  "target": "windows/scripts/modules/WindowsHostMaintenance.Common.psm1",
+  "find": "if ($State.$name -isnot [string] -or $State.$name -cne '')",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.ContainerState.Tests.ps1",
+  "why": "Task absence refuses error text, timestamps and missing or non-string values."
+ },
+ {
+  "id": "windows-lane.task-absent-proof",
+  "target": "windows/scripts/modules/WindowsHostMaintenance.Common.psm1",
+  "find": "        Assert-HostTaskAbsentState $State",
+  "replace": "        # Mutant: omit task absence proof.",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.ContainerState.Tests.ps1",
+  "why": "An empty status alone cannot authorize inactive-container retirement."
+ },
+ {
+  "id": "windows-lane.task-absent-state",
+  "target": "windows/scripts/modules/WindowsHostMaintenance.Common.psm1",
+  "find": "        $status = 'created'",
+  "replace": "        $status = 'exited'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.ContainerState.Tests.ps1",
+  "why": "The derived status must preserve the documented task-absent state."
+ },
+ {
+  "id": "windows-lane.container-known-status",
+  "target": "windows/scripts/modules/WindowsHostMaintenance.Common.psm1",
+  "find": "if ($status -cnotin @('created', 'exited', 'stopped', 'dead', 'running', 'paused', 'restarting'))",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.ContainerState.Tests.ps1",
+  "why": "Nonempty unknown status values must still refuse."
+ },
+ {
+  "id": "windows-lane.container-read-diagnostics",
+  "target": "windows/scripts/host/Clear-DiskSpace.ps1",
+  "find": "$raw -ne 0 -or $diagnostics.Count",
+  "replace": "$raw -ne 0",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.ContainerState.Tests.ps1",
+  "why": "A successful partial container query with stderr cannot prove task absence."
+ },
+ {
+  "id": "windows-lane.container-read-raw-status",
+  "target": "windows/scripts/host/Clear-DiskSpace.ps1",
+  "find": "$raw -ne 0 -or $diagnostics.Count",
+  "replace": "$diagnostics.Count",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.ContainerState.Tests.ps1",
+  "why": "Raw native read failure remains fatal even without diagnostics."
  }
 ]
