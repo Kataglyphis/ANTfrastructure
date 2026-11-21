@@ -1,0 +1,60 @@
+# Copyright (c) 2026 Kataglyphis
+# SPDX-License-Identifier: MIT
+
+# Which debugger windows-11-arm offers for a fail-fast's stack (OxidANT's arm64 abort): cdb, winget's WinDbg, WER's settings.
+
+name: Windows arm64 · debugger probe
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      install:
+        description: Also try winget's WinDbg when the image has no cdb
+        type: boolean
+        default: true
+
+jobs:
+  probe:
+    name: debuggers on windows-11-arm
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: The debuggers on the image and the WER settings
+        id: list
+        run: |
+          $kits = @("${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers", "$env:ProgramFiles\Windows Kits\10\Debuggers")
+          $found = @($kits | Where-Object { Test-Path -LiteralPath $_ } |
+            ForEach-Object { Get-ChildItem -LiteralPath $_ -Recurse -Filter cdb.exe -ErrorAction SilentlyContinue })
+          $lines = @('### Debuggers on windows-11-arm', '')
+          $lines += if ($found) { $found | ForEach-Object { "- cdb: ``$($_.FullName)``" } } else { '- cdb: none under Windows Kits\10\Debuggers' }
+          foreach ($tool in 'winget', 'choco', 'procdump', 'procdump64a') {
+            $command = Get-Command $tool -ErrorAction SilentlyContinue
+            $lines += "- ${tool}: $(if ($command) { $command.Source } else { 'not on PATH' })"
+          }
+          $wer = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting' -ErrorAction SilentlyContinue
+          $lines += "- WER: ForceQueue=$($wer.ForceQueue) Disabled=$($wer.Disabled) DontShowUI=$($wer.DontShowUI)"
+          $aedebug = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug' -ErrorAction SilentlyContinue
+          $lines += "- AeDebug: Debugger='$($aedebug.Debugger)' Auto=$($aedebug.Auto)"
+          $service = Get-Service -Name WerSvc -ErrorAction SilentlyContinue
+          $lines += "- WerSvc: $($service.Status) ($($service.StartType))"
+          $lines | Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
+          "cdb=$(if ($found) { $found[0].FullName })" | Out-File -Append -Encoding utf8 -FilePath $env:GITHUB_OUTPUT
+
+      # A probe reports, it does not gate: a failed install is a line in the summary, not a red job.
+      - name: winget's WinDbg, when the image has no cdb
+        if: ${{ inputs.install && steps.list.outputs.cdb == '' }}
+        run: |
+          winget install --id Microsoft.WinDbg --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+          $exit = $LASTEXITCODE
+          $packages = @(Get-ChildItem -LiteralPath "$env:ProgramFiles\WindowsApps" -Directory -Filter 'Microsoft.WinDbg*' -ErrorAction SilentlyContinue)
+          $cdb = @($packages | ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -Recurse -Filter cdb.exe -ErrorAction SilentlyContinue })
+          $lines = @('', '### winget install Microsoft.WinDbg', '', "- exit ${exit}; $($packages.Count) package folder(s)")
+          $lines += $cdb | ForEach-Object { "- cdb: ``$($_.FullName)``" }
+          $lines | Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
+          exit 0

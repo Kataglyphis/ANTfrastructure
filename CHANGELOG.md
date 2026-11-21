@@ -17,6 +17,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-21 — the filesystem recipe leaves current_path(ec); a debugger probe for windows-11-arm
+
+- The exception-free filesystem recipe in `code-quality-tooling.md` read `current_path(ec)`, the non-throwing getter,
+  as a throwing one-argument call: BeschleunigerBallett's `Src/` showed five such false matches. It now catches the
+  one-argument throwing overloads, the iterator declaration and a bare `current_path()`, and says that a
+  two-argument throwing call is not caught. AccelerANTgine's and BeschleunigerBallett's rows follow it.
+- `windows-arm-debugger-probe.yml` (by hand) reports which debugger windows-11-arm offers for a fail-fast's stack:
+  `cdb` under the Windows Kits, winget's WinDbg, and the WER settings that keep `LocalDumps` empty there.
+  OxidANT's arm64 abort (0xC0000409) needs one.
+
 ## 2026-11-21 — a failed gate names itself on GitHub (CON293); the filesystem pattern recipe (CON295)
 
 - `gates.sh` writes `::error title=<batch>: <gate>::<gate> failed (exit N)` for each failed gate, with `:` and `,`

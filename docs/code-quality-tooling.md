@@ -2397,16 +2397,19 @@ max = 0
 - **Not covered.** A match in an untracked file, and `kind = "ruff"` rows: Ruff's own gate binds those.
 - **A recipe: exception-free filesystem calls** (CON295). A C++ tree built without exceptions aborts in a
   throwing `std::filesystem` overload on any OS error other than not-found (a 300-byte path component
-  gives ENAMETOOLONG even as root). AccelerANTgine binds its `Src/` with this row since 2026-11-21; it matched
-  exactly its three throwing sites and nothing in BeschleunigerBallett's `Src/`, whose BuildIntegrity check
-  for the same rule cannot fire on `create_directories(` or `directory_iterator(`, as both names contain "ec":
+  gives ENAMETOOLONG even as root). The row catches the one-argument throwing overloads, the iterator
+  declaration (`recursive_directory_iterator it(root)`) and a bare `current_path()`; `current_path(ec)`, the
+  non-throwing getter, passes, and a two-argument throwing call such as `copy(from, to)` is not caught.
+  AccelerANTgine and BeschleunigerBallett bind their `Src/` with it (2026-11-21), each with a planted-tree test
+  and a recipe; BeschleunigerBallett's BuildIntegrity check for the same rule could not fire on
+  `create_directories(` or `directory_iterator(`, as both names contain "ec":
 
   ```toml
   [[metric]]
   name = "throwing_filesystem_calls"
   kind = "pattern"
   unit = "lines"
-  pattern = 'std::filesystem::(exists|absolute|canonical|weakly_canonical|is_directory|is_regular_file|create_directory|create_directories|file_size|remove|remove_all|read_symlink|equivalent|status|last_write_time|current_path|temp_directory_path|copy|rename)\([^,()]*\)'
+  pattern = '(std::filesystem|\bfs)::((exists|absolute|canonical|weakly_canonical|proximate|relative|is_directory|is_regular_file|is_empty|is_symlink|create_directory|create_directories|file_size|hard_link_count|last_write_time|remove|remove_all|read_symlink|status|symlink_status|space|(recursive_)?directory_iterator(\s+\w+)?)\([^,()]*\)|(current_path|temp_directory_path)\(\s*\))'
   include = ["Src/*"]
   max = 0
   ```

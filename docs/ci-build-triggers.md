@@ -81,7 +81,8 @@ The `workflow_call` ones run when a caller runs:
 
 `container-ci-riscv64.yml` and `release-packages.yml` are `workflow_call` too, and
 `ci-host-speed-probe.yml`, `riscv64-sysroot-probe.yml`, `sccache-release.yml`,
-`windows-image-census-probe.yml` and `zstd-pull-probe.yml` (CON99) run only by hand (`workflow_dispatch`).
+`windows-image-census-probe.yml`, `windows-arm-debugger-probe.yml` and `zstd-pull-probe.yml` (CON99) run only by
+hand (`workflow_dispatch`).
 
 ## A `skipped` job is still not a pass
 

@@ -2455,7 +2455,8 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       and a skipped check misleads (D10). (c) Warnings in three steps (D11): third-party includes as SYSTEM
       (BeschleunigerBallett's GCC log: 124 spdlog and 12 nlohmann warnings), then a per-repo warning-count ratchet,
       then `myproject_WARNINGS_AS_ERRORS` for the product targets only. (d) Done 2026-11-21: the pattern-limits doc
-      holds the row for exception-free filesystem calls, which AccelerANTgine binds (457b753).
+      holds the row for exception-free filesystem calls, which AccelerANTgine and BeschleunigerBallett bind; the
+      first version read `current_path(ec)` as throwing and missed the iterator declaration, corrected the same day.
 - [b] **CON296 — a bridge import helper for the first consumer bridge** [S-M; owner D4]. `kataglyphis_import_bridge_crate`
       beside `kataglyphis_configure_corrosion_target`: imports LOCKED, uses an unwinding profile outside Debug and
       checks that at configure time (a runtime test cannot, `cargo test` always unwinds), and lets a superproject
