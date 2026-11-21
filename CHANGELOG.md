@@ -17,6 +17,24 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-21 — CON99 measured; two corrections; the oxidation and C++ decisions recorded
+
+- CON99: three probe runs pulled the published gzip image in 387, 515 and 235 s and the zstd copy in 290, 227 and
+  294 s on fresh runners (median -25 %, a quarter of the spread). The probe's comment and CON99 claimed both legs
+  print the same image id; Docker's containerd store names an image by its manifest digest, so they differ, and the
+  copy's source digest ties them. The owner chose zstd from the next chain: `runtime_push_tag` now converts a
+  runtime tag's gzip layers with `nerdctl image convert --zstd --oci` before the push (`CROSS_LAYER_COMPRESSION`,
+  default `zstd`, the cross stages' knob), and a failed conversion pushes nothing; `test-runtime-push.sh` covers both
+  with two mutation recipes.
+- Correction to 2026-11-20's staged-runner entry: WER does not log OxidANT's arm64 fail-fast abort late, it logs none:
+  run 44804439631 waited the full 15 s and found no event 1000, while an access violation is named at once. The wait
+  stays for a record written late; `windows-cross-builds.md` and the script's comments now say what is known.
+- The owner decided the oxidation review (D1 to D17) and the comparison with BeschleunigerBallett's C++ setup (D1 to
+  D12), all as recommended. New: CON288 (the contract cases, ModelANT's among them) and CON289 (one ORT-profile
+  counter) here, CON290 to CON296 for the shared C++ gates (the CFG bit, `--fail-on-log-pattern`, an exact Windows
+  skip list, gate annotations, Linux release hardening, analyzers and warnings, a bridge import helper); the consumer
+  steps went into OxidANT's, AccelerANTgine's, OmniAccelerANT's and OrchestrANT's BACKLOGs.
+
 ## 2026-11-20 — preserve separate Cargo release metadata for native helpers
 
 - Add paired optional JSON outputs to the shared Rust release driver, retaining its full-workspace build and explicit CLI build. Each file records one complete unfiltered Cargo call, suitable for the existing strict native-helper selector; no extra release builds or combined-message exception are introduced.

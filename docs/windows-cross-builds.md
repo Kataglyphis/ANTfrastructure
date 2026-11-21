@@ -509,9 +509,10 @@ is the same file an x64 lane uses with `target-arch: amd64`:
      When the runner's event log has a Windows Error Reporting record for that binary, the
      faulting module, offset and exception code come with it, read from the record's data,
      not its localized message. OxidANT's arm64 WARP crash (run 36889467167) left only
-     `running 39 tests` before this. WER logs a fail-fast abort (`0xC0000409`) only after the
-     binary has exited, so a crash looks again each second for up to `-CrashEventWaitSeconds`
-     (15); run 44782412041's two aborts named no module because the runner looked once.
+     `running 39 tests` before this. A crash looks again each second for up to
+     `-CrashEventWaitSeconds` (15), in case the record comes late. OxidANT's arm64 fail-fast
+     abort (`0xC0000409`) gets none at all: run 44804439631 waited the full 15 s and found no
+     event 1000, while an access violation is named at once (run 44739816593).
    - **A local run grades the same line.** `Invoke-StagedTests.ps1 -AssertVerdict` throws after
      printing it when a test failed or none passed; `Assert-StagedTestVerdict -Lines`
      (`WindowsTesting.Common`) reads it out of captured output with the same two rules and

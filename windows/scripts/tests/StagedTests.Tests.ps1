@@ -65,7 +65,7 @@ Describe 'Invoke-StagedTests.ps1' {
             $wer = { param($Since) & $record 'other.exe' 'wrong.dll'; & $record 'HEADLESS.cmd' 'd3d12warp.dll' }.GetNewClosure()
             Assert-Throws { & $crash $wer -1073740791 } `
                 -MessagePattern '0xC0000409 STATUS_STACK_BUFFER_OVERRUN \(a fail-fast abort\)\); WER: faulting module d3d12warp\.dll at offset 0x00000000000012ab, exception 0xc0000409$'
-            # WER logs a fail-fast abort after the binary exited (run 44782412041 named no module): it looks again each second.
+            # A record WER writes late is still read: the runner looks again each second until the wait runs out.
             $looks = @{ n = 0 }
             $late = { param($Since) $looks.n++; if ($looks.n -gt 1) { & $record 'headless.cmd' 'd3d10warp.dll' } }.GetNewClosure()
             Assert-Throws { & $crash $late -1073740791 3 } -MessagePattern 'WER: faulting module d3d10warp\.dll at offset 0x00000000000012ab, exception 0xc0000409$'

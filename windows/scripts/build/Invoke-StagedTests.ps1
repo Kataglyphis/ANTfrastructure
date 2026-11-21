@@ -27,7 +27,7 @@ param(
         param([datetime]$Since)
         Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000; StartTime = $Since } -ErrorAction Stop
     },
-    # Seconds a crash waits for that record: WER logs a fail-fast abort (0xC0000409) only after the binary has exited.
+    # Seconds a crash waits for that record, in case WER writes it late; for a fail-fast abort it may write none.
     [ValidateRange(0, 120)][int]$CrashEventWaitSeconds = 15
 )
 

@@ -39,6 +39,8 @@ runtime_push_tag() {
   local tag="$1"
   local max_attempts="${PUSH_MAX_ATTEMPTS:-4}" base_secs="${PUSH_RETRY_BASE_SECS:-15}"
   local attempt=1 rc=0 log_file="" local_digest remote_digest delay
+  # The published layers leave as zstd, as the cross stages push theirs (owner decision 2026-11-21, CON99); idempotent.
+  [ "${CROSS_LAYER_COMPRESSION:-zstd}" != zstd ] || run "${NERDCTL_BIN:-nerdctl}" image convert --zstd --oci "${tag}" "${tag}" || return 1
   # A restart re-pushes what the registry already holds: same manifest digest, nothing to upload (CON158).
   local_digest="$(_runtime_local_digest "${tag}")"
   remote_digest="$(_runtime_registry_digest "${tag}")"
@@ -65,9 +67,7 @@ runtime_push_tag() {
     attempt=$(( attempt + 1 ))
   done
 
-  if [ -n "${log_file}" ]; then
-    rm -f "${log_file}"
-  fi
+  [ -z "${log_file}" ] || rm -f "${log_file}"
   return "${rc}"
 }
 

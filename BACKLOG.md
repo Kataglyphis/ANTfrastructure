@@ -503,6 +503,14 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       guard it (CON273 done). Left: done when a Windows publish shows one run per consumer lane on the new
       digest, which needs that host's `gh` login and `python3` on Git Bash's `PATH`.
 
+- [ ] **CON289 — consumers take the hub's ORT-profile counter** [S, ★]. Owner 2026-11-21 (the oxidation review's D15:
+      logic that acts on a consumer's own ORT environment belongs to the hub, engines and algorithms to OxidANT). One
+      counting rule lives in OrchestrANT (`orchestrant/smoke/ort_profile.py`), OxidANT
+      (`scripts/verify-ort-gpu-profile.py`) and here (`shared/python/verify_ort_profile.py`, the only copy with mutation
+      tests). OxidANT repoints its callers and deletes its copy (its own item). OrchestrANT needs an importable
+      `operator_counts` that passes its lint, because its Cythonized wheel strips the `.py` files. Done when neither
+      consumer holds a copy.
+
 ## Open — Flet clients for OrchestrANT's UIs
 
 Owner decisions 2026-10-19: OrchestrANT's UIs are Flet (OrchestrANT 2aa1da8, the benchmark viewer;
@@ -587,6 +595,25 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([`docs/language-ai.md` § Roadmap](docs/language-ai.md#roadmap)). ORT is built for Android
       (`03-media/build/onnxruntime/android/build-android.sh`, `Dockerfile.android:125`); GenAI is not. Left: build
       GenAI against that ORT in the android stage. Proving it needs a chain.
+- [ ] **CON288 — the contract cases the oxidation roadmap needs** [S each, ★★]. Owner 2026-11-21 (the oxidation
+      review's D5, D7 and D8, as recommended): shared case files are the family's differential suite, and every split
+      the review found lacks them. (a) `shared/contracts/openai-stream-lines.json`: an error object without a message,
+      falsy error values, a JSON chunk that is not an object, finish reasons beyond stop and length with the raw value
+      kept, usage with `total_tokens` and `reasoning_tokens`, float token counts, a line after `[DONE]`. Outcomes (D8):
+      any non-null `error` fails the stream, so does a chunk that is not an object, reading stops at `[DONE]`,
+      whole-number floats count and negative counts are missing; `test-openai-stream-lines.sh:23` allows raw finish
+      values, and a sibling file holds whole, non-streamed answers. (b) A new `shared/contracts/think-split.json` (D5):
+      pieces to the text shown (`answer`, OxidANT's per-block rule) and to `final` (the text after the last
+      `</think>`, the lab's rule), the thinking count and late closes; cases with several blocks, text before
+      `<think>`, an unclosed block after an answer, a late close inside one piece. (c) The tiny-model fixture
+      (`linux/scripts/lib/tiny-genai-model.py`): a role outside the four, a NaN temperature, prompt plus budget over
+      the context, a NUL byte in a message and in a stop string. (d) D7: `context_length_exceeded` joins the
+      text-contract failures in `docs/language-ai.md`, which orchestrant-serve answers with 400. (e) ModelANT, which
+      keeps no BACKLOG, `contracts/inference-v1.json` (D6 keeps the raw-head layouts): full-size preprocessing cases as
+      tensor digests (2304x1296 stretched and letterboxed, an odd width with 4-byte row padding, RGBA with a plane
+      offset) and raw-head decode cases under D6's rules (same-class IoU > 0.45 in model-input pixels, a stable
+      descending score with ties to the lower row, score = objectness × the best class over every class column),
+      two overlapping boxes with equal scores among them. Each binding replays the cases at its next pin.
 ## Open — Linux image (all arches)
 
 - [ ] **CON238 — two test tools the images lack: cargo-mutants and pytest-timeout** [S, ★★]. Found by the audit
@@ -1922,9 +1949,18 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       **Probe in source since 2026-11-20 (owner OK for the scratch package):** `zstd-pull-probe.yml`, dispatch only,
       copies `:latest`'s amd64 image to `ghcr.io/kataglyphis/antfrastructure-zstd-probe` with zstd layers, times a
       serial `docker pull` of each on a fresh runner (the prepare action's `pull-seconds`), and deletes the package with
-      `GHCR_TOKEN` even when a leg fails. Both legs print the same image id when they pulled the same image. The first
-      run (44812697921) took the tag's index digest for the amd64 image and stopped before the pulls; the cleanup
-      deleted the package (HTTP 204). Left: run it again, record both times here, then decide.
+      `GHCR_TOKEN` even when a leg fails. The first run (44812697921) took the tag's index digest for the amd64 image
+      and stopped before the pulls; the cleanup deleted the package (HTTP 204).
+      **Measured 2026-11-20/21** (runs 44819010521, 44841105460, 44841117978; amd64 manifest `a39f8779`, 79 layers,
+      12.93 GB as published, already partly zstd from the cross stages; 11.98 GB all zstd, recompressed in 180-209 s;
+      docker 29.4.2 with containerd's overlayfs snapshotter): a fresh runner pulled gzip in 387, 515 and 235 s and
+      zstd in 290, 227 and 294 s, median 387 against 290 s (-25 %), and zstd's spread is a quarter of gzip's. Docker's
+      containerd store names an image by its manifest digest, so the two legs' ids differ; the copy's source digest
+      ties them. **Owner 2026-11-21: zstd from the next chain.** In source the same day: `runtime_push_tag` converts
+      each runtime tag's gzip layers with `nerdctl image convert --zstd --oci` before the push (`CROSS_LAYER_COMPRESSION`,
+      default `zstd`), proven in place on a scratch image here and by `test-runtime-push.sh` with two recipes. Left: the
+      next chain, whose `:latest` manifests must list only `tar+zstd` layers, the first re-push's time per arch, and
+      a probe run against the published image.
 
 - [ ] **CON90 — finish the Python 3.15 rollout and remaining measurements** [L, ★★★].
       The default-image and x64 consumer rollout is recorded under
@@ -2375,6 +2411,48 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
         Done when an nvidia arm64 chain's package stage passes the DeepStream gates and the published arm64 child
         carries the tree; the owner approved staging the libraries on 2026-11-04.
       Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only); the pin stays on 9.1.0.
+
+## Open — shared C++ gates from the BeschleunigerBallett comparison
+
+The owner's decisions of 2026-11-21 on the comparison of BeschleunigerBallett's C++ setup with AccelerANTgine's and
+OmniAccelerANT's (D1 to D12, all as recommended). Pieces two or more repos call land here first; each consumer then
+moves its pin. The consumer steps are in the three repos' BACKLOGs.
+
+- [ ] **CON290 — Windows binaries get the CFG bit** [S, ★★★]. `cmake/Hardening.cmake:16-29` compiles with CFG but never
+      passes `/guard:cf` (or `/DYNAMICBASE`) to the linker: none of the 13 lld-link lines of BeschleunigerBallett job
+      136406090876 carries it, so its shipped binaries lack the bit. Add both to the MSVC link options, extend
+      `test-cmake-windows-arch.sh:24`, add a mutation recipe, and read GUARD_CF with `llvm-readobj` from BB's
+      `GraphicsEngine.exe` in a `[ci windows]` run. D8: hardening in the Windows clang-cl presets, not in Linux Debug;
+      CET only after a launch smoke on CET-capable hardware.
+- [ ] **CON291 — `ctest-run.sh --fail-on-log-pattern REGEX`** [S, ★★]. The twin of `--fail-on-skipped`: it scans only
+      this run's `LastTest*.log`, names each test whose output matches and keeps ctest's exit code; proven with a real
+      ctest. BeschleunigerBallett moves its SYNC-HAZARD scan onto it (and may add `VUID-`, 0 in green job
+      136455950642); AccelerANTgine adds `[A-Za-z0-9-]+-CRITICAL \*\*` once its NULL-bus fix lands (444 such lines per
+      Linux ctest pass today).
+- [ ] **CON292 — an exact skip list in `Invoke-StagedTests.ps1`** [M, ★★; owner D2]. Opt-in per gtest entry: a skip
+      that is not listed, or a listed test that ran, fails and is named; refused on cargo, pytest and exit-code
+      entries, so OxidANT's run is unchanged. AccelerANTgine opts in with its 7 tests (a test added on 2026-11-13 has
+      never run on Windows); BeschleunigerBallett opts in with an empty list (0 Windows skips, job 136436488204).
+- [ ] **CON293 — one `::error` line per failed gate, and the named-parts pattern** [S, ★; owner D7]. `gates.sh`
+      writes `::error title=<gate>::` and a step-summary row for each failed gate, with `GITHUB_ACTIONS` passed into
+      the container. No reusable Linux C++ lane: a doc describes BeschleunigerBallett's pattern instead (one step per
+      part, `if: !cancelled()` plus the part's own build outcome, uploads guarded with `hashFiles`).
+- [ ] **CON294 — Linux release hardening for every C++ repo** [M, ★★]. AccelerANTgine's `verify-package-hardening.sh`
+      moves to `linux/scripts/06-packaging` with the binaries as arguments; `Hardening.cmake`'s Linux branch adds PIE
+      and `-z relro -z now` (BeschleunigerBallett passes none: "Hardening Linker Flags:" is empty in job
+      135983570303); a PE twin for a repo's own binaries sits beside `Read-PeLayout`.
+- [ ] **CON295 — analyzers that run, and warnings that count** [M, ★; owner D10, D11]. (a) IWYU never runs: the
+      property sits on the INTERFACE target `myproject_options`, which does not pass it on; run it on the real
+      targets, report-only first. (b) cppcheck: BeschleunigerBallett's default ON goes, as the image has no binary
+      and a skipped check misleads (D10). (c) Warnings in three steps (D11): third-party includes as SYSTEM
+      (BeschleunigerBallett's GCC log: 124 spdlog and 12 nlohmann warnings), then a per-repo warning-count ratchet,
+      then `myproject_WARNINGS_AS_ERRORS` for the product targets only. (d) The pattern-limits doc gains a row for
+      exception-free filesystem calls, which matches AccelerANTgine's three sites and BB's none.
+- [b] **CON296 — a bridge import helper for the first consumer bridge** [S-M; owner D4]. `kataglyphis_import_bridge_crate`
+      beside `kataglyphis_configure_corrosion_target`: imports LOCKED, uses an unwinding profile outside Debug and
+      checks that at configure time (a runtime test cannot, `cargo test` always unwinds), and lets a superproject
+      override MANIFEST; plus `CARGO_TEST_ARGS` in `cargo_test.sh` and a `tsan-aslr` input on
+      `prepare-linux-ci-host`. Blocked until AccelerANTgine's text pilot nears its bridge.
 
 ## Open — hub tooling and the dev host
 

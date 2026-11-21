@@ -120,7 +120,7 @@ jobs:
           SOURCE_DIGEST: ${{ needs.copy.outputs.source-digest }}
         run: |
           set -euo pipefail
-          # Recompression keeps the config, so both legs print the same image id when they pulled the same image.
+          # The containerd store names an image by its manifest digest; the source digest, not the id, ties the legs.
           image="$(docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep '^ghcr.io/kataglyphis/' | head -n 1)"
           driver="$(docker info --format '{{.Driver}}')"
           echo "${LEG}: ${SECONDS_TAKEN} s, ${image}, docker $(docker version --format '{{.Server.Version}}'), ${driver}; copied from ${SOURCE_DIGEST}" \

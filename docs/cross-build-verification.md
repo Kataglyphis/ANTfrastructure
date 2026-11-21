@@ -1020,6 +1020,14 @@ Offline is a `SKIP`, never a pass.
 wrapper upload can reset mid-transfer. Only the upload repeats:
 `PUSH_MAX_ATTEMPTS` (default 4) and `PUSH_RETRY_BASE_SECS` (default 15 s).
 
+Before the first attempt, `nerdctl image convert --zstd --oci <tag> <tag>`
+turns the tag's remaining gzip layers into zstd, as the cross stages push
+theirs (`CROSS_LAYER_COMPRESSION`, default `zstd`; `gzip` pushes the layers as
+built). The owner chose this on 2026-11-21 from CON99's probe: fresh runners
+pulled the zstd image in a median 290 s against 387 s. The conversion leaves
+zstd layers alone, so a restart converts to the same manifest digest and the
+already-pushed check below still holds. A failed conversion pushes nothing.
+
 A **permanent** failure is not retried. An unpushable `not found` — the build
 never created the tag — once burned all four attempts and buried the real cause
 in retry noise. The classification comes from the cross lane's
