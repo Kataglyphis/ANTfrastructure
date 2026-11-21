@@ -209,7 +209,7 @@ class MediaTests(unittest.TestCase):
 
     def test_downstream_record_rejects_an_unreviewed_parent_kind(self) -> None:
         with self.assertRaisesRegex(AssertionError, 'Unreviewed downstream parent'):
-            STAGE.downstream_record(self.media, self.invocation, self.gpu_path, self.parent, 'SDK')
+            STAGE.downstream_record(self.media, self.invocation, self.gpu_path, self.parent, 'Compiler')
 
     def test_android_cli_forwards_exact_media_parent_and_source_receipt(self) -> None:
         proof_path, context, proof = self.native_media()

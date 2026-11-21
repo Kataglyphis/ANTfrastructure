@@ -24,7 +24,7 @@ import tarfile
 import tempfile
 import zipfile
 import zlib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import IO, Protocol
 
@@ -96,16 +96,25 @@ def directory_entries(path: Path, rules: list[tuple[str, bytes]]) -> Iterator[tu
                 yield name, limited_read(stream)
 
 
-def deb_entries(path: Path, rules: list[tuple[str, bytes]]) -> list[tuple[str, bytes]]:
-    """Read dpkg's payload stream and require a successful decompression exit."""
+def checked_deb_payload(path: Path, reader: Callable[[IO[bytes]], None]) -> None:
+    """Keep dpkg's status observable after the selected payload reader finishes."""
     with subprocess.Popen(["dpkg-deb", "--fsys-tarfile", str(path)], stdout=subprocess.PIPE) as proc:
         assert proc.stdout is not None
         try:
-            result = list(tar_entries(proc.stdout, rules))
+            reader(proc.stdout)
+            while proc.stdout.read(1024 * 1024):
+                pass
         finally:
             proc.stdout.close()
-        if proc.wait() != 0:
-            raise ValueError("dpkg-deb could not read the package")
+        status = proc.wait()
+        if status != 0:
+            raise ValueError(f"dpkg-deb could not read the package: {status}")
+
+
+def deb_entries(path: Path, rules: list[tuple[str, bytes]]) -> list[tuple[str, bytes]]:
+    """Read dpkg's payload stream and require a successful decompression exit."""
+    result: list[tuple[str, bytes]] = []
+    checked_deb_payload(path, lambda stream: result.extend(tar_entries(stream, rules)))
     return result
 
 

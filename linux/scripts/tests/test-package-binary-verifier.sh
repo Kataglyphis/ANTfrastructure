@@ -8,11 +8,10 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 python3 "$TESTS_DIR/package_binary_archive_fixture.py" "$work"
 
-t_case 'ZIP, MSIX and wheel check exact bytes for large members without a license text size limit'
-for package in app.zip app.msix app.whl; do
-  t_assert_ok python3 -I "$SCRIPT" "$work/$package" --require "app/onnxruntime_providers_cuda.dll=$work/provider.dll"
-  t_assert_ok python3 -I "$SCRIPT" "$work/$package" --require "app/onnxruntime_providers_cuda.dll=$work/provider.dll" --require "app/shared.dll=$work/shared.dll"
-done
+source "$TESTS_DIR/fixtures/binary-package-cases.sh"
+t_binary_package_cases "$SCRIPT" "$work" app.zip app.msix app.whl
+t_case 'ZIP, MSIX and wheel retain multiple selected binary members'
+t_binary_package_cases "$SCRIPT" "$work" --multiple app.zip app.msix app.whl
 t_assert_fails python3 -I "$SCRIPT" "$work/app.whl" --require "app/onnxruntime_providers_cuda.dll=$work/wrong.dll"
 t_case 'missing, changed, ambiguous and unsafe ZIP members fail closed'
 t_assert_fails python3 -I "$SCRIPT" "$work/app.zip" --require "app/onnxruntime_providers_cuda.dll=$work/wrong.dll"
@@ -26,6 +25,7 @@ t_assert_fails python3 -I "$SCRIPT" "$work/alias.zip" --require "app/onnxruntime
 t_assert_fails python3 -I "$SCRIPT" "$work/leading-dot.zip" --require "app/onnxruntime_providers_cuda.dll=$work/provider.dll"
 t_assert_fails python3 -I "$SCRIPT" "$work/app.zip" --require "./app/onnxruntime_providers_cuda.dll=$work/provider.dll"
 t_assert_fails python3 -I "$SCRIPT" "$work/symlink.zip" --require "app/onnxruntime_providers_cuda.dll=$work/provider.dll"
+t_assert_fails python3 -I "$SCRIPT" "$work/special.zip" --require "app/onnxruntime_providers_cuda.dll=$work/provider.dll"
 t_assert_fails python3 -I "$SCRIPT" "$work/unsafe.zip" --require "app/onnxruntime_providers_cuda.dll=$work/provider.dll"
 
 t_case 'MSI media mapping selects one embedded cabinet and streams its exact member'

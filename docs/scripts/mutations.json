@@ -31450,11 +31450,11 @@
  },
  {
   "id": "packaging.native-appimage-license-verdict",
-  "target": "linux/scripts/06-packaging/verify-native-appimage-license.sh",
-  "find": "  python3 \"${script_dir}/../verify_package_license.py\" squashfs-root --require \"${entry}=${license}\"",
-  "replace": "  true",
+  "target": "linux/scripts/06-packaging/appimage-verification.sh",
+  "find": "    python3 \"$verifier\" squashfs-root --require \"${entry}=${expected}\"",
+  "replace": "    true",
   "test": "bash linux/scripts/tests/test-verify-native-appimage-license.sh",
-  "why": "Extracting an AppImage without checking its license cannot certify its payload."
+  "why": "Shared native extraction must actually verify selected original licence content; binary policy remains separate."
  },
  {
   "id": "windows-lane.rust-msix-license",
@@ -52328,7 +52328,7 @@
  {
   "id": "compiler-llvm-tools.media-handoff-parent-record-domain",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "assert parent_kind in {'GPU', 'Media', 'Android'}, 'Unreviewed downstream parent kind'",
+  "find": "assert parent_kind in {'SDK', 'GPU', 'Media', 'Android'}, 'Unreviewed downstream parent kind'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
@@ -59102,5 +59102,525 @@
   "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
   "timeout": 180,
   "why": "The fake subshell-loss control must clear its explicitly inherited socket and port in its own child, without altering the real parent cache environment."
+ },
+ {
+  "id": "package.binary-linux-tar-dispatch",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "elif tarfile.is_tarfile(args.package):",
+  "replace": "elif False:",
+  "test": "bash linux/scripts/tests/test-package-binary-linux.sh",
+  "why": "Actual TAR payloads must reach the streaming exact-byte reader."
+ },
+ {
+  "id": "package.binary-linux-deb-dispatch",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "elif args.package.suffix.lower() == \".deb\":",
+  "replace": "elif False:",
+  "test": "bash linux/scripts/tests/test-package-binary-linux.sh",
+  "why": "Actual Debian payloads must reach the checked native transport."
+ },
+ {
+  "id": "package.binary-linux-directory-dispatch",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "if args.package.is_dir():",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-package-binary-linux.sh",
+  "why": "Native extracted files must reach the exact directory reader."
+ },
+ {
+  "id": "package.binary-complete-stream",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "while chunk := stream.read(1024 * 1024):",
+  "replace": "if chunk := stream.read(1024 * 1024):",
+  "test": "bash linux/scripts/tests/test-package-binary-verifier.sh",
+  "why": "A final-byte change beyond the first buffer must remain visible in both source and package hashes."
+ },
+ {
+  "id": "package.binary-unique-member",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "def require_member_count(name: str, count: int) -> None:\n    if count != 1:",
+  "replace": "def require_member_count(name: str, count: int) -> None:\n    if False:",
+  "test": "bash linux/scripts/tests/test-package-binary-linux.sh",
+  "why": "Duplicate TAR and directory aliases must not stand for one selected member."
+ },
+ {
+  "id": "package.binary-exact-member-name",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "if actual_name != name:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-package-binary-linux.sh",
+  "why": "A normalized matching key does not authorize an aliased raw selected path."
+ },
+ {
+  "id": "package.binary-regular-member",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "if not regular:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-package-binary-verifier.sh",
+  "why": "Selected ZIP symlinks cannot substitute for delivered regular binary members."
+ },
+ {
+  "id": "package.binary-exact-hash",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "if actual != expected:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-package-binary-linux.sh",
+  "why": "A changed final byte cannot satisfy an exact selected native payload rule."
+ },
+ {
+  "id": "package.binary-case-conflicts",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "return names.get(canonical.casefold())",
+  "replace": "return names.get(canonical)",
+  "test": "bash linux/scripts/tests/test-package-binary-verifier.sh",
+  "why": "Case-conflicting entries remain part of the selected-member ambiguity check."
+ },
+ {
+  "id": "package.binary-deb-transport-status",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "if status != 0:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-package-binary-linux.sh",
+  "why": "A complete payload with a failed dpkg reader remains a fatal result with its status visible."
+ },
+ {
+  "id": "package.binary-native-appimage-call",
+  "target": "linux/scripts/06-packaging/verify-native-appimage-binary.sh",
+  "find": "appimage_verify_file \"${script_dir}/../verify_package_binary.py\" \"$@\"",
+  "replace": ": \"${script_dir}/../verify_package_binary.py\" \"$@\"",
+  "test": "bash linux/scripts/tests/test-verify-native-appimage-binary.sh",
+  "why": "Native extraction must reach the exact binary reader rather than certify an unchecked member."
+ },
+ {
+  "id": "package.binary-native-extraction-status",
+  "target": "linux/scripts/06-packaging/appimage-verification.sh",
+  "find": "    \"$image\" --appimage-extract \"$entry\" > /dev/null || exit $?",
+  "replace": "    \"$image\" --appimage-extract \"$entry\" > /dev/null || true",
+  "test": "bash linux/scripts/tests/test-verify-native-appimage-binary.sh",
+  "why": "The native extractor failure retains its actual status through the shared transport."
+ },
+ {
+  "id": "package.binary-native-architecture",
+  "target": "linux/scripts/06-packaging/appimage-verification.sh",
+  "find": "  appimage_require_native \"$2\" || return $?",
+  "replace": "  : \"$2\"",
+  "test": "bash linux/scripts/tests/test-verify-native-appimage-binary.sh",
+  "why": "A native AppImage binary check refuses another architecture before execution."
+ },
+ {
+  "id": "package.binary-deb-reader-drain",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "            while proc.stdout.read(1024 * 1024):\n                pass",
+  "replace": "            pass",
+  "test": "bash linux/scripts/tests/test-package-binary-linux.sh",
+  "why": "Drain unselected trailing transport bytes so closing the reader cannot replace the actual native failure with SIGPIPE."
+ },
+ {
+  "id": "package.binary-zip-file-kind",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "not entry.is_dir() and mode_type in (0, stat.S_IFREG)",
+  "replace": "not entry.is_dir() and mode_type != stat.S_IFLNK",
+  "test": "bash linux/scripts/tests/test-package-binary-verifier.sh",
+  "why": "An explicitly special ZIP member cannot stand for a delivered regular binary."
+ },
+ {
+  "id": "package.binary-directory-root",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "if path.is_symlink():",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-package-binary-linux.sh",
+  "why": "An extracted package root cannot redirect selection through a symlink."
+ },
+ {
+  "id": "package.native-extraction-root",
+  "target": "linux/scripts/06-packaging/appimage-verification.sh",
+  "find": "if [[ ! -d squashfs-root || -L squashfs-root ]]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-verify-native-appimage-license.sh",
+  "why": "The native extraction root itself must be a real directory before reading selected payload files."
+ },
+ {
+  "id": "packaging.closed-staging.validate-observation-1",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(0 <= time.time() - observed[\"observed_unix\"] <= 120, \"Require fresh host observations\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-observation-2",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(state[\"Id\"] == plan[\"unit\"], \"Observed producer identity differs\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-observation-3",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(quiet, \"Producer must be closed, including its stop work\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-observation-4",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(observed[\"mount_conflicts\"] == [] and observed[\"nested_mounts\"] == [], \"Preserve registered or mounted staging\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-observation-5",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(len(queries) == 2 and {q[\"filter\"] for q in queries} == expected, \"Require exact CID and owner queries\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-observation-6",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(all(type(q[\"exit_status\"]) is int and q[\"exit_status\"] == 0 and q[\"stdout\"] == q[\"stderr\"] == \"\" for q in queries), \"Producer container absence is unproved\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-subject-1",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(plan[\"schema\"] == 1, \"Unsupported staging admission schema\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-subject-2",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(re.fullmatch(r\"[0-9a-f]{32}\", token) is not None, \"Invalid producer nonce\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-subject-3",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(re.fullmatch(r\"[0-9a-f]{64}\", plan[\"CID\"]) is not None, \"Invalid full producer CID\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-subject-4",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(plan[\"owner_label\"] == \"org.kataglyphis.current-rust-packages\", \"Select only the recorded package producer\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-subject-5",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(re.fullmatch(r\"/home/[^/]+/gpu/run-tmp/amd-package-\" + token + r\"/package-work\", plan[\"host_staging\"]) is not None, \"Select only private AMD package staging\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-subject-6",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(plan[\"closed_main_pid\"] == plan[\"closed_control_pid\"] == 0, \"Saved producer is not terminal\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-subject-7",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(plan[\"cache_status\"] == plan[\"producer_cleanup_status\"] == 0, \"Preserve incomplete producer cleanup\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-subject-8",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(type(plan[\"producer_status\"]) is int and plan[\"producer_status\"] >= 0, \"Missing raw producer status\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-subject-9",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(not root.is_symlink() and root.is_dir(), \"Require a literal staging directory\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-subject-10",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require([identity.st_dev, identity.st_ino] == plan[\"staging_identity\"], \"Staging mount identity differs\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-subject-11",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(SELECTED <= names <= SELECTED | {\"home\"}, \"Preserve unknown staging entries\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.validate-subject-12",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(all((root / name).is_dir() and not (root / name).is_symlink() for name in SELECTED), \"Copied staging roots must be directories\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.verify-archives-1",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(len(records) == 3 and len({r[\"name\"] for r in records}) == 3, \"Retain all three distinct package archives\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.verify-archives-2",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(kinds == {\"tar\", \".deb\", \".AppImage\"}, \"Retain TAR, DEB and AppImage archives\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.verify-archives-3",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(re.fullmatch(r\"oxidant[-_][A-Za-z0-9_.+-]+\", name) is not None, \"Invalid retained archive name\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.verify-archives-4",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(stat.S_ISREG(archive.lstat().st_mode) and record[\"bytes\"] > 0, \"Retain regular nonempty archives\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.verify-archives-5",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(archive.stat().st_size == record[\"bytes\"] and fingerprint(archive) == record[\"sha256\"], \"Retained package bytes differ\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.tree-1",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(not protected_names or FORBIDDEN.isdisjoint(Path(relative).parts), \"Preserve source or cache entries\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.tree-2",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(info.st_nlink == 1, \"Preserve shared file inodes\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.execute-1",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(not output.exists() and not output.is_symlink(), \"Preserve existing retirement evidence\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.execute-2",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(not output.is_relative_to(root) and not output.is_relative_to(archives), \"Keep evidence outside retained inputs\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.execute-3",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(all(any(row[\"kind\"] == \"file\" for row in rows) for rows in selected.values()), \"Copied staging is empty\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.execute-4",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(preview[\"status\"] == \"preview-only\" and preview[\"snapshot_sha256\"] == signature, \"Changed or already-applied retirement preview\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.execute-5",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(shutil.rmtree.avoids_symlink_attacks, \"Require descriptor-based directory removal\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.execute-6",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(tree(root / \"home\", False) == preserved_home, \"Unselected private cache changed\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.execute-7",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require([current.st_dev, current.st_ino] == plan[\"staging_identity\"], \"Staging root changed before removal\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "packaging.closed-staging.execute-8",
+  "target": "linux/scripts/local-proof/cleanup-package-staging.py",
+  "find": "require(SELECTED.isdisjoint(os.listdir(descriptor)), \"Copied staging removal is incomplete\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-package-staging-cleanup.sh",
+  "why": "Copied staging retirement must preserve sources, caches, archives and live producers."
+ },
+ {
+  "id": "sccache.fixture-default-report-isolates-inherited-address",
+  "target": "linux/scripts/tests/test-compiler-cache.sh",
+  "find": "_cache_setup_report() (\n  # Temporary call assignments reveal outer bindings when unset, so set only the child exports.\n  export SCCACHE_SERVER_UDS=\"${2:?controlled socket required}\" SCCACHE_SERVER_PORT=24226\n  if [ \"${1:?address mode required}\" = automatic ]; then\n    unset SCCACHE_SERVER_UDS SCCACHE_SERVER_PORT",
+  "replace": "_cache_setup_report() (\n  # Temporary call assignments reveal outer bindings when unset, so set only the child exports.\n  export SCCACHE_SERVER_UDS=\"${2:?controlled socket required}\" SCCACHE_SERVER_PORT=24226\n  if [ \"${1:?address mode required}\" = automatic ]; then\n    :",
+  "test": "bash linux/scripts/tests/test-compiler-cache.sh",
+  "why": "The default-address diagnostic controls its inherited socket/port while the explicit caller-address case remains honored; it never changes the parent capture address."
+ },
+ {
+  "id": "compiler-llvm-tools.default-amd64-media.sdk-media-parent-1",
+  "target": "linux/scripts/local-proof/default_media_launch.py",
+  "find": "require(__debug__, 'Optimization disables shared parent safety assertions')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-default-media-launch.sh",
+  "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.default-amd64-media.sdk-media-parent-2",
+  "target": "linux/scripts/local-proof/default_media_launch.py",
+  "find": "require(invocation['target_arch'] == 'amd64', 'Default Media requires the reviewed amd64 SDK')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-default-media-launch.sh",
+  "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.default-amd64-media.sdk-media-parent-3",
+  "target": "linux/scripts/local-proof/default_media_launch.py",
+  "find": "require(invocation['source'] == str(source) and invocation['source_revision'] == plan['source_revision'],\n            'Media must retain its exact SDK source')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-default-media-launch.sh",
+  "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.default-amd64-media.sdk-media-parent-4",
+  "target": "linux/scripts/local-proof/default_media_launch.py",
+  "find": "require(callable(api.get('sdk_parent')), 'The qualified SDK parent API is missing')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-default-media-launch.sh",
+  "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.default-amd64-media.sdk-media-parent-5",
+  "target": "linux/scripts/local-proof/default_media_launch.py",
+  "find": "require(parent['subject']['sdk_invocation_sha256'] == sha(invocation_path), 'SDK invocation changed after qualification')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-default-media-launch.sh",
+  "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.default-amd64-media.sdk-media-parent-6",
+  "target": "linux/scripts/local-proof/default_media_launch.py",
+  "find": "require(parent['subject']['source_proof_sha256'] == full_sha, 'SDK source proof changed after qualification')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-default-media-launch.sh",
+  "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.default-amd64-media.launch-1",
+  "target": "linux/scripts/local-proof/default_media_launch.py",
+  "find": "require(re.fullmatch(r'webgpu-normal-media-default-amd64-[0-9-]+\\.service', unit) is not None,\n            'Explicit default amd64 Media unit required')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-default-media-launch.sh",
+  "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.default-amd64-media.complete-source-call",
+  "target": "linux/scripts/local-proof/default_media_launch.py",
+  "find": "full_source(source, Path(plan['full_source_preflight_proof']), plan['source_revision'])",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-default-media-launch.sh",
+  "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.default-amd64-media.sdk-proof-argument",
+  "target": "linux/scripts/local-proof/default_media_launch.py",
+  "find": "api['sdk_parent'](plan, invocation_path, proof_path)",
+  "replace": "api['sdk_parent'](plan, invocation_path, invocation_path)",
+  "test": "bash linux/scripts/tests/test-default-media-launch.sh",
+  "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.default-amd64-media.minimum-media-reserve",
+  "target": "linux/scripts/local-proof/default_media_launch.py",
+  "find": "max(MEDIA_REQUIRED_BYTES, plan['required_bytes'])",
+  "replace": "plan['required_bytes']",
+  "test": "bash linux/scripts/tests/test-default-media-launch.sh",
+  "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.default-amd64-media.stricter-caller-reserve",
+  "target": "linux/scripts/local-proof/default_media_launch.py",
+  "find": "max(MEDIA_REQUIRED_BYTES, plan['required_bytes'])",
+  "replace": "MEDIA_REQUIRED_BYTES",
+  "test": "bash linux/scripts/tests/test-default-media-launch.sh",
+  "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.default-amd64-media.default-variant",
+  "target": "linux/scripts/local-proof/default_media_launch.py",
+  "find": "repo, 'default', 'amd64', 'sdk'",
+  "replace": "repo, 'rocm', 'amd64', 'sdk'",
+  "test": "bash linux/scripts/tests/test-default-media-launch.sh",
+  "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.default-amd64-media.raw-build-status",
+  "target": "linux/scripts/local-proof/default_media_launch.py",
+  "find": "return launch_build(",
+  "replace": "return 0 and launch_build(",
+  "test": "bash linux/scripts/tests/test-default-media-launch.sh",
+  "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.default-amd64-media.raw-cli-status",
+  "target": "linux/scripts/local-proof/default_media_launch.py",
+  "find": "return launch(args.compiler_plan,",
+  "replace": "return 0 and launch(args.compiler_plan,",
+  "test": "bash linux/scripts/tests/test-default-media-launch.sh",
+  "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
  }
 ]

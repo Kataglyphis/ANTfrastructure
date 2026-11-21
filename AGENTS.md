@@ -79,6 +79,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    failed container cleanup or ownership restoration cannot produce a passed receipt.
    Combined WebGPU media factory acceptance requires native/GIL/FT plus fresh Asyncify and JSPI replay at one exact ORT revision; partial receipts cannot stand for the combined result.
    Six-lane Media command preparation keeps SDK parents for default targets and GPU parents for accelerators; NVIDIA arm64 requires SBSA. Prepared commands do not qualify parent ancestry or authorize a launch.
+   Default amd64 Media launches recheck the exact qualified SDK/source and native compiler ancestry before shared idle-host admission; retain the 300 GiB minimum and both required Wasm modes. This profile does not qualify the other five lanes or FINAL acceptance.
    Fake sccache server startup tests clear inherited cache-chain settings in their child environments; retain the explicit inherited-setting regression and original fallback assertions.
    Isolated preflight mirror opt-ins use the shared Ubuntu rewrite before apt; retain signed source metadata, the recorded URL and default-off behavior.
    Relocate only closed, Git-ignored quality venvs to a different existing tmpfs; shared inodes, nonregular payloads or changed canonical archive bytes cannot produce a receipt.
@@ -123,6 +124,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    The hooks' host-red helper imports the canonical logging bootstrap; copied helpers retain it and the existing positive library-import controls.
    Optional Cargo release JSON paths are paired, distinct regular outputs cleared before wrapper setup; retain the whole workspace then explicit CLI, their original alias parse points, raw failures and one unfiltered invocation per stream.
    Cache launcher sites initialize their parent environment directly before resolution; required callers propagate raw failure with an explicit guard and legacy callers retain their advisory fallback. Cache-policy scans canonicalize their root before excluding tests and prove a planted bare call is visible through tests/.. inputs. Isolated C/C++ fixture compilers require the canonical cache owner and both launcher APIs, keep optimized/ASAN flags and capture raw compiler/cache status; a cache infrastructure failure cannot bypass the guarded launcher.
+   Cache diagnostic fixtures isolate automatic socket/port defaults in their child and prove explicit caller addresses survive; never unset the real capture environment.
    ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions.
    Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.
    Locked tool installs also require `uv-image-overlay.sh` beside `python_uv.sh`; copied code-quality libraries carry `quality/cmake-format/{pyproject.toml,uv.lock}` and retain the Python 3.15 lexer patch.
@@ -295,6 +297,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows ORT license staging matches the shipped DLL's SHA256 against exactly one wheel before copying both original texts; copied `WindowsOrtLicense.Common.psm1` carries its provenance, MSI and Python-wheel companions.
    When selected Windows ORT providers are supplied, their bytes must match that same wheel before its texts are copied.
    Finished-package binary checks use streaming exact hashes, not text-license normalization; copied `WindowsPackageBinary.Common.psm1` carries the MSI module and both Python verifiers, and MSI members map through the File and Media tables.
+   Linux directory, TAR and DEB byte checks reject ambiguous or nonregular selected members and failed dpkg transport. Native AppImage file readers share extraction and select the exact text or binary verifier; copies retain `appimage-verification.sh`, `01-core/platform.sh` and both Python verifiers.
    Python app packages that contain Windows ORT must compare the installed texts with the matched wheel and check them in ZIP, MSI and MSIX; apps without ORT remain supported.
    Linux ORT license staging compares every selected native ELF with one wheel, directly or after target-compatible stripping; copied `stage-ort-wheel-licenses.py` carries `ort_census_probe.py`, and the shell companion carries both package verifiers.
    Explicit native original-byte staging validates every selected library and notice before writing; replace only unchanged regular files inside the bundle and retain per-file failure/cleanup verdicts.
@@ -413,6 +416,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
 
    Reviewed OCI archive deduplication uses its versioned preview/apply helper, preserves equal bytes and stable metadata, and excludes receipt-bound or externally linked inodes; copy its host-command and native-OCI companions together.
    Retire closed temporary quality installations only after closure hashes and a durable archive comparison match; retain source trees, packages and shared compiler/Cargo/uv caches.
+   Copied package staging retirement requires the closed producer, fresh absence/mount observations, exact preview and retained archive hashes; remove only its three declared copied trees and preserve home caches, compiler targets, sources and receipts.
 
 ## Container Architecture
 

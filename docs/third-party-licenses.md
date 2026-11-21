@@ -178,9 +178,33 @@ and file length, rejects missing, duplicate, aliased or changed members, and doe
 not normalize binary bytes. It stages the selected MSI cabinet in temporary disk
 space and requires 7-Zip. This proves equality with the supplied source only; it
 neither proves that source's wheel provenance nor discovers additional files.
-The standalone `linux/scripts/verify_package_binary.py` also accepts repeated
-`--require MEMBER=SOURCE` rules; MSI rules use `cabinet.cab::file-id`. It needs
-`verify_package_license.py` beside it for the shared cabinet listing and mapping.
+The standalone `linux/scripts/verify_package_binary.py` accepts repeated exact
+`--require MEMBER=SOURCE` rules for extracted directories, TAR, DEB, ZIP, MSIX,
+wheels and MSI. MSI rules use `cabinet.cab::file-id`; the selected files must be
+regular and match streaming SHA256 and size. Duplicate, case-conflicting and
+ambiguous selected paths fail. TAR permits one conventional leading `./`, but
+not duplicate aliases. DEB reads the real dpkg payload stream and requires the
+native reader to succeed even when all selected bytes were already produced.
+Keep `verify_package_license.py` beside it for shared cabinet and dpkg transport.
+
+On a matching native Linux architecture,
+`linux/scripts/06-packaging/verify-native-appimage-binary.sh` extracts one exact
+entry and passes its bytes to that binary verifier. It shares architecture,
+path, extraction and cleanup checks with the native licence reader, retaining
+raw extraction failures and requiring no 7-Zip. Copies carry
+`appimage-verification.sh`, `../01-core/platform.sh` and both Python verifiers.
+For a helper changed by normal ELF assembly, compare against the selected
+post-assembly file and retain its separate link to the original producer:
+
+```bash
+python3 linux/scripts/verify_package_binary.py app.tar.gz --require 'app/native-helper=stage/app/native-helper'
+python3 linux/scripts/verify_package_binary.py app.deb --require 'opt/app/native-helper=stage/app/native-helper'
+bash linux/scripts/06-packaging/verify-native-appimage-binary.sh app.AppImage x64 usr/lib/app/native-helper stage/app/native-helper
+```
+
+These checks establish selected regular-file byte equality. They do not prove
+producer authenticity, executable permissions, loader behavior, integrity of
+unselected archive members or complete native dependency licence obligations.
 
 `WindowsOrtLicense.Common.psm1` provides `Copy-OrtWheelLicenses` and
 `Assert-OrtWheelLicensesInPackage`: the former requires the actual DLL's SHA256

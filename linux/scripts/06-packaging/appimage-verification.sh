@@ -38,3 +38,26 @@ appimage_create_work() {
   work="$(mktemp -d)" || return
   trap 'rm -rf -- "$work"' EXIT
 }
+
+appimage_verify_file() {
+  local verifier="$1" entry expected
+  shift
+  appimage_require_args "$#" 4 "$0" 'APPIMAGE ARCH ENTRY SOURCE' || return $?
+  appimage_init "$1" "$2" || return $?
+  entry="$3"
+  expected="$(realpath -e -- "$4")" || return $?
+  appimage_validate_path "$entry" 'AppImage entry' || return $?
+  appimage_require_native "$2" || return $?
+  appimage_create_work || return $?
+  (
+    cd "$work" || exit $?
+    "$image" --appimage-extract "$entry" > /dev/null || exit $?
+    if [[ ! -d squashfs-root || -L squashfs-root ]]; then
+      printf 'AppImage extraction root is missing or linked\n' >&2
+      exit 1
+    fi
+    python3 "$verifier" squashfs-root --require "${entry}=${expected}"
+  ) || return $?
+  rm -rf -- "$work" || return $?
+  trap - EXIT
+}

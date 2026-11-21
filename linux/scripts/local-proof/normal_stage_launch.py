@@ -44,7 +44,7 @@ def validate_stage_invocation(invocation: Json, parent: Json, stage: str, parent
 
 
 def downstream_record(invocation: Json, invocation_path: Path, proof_path: Path, parent: Json, parent_kind: str) -> Json:
-    assert parent_kind in {'GPU', 'Media', 'Android'}, 'Unreviewed downstream parent kind'
+    assert parent_kind in {'SDK', 'GPU', 'Media', 'Android'}, 'Unreviewed downstream parent kind'
     return {'source_revision': invocation['source_revision'], 'parent_source_revision': invocation['source_revision'],
             'source_full_preflight_proof': invocation['source_full_preflight_proof'],
             'source_full_preflight_sha256': invocation['source_full_preflight_sha256'],

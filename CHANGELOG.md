@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-21 — admit default amd64 WebGPU Media from its SDK
+
+- Add a dedicated owned launcher using the canonical default Media command and existing native SDK/OCI qualifier, exact source proof, compiler ancestry and shared bounded admission.
+- Retain both required Wasm modes, explicit accelerator flags and a 300 GiB durable-storage minimum, including stricter caller reserves. Bind SDK/source/parent and launcher bytes; reject optimized Python before shared parent assertions.
+- Add synthetic positive/refusal and mutation controls. Other foreign/NVIDIA profiles, actual Media builds, factory replay and FINAL acceptance remain open.
+
 > **Older entries** are archived, newest archive first:
 > [`2026-11-10 … 2026-11-17`](docs/changelog-archive-2026-11-17.md) ·
 > [`2026-11-06 … 2026-11-12`](docs/changelog-archive-2026-11-12.md) ·
@@ -16,6 +22,39 @@
 > [`2026-08-14 … 2026-08-28`](docs/changelog-archive-2026-08-28.md) ·
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
+
+
+> **Older entries** are archived, newest archive first:
+> [`2026-11-10 … 2026-11-17`](docs/changelog-archive-2026-11-17.md) ·
+> [`2026-11-06 … 2026-11-12`](docs/changelog-archive-2026-11-12.md) ·
+> [`2026-11-05`](docs/changelog-archive-2026-11-05.md) ·
+> [`2026-10-23 … 2026-11-04`](docs/changelog-archive-2026-11-04.md) ·
+> [`2026-10-20 … 2026-10-22`](docs/changelog-archive-2026-10-22.md) ·
+> [`2026-10-19`](docs/changelog-archive-2026-10-19.md) ·
+> [`2026-10-13 … 2026-10-18`](docs/changelog-archive-2026-10-18.md) ·
+> [`2026-10-08 … 2026-10-12`](docs/changelog-archive-2026-10-12.md) ·
+> [`2026-10-01 … 2026-10-07`](docs/changelog-archive-2026-10-07.md) ·
+> [`2026-09-22 … 2026-09-30`](docs/changelog-archive-2026-09-30.md) ·
+> [`2026-09-08 … 2026-09-21`](docs/changelog-archive-2026-09-21.md) ·
+> [`2026-08-29 … 2026-09-07`](docs/changelog-archive-2026-09-07.md) ·
+> [`2026-08-14 … 2026-08-28`](docs/changelog-archive-2026-08-28.md) ·
+> [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
+> Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
+
+## 2026-11-21 — isolate cache diagnostic defaults and derive gate counts
+
+- Keep the compiler-cache report fixture's automatic address independent of inherited socket/port settings, and prove an explicit caller socket still appears in the report. The production capture environment is unchanged; a new mutation must break the isolated default case.
+- Refresh quoted manifest and dead-function figures with the existing measured updater; stale documentation cannot supply a green baseline for its mutation controls.
+
+## 2026-11-21 — retire closed copied package staging
+
+- Add a preview/apply worker restricted to a closed producer's three copied package trees. Bind fresh unit/container/mount observations, exact staging identity and snapshots, and all three retained archive hashes; preserve sources, targets, home caches and receipts. Temporary fixtures and require-removal mutations cover refusals without asserting host authenticity or archive validity.
+
+## 2026-11-21 — exact binary checks for finished Linux packages
+
+- Extend the shared streaming binary verifier to extracted directories, TAR and DEB payloads. Retain exact member names, duplicate/case/alias refusals, regular-file requirements and complete hashes; one conventional TAR root prefix is accepted without accepting duplicate aliases. Share the checked dpkg stream with the text verifier and preserve failed native transport status.
+- Add a native AppImage binary entry point using the same architecture, selected-path, extraction and cleanup helper as licence checks. Synthetic fixtures cover large payloads, final-byte changes, symlinks, duplicates, malformed paths and raw extractor failures; byte equality alone does not establish provenance, executable mode, loader behavior or complete licence coverage.
+- Keep extraction state initialization in the shared helper, removing redundant entry-point declarations reported by the complete ShellCheck warning gate; no warning budget is raised.
 
 ## 2026-11-21 — required native cache setup propagates failures explicitly
 

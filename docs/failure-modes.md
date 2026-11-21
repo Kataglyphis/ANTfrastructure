@@ -104,6 +104,18 @@ Use the actual normal GPU invocation, matching live build-image or outer RUN PID
 
 A new image repository or `BUILDKIT_CACHE_DIR` selects a different stage-cache path. Byte-identical GNU mounts establish only equal input boundaries; without the old index in that path the normal driver emits no local `--cache-from`. Preserve a completed producer's cache with [the versioned transfer helper](local-proof-workflows.md#local-buildkit-cache-transfer), select the actual driver path and retain a dry run proving that import before starting the next build. Hard-link only immutable blobs and copy mutable metadata separately. Do not edit a live plan or cache export, restart a running producer for hits, or report source equality as an observed cache hit.
 
+## Cache diagnostic fixture inherits the capture socket
+
+The compiler-cache report fixture can fail under the normal command capturer because
+`SCCACHE_SERVER_UDS` already points at that command's private socket. The production helper
+correctly honors the caller, while the fixture expects an automatically selected default.
+Clear socket and port only in the fixture's automatic-address child, with deliberately
+inherited values as a control. A separate explicit-socket case must retain the chosen
+address in the diagnostic. Keep the real parent capture socket and its statistics intact.
+Pass controlled values as arguments and export them directly inside the fixture child.
+Temporary assignments before a function call can expose the outer binding again when unset.
+The fixture and mutation prove this isolation; they do not start a real cache server.
+
 ## Live compiler-cache reader rejects a changed log inode
 
 The bounded reader refuses a missing, linked, oversized or replaced `sccache.log`. Keep that failure and inspect the original producer; do not create or replace its log to obtain a receipt. A normal MIGraphX RUN uses the explicit MIGraphX reader profile and actual build-image PID, rather than a compiler label. A partial timeout cannot prove complete retention. See [live cache log retention](local-proof-workflows.md#live-cache-log-retention).

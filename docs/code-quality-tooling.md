@@ -1250,7 +1250,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **7377 entries** over **851 distinct test commands**; both digits are
+manifest holds **7442 entries** over **856 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2211,6 +2211,11 @@ the hook; `make hooks` installs both.
 gate recording its argv, for the two abort paths and the flags, and once with the
 REAL gate over a planted manifest, so that a rotted entry is proven to stop a
 push rather than merely to print.
+
+The compiler-cache diagnostic fixture tests automatic defaults with deliberately inherited
+socket/port values, then proves an explicit caller socket remains visible. Only the fixture
+child clears defaults; the actual command capturer retains its private address and statistics.
+See [the failure and repair](failure-modes.md#cache-diagnostic-fixture-inherits-the-capture-socket).
 
 ## Doc numbers are derived
 
@@ -3507,7 +3512,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 1125 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1122 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

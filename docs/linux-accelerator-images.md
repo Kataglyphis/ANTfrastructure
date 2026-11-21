@@ -2445,8 +2445,11 @@ neither verified parent ancestry nor a launch. Before executing them, the owning
 launcher must qualify the exact parent OCI/source chain, apply normal idle-host,
 storage and cache admission, and register bounded unit/container cleanup. The
 existing `launch-normal-media.py` remains restricted to its reviewed ROCm amd64
-chain. The other owned launch/handoff profiles and every actual image acceptance
-remain open. Command tests compare all six profiles with independent expectations
+chain. The separate [default amd64 launcher](local-proof-workflows.md#default-amd64-media-admission)
+qualifies the exact native SDK/source and compiler ancestry before shared idle-host
+admission with at least 300 GiB available; stricter caller reserves remain intact.
+Default foreign and NVIDIA owned launch/handoff profiles and every actual image
+acceptance remain open. Command tests compare all six profiles with independent expectations
 and the real shell stage graph; they do not build ORT or run a GPU.
 
 ### Combined media factory acceptance
