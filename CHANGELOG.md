@@ -17,6 +17,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-21 — the PE twin of the ELF hardening gate (CON294)
+
+- `Assert-PeHardening` (`windows/scripts/modules/WindowsPeHardening.Common.psm1`) reads each PE's DllCharacteristics
+  and throws naming every file without DYNAMIC_BASE, NX_COMPAT, HIGH_ENTROPY_VA (PE32+ only) or GUARD_CF, the bit
+  BeschleunigerBallett's binaries lacked before CON290; `-NoCfg` waives CFG by leaf name for a third-party DLL. Its own
+  module, as `WindowsTargetArch.Common.psm1` sits near the 800-line limit. `New-OrtTestPe` takes
+  `-DllCharacteristics`, and `PeHardening.Tests.ps1` holds the check on synthetic PEs.
+
 ## 2026-11-21 — Linux release hardening for every C++ repo, and its ELF gate (CON294)
 
 - `Hardening.cmake` turns on PIE and links with `-z relro -z now` for GCC and Clang on Linux; BeschleunigerBallett

@@ -2435,10 +2435,10 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       `<end of output>`, with a real ctest's log as the fixture, a real-ctest case and three recipes; AccelerANTgine's
       NULL-bus fix landed (b318e76, 0 criticals in its ctest). Left: the consumer pins and their lane calls.
 - [ ] **CON292 — an exact skip list in `Invoke-StagedTests.ps1`** [M, ★★; owner D2]. **In source since 2026-11-21:**
-      `allowed_skips` per gtest entry, two Pester cases in `StagedTests.Tests.ps1`; left: the hub's Windows lane green
-      on them, then the two consumers below opt in. Opt-in per gtest entry: a skip that is not listed, or a listed
-      test that ran, fails and is named; refused on cargo, pytest and exit-code entries, so OxidANT's run is
-      unchanged. AccelerANTgine opts in with its 7 tests (a test added on 2026-11-13 has never run on Windows);
+      `allowed_skips` per gtest entry, two Pester cases in `StagedTests.Tests.ps1`; the hub's Windows lane is green on
+      them (run 44941605355); left: the two consumers below opt in. Opt-in per gtest entry: a skip that is not listed,
+      or a listed test that ran, fails and is named; refused on cargo, pytest and exit-code entries, so OxidANT's run
+      is unchanged. AccelerANTgine opts in with its 7 tests (a test added on 2026-11-13 has never run on Windows);
       BeschleunigerBallett opts in with an empty list (0 Windows skips, job 136436488204).
 - [ ] **CON293 — one `::error` line per failed gate, and the named-parts pattern** [S, ★; owner D7]. **In source
       since 2026-11-21:** `gates.sh` writes `::error title=<batch>: <gate>::` and, where `$GITHUB_STEP_SUMMARY` is
@@ -2450,11 +2450,13 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
 - [ ] **CON294 — Linux release hardening for every C++ repo** [M, ★★]. **Linux half in source since 2026-11-21:**
       `Hardening.cmake` turns on PIE and `-z relro -z now` for GCC and Clang on Linux, and
       `06-packaging/verify-elf-hardening.sh` is the ELF gate (`test-cmake-hardening-linux.sh`,
-      `test-verify-elf-hardening.sh`, ten recipes); left: AccelerANTgine and BeschleunigerBallett call it, and the PE
-      twin. AccelerANTgine's `verify-package-hardening.sh` moves to `linux/scripts/06-packaging` with the binaries as
-      arguments; `Hardening.cmake`'s Linux branch adds PIE and `-z relro -z now` (BeschleunigerBallett passes none:
-      "Hardening Linker Flags:" is empty in job 135983570303); a PE twin for a repo's own binaries sits beside
-      `Read-PeLayout`.
+      `test-verify-elf-hardening.sh`, ten recipes); AccelerANTgine calls it since 0479bd9 (its hub pin 8912128d).
+      **The PE twin in source since 2026-11-21:** `Assert-PeHardening` in `WindowsPeHardening.Common.psm1`,
+      `PeHardening.Tests.ps1` (three cases, green in the image's pwsh). Left: BeschleunigerBallett calls both, and
+      AccelerANTgine's Windows round (its step 11) calls the PE twin. AccelerANTgine's `verify-package-hardening.sh`
+      moves to `linux/scripts/06-packaging` with the binaries as arguments; `Hardening.cmake`'s Linux branch adds PIE
+      and `-z relro -z now` (BeschleunigerBallett passes none: "Hardening Linker Flags:" is empty in job
+      135983570303); a PE twin for a repo's own binaries sits beside `Read-PeLayout`.
 - [ ] **CON295 — analyzers that run, and warnings that count** [M, ★; owner D10, D11]. (a) IWYU never runs: the
       property sits on the INTERFACE target `myproject_options`, which does not pass it on; run it on the real
       targets, report-only first. (b) cppcheck: BeschleunigerBallett's default ON goes, as the image has no binary

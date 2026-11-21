@@ -384,6 +384,11 @@ BeschleunigerBallett had linked with neither, while AccelerANTgine had set them 
 extracts its packages and names the ELFs, as AccelerANTgine's `verify-package-hardening.sh` does;
 a binary that calls nothing `_FORTIFY_SOURCE` can bound, such as a small demo, takes `no-fortify`.
 `tests/test-verify-elf-hardening.sh` compiles a hardened fixture and one per missing property.
+Its PE twin is `Assert-PeHardening -Path <files> [-NoCfg <leaf names>]` in
+`windows/scripts/modules/WindowsPeHardening.Common.psm1`: it reads each file's DllCharacteristics
+and throws naming every PE without DYNAMIC_BASE, NX_COMPAT, HIGH_ENTROPY_VA (PE32+) or GUARD_CF,
+the bit BeschleunigerBallett's binaries lacked before CON290; `-NoCfg` waives CFG for a
+third-party DLL built without it. `windows/scripts/tests/PeHardening.Tests.ps1` holds it on synthetic PEs.
 
 ### glibc travels, and a newer host glibc wins
 

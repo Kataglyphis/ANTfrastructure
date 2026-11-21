@@ -442,7 +442,7 @@ function New-OrtTestExportTable {
 # A one-section PE32+ carrying import, delay-load, string and export tables for PE-walking suites.
 function New-OrtTestPe {
     param([Parameter(Mandatory)][string]$Path, [string[]]$Import = @(), [string[]]$Text = @(), [string[]]$Export = @(), [switch]$Forward,
-        [uint16]$Machine = 0x8664, [string[]]$DelayImport = @())
+        [uint16]$Machine = 0x8664, [string[]]$DelayImport = @(), [uint16]$DllCharacteristics = 0)
     $Path = $Path -replace '\\', '/'
     $rva = 0x1000
     $descSize = 20 * ($Import.Count + 1)
@@ -474,6 +474,7 @@ function New-OrtTestPe {
     [BitConverter]::GetBytes([uint16]1).CopyTo($h, 0x46)
     [BitConverter]::GetBytes([uint16]0xF0).CopyTo($h, 0x54)
     [BitConverter]::GetBytes([uint16]0x20B).CopyTo($h, 0x58)
+    [BitConverter]::GetBytes($DllCharacteristics).CopyTo($h, 0x58 + 70)
     [BitConverter]::GetBytes([uint32]16).CopyTo($h, 0x58 + 108)
     [BitConverter]::GetBytes([uint32]$rva).CopyTo($h, 0x58 + 120)
     [BitConverter]::GetBytes([uint32]$descSize).CopyTo($h, 0x58 + 124)
