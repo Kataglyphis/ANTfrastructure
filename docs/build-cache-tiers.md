@@ -1450,6 +1450,12 @@ A real compiler error must pass through untouched (the compiler is never
 re-run), and a clean compile passes through. `test-sccache-launcher.sh` pins
 every case.
 
+Native preflight fixture compiles also resolve this guarded launcher through
+`common.sh`; a bare `sccache cc` or `sccache c++` bypasses the policy even when
+the daemon starts. Their captured C/C++ commands retain cache statistics and raw
+compiler status. The temporary-file cache failure has separate routing controls
+in `test-isolated-helper-cache.sh`; those controls do not measure cache hits.
+
 **The launcher is a bash script (2026-10-21).** dash drops every variable whose
 name is not a shell identifier before it runs a child, so under `#!/bin/sh` cargo's
 `CARGO_BIN_EXE_burn-demos` never reached rustc and a hyphenated binary's

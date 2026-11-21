@@ -462,6 +462,7 @@ See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 - [A USB camera delivers half its frame rate](#a-usb-camera-delivers-half-its-frame-rate)
 - [A push leaves the repo bare: `core.bare and core.worktree do not make sense`](#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense)
 - [A cross-built Rust tool links the build host's libbz2](#a-cross-built-rust-tool-links-the-build-hosts-libbz2)
+- [Native Rust/Dart fixture compilation fails inside sccache](#native-rustdart-fixture-compilation-fails-inside-sccache)
 - [HailoRT's configure is slow while the cache looks healthy](#hailorts-configure-is-slow-while-the-cache-looks-healthy)
 - [`sccache-evict.service` fails with `sort: write failed: 'standard output': Broken pipe`](#sccache-evictservice-fails-with-sort-write-failed-standard-output-broken-pipe)
 - [`Using ccache: /usr/bin/ccache` in a build that should use sccache](#using-ccache-usrbinccache-in-a-build-that-should-use-sccache)
@@ -2338,6 +2339,24 @@ key, and their gate refuses any `NEEDED` outside libc's own family, so a regress
 fails the build instead of shipping. `WEB_LANE_TOOLS_SOURCE=legacy` is exempt on
 purpose: it is the old build verbatim, pkg-config probe and all.
 docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
+
+### Native Rust/Dart fixture compilation fails inside sccache
+
+**Symptom.** `test-ort-plugin-rust.sh` fails its real Dart/HIP probe compiles with
+`sccache: error: failed to execute compile` and `Compiler not supported: "failed
+to write temporary file"`. The Rust policy/module tests may already have passed.
+
+**Cause.** The shared fixture compiler invoked bare sccache, bypassing the
+canonical launcher's cache-internal retry and direct-compiler fallback. This
+routing defect is reproduced independently; the underlying daemon temporary-file
+failure does not by itself establish a stale TMPDIR or any other server cause.
+
+**Fix.** Import the canonical cache owner, require its launcher APIs, initialize
+the parent-shell address and resolve the guarded launcher in
+`isolated-helper-compile.sh`. Keep optimized C and ASAN C++ flags, raw compiler
+errors and captured command/cache statuses. Run the cache-routing controls plus
+the original clock and Rust/Dart suites; a fake cache failure proves routing,
+not daemon health, cache performance or application inference.
 
 ### HailoRT's configure is slow while the cache looks healthy
 

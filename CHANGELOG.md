@@ -17,6 +17,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-21 — native fixture compiles use the guarded compiler cache
+
+- Resolve the shared C/C++ fixture launcher through the canonical cache owner after publishing its parent-shell environment. Bare sccache bypassed infrastructure-error recovery and made the hosted Rust/Dart suite fail on temporary-file errors.
+- Retain optimized/fatal-warning C compilation, ASAN C++ flags, raw import/resolver/compiler failures and command/cache statistics. Real compiler errors remain fatal; the canonical launcher owns cache retries and direct fallback.
+- Add fake cache-infrastructure controls for both real compiler paths and mutation guards for imports, exports, parent environment, resolver and status propagation. Real clock, Rust/Dart, hosted CI and finished consumer checks retain their separate scope.
+
 ## 2026-11-20 — preserve separate Cargo release metadata for native helpers
 
 - Add paired optional JSON outputs to the shared Rust release driver, retaining its full-workspace build and explicit CLI build. Each file records one complete unfiltered Cargo call, suitable for the existing strict native-helper selector; no extra release builds or combined-message exception are introduced.

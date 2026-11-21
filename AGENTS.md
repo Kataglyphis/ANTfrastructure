@@ -122,7 +122,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Isolated native workers preserve nonzero clock errors before launch and during supervision; absent errno becomes EIO. Keep optimized fatal-warning compilation and actual killed/reaped child controls.
    The hooks' host-red helper imports the canonical logging bootstrap; copied helpers retain it and the existing positive library-import controls.
    Optional Cargo release JSON paths are paired, distinct regular outputs cleared before wrapper setup; retain the whole workspace then explicit CLI, their original alias parse points, raw failures and one unfiltered invocation per stream.
-   Cache launcher sites initialize their parent environment directly before resolution; required callers propagate raw failure and legacy callers retain their advisory fallback.
+   Cache launcher sites initialize their parent environment directly before resolution; required callers propagate raw failure and legacy callers retain their advisory fallback. Isolated C/C++ fixture compilers require the canonical cache owner and both launcher APIs, keep optimized/ASAN flags and capture raw compiler/cache status; a cache infrastructure failure cannot bypass the guarded launcher.
    ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions.
    Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.
    Locked tool installs also require `uv-image-overlay.sh` beside `python_uv.sh`; copied code-quality libraries carry `quality/cmake-format/{pyproject.toml,uv.lock}` and retain the Python 3.15 lexer patch.

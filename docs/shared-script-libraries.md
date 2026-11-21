@@ -2622,9 +2622,19 @@ elapsed time. Clock failure preserves the original nonzero errno and otherwise
 returns `EIO`, so it cannot report success with an unset timestamp. A failure
 during supervision still kills and reaps its worker before returning the error.
 `isolated-helper-compile.sh` compiles both the shared C object and clock fixture
-with `-O3 -Wall -Wextra -Werror` through the measured compiler cache. Its clock
-fixture compiler propagates failure before linking; existing native-cache paths
-stay unchanged for the Rust and Dart drivers.
+with `-O3 -Wall -Wextra -Werror` through the measured compiler cache. It imports
+the canonical `01-core/common.sh`, requires both cache launcher APIs, initializes
+the address in the compiling shell and resolves the guarded launcher before
+capturing each command. The ASAN C++ fixtures share this boundary with their
+original flags. Required import, resolver and real compiler failures retain their
+raw status; clock fixture compilation still fails before linking.
+
+`test-isolated-helper-cache.sh` injects the hosted cache-internal temporary-file
+failure into both real C/C++ compiles. The canonical launcher retries the cache
+and then compiles directly; real compiler errors are not retried. Controls also
+check required imports/exports, parent-shell address publication and captured raw
+statuses. These fake cache controls do not establish real daemon health, hit
+performance or inference; the existing Rust/Dart and clock suites remain required.
 
 `test-isolated-helper-clock.sh` injects initial and elapsed clock failures with
 zero or nonzero errno into real supervised child runs. It checks error values,
