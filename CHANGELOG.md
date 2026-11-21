@@ -17,6 +17,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-21 — Linux release hardening for every C++ repo, and its ELF gate (CON294)
+
+- `Hardening.cmake` turns on PIE and links with `-z relro -z now` for GCC and Clang on Linux; BeschleunigerBallett
+  had linked with neither ("Hardening Linker Flags:" was empty), while AccelerANTgine set them itself. Its global mode
+  joins each flag list with spaces: the semicolons of a list had gone into `CMAKE_CXX_FLAGS` and
+  `CMAKE_EXE_LINKER_FLAGS`, where they end the command line.
+- `06-packaging/verify-elf-hardening.sh` checks shipped ELFs for PIE, `GNU_RELRO`, BIND_NOW, the stack protector
+  and `_FORTIFY_SOURCE`, from AccelerANTgine's package gate made generic. `test-cmake-hardening-linux.sh`,
+  `test-verify-elf-hardening.sh` (compiled fixtures, one per missing property) and ten recipes hold both.
+
 ## 2026-11-21 — an exact skip list for staged gtest entries (CON292)
 
 - A `tests.json` gtest entry of `Invoke-StagedTests.ps1` may carry `allowed_skips` (owner decision D2): a skip not on

@@ -2447,10 +2447,14 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       No reusable Linux C++ lane: `shared-script-libraries.md` describes BeschleunigerBallett's pattern (one step per
       part, `if: !cancelled()` plus the part's own build outcome, uploads guarded with `hashFiles`). Left: a red
       consumer run that shows the annotation.
-- [ ] **CON294 — Linux release hardening for every C++ repo** [M, ★★]. AccelerANTgine's `verify-package-hardening.sh`
-      moves to `linux/scripts/06-packaging` with the binaries as arguments; `Hardening.cmake`'s Linux branch adds PIE
-      and `-z relro -z now` (BeschleunigerBallett passes none: "Hardening Linker Flags:" is empty in job
-      135983570303); a PE twin for a repo's own binaries sits beside `Read-PeLayout`.
+- [ ] **CON294 — Linux release hardening for every C++ repo** [M, ★★]. **Linux half in source since 2026-11-21:**
+      `Hardening.cmake` turns on PIE and `-z relro -z now` for GCC and Clang on Linux, and
+      `06-packaging/verify-elf-hardening.sh` is the ELF gate (`test-cmake-hardening-linux.sh`,
+      `test-verify-elf-hardening.sh`, ten recipes); left: AccelerANTgine and BeschleunigerBallett call it, and the PE
+      twin. AccelerANTgine's `verify-package-hardening.sh` moves to `linux/scripts/06-packaging` with the binaries as
+      arguments; `Hardening.cmake`'s Linux branch adds PIE and `-z relro -z now` (BeschleunigerBallett passes none:
+      "Hardening Linker Flags:" is empty in job 135983570303); a PE twin for a repo's own binaries sits beside
+      `Read-PeLayout`.
 - [ ] **CON295 — analyzers that run, and warnings that count** [M, ★; owner D10, D11]. (a) IWYU never runs: the
       property sits on the INTERFACE target `myproject_options`, which does not pass it on; run it on the real
       targets, report-only first. (b) cppcheck: BeschleunigerBallett's default ON goes, as the image has no binary

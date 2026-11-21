@@ -1,4 +1,5 @@
 include(CheckCXXCompilerFlag)
+include(CheckPIESupported)
 
 macro(
   myproject_enable_hardening
@@ -72,6 +73,27 @@ macro(
     else()
       message(STATUS "*** g++/clang -fstack-clash-protection NOT enabled (not supported)")
     endif()
+
+    # A Linux image is PIE with an eagerly bound, read-only GOT (CON294: BeschleunigerBallett linked with neither).
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      get_property(_hardening_languages GLOBAL PROPERTY ENABLED_LANGUAGES)
+      list(
+        FILTER
+        _hardening_languages
+        INCLUDE
+        REGEX
+        "^(C|CXX)$")
+      if(_hardening_languages)
+        check_pie_supported(LANGUAGES ${_hardening_languages})
+      endif()
+      set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+      list(
+        APPEND
+        NEW_LINK_OPTIONS
+        -Wl,-z,relro
+        -Wl,-z,now)
+      message(STATUS "*** g++/clang PIE and -z relro -z now enabled")
+    endif()
   endif()
 
   if(${ubsan_minimal_runtime})
@@ -111,9 +133,24 @@ macro(
 
   if(${global})
     message(STATUS "** Setting hardening options globally for all dependencies")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${NEW_COMPILE_OPTIONS}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${NEW_CXX_DEFINITIONS}")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${NEW_LINK_OPTIONS}")
+    # A flags variable is one string: a list's semicolons there would end the compiler's command line.
+    list(
+      JOIN
+      NEW_COMPILE_OPTIONS
+      " "
+      _hardening_compile_flags)
+    list(
+      JOIN
+      NEW_CXX_DEFINITIONS
+      " "
+      _hardening_definitions)
+    list(
+      JOIN
+      NEW_LINK_OPTIONS
+      " "
+      _hardening_link_flags)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_hardening_compile_flags} ${_hardening_definitions}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${_hardening_link_flags}")
   else()
     target_compile_options(${target} INTERFACE ${NEW_COMPILE_OPTIONS})
     target_link_options(${target} INTERFACE ${NEW_LINK_OPTIONS})

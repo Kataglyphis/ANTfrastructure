@@ -25,3 +25,19 @@ cmake_fixture_output() {
   rm -rf "${proj}"
   return "${rc}"
 }
+
+# cmake_fixture_hardening <preamble> [global]: Hardening.cmake on one target, probes stubbed; prints LINK= PIC= EXE=.
+cmake_fixture_hardening() {
+  cmake_fixture_output "$1
+include(\"$(cmake_fixture_module_root --native)/Hardening.cmake\")
+function(check_cxx_compiler_flag flag var)
+  set(\${var} FALSE PARENT_SCOPE)
+endfunction()
+function(check_pie_supported)
+endfunction()
+add_library(t INTERFACE)
+myproject_enable_hardening(t ${2:-OFF} OFF)
+get_target_property(_o t INTERFACE_LINK_OPTIONS)
+message(STATUS \"LINK=[\${_o}] PIC=[\${CMAKE_POSITION_INDEPENDENT_CODE}] EXE=[\${CMAKE_EXE_LINKER_FLAGS}]\")" |
+    sed -n 's/^-- \(LINK=.*\)$/\1/p'
+}

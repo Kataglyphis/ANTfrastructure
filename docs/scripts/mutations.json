@@ -59166,5 +59166,85 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-gates-annotations.sh",
   "why": "an unescaped : in a gate name cuts the annotation's title short"
+ },
+ {
+  "id": "cmake-arch.linux-relro-now-linked",
+  "target": "cmake/Hardening.cmake",
+  "find": "        -Wl,-z,relro\n        -Wl,-z,now)",
+  "replace": "        -Wl,-z,relro)",
+  "test": "bash linux/scripts/tests/test-cmake-hardening-linux.sh",
+  "why": "without -z now a Linux image binds lazily and keeps its GOT writable (CON294)"
+ },
+ {
+  "id": "cmake-arch.linux-pie",
+  "target": "cmake/Hardening.cmake",
+  "find": "      set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cmake-hardening-linux.sh",
+  "why": "a Linux executable without PIE loads at a fixed address"
+ },
+ {
+  "id": "cmake-arch.linux-flags-linux-only",
+  "target": "cmake/Hardening.cmake",
+  "find": "    if(CMAKE_SYSTEM_NAME STREQUAL \"Linux\")\n      get_property(_hardening_languages",
+  "replace": "    if(TRUE)\n      get_property(_hardening_languages",
+  "test": "bash linux/scripts/tests/test-cmake-hardening-linux.sh",
+  "why": "ld64 knows no -z relro: an Apple link must not get the Linux flags"
+ },
+ {
+  "id": "cmake-arch.global-link-flags-joined",
+  "target": "cmake/Hardening.cmake",
+  "find": "    set(CMAKE_EXE_LINKER_FLAGS \"${CMAKE_EXE_LINKER_FLAGS} ${_hardening_link_flags}\")",
+  "replace": "    set(CMAKE_EXE_LINKER_FLAGS \"${CMAKE_EXE_LINKER_FLAGS} ${NEW_LINK_OPTIONS}\")",
+  "test": "bash linux/scripts/tests/test-cmake-hardening-linux.sh",
+  "why": "a list's semicolons in the global linker flags end the link command line"
+ },
+ {
+  "id": "packaging.elf-hardening-pie",
+  "target": "linux/scripts/06-packaging/verify-elf-hardening.sh",
+  "find": "    if grep -Eq '^ *Type: +DYN ' <<< \"${header}\" && grep -Eq '^ *INTERP ' <<< \"${program}\"; then",
+  "replace": "    if true; then",
+  "test": "bash linux/scripts/tests/test-verify-elf-hardening.sh",
+  "why": "an executable that is not PIE must fail the gate"
+ },
+ {
+  "id": "packaging.elf-hardening-relro",
+  "target": "linux/scripts/06-packaging/verify-elf-hardening.sh",
+  "find": "  if grep -Eq '^ *GNU_RELRO ' <<< \"${program}\"; then",
+  "replace": "  if true; then",
+  "test": "bash linux/scripts/tests/test-verify-elf-hardening.sh",
+  "why": "an ELF without a GNU_RELRO segment must fail the gate"
+ },
+ {
+  "id": "packaging.elf-hardening-bind-now",
+  "target": "linux/scripts/06-packaging/verify-elf-hardening.sh",
+  "find": "  if grep -Eq '\\(FLAGS\\).*\\bBIND_NOW\\b|\\(FLAGS_1\\).*\\bNOW\\b' <<< \"${dynamic}\"; then",
+  "replace": "  if true; then",
+  "test": "bash linux/scripts/tests/test-verify-elf-hardening.sh",
+  "why": "a lazily bound ELF must fail the gate"
+ },
+ {
+  "id": "packaging.elf-hardening-stack-protector",
+  "target": "linux/scripts/06-packaging/verify-elf-hardening.sh",
+  "find": "  if grep -qx '__stack_chk_fail' <<< \"${imports}\"; then",
+  "replace": "  if true; then",
+  "test": "bash linux/scripts/tests/test-verify-elf-hardening.sh",
+  "why": "an ELF built without the stack protector must fail the gate"
+ },
+ {
+  "id": "packaging.elf-hardening-fortify",
+  "target": "linux/scripts/06-packaging/verify-elf-hardening.sh",
+  "find": "  elif [[ \"${fortify}\" == fortify ]]; then",
+  "replace": "  elif false; then",
+  "test": "bash linux/scripts/tests/test-verify-elf-hardening.sh",
+  "why": "an ELF without a __*_chk import must fail unless its spec says no-fortify"
+ },
+ {
+  "id": "packaging.elf-hardening-verdict",
+  "target": "linux/scripts/06-packaging/verify-elf-hardening.sh",
+  "find": "  printf 'hardening: %d check(s) failed\\n' \"${failures}\" >&2\n  exit 1",
+  "replace": "  printf 'hardening: %d check(s) failed\\n' \"${failures}\" >&2\n  exit 0",
+  "test": "bash linux/scripts/tests/test-verify-elf-hardening.sh",
+  "why": "a failed check must end the gate with exit 1"
  }
 ]
