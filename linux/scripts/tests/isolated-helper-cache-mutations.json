@@ -22,7 +22,7 @@
   "test": "bash linux/scripts/tests/test-isolated-helper-cache.sh",
   "timeout": 180,
   "id": "lib.isolated-cache.parent-env",
-  "find": "  compiler_cache_launcher_env\n",
+  "find": "  compiler_cache_launcher_env || return $?\n",
   "replace": "  :\n",
   "why": "The selected server address must be published in the actual compiling shell before resolver substitution."
  },
@@ -40,9 +40,9 @@
   "test": "bash linux/scripts/tests/test-isolated-helper-cache.sh",
   "timeout": 180,
   "id": "lib.isolated-cache.exports",
-  "find": "declare -F \"${_ih_api}\" >/dev/null || { err \"Missing required compiler cache API: ${_ih_api}\"; return 1; }",
+  "find": "declare -F compiler_cache_launcher_env >/dev/null || { err \"Missing required compiler cache API: compiler_cache_launcher_env\"; return 1; }",
   "replace": ":",
-  "why": "Every required cache API must be present before a compile; check each removed export independently."
+  "why": "The required environment export must be validated before invoking it; a missing API must retain its explicit refusal."
  },
  {
   "target": "linux/scripts/lib/isolated-helper-compile.sh",
@@ -61,5 +61,23 @@
   "find": "\"${_ih_launcher}\" \"$@\"",
   "replace": "\"${_ih_launcher}\" \"$@\" || true",
   "why": "A real compiler failure cannot become success through the statistics wrapper."
+ },
+ {
+  "id": "lib.isolated-cache.env-status",
+  "target": "linux/scripts/lib/isolated-helper-compile.sh",
+  "find": "compiler_cache_launcher_env || return $?",
+  "replace": "compiler_cache_launcher_env",
+  "test": "bash linux/scripts/tests/test-isolated-helper-cache.sh",
+  "timeout": 180,
+  "why": "A failing required environment owner must retain raw status71 before cache resolution or compiler execution."
+ },
+ {
+  "id": "lib.isolated-cache.resolver-export",
+  "target": "linux/scripts/lib/isolated-helper-compile.sh",
+  "find": "declare -F compiler_cache_launcher >/dev/null || { err \"Missing required compiler cache API: compiler_cache_launcher\"; return 1; }",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-isolated-helper-cache.sh",
+  "timeout": 180,
+  "why": "The separate required resolver export must fail explicitly before an absent command can replace the intended status and diagnostic."
  }
 ]

@@ -2627,7 +2627,10 @@ the canonical `01-core/common.sh`, requires both cache launcher APIs, initialize
 the address in the compiling shell and resolves the guarded launcher before
 capturing each command. The ASAN C++ fixtures share this boundary with their
 original flags. Required import, resolver and real compiler failures retain their
-raw status; clock fixture compilation still fails before linking.
+raw status; the required environment call also propagates its status explicitly
+before resolution or compilation. Clock fixture compilation still fails before linking.
+The launcher-policy suite canonicalizes scan roots before excluding tests and
+checks guarded and bare calls through a `tests/..` fixture, plus missing-root refusal.
 
 `test-isolated-helper-cache.sh` injects the hosted cache-internal temporary-file
 failure into both real C/C++ compiles. The canonical launcher retries the cache

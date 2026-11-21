@@ -2354,7 +2354,11 @@ failure does not by itself establish a stale TMPDIR or any other server cause.
 **Fix.** Import the canonical cache owner, require its launcher APIs, initialize
 the parent-shell address and resolve the guarded launcher in
 `isolated-helper-compile.sh`. Keep optimized C and ASAN C++ flags, raw compiler
-errors and captured command/cache statuses. Run the cache-routing controls plus
+errors and captured command/cache statuses. Guard the required environment call
+explicitly before resolution; the launcher-policy suite checks that boundary too.
+A policy scanner must canonicalize its root before excluding test paths, with a
+planted bare-call control proving the scan observes production inputs.
+Run the cache-routing controls plus
 the original clock and Rust/Dart suites; a fake cache failure proves routing,
 not daemon health, cache performance or application inference.
 

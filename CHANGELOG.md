@@ -17,6 +17,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-21 — required native cache setup propagates failures explicitly
+
+- Retain the required environment owner's raw status before resolving the native fixture compiler; validate its two exports explicitly. The hosted launcher-policy suite correctly rejected the new unguarded call after the original Rust/Dart suite passed again.
+- Add an environment-failure control that requires no cache/compiler command to run. Keep the existing cache retry, raw compiler failure, clock and real Rust/Dart checks.
+- Canonicalize the launcher-policy scan root before excluding tests. Guarded/bare fixtures through `tests/..` and a missing-root refusal prevent the production scan from passing with every path accidentally filtered out; keep the original exclusions and explicit caller failure policies. Isolate the fake subshell-loss control from inherited real socket/port values, with an explicit inherited-setting regression.
+
 ## 2026-11-21 — native fixture compiles use the guarded compiler cache
 
 - Resolve the shared C/C++ fixture launcher through the canonical cache owner after publishing its parent-shell environment. Bare sccache bypassed infrastructure-error recovery and made the hosted Rust/Dart suite fail on temporary-file errors.

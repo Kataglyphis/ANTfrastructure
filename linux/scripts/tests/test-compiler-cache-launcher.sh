@@ -98,12 +98,14 @@ t_assert_eq "${_env_out}" "/tmp/probe.sock" "a \$( ) resolver cannot do this; th
 
 t_case "MUTATION: the same call inside \$( ) leaves the caller UNSET"
 _env_lost="$(
+  export SCCACHE_SERVER_UDS=/tmp/inherited-cache.sock SCCACHE_SERVER_PORT=12345
+  unset SCCACHE_SERVER_UDS SCCACHE_SERVER_PORT
   _load_env_fn
   ensure_sccache_env() { export SCCACHE_SERVER_UDS=/tmp/probe.sock; return 0; }
   _inner="$(compiler_cache_launcher_env; printf '%s' "${SCCACHE_SERVER_UDS:-UNSET}")"
-  printf '%s|%s' "${_inner}" "${SCCACHE_SERVER_UDS:-UNSET}"
+  printf '%s|%s|%s' "${_inner}" "${SCCACHE_SERVER_UDS:-UNSET}" "${SCCACHE_SERVER_PORT:-UNSET}"
 )"
-t_assert_eq "${_env_lost}" "/tmp/probe.sock|UNSET" "the address is set and then discarded with the subshell"
+t_assert_eq "${_env_lost}" "/tmp/probe.sock|UNSET|UNSET" "the address is set and then discarded with the subshell"
 
 t_case "the env owner is TOTAL: no usable sccache must not kill the caller"
 _env_rc="$(
@@ -167,13 +169,35 @@ t_assert_eq \
   "$(grep -c 'source=linux/scripts/01-core/sccache-launcher.sh' "${_DF}")" \
   "without it these stages run BARE sccache, where an sccache fault ABORTS the build"
 
+_cache_env_unguarded() {
+  local root matches status=0 file line call
+  root="$(cd "$1" && pwd)" || return
+  matches="$(grep -rn 'compiler_cache_launcher_env' "${root}" --include='*.sh')" || status=$?
+  [ "${status}" -le 1 ] || return "${status}"
+  while IFS=: read -r file line call; do
+    case "${file}" in */tests/*|*/01-core/common.sh|'') continue ;; esac
+    case "${call}" in *'declare -F compiler_cache_launcher_env'*) continue ;; esac
+    _cache_env_guarded "${call}" || printf '%s:%s:%s\n' "${file}" "${line}" "${call}"
+  done <<< "${matches}"
+}
+
 t_case "production environment calls preserve an explicit required or optional failure policy"
-_unguarded="$(grep -rn 'compiler_cache_launcher_env' "${TESTS_DIR}/.." --include='*.sh' \
-  | grep -v '/tests/' | grep -v '01-core/common.sh' | grep -v 'declare -F compiler_cache_launcher_env' \
-  | while IFS=: read -r _f _n _call; do
-    _cache_env_guarded "$_call" || printf '%s:%s:%s\n' "$_f" "$_n" "$_call"
-  done)"
+declare _unguarded _unguarded_status
+t_capture_command _unguarded _unguarded_status _cache_env_unguarded "${_SCRIPTS}"
+t_assert_eq 0 "${_unguarded_status}"
 t_assert_eq "" "${_unguarded}" "a required call retains its raw failure; an optional call retains its fallback"
+
+t_case "a canonicalized scan root keeps bare production calls observable through tests/.."
+mkdir -p "${WORK}/closure/tests" "${WORK}/closure/lib"
+printf 'compiler_cache_launcher_env || return $?\ncompiler_cache_launcher_env 2>/dev/null || true\n' > "${WORK}/closure/lib/guarded.sh"
+t_capture_command _unguarded _unguarded_status _cache_env_unguarded "${WORK}/closure/tests/.."
+t_assert_eq 0 "${_unguarded_status}"
+t_assert_eq '' "${_unguarded}"
+printf 'compiler_cache_launcher_env\n' > "${WORK}/closure/lib/bare.sh"
+t_capture_command _unguarded _unguarded_status _cache_env_unguarded "${WORK}/closure/tests/.."
+t_assert_eq 0 "${_unguarded_status}"
+t_assert_contains "${_unguarded}" 'lib/bare.sh:1:compiler_cache_launcher_env'
+t_assert_fails _cache_env_unguarded "${WORK}/missing-root"
 
 # ── media half (F3): an out-variable, not $( ). See docs/cross-build-verification.md#the-media-compile-cache-launcher
 _MEDIA_COMMON="${TESTS_DIR}/../03-media/core/common.sh"

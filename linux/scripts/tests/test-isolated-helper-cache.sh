@@ -42,7 +42,7 @@ ln -s compiler "${work}/bin/cc"
 ln -s compiler "${work}/bin/c++"
 
 _cache_fixture_run() {
-  local mode="$1" kind="$2" raw="$3" source_root="${4:-${ROOT}}" missing_api="${5:-0}" resolver_status="${6:-0}"
+  local mode="$1" kind="$2" raw="$3" source_root="${4:-${ROOT}}" missing_api="${5:-0}" resolver_status="${6:-0}" env_status="${7:-0}"
   _CACHE_FIXTURE_CASE=$((_CACHE_FIXTURE_CASE + 1))
   local output="${work}/case-${_CACHE_FIXTURE_CASE}" function
   cache_case_output="${output}"
@@ -58,7 +58,7 @@ _cache_fixture_run() {
   t_capture_command cache_output cache_status env -u SCCACHE_MULTILEVEL_CHAIN -u SCCACHE_SERVER_UDS -u SCCACHE_SERVER_PORT \
     USE_SCCACHE=1 USE_CCACHE=0 SCCACHE_DIR="${output}/cache" SCCACHE_S3_SECRET_FILE="${output}/no-secret" SCCACHE_CACHE_SIZE=1G \
     PATH="${work}/bin:${PATH}" IH_CACHE_MODE="${mode}" IH_COMPILER_STATUS="${raw}" \
-    IH_RECEIPT="${output}/calls" IH_MISSING_API="${missing_api}" IH_RESOLVER_STATUS="${resolver_status}" bash -c '
+    IH_RECEIPT="${output}/calls" IH_MISSING_API="${missing_api}" IH_RESOLVER_STATUS="${resolver_status}" IH_ENV_STATUS="${env_status}" bash -c '
       source "$1" || exit
       shift
       if [[ "$IH_MISSING_API" != 0 ]]; then
@@ -68,6 +68,10 @@ _cache_fixture_run() {
       if [[ "$IH_RESOLVER_STATUS" != 0 ]]; then
         source "$2/linux/scripts/01-core/common.sh" || exit
         compiler_cache_launcher() { return "$IH_RESOLVER_STATUS"; }
+      fi
+      if [[ "$IH_ENV_STATUS" != 0 ]]; then
+        source "$2/linux/scripts/01-core/common.sh" || exit
+        compiler_cache_launcher_env() { return "$IH_ENV_STATUS"; }
       fi
       result=0
       "$@" || result=$?
@@ -102,6 +106,10 @@ for api in compiler_cache_launcher_env compiler_cache_launcher; do
   t_assert_eq 1 "${cache_status}"
   t_assert_contains "${cache_output}" "Missing required compiler cache API: ${api}"
 done
+t_case 'required environment failures retain raw status before cache or compiler execution'
+_cache_fixture_run ok c 0 "${ROOT}" 0 0 71
+t_assert_eq 71 "${cache_status}"
+t_assert_fails test -e "${cache_case_output}/calls"
 t_case 'cache resolver failures preserve their raw status before compilation'
 _cache_fixture_run ok c 0 "${ROOT}" 0 63
 t_assert_eq 63 "${cache_status}"

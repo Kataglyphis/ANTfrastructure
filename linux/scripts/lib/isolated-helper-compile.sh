@@ -3,14 +3,13 @@
 # shellcheck source=log-bootstrap.sh
 source "${BASH_SOURCE[0]%/*}/log-bootstrap.sh" || return
 _ih_cached_compile() {
-  local _ih_root="$1" _ih_output="$2" _ih_stem="$3" _ih_launcher _ih_api
+  local _ih_root="$1" _ih_output="$2" _ih_stem="$3" _ih_launcher
   shift 3
   # shellcheck source=linux/scripts/01-core/common.sh
   source "${_ih_root}/linux/scripts/01-core/common.sh" || return
-  for _ih_api in compiler_cache_launcher_env compiler_cache_launcher; do
-    declare -F "${_ih_api}" >/dev/null || { err "Missing required compiler cache API: ${_ih_api}"; return 1; }
-  done
-  compiler_cache_launcher_env
+  declare -F compiler_cache_launcher_env >/dev/null || { err "Missing required compiler cache API: compiler_cache_launcher_env"; return 1; }
+  declare -F compiler_cache_launcher >/dev/null || { err "Missing required compiler cache API: compiler_cache_launcher"; return 1; }
+  compiler_cache_launcher_env || return $?
   _ih_launcher="$(compiler_cache_launcher)" || return
   bash "${_ih_root}/linux/scripts/capture-sccache-command.sh" "${_ih_output}/${_ih_stem}-cache" -- \
     "${_ih_launcher}" "$@"
