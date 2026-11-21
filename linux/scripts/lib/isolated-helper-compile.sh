@@ -2,10 +2,22 @@
 # One fixture compiler boundary retains the raw compiler verdict and cache statistics for both test drivers.
 # shellcheck source=log-bootstrap.sh
 source "${BASH_SOURCE[0]%/*}/log-bootstrap.sh" || return
+_ih_cached_compile() {
+  local _ih_root="$1" _ih_output="$2" _ih_stem="$3" _ih_launcher
+  shift 3
+  # shellcheck source=linux/scripts/01-core/common.sh
+  source "${_ih_root}/linux/scripts/01-core/common.sh" || return
+  declare -F compiler_cache_launcher_env >/dev/null || { err "Missing required compiler cache API: compiler_cache_launcher_env"; return 1; }
+  declare -F compiler_cache_launcher >/dev/null || { err "Missing required compiler cache API: compiler_cache_launcher"; return 1; }
+  compiler_cache_launcher_env || return $?
+  _ih_launcher="$(compiler_cache_launcher)" || return
+  bash "${_ih_root}/linux/scripts/capture-sccache-command.sh" "${_ih_output}/${_ih_stem}-cache" -- \
+    "${_ih_launcher}" "$@"
+}
+
 _ih_c_object() {
   local _ih_root="$1" _ih_output="$2" _ih_stem="$3" _ih_source="$4" _ih_object="$5"
-  bash "${_ih_root}/linux/scripts/capture-sccache-command.sh" "${_ih_output}/${_ih_stem}-cache" -- \
-    sccache cc -std=c11 -O3 -Wall -Wextra -Werror -fPIC -c \
+  _ih_cached_compile "${_ih_root}" "${_ih_output}" "${_ih_stem}" cc -std=c11 -O3 -Wall -Wextra -Werror -fPIC -c \
     "${_ih_root}/${_ih_source}" -o "${_ih_output}/${_ih_object}.o"
 }
 
@@ -21,8 +33,7 @@ compile_isolated_clock_fixture() {
 
 _ih_asan_object() {
   local _ih_root="$1" _ih_output="$2" _ih_stem="$3" _ih_source="$4"
-  bash "${_ih_root}/linux/scripts/capture-sccache-command.sh" "${_ih_output}/${_ih_stem}-cache" -- \
-    sccache c++ -std=c++20 -Wall -Wextra -Werror -g -fno-omit-frame-pointer -fsanitize=address -fPIC \
+  _ih_cached_compile "${_ih_root}" "${_ih_output}" "${_ih_stem}" c++ -std=c++20 -Wall -Wextra -Werror -g -fno-omit-frame-pointer -fsanitize=address -fPIC \
     -c "${_ih_root}/${_ih_source}" -o "${_ih_output}/${_ih_stem}.o"
 }
 

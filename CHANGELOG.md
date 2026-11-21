@@ -35,6 +35,18 @@
   skip list, gate annotations, Linux release hardening, analyzers and warnings, a bridge import helper); the consumer
   steps went into OxidANT's, AccelerANTgine's, OmniAccelerANT's and OrchestrANT's BACKLOGs.
 
+## 2026-11-21 — required native cache setup propagates failures explicitly
+
+- Retain the required environment owner's raw status before resolving the native fixture compiler; validate its two exports explicitly. The hosted launcher-policy suite correctly rejected the new unguarded call after the original Rust/Dart suite passed again.
+- Add an environment-failure control that requires no cache/compiler command to run. Keep the existing cache retry, raw compiler failure, clock and real Rust/Dart checks.
+- Canonicalize the launcher-policy scan root before excluding tests. Guarded/bare fixtures through `tests/..` and a missing-root refusal prevent the production scan from passing with every path accidentally filtered out; keep the original exclusions and explicit caller failure policies. Isolate the fake subshell-loss control from inherited real socket/port values, with an explicit inherited-setting regression.
+
+## 2026-11-21 — native fixture compiles use the guarded compiler cache
+
+- Resolve the shared C/C++ fixture launcher through the canonical cache owner after publishing its parent-shell environment. Bare sccache bypassed infrastructure-error recovery and made the hosted Rust/Dart suite fail on temporary-file errors.
+- Retain optimized/fatal-warning C compilation, ASAN C++ flags, raw import/resolver/compiler failures and command/cache statistics. Real compiler errors remain fatal; the canonical launcher owns cache retries and direct fallback.
+- Add fake cache-infrastructure controls for both real compiler paths and mutation guards for imports, exports, parent environment, resolver and status propagation. Real clock, Rust/Dart, hosted CI and finished consumer checks retain their separate scope.
+
 ## 2026-11-20 — preserve separate Cargo release metadata for native helpers
 
 - Add paired optional JSON outputs to the shared Rust release driver, retaining its full-workspace build and explicit CLI build. Each file records one complete unfiltered Cargo call, suitable for the existing strict native-helper selector; no extra release builds or combined-message exception are introduced.
