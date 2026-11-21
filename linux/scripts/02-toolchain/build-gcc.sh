@@ -743,6 +743,47 @@ else
   echo
 fi
 
+_gcc_notice_required_file() {
+  [ -f "$1" ] && [ -s "$1" ] && [ ! -L "$1" ] || return 1
+  return 0
+}
+
+_gcc_notice_output_path() {
+  [ ! -L "$1" ] && { [ ! -e "$1" ] || test "-$2" "$1"; } || return 1
+  return 0
+}
+
+_gcc_stage_runtime_notices() {
+  local source="${BUILD_DIR}/gcc-${GCC_VERSION}" destination="${PREFIX}/share/licenses/gcc-runtime"
+  local archive="${BUILD_DIR}/${TARBALL}" notice checksum
+  _gcc_notice_required_file "${archive}" || { printf 'Missing regular GCC source archive\n' >&2; return 1; }
+  for notice in COPYING3 COPYING.RUNTIME; do
+    _gcc_notice_required_file "${source}/${notice}" \
+      || { printf 'Missing regular original GCC notice: %s\n' "${notice}" >&2; return 1; }
+    tar -xOf "${archive}" "gcc-${GCC_VERSION}/${notice}" | cmp - "${source}/${notice}" || {
+      local -a notice_status=("${PIPESTATUS[@]}")
+      return "$(( notice_status[0] != 0 ? notice_status[0] : notice_status[1] ))"
+    }
+  done
+  _gcc_notice_output_path "${destination}" d \
+    || { printf 'Invalid GCC notice destination\n' >&2; return 1; }
+  for notice in COPYING3 COPYING.RUNTIME source.sha512 source.url; do
+    _gcc_notice_output_path "${destination}/${notice}" f \
+      || { printf 'Invalid GCC notice output: %s\n' "${notice}" >&2; return 1; }
+  done
+  checksum="$(sha512sum < "${archive}")" || return $?
+  ${SUDO} install -d -m 0755 -- "${destination}" || return $?
+  for notice in COPYING3 COPYING.RUNTIME; do
+    ${SUDO} install -m 0644 -- "${source}/${notice}" "${destination}/${notice}" || return $?
+  done
+  printf '%s  %s\n' "${checksum%% *}" "${TARBALL}" | ${SUDO} tee -- "${destination}/source.sha512" >/dev/null || return $?
+  printf '%s\n' "${TARBALL_URL}" | ${SUDO} tee -- "${destination}/source.url" >/dev/null || return $?
+  return 0
+}
+
+# Preserve the selected original texts before their verified source archive is deleted.
+_gcc_stage_runtime_notices || exit "$?"
+
 # 8) Cleanup build artifacts to keep images smaller
 echo
 echo "Cleaning up build directory..."

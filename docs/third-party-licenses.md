@@ -16,6 +16,28 @@ checking the original notice hash. The original-text fixture and its source
 metadata move with a reviewed pybind11 pin; this checks one notice's provenance,
 not the complete linked binary's licence closure.
 
+## GCC runtime original texts
+
+Every native, cross and Canadian-cross invocation of `build-gcc.sh` preserves
+`COPYING3` and `COPYING.RUNTIME` at
+`${PREFIX}/share/licenses/gcc-runtime/` before deleting its build directory.
+The selected source files must be nonempty regular files and match the same
+members in that invocation's source archive. Missing, rewritten or linked inputs,
+invalid output paths and raw extraction, hashing, installation or metadata failures
+abort before cleanup can report success. Existing ordinary notice files may be
+refreshed; linked destinations and linked output files refuse.
+
+`source.sha512` names the original tarball and its measured SHA512;
+`source.url` retains its canonical release URL. These records do not replace the
+builder's existing checksum and optional signature verification. The source archive
+is not shipped by this step. Preserve corresponding sources and modifications
+separately where required.
+
+This stages two original texts, not the complete GCC, static/header or native
+dependency licence closure. Consumers must still associate the selected runtimes,
+carry the texts into their packages and verify the actual finished payloads.
+Synthetic fixture and mutation checks do not prove an actual GCC build or image.
+
 ## Maintaining this list
 
 Everything between the `generated:deps-table` markers is **generated**. Editing

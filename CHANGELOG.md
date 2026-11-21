@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-21 — preserve original GCC runtime notices before source cleanup
+
+- Require the original GPL and runtime-exception texts to match the same build's source archive, then retain both under the installed GCC prefix with the archive SHA512 and canonical source URL.
+- Preserve raw staging failures before cleanup, including conditional callers; reject missing, empty, rewritten or linked inputs and linked output paths.
+- Add synthetic transport and refusal controls. Actual rebuilt images, consumer package staging and the complete native licence closure remain required.
+
 ## 2026-11-21 — retain repository origins in independent source copies
 
 - Preserve locally configured origin URLs, their order and literal values when copying committed, recursive or staged sources from local objects. Workflow checks retain the original repository identity instead of the local source folder name.

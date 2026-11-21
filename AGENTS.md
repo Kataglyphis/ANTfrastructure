@@ -1283,6 +1283,7 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
 ## Linux Build Rules
 
 - Use `nerdctl` first on this host; `buildctl`/`ctr` commonly fail with permission errors.
+- GCC builds retain archive-matched original `COPYING3` and `COPYING.RUNTIME` with their source URL and SHA512 before cleanup; staging failures abort. These selected texts do not prove complete native licence closure.
 - Keep both the QEMU/binfmt multi-platform lane and the cross-build lane working.
 - QNN plugin configure retries use the shared retry helper, retain every attempt in `build.log`
   and return the last raw configure failure after exhaustion. Keep compilation outside that retry;

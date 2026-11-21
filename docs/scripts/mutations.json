@@ -59654,5 +59654,117 @@
   "replace": "        pass",
   "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
   "why": "Real local Git fixtures preserve configured origin identity and literal ordered values; required configuration failures remain fatal. No remote authentication, workflow acceptance or build is proved."
+ },
+ {
+  "id": "lib.gcc-runtime-notices-runtime-required",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "  for notice in COPYING3 COPYING.RUNTIME; do\n    _gcc_notice_required_file",
+  "replace": "  for notice in COPYING3; do\n    _gcc_notice_required_file",
+  "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
+  "why": "Both original text inputs are validated before publication."
+ },
+ {
+  "id": "lib.gcc-runtime-notices-nonempty-original",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "[ -s \"$1\" ] && ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
+  "why": "An empty original archive member is not an original licence text."
+ },
+ {
+  "id": "lib.gcc-runtime-notices-regular-original",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": " && [ ! -L \"$1\" ]",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
+  "why": "Linked notice inputs refuse even when their target bytes match."
+ },
+ {
+  "id": "lib.gcc-runtime-notices-archive-byte-match",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "    tar -xOf \"${archive}\" \"gcc-${GCC_VERSION}/${notice}\" | cmp - \"${source}/${notice}\" || {\n      local -a notice_status=(\"${PIPESTATUS[@]}\")\n      return \"$(( notice_status[0] != 0 ? notice_status[0] : notice_status[1] ))\"\n    }",
+  "replace": "    : \"archive comparison omitted\"",
+  "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
+  "why": "A rewritten extracted notice must not replace the original archive member."
+ },
+ {
+  "id": "lib.gcc-runtime-notices-destination-unlinked",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "[ ! -L \"$1\" ] && ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
+  "why": "A linked notice directory must not redirect installed notices."
+ },
+ {
+  "id": "lib.gcc-runtime-notices-copy-runtime",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "  for notice in COPYING3 COPYING.RUNTIME; do\n    ${SUDO} install",
+  "replace": "  for notice in COPYING3; do\n    ${SUDO} install",
+  "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
+  "why": "The runtime exception is copied beside the GPL original."
+ },
+ {
+  "id": "lib.gcc-runtime-notices-copy-failure",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "\"${destination}/${notice}\" || return $?",
+  "replace": "\"${destination}/${notice}\" || :",
+  "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
+  "why": "Raw copy failures survive a conditional caller."
+ },
+ {
+  "id": "lib.gcc-runtime-notices-hash-failure",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "checksum=\"$(sha512sum < \"${archive}\")\" || return $?",
+  "replace": "checksum=\"$(sha512sum < \"${archive}\")\" || :",
+  "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
+  "why": "A failed archive hash cannot become an empty successful source receipt."
+ },
+ {
+  "id": "lib.gcc-runtime-notices-checksum-failure",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "\"${destination}/source.sha512\" >/dev/null || return $?",
+  "replace": "\"${destination}/source.sha512\" >/dev/null || :",
+  "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
+  "why": "A failed checksum-record write cannot be hidden by the following URL write."
+ },
+ {
+  "id": "lib.gcc-runtime-notices-url-failure",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "\"${destination}/source.url\" >/dev/null || return $?",
+  "replace": "\"${destination}/source.url\" >/dev/null || :",
+  "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
+  "why": "The final source URL write remains a required operation."
+ },
+ {
+  "id": "lib.gcc-runtime-notices-exact-source-hash",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "printf '%s  %s\\n' \"${checksum%% *}\" \"${TARBALL}\"",
+  "replace": "printf '%s  %s\\n' stale \"${TARBALL}\"",
+  "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
+  "why": "The checksum record contains the current measured archive digest."
+ },
+ {
+  "id": "lib.gcc-runtime-notices-canonical-source-url",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "\"${TARBALL_URL}\" | ${SUDO} tee",
+  "replace": "\"https://example.invalid/wrong-source\" | ${SUDO} tee",
+  "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
+  "why": "The retained source pointer comes from the actual canonical release URL."
+ },
+ {
+  "id": "lib.gcc-runtime-notices-builder-aborts",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "_gcc_stage_runtime_notices || exit \"$?\"",
+  "replace": "_gcc_stage_runtime_notices || :",
+  "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
+  "why": "A staging failure cannot continue to source cleanup even when the builder is conditionally sourced."
+ },
+ {
+  "id": "lib.gcc-runtime-notices-archive-failure-status",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "notice_status[0] != 0 ? notice_status[0] : notice_status[1]",
+  "replace": "notice_status[1]",
+  "test": "bash linux/scripts/tests/test-gcc-runtime-notices.sh",
+  "why": "The text comparator's EOF failure cannot replace the archive reader's original raw failure status."
  }
 ]
