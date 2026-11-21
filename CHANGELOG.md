@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-21 — retain repository origins in independent source copies
+
+- Preserve locally configured origin URLs, their order and literal values when copying committed, recursive or staged sources from local objects. Workflow checks retain the original repository identity instead of the local source folder name.
+- Add real local-Git controls for recursive/working copies, absent origins, multiple values and fatal configuration failures. This metadata does not authenticate sources or prove workflow/build acceptance.
+
 ## 2026-11-21 — admit default amd64 WebGPU Media from its SDK
 
 - Add a dedicated owned launcher using the canonical default Media command and existing native SDK/OCI qualifier, exact source proof, compiler ancestry and shared bounded admission.

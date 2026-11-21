@@ -62,6 +62,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    moves; see [image-acceptance.md](docs/image-acceptance.md) for replay and its coverage limits.
    Successful consumers retain their versioned checkouts, recursive Git stores and logs; safe layer cleanup must not delete them.
    Working-source copies retain the selected base and exact staged index, including staged gitlinks; an independently checked-out child must not replace that index. Bind actual child trees separately, and keep committed-tree acceptance strict.
+   Independent Git copies retain configured origin URLs and their order; local cloning must not replace repository identity. Origin metadata does not authenticate sources or qualify workflows.
    Independent source copies wait for the consumer log and recheck clean bytes and independent objects on reuse. Manual promotion also preserves
    the target's runtime platforms; an early shell-gate override cannot bypass acceptance.
    Native consumer CI pins the image, exact clean tooling and all recursive source snapshots;

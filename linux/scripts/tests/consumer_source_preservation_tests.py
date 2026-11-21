@@ -120,6 +120,53 @@ class SourcePreservationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertFalse(self.output.exists())
 
+    def test_committed_recursive_and_working_copies_keep_original_origins(self) -> None:
+        child = self.source / "third_party/ANTfrastructure"
+        origins = ["https://github.com/example/Alpha.git", "ssh://git@example.invalid/team/Alpha.git"]
+        for origin in origins:
+            M.git(self.source, "config", "--add", "remote.origin.url", origin)
+        M.git(child, "config", "remote.origin.url", "https://github.com/example/Vendor.git")
+        self.preserve()
+        self.stage_working_change()
+        self.working()
+        for copied in (self.output / "Alpha", self.working_destination):
+            self.assertEqual(M.git(copied, "config", "--null", "--get-all", "remote.origin.url"),
+                             "\0".join([*origins, ""]).encode())
+        self.assertEqual(M.git(self.output / "Alpha/third_party/ANTfrastructure", "config", "--get", "remote.origin.url"),
+                         b"https://github.com/example/Vendor.git\n")
+
+    def test_clone_without_configured_origin_keeps_its_local_reference(self) -> None:
+        M.git(self.source, "config", "remote.origin.url", "temporary")
+        M.git(self.source, "config", "--unset-all", "remote.origin.url")
+        self.working()
+        self.assertEqual(M.git(self.working_destination, "config", "--get", "remote.origin.url"),
+                         (str(self.source) + "\n").encode())
+
+    def test_origin_values_keep_literal_boundaries_and_order(self) -> None:
+        origins = ["-literal remote with spaces \t", "ssh://example.invalid/with\nnewline.git"]
+        for origin in origins:
+            M.git(self.source, "config", "--add", "--", "remote.origin.url", origin)
+        M.clone_checkout(self.source, self.working_destination, self.base)
+        self.assertEqual(M.git(self.working_destination, "config", "--null", "--get-all", "remote.origin.url"),
+                         "\0".join([*origins, ""]).encode())
+
+    def test_origin_read_and_write_failures_stay_fatal(self) -> None:
+        M.git(self.source, "config", "remote.origin.url", "https://example.invalid/Alpha.git")
+        original = M.git
+        for phase in ("read", "write"):
+            destination = self.root / (phase + "-copy")
+            failing_root = self.source if phase == "read" else destination
+
+            def fail_config(root: Path, *arguments: str, failing: Path = failing_root) -> bytes:
+                if root == failing and arguments[0] == "config":
+                    raise subprocess.CalledProcessError(47, ["git", *arguments])
+                return original(root, *arguments)
+
+            with self.subTest(phase=phase), mock.patch.object(M, "git", fail_config), \
+                    self.assertRaises(subprocess.CalledProcessError) as caught:
+                M.clone_checkout(self.source, destination, self.base)
+            self.assertEqual(caught.exception.returncode, 47)
+
     def test_working_copy_keeps_selected_base_and_all_staged_bytes(self) -> None:
         (self.source / "later.txt").write_text("post-base committed bytes\n")
         M.git(self.source, "add", "later.txt")

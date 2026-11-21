@@ -5,6 +5,22 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## Workflow lint identifies an independent source copy as editor
+
+**Symptom.** Full preflight rejects repository `editor` as undeclared in
+`.github/consumers.json`, while the original checkout has the expected repository name.
+
+**Cause.** A local independent clone replaces its origin with the source checkout's
+filesystem path. Copying that Git metadata into isolated preflight makes workflow
+selection use the directory basename instead of the original repository identity.
+
+**Fix.** Prepare a fresh copy with `preserve-consumer-sources.py`, which retains
+configured origin URLs and their order after cloning from local objects. Inspect
+the copied origin before replaying workflow checks. Existing copies keep their
+recorded metadata; original receipts remain unchanged. Origin metadata does not
+authenticate the source or establish workflow acceptance. See
+[working consumer sources](local-proof-workflows.md#working-consumer-sources).
+
 ## Local Docker-loaded GPU image does not resolve by repository@digest
 
 **Symptom.** The 2026-11-14 GPU4 image is loaded and visible under its local tag,

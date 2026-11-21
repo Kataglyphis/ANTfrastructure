@@ -111,6 +111,15 @@ def clone_checkout(source: Path, destination: Path, revision: str) -> None:
         timeout=300,
     )
     git(destination, "checkout", "--detach", revision)
+    origins = [
+        entry.split(b"\n", 1)[1].decode()
+        for entry in git(source, "config", "--local", "--null", "--list").split(b"\0")
+        if entry.startswith(b"remote.origin.url\n")
+    ]
+    if origins:
+        git(destination, "config", "--unset-all", "remote.origin.url")
+        for origin in origins:
+            git(destination, "config", "--add", "--", "remote.origin.url", origin)
 
 
 def clone_tree(

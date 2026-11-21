@@ -59622,5 +59622,37 @@
   "replace": "return 0 and launch(args.compiler_plan,",
   "test": "bash linux/scripts/tests/test-default-media-launch.sh",
   "why": "Synthetic callers must reject unqualified or changed SDK/source bindings and retain canonical default flags and storage limits; no image, OCI provenance, factory, licence or FINAL acceptance is proved."
+ },
+ {
+  "id": "image-acceptance.consumer-sources-origin-write",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "            git(destination, \"config\", \"--add\", \"--\", \"remote.origin.url\", origin)",
+  "replace": "            pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Real local Git fixtures preserve configured origin identity and literal ordered values; required configuration failures remain fatal. No remote authentication, workflow acceptance or build is proved."
+ },
+ {
+  "id": "image-acceptance.consumer-sources-origin-source",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "for entry in git(source, \"config\", \"--local\", \"--null\", \"--list\").split(b\"\\0\")",
+  "replace": "for entry in git(destination, \"config\", \"--local\", \"--null\", \"--list\").split(b\"\\0\")",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Real local Git fixtures preserve configured origin identity and literal ordered values; required configuration failures remain fatal. No remote authentication, workflow acceptance or build is proved."
+ },
+ {
+  "id": "image-acceptance.consumer-sources-origin-literal-boundaries",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "entry.split(b\"\\n\", 1)[1].decode()",
+  "replace": "entry.split(b\"\\n\", 1)[1].decode().strip()",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Real local Git fixtures preserve configured origin identity and literal ordered values; required configuration failures remain fatal. No remote authentication, workflow acceptance or build is proved."
+ },
+ {
+  "id": "image-acceptance.consumer-sources-origin-replaces-clone-reference",
+  "target": "linux/scripts/preserve-consumer-sources.py",
+  "find": "        git(destination, \"config\", \"--unset-all\", \"remote.origin.url\")",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-preserve-consumer-sources.sh",
+  "why": "Real local Git fixtures preserve configured origin identity and literal ordered values; required configuration failures remain fatal. No remote authentication, workflow acceptance or build is proved."
  }
 ]

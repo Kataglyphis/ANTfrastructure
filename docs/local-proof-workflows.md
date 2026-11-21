@@ -76,6 +76,14 @@ Under a nonblocking file lock, it verifies the exact expected prefix, preserves 
 
 The optional working-source command requires every tracked regular-file edit to be staged. It copies the selected committed base into an independent Git store, applies a binary patch from the source index, and verifies the complete index and actual file bytes, permissions and literal links. The original owner HEAD and selected base are recorded separately; neither is substituted for the staged overlay.
 
+Committed, recursive and working copies retain every locally configured origin URL,
+in its original order and with literal value boundaries. This keeps workflow repository
+selection from seeing a local directory name such as `editor`. Copying uses local objects;
+no remote is contacted. A source without a configured origin keeps the clone's local
+reference. Existing copies are not silently rewritten on reuse; inspect their metadata
+or prepare a fresh copy. Origin metadata does not authenticate the source or establish
+workflow acceptance.
+
 When permanent materialized copies consume the source reserve, keep a durable archive
 and restore temporary independent checkouts with `restore-consumer-archive.py`.
 Its schema-1 `archive.json` records the base, HTTPS GitHub origin, whether the original
