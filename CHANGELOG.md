@@ -17,6 +17,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-21 — an exact skip list for staged gtest entries (CON292)
+
+- A `tests.json` gtest entry of `Invoke-StagedTests.ps1` may carry `allowed_skips` (owner decision D2): a skip not on
+  the list, and a listed test that passed, failed or did not run, each count as a failure and are named, so the list
+  stays exact. An empty list refuses every skip; the field on a cargo, pytest or exitcode entry is refused before the
+  binary runs. Two cases in `StagedTests.Tests.ps1`; AccelerANTgine (seven tests) and BeschleunigerBallett (none) opt
+  in next.
+
 ## 2026-11-21 — the filesystem recipe leaves current_path(ec); a debugger probe for windows-11-arm
 
 - The exception-free filesystem recipe in `code-quality-tooling.md` read `current_path(ec)`, the non-throwing getter,

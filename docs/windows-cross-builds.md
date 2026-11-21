@@ -512,7 +512,12 @@ is the same file an x64 lane uses with `target-arch: amd64`:
      `running 39 tests` before this. A crash looks again each second for up to
      `-CrashEventWaitSeconds` (15), in case the record comes late. OxidANT's arm64 fail-fast
      abort (`0xC0000409`) gets none at all: run 44804439631 waited the full 15 s and found no
-     event 1000, while an access violation is named at once (run 44739816593).
+     event 1000, while an access violation is named at once (run 44739816593). A gtest entry may
+     carry `allowed_skips`, the exact list of tests it may skip (owner decision D2, CON292): a
+     skip not on it, and a listed test that passed, failed or did not run, each count as a
+     failure and are named, so a test that never runs on Windows cannot hide in the skip count.
+     An empty list refuses every skip; the field on a `cargo`, `pytest` or `exitcode` entry is an
+     error.
    - **A local run grades the same line.** `Invoke-StagedTests.ps1 -AssertVerdict` throws after
      printing it when a test failed or none passed; `Assert-StagedTestVerdict -Lines`
      (`WindowsTesting.Common`) reads it out of captured output with the same two rules and

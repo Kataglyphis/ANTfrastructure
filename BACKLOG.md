@@ -2434,10 +2434,12 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       `LastTest*.log` (the JUnit report cuts a passed test's output to 1 KiB), only between `Output:` and
       `<end of output>`, with a real ctest's log as the fixture, a real-ctest case and three recipes; AccelerANTgine's
       NULL-bus fix landed (b318e76, 0 criticals in its ctest). Left: the consumer pins and their lane calls.
-- [ ] **CON292 — an exact skip list in `Invoke-StagedTests.ps1`** [M, ★★; owner D2]. Opt-in per gtest entry: a skip
-      that is not listed, or a listed test that ran, fails and is named; refused on cargo, pytest and exit-code
-      entries, so OxidANT's run is unchanged. AccelerANTgine opts in with its 7 tests (a test added on 2026-11-13 has
-      never run on Windows); BeschleunigerBallett opts in with an empty list (0 Windows skips, job 136436488204).
+- [ ] **CON292 — an exact skip list in `Invoke-StagedTests.ps1`** [M, ★★; owner D2]. **In source since 2026-11-21:**
+      `allowed_skips` per gtest entry, two Pester cases in `StagedTests.Tests.ps1`; left: the hub's Windows lane green
+      on them, then the two consumers below opt in. Opt-in per gtest entry: a skip that is not listed, or a listed
+      test that ran, fails and is named; refused on cargo, pytest and exit-code entries, so OxidANT's run is
+      unchanged. AccelerANTgine opts in with its 7 tests (a test added on 2026-11-13 has never run on Windows);
+      BeschleunigerBallett opts in with an empty list (0 Windows skips, job 136436488204).
 - [ ] **CON293 — one `::error` line per failed gate, and the named-parts pattern** [S, ★; owner D7]. **In source
       since 2026-11-21:** `gates.sh` writes `::error title=<batch>: <gate>::` and, where `$GITHUB_STEP_SUMMARY` is
       writable, a summary row for each failed gate (`test-gates-annotations.sh`, two recipes); the container action
