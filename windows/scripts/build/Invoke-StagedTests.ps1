@@ -96,6 +96,24 @@ function Get-StagedSkipVerdict {
     return $verdict
 }
 
+# allowed_skips belongs to gtest entries: any other kind carrying it is refused before its binary runs (CON292).
+function Assert-StagedSkipListKind([object]$Entry) {
+    if ($Entry.PSObject.Properties['allowed_skips'] -and $Entry.kind -ne 'gtest') {
+        throw "$($Entry.exe): allowed_skips lists gtest skips; a $($Entry.kind) entry cannot carry it"
+    }
+}
+
+# Counts an entry's mismatches with its allowed_skips as failures and names each; an entry without the list is left alone.
+function Update-StagedSkipCount {
+    param([object]$Entry, [AllowEmptyCollection()][string[]]$Lines, [hashtable]$Counts)
+    $skipList = $Entry.PSObject.Properties['allowed_skips']
+    if (-not $skipList) { return }
+    $skips = Get-StagedSkipVerdict -Lines $Lines -Allowed @($skipList.Value)
+    $skips.Problems | ForEach-Object { Write-Host "   $_" }
+    $Counts.Skipped -= $skips.Unlisted; $Counts.Passed -= $skips.ListedPassed
+    $Counts.Failed += $skips.Unlisted + $skips.ListedPassed + $skips.Absent
+}
+
 # Adds -Passed/-Failed/-Skipped to the running -Into tally.
 function Add-StagedCount([hashtable]$Into, [int]$Passed, [int]$Failed, [int]$Skipped) {
     $Into.Passed += $Passed; $Into.Failed += $Failed; $Into.Skipped += $Skipped
@@ -144,8 +162,7 @@ $total = @{ Passed = 0; Failed = 0; Skipped = 0 }
 foreach ($entry in $entries) {
     $exe = Join-Path $root $entry.exe
     if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "staged test missing: $exe" }
-    $skipList = $entry.PSObject.Properties['allowed_skips']
-    if ($skipList -and $entry.kind -ne 'gtest') { throw "$($entry.exe): allowed_skips lists gtest skips; a $($entry.kind) entry cannot carry it" }
+    Assert-StagedSkipListKind $entry
     $testArgs = @(if ($entry.PSObject.Properties['args']) { $entry.args })
     Write-Host "== $($entry.exe) $($testArgs -join ' ')"
     $started = Get-Date
@@ -165,12 +182,7 @@ foreach ($entry in $entries) {
         $crash = if ($code -lt 0) { Get-StagedCrashReport -ExeName (Split-Path -Leaf $exe) -Since $started }
         throw "$($entry.exe): $($_.Exception.Message); exit $(Format-StagedExitCode $code)$(if ($crash) { "; $crash" })"
     }
-    if ($skipList) {
-        $skips = Get-StagedSkipVerdict -Lines $lines -Allowed @($skipList.Value)
-        $skips.Problems | ForEach-Object { Write-Host "   $_" }
-        $counts.Skipped -= $skips.Unlisted; $counts.Passed -= $skips.ListedPassed
-        $counts.Failed += $skips.Unlisted + $skips.ListedPassed + $skips.Absent
-    }
+    Update-StagedSkipCount -Entry $entry -Lines $lines -Counts $counts
     if ($entry.PSObject.Properties['skip_pattern']) {
         $selfSkipped = [Math]::Min(@($lines | Select-String -Pattern $entry.skip_pattern).Count, $counts.Passed)
         $counts.Passed -= $selfSkipped; $counts.Skipped += $selfSkipped

@@ -6,7 +6,8 @@ source "${TESTS_DIR}/test-harness.sh"
 FN="$(t_fn_src "${TESTS_DIR}/../01-core/runtime-build-fns.sh" runtime_push_tag)" || exit 1
 eval "${FN}"
 
-# Stand-ins: the digests come from STUB_LOCAL / STUB_REMOTE, and every upload attempt is counted.
+# Stand-ins: the digests come from STUB_LOCAL / STUB_REMOTE, CON99's zstd conversion succeeds, every upload is counted.
+run() { return 0; }
 _runtime_local_digest() { echo "${STUB_LOCAL}"; }
 _runtime_registry_digest() { echo "${STUB_REMOTE}"; }
 _runtime_push_attempt() { PUSHES=$(( PUSHES + 1 )); return 0; }
