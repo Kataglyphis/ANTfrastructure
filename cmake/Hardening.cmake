@@ -17,9 +17,14 @@ macro(
       APPEND
       NEW_COMPILE_OPTIONS
       /sdl
+      /guard:cf)
+    # The compiler's /guard:cf only instruments; the linker's sets the image's CFG bit (CON290: BB shipped without it).
+    list(
+      APPEND
+      NEW_LINK_OPTIONS
+      /NXCOMPAT
       /DYNAMICBASE
       /guard:cf)
-    list(APPEND NEW_LINK_OPTIONS /NXCOMPAT)
     # An ARM64 link refuses /CETCOMPAT; a Windows cross build names its target via Get-CMakeCrossArgs.
     if(NOT
        CMAKE_SYSTEM_PROCESSOR
@@ -27,7 +32,7 @@ macro(
        "^([Aa][Rr][Mm]64|aarch64)$")
       list(APPEND NEW_LINK_OPTIONS /CETCOMPAT)
     endif()
-    message(STATUS "*** MSVC flags: /sdl /DYNAMICBASE /guard:cf ${NEW_LINK_OPTIONS}")
+    message(STATUS "*** MSVC flags: /sdl /guard:cf; link: ${NEW_LINK_OPTIONS}")
 
   elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang|GNU")
     list(APPEND NEW_CXX_DEFINITIONS -D_GLIBCXX_ASSERTIONS)

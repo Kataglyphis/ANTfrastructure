@@ -802,6 +802,16 @@ run so an old one cannot stand in, or a temporary one the library appends and de
 readable report fails the run. It needs `python3`, and an invalid pattern stops before
 ctest starts.
 
+**`--fail-on-log-pattern REGEX` (env `CTEST_FAIL_ON_LOG_PATTERN`): a passing test can still
+log what must never happen** (CON291). After ctest, every line of a test's output that
+matches REGEX names that test with its count and first line, and fails the run as
+`--fail-on-skipped` does. It reads this run's `Testing/Temporary/LastTest*.log` (newer
+than a marker taken before ctest starts; `-T test` names each run's log anew), not the
+JUnit report, whose output ctest cuts to 1 KiB for a passed test; and only the section
+between `Output:` and `<end of output>`, as a test's `Command:` line holds its own echo
+text. AccelerANTgine's pattern, `[A-Za-z0-9-]+-CRITICAL \*\*`, catches GLib's and
+GStreamer's criticals; BeschleunigerBallett's SYNC-HAZARD scan fits the same option.
+
 A GPU test suite needs the loader and the layers on the same terms the build had,
 which is why the Vulkan environment is resolved here too.
 

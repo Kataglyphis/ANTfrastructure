@@ -41091,8 +41091,8 @@
  {
   "id": "lib.ctest-run-fail-on-skipped-status",
   "target": "linux/scripts/lib/ctest-run.sh",
-  "find": " || [[ \"${rc}\" -ne 0 ]] || rc=1\n",
-  "replace": "\n",
+  "find": "    _ctest_run_check_skipped \"${CTEST_RUN_JUNIT_REPORT}\" || [[ \"${rc}\" -ne 0 ]] || rc=1\n",
+  "replace": "    _ctest_run_check_skipped \"${CTEST_RUN_JUNIT_REPORT}\"\n",
   "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
   "why": "The skip verdict must reach the status a passing ctest returned."
  },
@@ -59118,5 +59118,37 @@
   "replace": "image convert --zstd --oci \"${tag}\" \"${tag}\" || true",
   "test": "bash linux/scripts/tests/test-runtime-push.sh",
   "why": "a conversion that failed must not push the image as built under a name that promises zstd"
+ },
+ {
+  "id": "cmake-arch.cfg-bit-linked",
+  "target": "cmake/Hardening.cmake",
+  "find": "      /DYNAMICBASE\n      /guard:cf)",
+  "replace": "      /DYNAMICBASE)",
+  "test": "bash linux/scripts/tests/test-cmake-windows-arch.sh",
+  "why": "without the linker's /guard:cf a Windows image carries no CFG bit, however the code was compiled"
+ },
+ {
+  "id": "lib.ctest-run-log-pattern-output-only",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "            elif in_output and name and pattern.search(line):",
+  "replace": "            elif name and pattern.search(line):",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "a test's Command line holds its own echo text; only its output may trip --fail-on-log-pattern"
+ },
+ {
+  "id": "lib.ctest-run-log-pattern-verdict",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "    _ctest_run_check_log_pattern \"${CTEST_RUN_LOG_MARKER}\" || [[ \"${rc}\" -ne 0 ]] || rc=1",
+  "replace": "    _ctest_run_check_log_pattern \"${CTEST_RUN_LOG_MARKER}\" || true",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "a passing ctest whose test logged a GStreamer-CRITICAL must still fail the run (CON291)"
+ },
+ {
+  "id": "lib.ctest-run-log-pattern-this-run",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "-name 'LastTest*.log' -newer \"$1\"",
+  "replace": "-name 'LastTest*.log'",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "an earlier run's LastTest log must not stand in for this one's"
  }
 ]

@@ -608,7 +608,10 @@ the VC++ redist directory. `WindowsCrossBundle.Common` keeps its public command 
 export for existing consumers.
 
 The hub's `cmake/` reads `CMAKE_SYSTEM_PROCESSOR` too. `Hardening.cmake` links `/CETCOMPAT`
-on x64 only, because an ARM64 link refuses it (`test-cmake-windows-arch.sh`).
+on x64 only, because an ARM64 link refuses it (`test-cmake-windows-arch.sh`). Every MSVC link
+gets `/DYNAMICBASE` and `/guard:cf`: the compiler's `/guard:cf` only emits the checks, and
+without the linker's the image carries no CFG bit, which is how BeschleunigerBallett's Windows
+binaries shipped until CON290 (none of the 13 lld-link lines of its job 136406090876 had it).
 `CPackCommon.cmake` stamps the MSI `arm64` when the package name says `aarch64`. It also
 installs the VC++ runtime without `vcruntime140_1.dll`: the arm64 redist folder carries that
 file as ARM64EC, an x64-machine PE that only x64 and ARM64EC code imports, and the arch gate

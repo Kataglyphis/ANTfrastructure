@@ -2423,12 +2423,17 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       136406090876 carries it, so its shipped binaries lack the bit. Add both to the MSVC link options, extend
       `test-cmake-windows-arch.sh:24`, add a mutation recipe, and read GUARD_CF with `llvm-readobj` from BB's
       `GraphicsEngine.exe` in a `[ci windows]` run. D8: hardening in the Windows clang-cl presets, not in Linux Debug;
-      CET only after a launch smoke on CET-capable hardware.
+      CET only after a launch smoke on CET-capable hardware. **In source since 2026-11-21:** `Hardening.cmake` links
+      `/NXCOMPAT /DYNAMICBASE /guard:cf` (and `/CETCOMPAT` off ARM64), `test-cmake-windows-arch.sh` and the recipe
+      `cmake-arch.cfg-bit-linked` hold it. Left: a consumer pin, and GUARD_CF read from a `[ci windows]` binary.
 - [ ] **CON291 — `ctest-run.sh --fail-on-log-pattern REGEX`** [S, ★★]. The twin of `--fail-on-skipped`: it scans only
       this run's `LastTest*.log`, names each test whose output matches and keeps ctest's exit code; proven with a real
       ctest. BeschleunigerBallett moves its SYNC-HAZARD scan onto it (and may add `VUID-`, 0 in green job
       136455950642); AccelerANTgine adds `[A-Za-z0-9-]+-CRITICAL \*\*` once its NULL-bus fix lands (444 such lines per
-      Linux ctest pass today).
+      Linux ctest pass today). **In source since 2026-11-21:** `ctest-run.sh --fail-on-log-pattern` reads this run's
+      `LastTest*.log` (the JUnit report cuts a passed test's output to 1 KiB), only between `Output:` and
+      `<end of output>`, with a real ctest's log as the fixture, a real-ctest case and three recipes; AccelerANTgine's
+      NULL-bus fix landed (b318e76, 0 criticals in its ctest). Left: the consumer pins and their lane calls.
 - [ ] **CON292 — an exact skip list in `Invoke-StagedTests.ps1`** [M, ★★; owner D2]. Opt-in per gtest entry: a skip
       that is not listed, or a listed test that ran, fails and is named; refused on cargo, pytest and exit-code
       entries, so OxidANT's run is unchanged. AccelerANTgine opts in with its 7 tests (a test added on 2026-11-13 has

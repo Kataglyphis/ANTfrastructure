@@ -17,6 +17,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-21 — Windows images get the CFG bit (CON290); ctest fails on a logged critical (CON291)
+
+- `cmake/Hardening.cmake` linked `/NXCOMPAT` alone and passed `/DYNAMICBASE` and `/guard:cf` only to the compiler,
+  whose `/guard:cf` instruments but cannot set the image's CFG bit: BeschleunigerBallett's Windows binaries shipped
+  without it (none of the 13 lld-link lines of job 136406090876). Every MSVC link now gets `/NXCOMPAT /DYNAMICBASE
+  /guard:cf`, `/CETCOMPAT` still off ARM64; `test-cmake-windows-arch.sh` and a recipe hold it.
+- `ctest-run.sh --fail-on-log-pattern REGEX` (env `CTEST_FAIL_ON_LOG_PATTERN`) fails a run in which a test's output
+  has a matching line, naming each such test, and keeps ctest's own failure status. It reads this run's
+  `Testing/Temporary/LastTest*.log`, not the JUnit report, which cuts a passed test's output to 1 KiB, and only the
+  output section, as a test's `Command:` line holds its own echo text. A real ctest's log is the fixture; a real-ctest
+  case and three recipes cover the gate.
+
 ## 2026-11-21 — CON99 measured; two corrections; the oxidation and C++ decisions recorded
 
 - CON99: three probe runs pulled the published gzip image in 387, 515 and 235 s and the zstd copy in 290, 227 and

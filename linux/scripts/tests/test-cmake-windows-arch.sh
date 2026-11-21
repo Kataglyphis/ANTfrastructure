@@ -20,13 +20,13 @@ message(STATUS \"LINK=[\${_o}]\")" | sed -n 's/^-- LINK=\[\(.*\)\]$/\1/p'
 t_case "cmake is here: the cases below configure a real project"
 t_assert_ok cmake --version
 
-t_case "x64 keeps /CETCOMPAT"
-t_assert_eq "/NXCOMPAT;/CETCOMPAT" "$(_hardening_link_options AMD64)" \
-  "an AMD64 target must link with CET compatibility"
+t_case "x64 keeps /CETCOMPAT, and every MSVC link sets the CFG bit (CON290)"
+t_assert_eq "/NXCOMPAT;/DYNAMICBASE;/guard:cf;/CETCOMPAT" "$(_hardening_link_options AMD64)" \
+  "an AMD64 target must link with CFG and CET compatibility"
 
 t_case "ARM64 drops it, in every spelling a cross build or a host uses"
 for _arch in ARM64 arm64 aarch64; do
-  t_assert_eq "/NXCOMPAT" "$(_hardening_link_options "${_arch}")" \
+  t_assert_eq "/NXCOMPAT;/DYNAMICBASE;/guard:cf" "$(_hardening_link_options "${_arch}")" \
     "a ${_arch} target must not get /CETCOMPAT"
 done
 

@@ -142,6 +142,7 @@ add_test([=[Gpu.Skipped]=] "sh" "-c" "echo '[  SKIPPED ] no device'")
 set_tests_properties([=[Gpu.Skipped]=] PROPERTIES SKIP_REGULAR_EXPRESSION "\\[  SKIPPED \\]")
 add_test([=[Gpu.Disabled]=] "sh" "-c" "exit 0")
 set_tests_properties([=[Gpu.Disabled]=] PROPERTIES DISABLED TRUE)
+add_test([=[Gst.Noisy]=] "sh" "-c" "echo '(t:1): GStreamer-CRITICAL **: an assertion failed'")
 CTEST
 _real() { (cd "${_work}" && TMPDIR="${_work}/tmp" CTEST_RUN_SAFE_DIRECTORY='' bash -c "source $(printf '%q' "${LIB}"); ctest_run_main --build-dir real $1" 2>&1); }
 out="$(_real '--fail-on-skipped "^Gpu\."')"; rc=$?
@@ -151,6 +152,47 @@ out="$(_real '--fail-on-skipped "Disabled|Ran"')"; rc=$?
 t_assert_eq "0" "${rc}"
 t_assert_contains "${out}" "2 tests match Disabled|Ran, none skipped (1 disabled)"
 t_assert_eq "0" "$(_tmp_left)"
+
+# The fixture is a real ctest's LastTest log: quiet logged nothing, Gst.Noisy a GStreamer-CRITICAL, Vk.Hazard a SYNC-HAZARD.
+LASTTEST="${TESTS_DIR}/fixtures/ctest-run/LastTest.txt"
+lc_stub ctest "mkdir -p Testing/Temporary && cp $(printf '%q' "${LASTTEST}") Testing/Temporary/LastTest_20261121-1351.log; exit $(lc_status ctest)"
+lc_fail ctest 0
+CRITICAL='[A-Za-z0-9-]+-CRITICAL \*\*'
+
+t_case "--fail-on-log-pattern fails a passing run whose test logged a matching line, and names only that test"
+lc_call out rc "${LIB}" "ctest_run_main --fail-on-log-pattern '${CRITICAL}'"
+t_assert_eq "1" "${rc}"
+t_assert_contains "${out}" "Logged what --fail-on-log-pattern forbids: Gst.Noisy (1 line(s); first: (suite:7): GStreamer-CRITICAL **:"
+t_assert_eq "0" "$(grep -c -e 'forbids: quiet' -e 'forbids: Vk.Hazard' <<<"${out}")" "the other tests logged no such line"
+t_assert_eq "0" "$(_tmp_left)" "the start marker is removed"
+
+t_case "a pattern only a test's Command line holds does not count, and a clean run says so"
+lc_call out rc "${LIB}" "ctest_run_main --fail-on-log-pattern 'Command: '"
+t_assert_eq "0" "${rc}"
+t_assert_contains "${out}" "--fail-on-log-pattern: no test logged a line matching Command: "
+
+t_case "ctest's own failure status wins, and the logged line is still named"
+lc_fail ctest 8
+lc_call out rc "${LIB}" "ctest_run_main --fail-on-log-pattern 'SYNC-HAZARD'"
+t_assert_eq "8" "${rc}"
+t_assert_contains "${out}" "forbids: Vk.Hazard (1 line(s); first: SYNC-HAZARD-WRITE-AFTER-WRITE in vkCmdDraw)"
+lc_fail ctest 0
+
+t_case "a LastTest log an earlier run left is not this run's, and a run that wrote none fails"
+lc_stub ctest "exit 0"
+rm -rf "${_work}/build/Testing" && mkdir -p "${_work}/build/Testing/Temporary"
+cp "${LASTTEST}" "${_work}/build/Testing/Temporary/LastTest.log" && touch -d '2020-01-01' "${_work}/build/Testing/Temporary/LastTest.log"
+lc_call out rc "${LIB}" "ctest_run_main --fail-on-log-pattern '${CRITICAL}'"
+t_assert_eq "1" "${rc}"
+t_assert_contains "${out}" "--fail-on-log-pattern: this run wrote no Testing/Temporary/LastTest*.log"
+lc_expect 1 "--fail-on-log-pattern needs an extended regular expression, got: [" "${LIB}" "ctest_run_main --fail-on-log-pattern '['"
+
+t_case "real ctest: a passing test's GStreamer-CRITICAL fails the run, and only that test is named"
+t_needs ctest command -v ctest
+out="$(_real "--fail-on-log-pattern '${CRITICAL}'")"; rc=$?
+t_assert_eq "1" "${rc}"
+t_assert_contains "${out}" "Logged what --fail-on-log-pattern forbids: Gst.Noisy (1 line(s)"
+t_assert_eq "0" "$(grep -c 'forbids: Gpu' <<<"${out}")" "the quiet tests pass the gate"
 
 t_case "--help prints the usage with the caller's defaults and exits 0"
 lc_call out rc "${LIB}" 'CTEST_RUN_DEFAULT_BUILD_DIR=out ctest_run_main --help'
