@@ -59150,5 +59150,21 @@
   "replace": "-name 'LastTest*.log'",
   "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
   "why": "an earlier run's LastTest log must not stand in for this one's"
+ },
+ {
+  "id": "lib.gates-failure-is-annotated",
+  "target": "linux/scripts/01-core/gates.sh",
+  "find": "  _gate_annotate \"${name}\" \"${status}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-gates-annotations.sh",
+  "why": "on GitHub a failed gate must name itself among the run's annotations (CON293)"
+ },
+ {
+  "id": "lib.gates-annotation-title-escaped",
+  "target": "linux/scripts/01-core/gates.sh",
+  "find": "title=\"${title//:/%3A}\"; ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-gates-annotations.sh",
+  "why": "an unescaped : in a gate name cuts the annotation's title short"
  }
 ]

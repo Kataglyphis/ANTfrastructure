@@ -1250,7 +1250,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **7383 entries** over **852 distinct test commands**; both digits are
+manifest holds **7385 entries** over **853 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2395,6 +2395,21 @@ max = 0
 - **Malformed.** A `max` that is not a whole number of zero or more (`true`, `-1`, `"0"`), a broken
   regex or a malformed TOML fails the gate; it is never read as no limit.
 - **Not covered.** A match in an untracked file, and `kind = "ruff"` rows: Ruff's own gate binds those.
+- **A recipe: exception-free filesystem calls** (CON295). A C++ tree built without exceptions aborts in a
+  throwing `std::filesystem` overload on any OS error other than not-found (a 300-byte path component
+  gives ENAMETOOLONG even as root). AccelerANTgine binds its `Src/` with this row since 2026-11-21; it matched
+  exactly its three throwing sites and nothing in BeschleunigerBallett's `Src/`, whose BuildIntegrity check
+  for the same rule cannot fire on `create_directories(` or `directory_iterator(`, as both names contain "ec":
+
+  ```toml
+  [[metric]]
+  name = "throwing_filesystem_calls"
+  kind = "pattern"
+  unit = "lines"
+  pattern = 'std::filesystem::(exists|absolute|canonical|weakly_canonical|is_directory|is_regular_file|create_directory|create_directories|file_size|remove|remove_all|read_symlink|equivalent|status|last_write_time|current_path|temp_directory_path|copy|rename)\([^,()]*\)'
+  include = ["Src/*"]
+  max = 0
+  ```
 
 `tests/test-lint-gates.sh` plants a match in a fixture tree; the `lint-gates.pattern-limits-*` mutations prove
 the limit, the malformed `max`, and that `run-lint-gates.sh` registers the gate.

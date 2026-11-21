@@ -2438,10 +2438,13 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       that is not listed, or a listed test that ran, fails and is named; refused on cargo, pytest and exit-code
       entries, so OxidANT's run is unchanged. AccelerANTgine opts in with its 7 tests (a test added on 2026-11-13 has
       never run on Windows); BeschleunigerBallett opts in with an empty list (0 Windows skips, job 136436488204).
-- [ ] **CON293 — one `::error` line per failed gate, and the named-parts pattern** [S, ★; owner D7]. `gates.sh`
-      writes `::error title=<gate>::` and a step-summary row for each failed gate, with `GITHUB_ACTIONS` passed into
-      the container. No reusable Linux C++ lane: a doc describes BeschleunigerBallett's pattern instead (one step per
-      part, `if: !cancelled()` plus the part's own build outcome, uploads guarded with `hashFiles`).
+- [ ] **CON293 — one `::error` line per failed gate, and the named-parts pattern** [S, ★; owner D7]. **In source
+      since 2026-11-21:** `gates.sh` writes `::error title=<batch>: <gate>::` and, where `$GITHUB_STEP_SUMMARY` is
+      writable, a summary row for each failed gate (`test-gates-annotations.sh`, two recipes); the container action
+      passes `GATES_GITHUB_ANNOTATIONS=1`, because `GITHUB_ACTIONS` would also change the tools' own behaviour inside.
+      No reusable Linux C++ lane: `shared-script-libraries.md` describes BeschleunigerBallett's pattern (one step per
+      part, `if: !cancelled()` plus the part's own build outcome, uploads guarded with `hashFiles`). Left: a red
+      consumer run that shows the annotation.
 - [ ] **CON294 — Linux release hardening for every C++ repo** [M, ★★]. AccelerANTgine's `verify-package-hardening.sh`
       moves to `linux/scripts/06-packaging` with the binaries as arguments; `Hardening.cmake`'s Linux branch adds PIE
       and `-z relro -z now` (BeschleunigerBallett passes none: "Hardening Linker Flags:" is empty in job
@@ -2451,8 +2454,8 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       targets, report-only first. (b) cppcheck: BeschleunigerBallett's default ON goes, as the image has no binary
       and a skipped check misleads (D10). (c) Warnings in three steps (D11): third-party includes as SYSTEM
       (BeschleunigerBallett's GCC log: 124 spdlog and 12 nlohmann warnings), then a per-repo warning-count ratchet,
-      then `myproject_WARNINGS_AS_ERRORS` for the product targets only. (d) The pattern-limits doc gains a row for
-      exception-free filesystem calls, which matches AccelerANTgine's three sites and BB's none.
+      then `myproject_WARNINGS_AS_ERRORS` for the product targets only. (d) Done 2026-11-21: the pattern-limits doc
+      holds the row for exception-free filesystem calls, which AccelerANTgine binds (457b753).
 - [b] **CON296 — a bridge import helper for the first consumer bridge** [S-M; owner D4]. `kataglyphis_import_bridge_crate`
       beside `kataglyphis_configure_corrosion_target`: imports LOCKED, uses an unwinding profile outside Debug and
       checks that at configure time (a runtime test cannot, `cargo test` always unwinds), and lets a superproject

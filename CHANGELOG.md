@@ -17,6 +17,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-21 — a failed gate names itself on GitHub (CON293); the filesystem pattern recipe (CON295)
+
+- `gates.sh` writes `::error title=<batch>: <gate>::<gate> failed (exit N)` for each failed gate, with `:` and `,`
+  escaped in the title, and a row into `$GITHUB_STEP_SUMMARY` where that is writable. A host step has
+  `GITHUB_ACTIONS=true`; `run-in-linux-container` passes `GATES_GITHUB_ANNOTATIONS=1` into its container, since
+  `GITHUB_ACTIONS` would also change the tools' own behaviour there. `test-gates-annotations.sh` and two recipes
+  hold it; `shared-script-libraries.md` describes the named-parts lane pattern (owner decision D7).
+- `code-quality-tooling.md` § Pattern limits gains the recipe for exception-free `std::filesystem` calls that
+  AccelerANTgine binds (457b753): it matched exactly that tree's three throwing sites.
+
 ## 2026-11-21 — Windows images get the CFG bit (CON290); ctest fails on a logged critical (CON291)
 
 - `cmake/Hardening.cmake` linked `/NXCOMPAT` alone and passed `/DYNAMICBASE` and `/guard:cf` only to the compiler,

@@ -1168,6 +1168,16 @@ loads `01-core/logging.sh` through `log-bootstrap.sh`, so `info`, `warn` and `er
 `Invoke-BuildGate` / `Add-BuildGateSkip` / `Assert-BuildGates` in
 `WindowsBuild.Common.psm1`).
 
+On GitHub a failed gate also writes `::error title=<batch>: <gate>::<gate> failed (exit N)`
+and, where `$GITHUB_STEP_SUMMARY` is writable, a summary row, so the run's annotations name
+it (CON293). A host step has `GITHUB_ACTIONS=true`; `run-in-linux-container` passes
+`GATES_GITHUB_ANNOTATIONS=1` into its container instead, as `GITHUB_ACTIONS` would also
+change the tools' own behaviour there. A lane split into named parts (owner decision D7,
+no reusable Linux C++ lane) runs one step per part under `if: ${{ !cancelled() }}` plus
+that part's own build outcome, and guards each upload with `hashFiles`, as
+BeschleunigerBallett's `reusable-linux.yml` does: every check runs, and the red step names
+the failure.
+
 ```bash
 source "${CORE_DIR}/gates.sh"
 gate_reset "static analysis"
