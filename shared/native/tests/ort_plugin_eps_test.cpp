@@ -296,6 +296,110 @@ void owning_core_fallback(const fs::path &executable)
     check(env.library == fs::canonical(*directory / filename()), "default native module identity");
 }
 
+struct ExistingDevice
+{
+    Api api;
+    OrtEnv environment;
+    OrtEpDevice device{ "MIGraphX", 7 };
+    OrtSessionOptions options;
+    plugins::PluginRegistry<Api> registry{ api, &environment };
+    fs::path bundle;
+    std::string error;
+
+    explicit ExistingDevice(fs::path directory) : bundle(std::move(directory))
+    {
+        environment.fail_registration = true;
+        environment.devices = { &device };
+    }
+
+    auto append(int index = 0) -> bool
+    {
+        return registry.append_provider(
+          &options, plugins::migraphx, index, bundle, { { "device_id", std::to_string(index) } }, error, true);
+    }
+};
+
+void existing_device_reuse(const fs::path &bundle)
+{
+    ExistingDevice reused(bundle);
+    check(reused.append(), "external device avoids duplicate registration");
+    check(reused.environment.calls == 0 && reused.options.calls == 1, "external factory is attached once");
+    check(reused.options.device == &reused.device && reused.options.environment == &reused.environment,
+      "external selected device retains its owning environment");
+    check(reused.options.values == std::map<std::string, std::string>{ { "device_id", "0" } },
+      "external device receives only the caller options");
+    check(reused.registry.registered_libraries().empty(), "external factory is not claimed as an owned registration");
+    ExistingDevice defaults(bundle);
+    check(!defaults.registry.append_provider(
+            &defaults.options, plugins::migraphx, 0, bundle, {}, defaults.error),
+      "default append still requires the native registration");
+    check(defaults.environment.calls == 1 && defaults.error == "native registration failed",
+      "default registration failure remains fatal");
+    ExistingDevice explicit_registration(bundle);
+    check(!explicit_registration.registry.register_library(plugins::migraphx, bundle, explicit_registration.error),
+      "explicit registration does not silently adopt external devices");
+    check(explicit_registration.environment.calls == 1, "explicit registration reaches the native API");
+}
+
+void existing_device_failures(const fs::path &bundle)
+{
+    ExistingDevice enumeration(bundle);
+    enumeration.environment.fail_enumeration = true;
+    const int before = released;
+    check(!enumeration.append() && enumeration.error == "native enumeration failed",
+      "external enumeration errors precede registration");
+    check(enumeration.environment.calls == 0 && released == before + 1, "external enumeration status is consumed");
+    enumeration.environment.fail_enumeration = false;
+    enumeration.options.fail_append = true;
+    check(!enumeration.append() && enumeration.error == "native append failed", "external append failure stays fatal");
+    check(enumeration.environment.calls == 0 && released == before + 2, "external append status is consumed");
+    enumeration.options.fail_append = false;
+    check(enumeration.append(), "external retries do not cache a failed call");
+    ExistingDevice missing_list(bundle);
+    missing_list.environment.null_list = true;
+    check(!missing_list.append() && missing_list.error.find("null plugin device list") != std::string::npos,
+      "external nonempty null lists fail");
+    check(missing_list.environment.calls == 0, "invalid lists never reach registration");
+    ExistingDevice invalid_device(bundle);
+    invalid_device.environment.devices = { nullptr };
+    check(!invalid_device.append() && invalid_device.error.find("invalid plugin device") != std::string::npos,
+      "external null device entries fail");
+    ExistingDevice foreign(bundle);
+    foreign.device.name = "CPU";
+    check(!foreign.append() && foreign.environment.calls == 1, "another provider cannot replace registration");
+    ExistingDevice unavailable(bundle);
+    check(!unavailable.append(3) && unavailable.error.find("found 1") != std::string::npos,
+      "external out-of-range selection preserves the count");
+    check(unavailable.environment.calls == 0, "external bad index does not register twice");
+}
+
+void existing_device_paths(const fs::path &root, const fs::path &bundle)
+{
+    ExistingDevice advertised(bundle);
+    set_root(root / "missing advertised external module");
+    check(!advertised.append() && !advertised.error.empty(), "external devices do not waive an advertised root");
+    check(advertised.environment.calls == 0 && advertised.options.calls == 0,
+      "bad external module paths stop before native calls");
+    set_root({});
+    ExistingDevice owned(bundle);
+    owned.environment.fail_registration = false;
+    check(owned.registry.register_library(plugins::migraphx, bundle, owned.error), "owned binding is registered");
+    const auto replacement = root / "different owned image";
+    write_module(image_module(replacement));
+    set_root(replacement);
+    check(!owned.append() && owned.error.find("already registered") != std::string::npos,
+      "external reuse cannot change a registry-owned path");
+    check(owned.environment.calls == 1, "owned path mismatch never registers again");
+    set_root({});
+    check(owned.append(), "the original owned path still attaches");
+    ExistingDevice absent(bundle);
+    absent.environment.devices.clear();
+    absent.environment.fail_registration = false;
+    check(!absent.append() && absent.error.find("found 0") != std::string::npos,
+      "absent external devices still require registration and real enumeration");
+    check(absent.environment.calls == 1, "absence is not an external registration");
+}
+
 void concurrent_registration(const fs::path &bundle)
 {
     Api api;
@@ -329,6 +433,11 @@ int main(int argc, char **argv)
         unavailable_api(bundle);
         concurrent_registration(bundle);
         owning_core_fallback(fs::path(argv[0]));
+        const int external_start = checks;
+        existing_device_reuse(bundle);
+        existing_device_failures(bundle);
+        existing_device_paths(root, bundle);
+        std::cout << "external native plugin policy checks: " << checks - external_start << '\n';
         std::cout << "native plugin policy checks: " << checks << '\n';
         return 0;
     } catch (const std::exception &error) {

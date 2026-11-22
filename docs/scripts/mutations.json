@@ -41091,8 +41091,8 @@
  {
   "id": "lib.ctest-run-fail-on-skipped-status",
   "target": "linux/scripts/lib/ctest-run.sh",
-  "find": " || [[ \"${rc}\" -ne 0 ]] || rc=1\n",
-  "replace": "\n",
+  "find": "    _ctest_run_check_skipped \"${CTEST_RUN_JUNIT_REPORT}\" || [[ \"${rc}\" -ne 0 ]] || rc=1\n",
+  "replace": "    _ctest_run_check_skipped \"${CTEST_RUN_JUNIT_REPORT}\"\n",
   "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
   "why": "The skip verdict must reach the status a passing ctest returned."
  },
@@ -60390,5 +60390,285 @@
   "replace": "        if result.returncode:\n            return 0",
   "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
   "why": "A failed shared archive verifier cannot become a green source-original receipt."
+ },
+ {
+  "id": "runtime-push.zstd-before-push",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "[ \"${CROSS_LAYER_COMPRESSION:-zstd}\" != zstd ] || run \"${NERDCTL_BIN:-nerdctl}\" image convert",
+  "replace": "true || run \"${NERDCTL_BIN:-nerdctl}\" image convert",
+  "test": "bash linux/scripts/tests/test-runtime-push.sh",
+  "why": "the published runtime layers leave as zstd, as the owner decided for CON99"
+ },
+ {
+  "id": "runtime-push.failed-conversion-stops",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "image convert --zstd --oci \"${tag}\" \"${tag}\" || return 1",
+  "replace": "image convert --zstd --oci \"${tag}\" \"${tag}\" || true",
+  "test": "bash linux/scripts/tests/test-runtime-push.sh",
+  "why": "a conversion that failed must not push the image as built under a name that promises zstd"
+ },
+ {
+  "id": "cmake-arch.cfg-bit-linked",
+  "target": "cmake/Hardening.cmake",
+  "find": "      /DYNAMICBASE\n      /guard:cf)",
+  "replace": "      /DYNAMICBASE)",
+  "test": "bash linux/scripts/tests/test-cmake-windows-arch.sh",
+  "why": "without the linker's /guard:cf a Windows image carries no CFG bit, however the code was compiled"
+ },
+ {
+  "id": "lib.ctest-run-log-pattern-output-only",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "            elif in_output and name and pattern.search(line):",
+  "replace": "            elif name and pattern.search(line):",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "a test's Command line holds its own echo text; only its output may trip --fail-on-log-pattern"
+ },
+ {
+  "id": "lib.ctest-run-log-pattern-verdict",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "    _ctest_run_check_log_pattern \"${CTEST_RUN_LOG_MARKER}\" || [[ \"${rc}\" -ne 0 ]] || rc=1",
+  "replace": "    _ctest_run_check_log_pattern \"${CTEST_RUN_LOG_MARKER}\" || true",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "a passing ctest whose test logged a GStreamer-CRITICAL must still fail the run (CON291)"
+ },
+ {
+  "id": "lib.ctest-run-log-pattern-this-run",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "-name 'LastTest*.log' -newer \"$1\"",
+  "replace": "-name 'LastTest*.log'",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "an earlier run's LastTest log must not stand in for this one's"
+ },
+ {
+  "id": "lib.gates-failure-is-annotated",
+  "target": "linux/scripts/01-core/gates.sh",
+  "find": "  _gate_annotate \"${name}\" \"${status}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-gates-annotations.sh",
+  "why": "on GitHub a failed gate must name itself among the run's annotations (CON293)"
+ },
+ {
+  "id": "lib.gates-annotation-title-escaped",
+  "target": "linux/scripts/01-core/gates.sh",
+  "find": "title=\"${title//:/%3A}\"; ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-gates-annotations.sh",
+  "why": "an unescaped : in a gate name cuts the annotation's title short"
+ },
+ {
+  "id": "cmake-arch.linux-relro-now-linked",
+  "target": "cmake/Hardening.cmake",
+  "find": "        -Wl,-z,relro\n        -Wl,-z,now)",
+  "replace": "        -Wl,-z,relro)",
+  "test": "bash linux/scripts/tests/test-cmake-hardening-linux.sh",
+  "why": "without -z now a Linux image binds lazily and keeps its GOT writable (CON294)"
+ },
+ {
+  "id": "cmake-arch.linux-pie",
+  "target": "cmake/Hardening.cmake",
+  "find": "      set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cmake-hardening-linux.sh",
+  "why": "a Linux executable without PIE loads at a fixed address"
+ },
+ {
+  "id": "cmake-arch.linux-flags-linux-only",
+  "target": "cmake/Hardening.cmake",
+  "find": "    if(CMAKE_SYSTEM_NAME STREQUAL \"Linux\")\n      get_property(_hardening_languages",
+  "replace": "    if(TRUE)\n      get_property(_hardening_languages",
+  "test": "bash linux/scripts/tests/test-cmake-hardening-linux.sh",
+  "why": "ld64 knows no -z relro: an Apple link must not get the Linux flags"
+ },
+ {
+  "id": "cmake-arch.global-link-flags-joined",
+  "target": "cmake/Hardening.cmake",
+  "find": "    set(CMAKE_EXE_LINKER_FLAGS \"${CMAKE_EXE_LINKER_FLAGS} ${_hardening_link_flags}\")",
+  "replace": "    set(CMAKE_EXE_LINKER_FLAGS \"${CMAKE_EXE_LINKER_FLAGS} ${NEW_LINK_OPTIONS}\")",
+  "test": "bash linux/scripts/tests/test-cmake-hardening-linux.sh",
+  "why": "a list's semicolons in the global linker flags end the link command line"
+ },
+ {
+  "id": "packaging.elf-hardening-pie",
+  "target": "linux/scripts/06-packaging/verify-elf-hardening.sh",
+  "find": "    if grep -Eq '^ *Type: +DYN ' <<< \"${header}\" && grep -Eq '^ *INTERP ' <<< \"${program}\"; then",
+  "replace": "    if true; then",
+  "test": "bash linux/scripts/tests/test-verify-elf-hardening.sh",
+  "why": "an executable that is not PIE must fail the gate"
+ },
+ {
+  "id": "packaging.elf-hardening-relro",
+  "target": "linux/scripts/06-packaging/verify-elf-hardening.sh",
+  "find": "  if grep -Eq '^ *GNU_RELRO ' <<< \"${program}\"; then",
+  "replace": "  if true; then",
+  "test": "bash linux/scripts/tests/test-verify-elf-hardening.sh",
+  "why": "an ELF without a GNU_RELRO segment must fail the gate"
+ },
+ {
+  "id": "packaging.elf-hardening-bind-now",
+  "target": "linux/scripts/06-packaging/verify-elf-hardening.sh",
+  "find": "  if grep -Eq '\\(FLAGS\\).*\\bBIND_NOW\\b|\\(FLAGS_1\\).*\\bNOW\\b' <<< \"${dynamic}\"; then",
+  "replace": "  if true; then",
+  "test": "bash linux/scripts/tests/test-verify-elf-hardening.sh",
+  "why": "a lazily bound ELF must fail the gate"
+ },
+ {
+  "id": "packaging.elf-hardening-stack-protector",
+  "target": "linux/scripts/06-packaging/verify-elf-hardening.sh",
+  "find": "  if grep -qx '__stack_chk_fail' <<< \"${imports}\"; then",
+  "replace": "  if true; then",
+  "test": "bash linux/scripts/tests/test-verify-elf-hardening.sh",
+  "why": "an ELF built without the stack protector must fail the gate"
+ },
+ {
+  "id": "packaging.elf-hardening-fortify",
+  "target": "linux/scripts/06-packaging/verify-elf-hardening.sh",
+  "find": "  elif [[ \"${fortify}\" == fortify ]]; then",
+  "replace": "  elif false; then",
+  "test": "bash linux/scripts/tests/test-verify-elf-hardening.sh",
+  "why": "an ELF without a __*_chk import must fail unless its spec says no-fortify"
+ },
+ {
+  "id": "packaging.elf-hardening-verdict",
+  "target": "linux/scripts/06-packaging/verify-elf-hardening.sh",
+  "find": "  printf 'hardening: %d check(s) failed\\n' \"${failures}\" >&2\n  exit 1",
+  "replace": "  printf 'hardening: %d check(s) failed\\n' \"${failures}\" >&2\n  exit 0",
+  "test": "bash linux/scripts/tests/test-verify-elf-hardening.sh",
+  "why": "a failed check must end the gate with exit 1"
+ },
+ {
+  "id": "lib.ort-plugin-native-existing-forward-optin",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        if (!ensure_registered(plugin, bundled_directory, error, reuse_existing)) { return false; }",
+  "replace": "        if (!ensure_registered(plugin, bundled_directory, error, (static_cast<void>(reuse_existing), false))) { return false; }",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "The explicit append opt-in must reach registration policy."
+ },
+ {
+  "id": "lib.ort-plugin-native-existing-append-default",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "      const ProviderOptions &provider_options,\n      std::string &error,\n      bool reuse_existing = false) -> bool",
+  "replace": "      const ProviderOptions &provider_options,\n      std::string &error,\n      bool reuse_existing = true) -> bool",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Ordinary append retains strict native registration."
+ },
+ {
+  "id": "lib.ort-plugin-native-existing-explicit-default",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "    auto ensure_registered(const PluginLibrary &plugin,\n      const std::filesystem::path &bundled_directory,\n      std::string &error,\n      bool reuse_existing = false) -> bool",
+  "replace": "    auto ensure_registered(const PluginLibrary &plugin,\n      const std::filesystem::path &bundled_directory,\n      std::string &error,\n      bool reuse_existing = true) -> bool",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Explicit register_library must not adopt an external device."
+ },
+ {
+  "id": "lib.ort-plugin-native-existing-enumeration-status",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "            const auto *existing = select_device(plugin.name, 0, error, false);\n            if (!error.empty()) { return false; }",
+  "replace": "            const auto *existing = select_device(plugin.name, 0, error, false);\n            error.clear();",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "An external device query failure cannot become absent-device registration."
+ },
+ {
+  "id": "lib.ort-plugin-native-existing-external-ownership",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "            if (existing != nullptr) { return true; }",
+  "replace": "            if (existing != nullptr) { registered_.emplace(name, *path); return true; }",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Reused external factories must not enter the owned registration report."
+ },
+ {
+  "id": "lib.ort-plugin-native-existing-absent-device",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "            const auto *existing = select_device(plugin.name, 0, error, false);",
+  "replace": "            const auto *existing = select_device(plugin.name, 0, error, true);",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "A genuinely absent external device requires registration before final selection."
+ },
+ {
+  "id": "lib.ort-plugin-native-existing-suite-reuse",
+  "target": "shared/native/tests/ort_plugin_eps_test.cpp",
+  "find": "        existing_device_reuse(bundle);",
+  "replace": "        static_cast<void>(&existing_device_reuse);",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "The independent external-case counter rejects a compile-valid omitted fixture group."
+ },
+ {
+  "id": "lib.ort-plugin-native-existing-suite-errors",
+  "target": "shared/native/tests/ort_plugin_eps_test.cpp",
+  "find": "        existing_device_failures(bundle);",
+  "replace": "        static_cast<void>(&existing_device_failures);",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "The independent external-case counter rejects a compile-valid omitted fixture group."
+ },
+ {
+  "id": "lib.ort-plugin-native-existing-suite-paths",
+  "target": "shared/native/tests/ort_plugin_eps_test.cpp",
+  "find": "        existing_device_paths(root, bundle);",
+  "replace": "        static_cast<void>(&existing_device_paths);",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "The independent external-case counter rejects a compile-valid omitted fixture group."
+ },
+ {
+  "id": "lib.ort-plugin-native-mutation-compile-status",
+  "target": "linux/scripts/tests/ort_plugin_native_tests.py",
+  "find": "        if result.returncode:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native-mutation-controls.sh",
+  "why": "A compiler or linker failure cannot satisfy a semantic control."
+ },
+ {
+  "id": "lib.ort-plugin-native-mutation-fatal-warning",
+  "target": "linux/scripts/tests/ort_plugin_native_tests.py",
+  "find": "\"-Wall\", \"-Wextra\", \"-Werror\", \"-pthread\"",
+  "replace": "\"-Wall\", \"-Wextra\", \"-pthread\"",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native-mutation-controls.sh",
+  "why": "The unused-parameter negative control requires fatal compiler warnings."
+ },
+ {
+  "id": "lib.ort-plugin-native-mutation-abnormal-status",
+  "target": "linux/scripts/tests/ort_plugin_native_tests.py",
+  "find": "    if result.returncode not in (0, 1):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native-mutation-controls.sh",
+  "why": "Crashes cannot count as assertion failures."
+ },
+ {
+  "id": "lib.ort-plugin-native-mutation-assertion-diagnostic",
+  "target": "linux/scripts/tests/ort_plugin_native_tests.py",
+  "find": "    if result.returncode == 1 and not result.stderr.startswith(\"CHECK failed:\"):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native-mutation-controls.sh",
+  "why": "An unexplained native failure cannot count as a policy assertion."
+ },
+ {
+  "id": "lib.ort-plugin-native-mutation-count-report",
+  "target": "linux/scripts/tests/ort_plugin_native_tests.py",
+  "find": "    if result.returncode == 0 and POLICY_REPORT.fullmatch(result.stdout) is None:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native-mutation-controls.sh",
+  "why": "Malformed output cannot count as a lower independent check counter."
+ },
+ {
+  "id": "lib.ort-plugin-native-mutation-execute-cases",
+  "target": "linux/scripts/tests/ort_plugin_native_tests.py",
+  "find": "        for row in self.cases:\n",
+  "replace": "        for row in []:\n",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native-mutation-controls.sh",
+  "why": "The executed count rejects an empty native mutation loop."
+ },
+ {
+  "id": "lib.ort-plugin-native-mutation-select-suite",
+  "target": "linux/scripts/tests/ort_plugin_native_tests.py",
+  "find": "        selection = \"NativeMutationControls\"",
+  "replace": "        selection = \"NativePluginTests\"",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native-mutation-controls.sh",
+  "why": "The shell suite requires the explicit semantic-case marker."
+ },
+ {
+  "id": "lib.ort-plugin-native-mutation-require-semantic-red",
+  "target": "linux/scripts/tests/ort_plugin_native_tests.py",
+  "find": "    with test.assertRaises(AssertionError):\n        assert_native_policy(test, result)",
+  "replace": "    if False:\n        assert_native_policy(test, result)",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native-mutation-controls.sh",
+  "why": "An unchanged passing fixture cannot satisfy the negative-control validator."
  }
 ]

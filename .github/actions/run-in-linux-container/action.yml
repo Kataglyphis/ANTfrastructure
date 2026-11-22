@@ -68,6 +68,7 @@ runs:
         if [ -n "${{ inputs.log-file }}" ]; then
           mkdir -p "$(dirname "${{ inputs.log-file }}")"
           docker run --rm \
+            -e GATES_GITHUB_ANNOTATIONS=1 \
             ${{ inputs.extra-args }} \
             -v ${{ github.workspace }}:${{ inputs.workdir }} \
             -w ${{ inputs.workdir }} \
@@ -75,6 +76,7 @@ runs:
             ${{ inputs.script }} 2>&1 | tee "${{ inputs.log-file }}"
         else
           docker run --rm \
+            -e GATES_GITHUB_ANNOTATIONS=1 \
             ${{ inputs.extra-args }} \
             -v ${{ github.workspace }}:${{ inputs.workdir }} \
             -w ${{ inputs.workdir }} \

@@ -189,7 +189,8 @@ template<typename Api> class PluginRegistry
       int device_index,
       const std::filesystem::path &bundled_directory,
       const ProviderOptions &provider_options,
-      std::string &error) -> bool
+      std::string &error,
+      bool reuse_existing = false) -> bool
     {
         error.clear();
         if (device_index < 0) {
@@ -202,7 +203,7 @@ template<typename Api> class PluginRegistry
             return false;
         }
         std::lock_guard<std::mutex> lock(mutex_);
-        if (!ensure_registered(plugin, bundled_directory, error)) { return false; }
+        if (!ensure_registered(plugin, bundled_directory, error, reuse_existing)) { return false; }
         const auto *device = select_device(plugin.name, device_index, error);
         if (device == nullptr) { return false; }
         std::vector<const char *> keys;
@@ -237,7 +238,8 @@ template<typename Api> class PluginRegistry
 
     auto ensure_registered(const PluginLibrary &plugin,
       const std::filesystem::path &bundled_directory,
-      std::string &error) -> bool
+      std::string &error,
+      bool reuse_existing = false) -> bool
     {
         error.clear();
         if (environment_ == nullptr || api_.RegisterExecutionProviderLibrary == nullptr
@@ -258,6 +260,11 @@ template<typename Api> class PluginRegistry
             error = name + " is already registered from " + previous->second.string() + ", refusing " + path->string();
             return false;
         }
+        if (reuse_existing) {
+            const auto *existing = select_device(plugin.name, 0, error, false);
+            if (!error.empty()) { return false; }
+            if (existing != nullptr) { return true; }
+        }
         if (!accept_status(api_.RegisterExecutionProviderLibrary(environment_, name.c_str(), path->c_str()), error)) {
             return false;
         }
@@ -265,7 +272,8 @@ template<typename Api> class PluginRegistry
         return true;
     }
 
-    auto select_device(std::string_view name, int index, std::string &error) const -> const OrtEpDevice *
+    auto select_device(std::string_view name, int index, std::string &error, bool require_match = true) const
+      -> const OrtEpDevice *
     {
         const OrtEpDevice *const *devices = nullptr;
         std::size_t count = 0;
@@ -285,7 +293,7 @@ template<typename Api> class PluginRegistry
             }
             if (name == ep_name && matching++ == index) { selected = device; }
         }
-        if (selected == nullptr) {
+        if (selected == nullptr && require_match) {
             error = std::string(name) + " device index " + std::to_string(index) + " is unavailable; found "
                     + std::to_string(matching);
         }

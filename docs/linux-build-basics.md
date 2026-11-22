@@ -372,6 +372,24 @@ Run against OmniAccelerANT's Flutter and ObservANT walkers and OxidANT's host-li
 bundles of `:latest`'s own libraries (2026-10-19), each call above produced the same files, byte for
 byte. Suite `tests/test-elf-closure.sh`; the `packaging.elf-closure-*` mutations prove it.
 
+### The ELF hardening gate
+
+`06-packaging/verify-elf-hardening.sh FILE[:executable|library][:fortify|no-fortify]...` reads each
+shipped ELF with `readelf` and requires PIE (an executable's type DYN with an INTERP segment), a
+`GNU_RELRO` segment, BIND_NOW, a `__stack_chk_fail` import and, unless the spec says `no-fortify`, a
+`__*_chk` import from `_FORTIFY_SOURCE`. It prints one `hardening ok:` line per file with what it
+found, one `hardening FAIL:` line per missing property, and exits 1 on any; 2 is a usage error.
+`Hardening.cmake` gives GCC and Clang on Linux the PIE and `-z relro -z now` half (CON294:
+BeschleunigerBallett had linked with neither, while AccelerANTgine had set them itself). A consumer
+extracts its packages and names the ELFs, as AccelerANTgine's `verify-package-hardening.sh` does;
+a binary that calls nothing `_FORTIFY_SOURCE` can bound, such as a small demo, takes `no-fortify`.
+`tests/test-verify-elf-hardening.sh` compiles a hardened fixture and one per missing property.
+Its PE twin is `Assert-PeHardening -Path <files> [-NoCfg <leaf names>]` in
+`windows/scripts/modules/WindowsPeHardening.Common.psm1`: it reads each file's DllCharacteristics
+and throws naming every PE without DYNAMIC_BASE, NX_COMPAT, HIGH_ENTROPY_VA (PE32+) or GUARD_CF,
+the bit BeschleunigerBallett's binaries lacked before CON290; `-NoCfg` waives CFG for a
+third-party DLL built without it. `windows/scripts/tests/PeHardening.Tests.ps1` holds it on synthetic PEs.
+
 ### glibc travels, and a newer host glibc wins
 
 **glibc travels too, with `LOADER`** (2026-10-17). The image links against glibc 2.43, newer than

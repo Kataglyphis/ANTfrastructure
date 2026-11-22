@@ -23,6 +23,23 @@ function script:Invoke-FakeSuite {
     return @(& $script:StagedTests -Manifest (Join-Path $Dir 'tests.json') @seam 6>$null) | Select-Object -Last 1
 }
 
+# Sets -Name to -Value on the first entry of the tests.json Invoke-FakeSuite wrote, and returns that manifest's path.
+function script:Set-FakeSuiteField([string]$Dir, [string]$Name, $Value) {
+    $manifest = Join-Path $Dir 'tests.json'
+    $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
+    $entries[0] | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force
+    ConvertTo-Json -InputObject $entries -Depth 4 | Set-Content -LiteralPath $manifest -Encoding utf8
+    return $manifest
+}
+
+# One fake -Test with -Name set to -Value on its tests.json entry: every line the runner printed, its verdict last.
+function script:Invoke-FakeSuiteField {
+    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][object]$Test, [Parameter(Mandatory)][string]$Name, $Value)
+    $null = Invoke-FakeSuite -Dir $Dir -Tests @($Test)
+    $manifest = Set-FakeSuiteField -Dir $Dir -Name $Name -Value $Value
+    return @(& $script:StagedTests -Manifest $manifest 6>&1 | ForEach-Object { "$_" })
+}
+
 Describe 'Invoke-StagedTests.ps1' {
 
     It 'sums each framework''s summary (pytest errors as failures, xfails as skips), and counts failures, crashes included' {
@@ -65,7 +82,7 @@ Describe 'Invoke-StagedTests.ps1' {
             $wer = { param($Since) & $record 'other.exe' 'wrong.dll'; & $record 'HEADLESS.cmd' 'd3d12warp.dll' }.GetNewClosure()
             Assert-Throws { & $crash $wer -1073740791 } `
                 -MessagePattern '0xC0000409 STATUS_STACK_BUFFER_OVERRUN \(a fail-fast abort\)\); WER: faulting module d3d12warp\.dll at offset 0x00000000000012ab, exception 0xc0000409$'
-            # WER logs a fail-fast abort after the binary exited (run 44782412041 named no module): it looks again each second.
+            # A record WER writes late is still read: the runner looks again each second until the wait runs out.
             $looks = @{ n = 0 }
             $late = { param($Since) $looks.n++; if ($looks.n -gt 1) { & $record 'headless.cmd' 'd3d10warp.dll' } }.GetNewClosure()
             Assert-Throws { & $crash $late -1073740791 3 } -MessagePattern 'WER: faulting module d3d10warp\.dll at offset 0x00000000000012ab, exception 0xc0000409$'
@@ -80,11 +97,33 @@ Describe 'Invoke-StagedTests.ps1' {
     It 'moves self-skipped tests from passed to skipped by skip_pattern, never below zero' {
         Invoke-InTestDir { param($d)
             $lines = 'SKIP: no GPU adapter available in this environment', 'SKIP: no GPU adapter available in this environment', 'test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out'
-            $null = Invoke-FakeSuite -Dir $d -Tests @(New-FakeTest 'renderer' 'cargo' 0 @($lines))
-            $entries = @(Get-Content -LiteralPath (Join-Path $d 'tests.json') -Raw | ConvertFrom-Json)
-            $entries[0] | Add-Member -NotePropertyName skip_pattern -NotePropertyValue '^SKIP: no GPU adapter'
-            ConvertTo-Json -InputObject $entries | Set-Content -LiteralPath (Join-Path $d 'tests.json') -Encoding utf8
-            Assert-Equal 'TESTS: passed=3 failed=0 skipped=3' (@(& $script:StagedTests -Manifest (Join-Path $d 'tests.json') 6>$null) | Select-Object -Last 1) 'two self-skips plus the ignored one'
+            $out = Invoke-FakeSuiteField -Dir $d -Test (New-FakeTest 'renderer' 'cargo' 0 @($lines)) -Name skip_pattern -Value '^SKIP: no GPU adapter'
+            Assert-Equal 'TESTS: passed=3 failed=0 skipped=3' $out[-1] 'two self-skips plus the ignored one'
+        }
+    }
+
+    # AccelerANTgine's WebRTC test added on 2026-11-13 has never run on Windows; an unlisted skip names such a test.
+    It 'holds a gtest entry''s skips to its exact allowed_skips: an unlisted skip, or a listed test that ran or is gone, fails' {
+        Invoke-InTestDir { param($d)
+            $engine = New-FakeTest 'engine_test' 'gtest' 0 @(
+                '[ RUN      ] A.One', '[       OK ] A.One (0 ms)', '[ RUN      ] A.Two', '[  SKIPPED ] A.Two (0 ms)',
+                '[ RUN      ] A.Three', '[  SKIPPED ] A.Three (1 ms)', '[ RUN      ] A.Four', '[       OK ] A.Four (2 ms)',
+                '[  PASSED  ] 2 tests.', '[  SKIPPED ] 2 tests, listed below:', '[  SKIPPED ] A.Two', '[  SKIPPED ] A.Three')
+            $run = { param([string[]]$Allowed) Invoke-FakeSuiteField -Name allowed_skips -Value @($Allowed) -Dir $d -Test $engine }
+            Assert-Equal 'TESTS: passed=2 failed=0 skipped=2' (& $run @('A.Two', 'A.Three'))[-1] 'the exact list passes'
+            $off = & $run @('A.Two', 'A.Four', 'A.Gone')
+            Assert-Equal 'TESTS: passed=1 failed=3 skipped=1' $off[-1] 'an unlisted skip, a listed pass and a listed name that never ran'
+            foreach ($named in 'skipped, not on allowed_skips: A.Three', 'on allowed_skips, but it passed: A.Four', 'on allowed_skips, but it did not run: A.Gone') {
+                Assert-Equal 1 @($off | Where-Object { $_.EndsWith($named) }).Count "names: $named"
+            }
+            Assert-Equal 'TESTS: passed=2 failed=2 skipped=0' (& $run @())[-1] 'an empty list refuses every skip'
+        }
+    }
+
+    It 'refuses allowed_skips on a cargo, pytest or exitcode entry, before it runs the binary' {
+        Invoke-InTestDir { param($d)
+            $crate = New-FakeTest 'crate' 'cargo' 0 'test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out'
+            Assert-Throws { Invoke-FakeSuiteField -Dir $d -Test $crate -Name allowed_skips -Value @() } -MessagePattern '^crate\.cmd: allowed_skips lists gtest skips; a cargo entry cannot carry it$'
         }
     }
 

@@ -1,0 +1,53 @@
+Start testing: Nov 21 14:51 CET
+----------------------------------------------------------
+1/3 Testing: quiet
+1/3 Test: quiet
+Command: "/usr/bin/sh" "-c" "echo all fine"
+Directory: /workspace/build
+"quiet" start time: Nov 21 14:51 CET
+Output:
+----------------------------------------------------------
+all fine
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"quiet" end time: Nov 21 14:51 CET
+"quiet" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/3 Testing: Gst.Noisy
+2/3 Test: Gst.Noisy
+Command: "/usr/bin/sh" "-c" "echo before; echo '(suite:7): GStreamer-CRITICAL **: 12:48:06.647: gst_bus_set_sync_handler: assertion GST_IS_BUS (bus) failed'; echo after"
+Directory: /workspace/build
+"Gst.Noisy" start time: Nov 21 14:51 CET
+Output:
+----------------------------------------------------------
+before
+(suite:7): GStreamer-CRITICAL **: 12:48:06.647: gst_bus_set_sync_handler: assertion GST_IS_BUS (bus) failed
+after
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"Gst.Noisy" end time: Nov 21 14:51 CET
+"Gst.Noisy" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/3 Testing: Vk.Hazard
+3/3 Test: Vk.Hazard
+Command: "/usr/bin/sh" "-c" "echo 'SYNC-HAZARD-WRITE-AFTER-WRITE in vkCmdDraw'; exit 0"
+Directory: /workspace/build
+"Vk.Hazard" start time: Nov 21 14:51 CET
+Output:
+----------------------------------------------------------
+SYNC-HAZARD-WRITE-AFTER-WRITE in vkCmdDraw
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"Vk.Hazard" end time: Nov 21 14:51 CET
+"Vk.Hazard" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Nov 21 14:51 CET

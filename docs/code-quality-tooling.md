@@ -1250,7 +1250,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **7538 entries** over **858 distinct test commands**; both digits are
+manifest holds **7573 entries** over **863 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2400,6 +2400,24 @@ max = 0
 - **Malformed.** A `max` that is not a whole number of zero or more (`true`, `-1`, `"0"`), a broken
   regex or a malformed TOML fails the gate; it is never read as no limit.
 - **Not covered.** A match in an untracked file, and `kind = "ruff"` rows: Ruff's own gate binds those.
+- **A recipe: exception-free filesystem calls** (CON295). A C++ tree built without exceptions aborts in a
+  throwing `std::filesystem` overload on any OS error other than not-found (a 300-byte path component
+  gives ENAMETOOLONG even as root). The row catches the one-argument throwing overloads, the iterator
+  declaration (`recursive_directory_iterator it(root)`) and a bare `current_path()`; `current_path(ec)`, the
+  non-throwing getter, passes, and a two-argument throwing call such as `copy(from, to)` is not caught.
+  AccelerANTgine and BeschleunigerBallett bind their `Src/` with it (2026-11-21), each with a planted-tree test
+  and a recipe; BeschleunigerBallett's BuildIntegrity check for the same rule could not fire on
+  `create_directories(` or `directory_iterator(`, as both names contain "ec":
+
+  ```toml
+  [[metric]]
+  name = "throwing_filesystem_calls"
+  kind = "pattern"
+  unit = "lines"
+  pattern = '(std::filesystem|\bfs)::((exists|absolute|canonical|weakly_canonical|proximate|relative|is_directory|is_regular_file|is_empty|is_symlink|create_directory|create_directories|file_size|hard_link_count|last_write_time|remove|remove_all|read_symlink|status|symlink_status|space|(recursive_)?directory_iterator(\s+\w+)?)\([^,()]*\)|(current_path|temp_directory_path)\(\s*\))'
+  include = ["Src/*"]
+  max = 0
+  ```
 
 `tests/test-lint-gates.sh` plants a match in a fixture tree; the `lint-gates.pattern-limits-*` mutations prove
 the limit, the malformed `max`, and that `run-lint-gates.sh` registers the gate.
@@ -3523,7 +3541,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **454** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **455** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **0** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.

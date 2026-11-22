@@ -509,9 +509,15 @@ is the same file an x64 lane uses with `target-arch: amd64`:
      When the runner's event log has a Windows Error Reporting record for that binary, the
      faulting module, offset and exception code come with it, read from the record's data,
      not its localized message. OxidANT's arm64 WARP crash (run 36889467167) left only
-     `running 39 tests` before this. WER logs a fail-fast abort (`0xC0000409`) only after the
-     binary has exited, so a crash looks again each second for up to `-CrashEventWaitSeconds`
-     (15); run 44782412041's two aborts named no module because the runner looked once.
+     `running 39 tests` before this. A crash looks again each second for up to
+     `-CrashEventWaitSeconds` (15), in case the record comes late. OxidANT's arm64 fail-fast
+     abort (`0xC0000409`) gets none at all: run 44804439631 waited the full 15 s and found no
+     event 1000, while an access violation is named at once (run 44739816593). A gtest entry may
+     carry `allowed_skips`, the exact list of tests it may skip (owner decision D2, CON292): a
+     skip not on it, and a listed test that passed, failed or did not run, each count as a
+     failure and are named, so a test that never runs on Windows cannot hide in the skip count.
+     An empty list refuses every skip; the field on a `cargo`, `pytest` or `exitcode` entry is an
+     error.
    - **A local run grades the same line.** `Invoke-StagedTests.ps1 -AssertVerdict` throws after
      printing it when a test failed or none passed; `Assert-StagedTestVerdict -Lines`
      (`WindowsTesting.Common`) reads it out of captured output with the same two rules and
@@ -607,7 +613,10 @@ the VC++ redist directory. `WindowsCrossBundle.Common` keeps its public command 
 export for existing consumers.
 
 The hub's `cmake/` reads `CMAKE_SYSTEM_PROCESSOR` too. `Hardening.cmake` links `/CETCOMPAT`
-on x64 only, because an ARM64 link refuses it (`test-cmake-windows-arch.sh`).
+on x64 only, because an ARM64 link refuses it (`test-cmake-windows-arch.sh`). Every MSVC link
+gets `/DYNAMICBASE` and `/guard:cf`: the compiler's `/guard:cf` only emits the checks, and
+without the linker's the image carries no CFG bit, which is how BeschleunigerBallett's Windows
+binaries shipped until CON290 (none of the 13 lld-link lines of its job 136406090876 had it).
 `CPackCommon.cmake` stamps the MSI `arm64` when the package name says `aarch64`. It also
 installs the VC++ runtime without `vcruntime140_1.dll`: the arm64 redist folder carries that
 file as ARM64EC, an x64-machine PE that only x64 and ARM64EC code imports, and the arch gate

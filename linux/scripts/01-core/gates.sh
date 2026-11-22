@@ -36,8 +36,20 @@ run_gate() {
     return 0
   fi
   printf '== %s: FAILED (exit %d) ==\n' "${name}" "${status}" >&2
+  _gate_annotate "${name}" "${status}"
   _GATE_FAILURES+=("${name}")
   return 0
+}
+
+# On GitHub a failed gate names itself among the run's annotations, from inside a container too (CON293).
+_gate_annotate() {
+  [ "${GITHUB_ACTIONS:-}" = true ] || [ "${GATES_GITHUB_ANNOTATIONS:-}" = 1 ] || return 0
+  local title="${_GATE_LABEL}: $1" message="$1 failed (exit $2)"
+  title="${title//%/%25}"; title="${title//:/%3A}"; title="${title//,/%2C}"
+  printf '::error title=%s::%s\n' "${title}" "${message//%/%25}"
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -w "${GITHUB_STEP_SUMMARY}" ]; then
+    printf -- '- `%s` failed (exit %d) in %s\n' "$1" "$2" "${_GATE_LABEL}" >> "${GITHUB_STEP_SUMMARY}"
+  fi
 }
 
 # gate_skip <name> [reason...]: a skip without a reason reads like a quietly deleted gate.

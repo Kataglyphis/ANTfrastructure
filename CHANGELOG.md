@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-22 — explicitly reuse externally registered native plugin devices
+
+- Add an append opt-in for a device another library already registered in the owning ORT environment. Preserve module checks, registry-owned path bindings, exact device selection and raw failures; external factories do not enter the owned-registration report. Default append and explicit registration retain their existing behavior.
+- Add compiled fake-API controls and mutation recipes for the opt-in, strict defaults, failed enumeration and external ownership. These checks do not authenticate an external factory or prove a native consumer, package or GPU.
+- Validate that every new native variant compiles and links before it fails a policy assertion or independent count. Preserve compiler, linker and abnormal-exit refusals and mutation-test the validator itself; separate object compilation makes the fixture compiler cache usable.
+
 ## 2026-11-22 — verify packaged image source originals byte for byte
 
 - Add a shared finished-file checker for staged original trees and their original manifest, preserving exact bytes, selected scope and raw verifier failures.
@@ -53,24 +59,6 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
-
-> **Older entries** are archived, newest archive first:
-> [`2026-11-10 … 2026-11-17`](docs/changelog-archive-2026-11-17.md) ·
-> [`2026-11-06 … 2026-11-12`](docs/changelog-archive-2026-11-12.md) ·
-> [`2026-11-05`](docs/changelog-archive-2026-11-05.md) ·
-> [`2026-10-23 … 2026-11-04`](docs/changelog-archive-2026-11-04.md) ·
-> [`2026-10-20 … 2026-10-22`](docs/changelog-archive-2026-10-22.md) ·
-> [`2026-10-19`](docs/changelog-archive-2026-10-19.md) ·
-> [`2026-10-13 … 2026-10-18`](docs/changelog-archive-2026-10-18.md) ·
-> [`2026-10-08 … 2026-10-12`](docs/changelog-archive-2026-10-12.md) ·
-> [`2026-10-01 … 2026-10-07`](docs/changelog-archive-2026-10-07.md) ·
-> [`2026-09-22 … 2026-09-30`](docs/changelog-archive-2026-09-30.md) ·
-> [`2026-09-08 … 2026-09-21`](docs/changelog-archive-2026-09-21.md) ·
-> [`2026-08-29 … 2026-09-07`](docs/changelog-archive-2026-09-07.md) ·
-> [`2026-08-14 … 2026-08-28`](docs/changelog-archive-2026-08-28.md) ·
-> [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
-> Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
-
 ## 2026-11-21 — isolate cache diagnostic defaults and derive gate counts
 
 - Keep the compiler-cache report fixture's automatic address independent of inherited socket/port settings, and prove an explicit caller socket still appears in the report. The production capture environment is unchanged; a new mutation must break the isolated default case.
@@ -85,6 +73,82 @@
 - Extend the shared streaming binary verifier to extracted directories, TAR and DEB payloads. Retain exact member names, duplicate/case/alias refusals, regular-file requirements and complete hashes; one conventional TAR root prefix is accepted without accepting duplicate aliases. Share the checked dpkg stream with the text verifier and preserve failed native transport status.
 - Add a native AppImage binary entry point using the same architecture, selected-path, extraction and cleanup helper as licence checks. Synthetic fixtures cover large payloads, final-byte changes, symlinks, duplicates, malformed paths and raw extractor failures; byte equality alone does not establish provenance, executable mode, loader behavior or complete licence coverage.
 - Keep extraction state initialization in the shared helper, removing redundant entry-point declarations reported by the complete ShellCheck warning gate; no warning budget is raised.
+
+## 2026-11-21 — the PE twin of the ELF hardening gate (CON294)
+
+- `Assert-PeHardening` (`windows/scripts/modules/WindowsPeHardening.Common.psm1`) reads each PE's DllCharacteristics
+  and throws naming every file without DYNAMIC_BASE, NX_COMPAT, HIGH_ENTROPY_VA (PE32+ only) or GUARD_CF, the bit
+  BeschleunigerBallett's binaries lacked before CON290; `-NoCfg` waives CFG by leaf name for a third-party DLL. Its own
+  module, as `WindowsTargetArch.Common.psm1` sits near the 800-line limit. `New-OrtTestPe` takes
+  `-DllCharacteristics`, and `PeHardening.Tests.ps1` holds the check on synthetic PEs.
+
+## 2026-11-21 — Linux release hardening for every C++ repo, and its ELF gate (CON294)
+
+- `Hardening.cmake` turns on PIE and links with `-z relro -z now` for GCC and Clang on Linux; BeschleunigerBallett
+  had linked with neither ("Hardening Linker Flags:" was empty), while AccelerANTgine set them itself. Its global mode
+  joins each flag list with spaces: the semicolons of a list had gone into `CMAKE_CXX_FLAGS` and
+  `CMAKE_EXE_LINKER_FLAGS`, where they end the command line.
+- `06-packaging/verify-elf-hardening.sh` checks shipped ELFs for PIE, `GNU_RELRO`, BIND_NOW, the stack protector
+  and `_FORTIFY_SOURCE`, from AccelerANTgine's package gate made generic. `test-cmake-hardening-linux.sh`,
+  `test-verify-elf-hardening.sh` (compiled fixtures, one per missing property) and ten recipes hold both.
+
+## 2026-11-21 — an exact skip list for staged gtest entries (CON292)
+
+- A `tests.json` gtest entry of `Invoke-StagedTests.ps1` may carry `allowed_skips` (owner decision D2): a skip not on
+  the list, and a listed test that passed, failed or did not run, each count as a failure and are named, so the list
+  stays exact. An empty list refuses every skip; the field on a cargo, pytest or exitcode entry is refused before the
+  binary runs. Two cases in `StagedTests.Tests.ps1`; AccelerANTgine (seven tests) and BeschleunigerBallett (none) opt
+  in next.
+
+## 2026-11-21 — the filesystem recipe leaves current_path(ec); a debugger probe for windows-11-arm
+
+- The exception-free filesystem recipe in `code-quality-tooling.md` read `current_path(ec)`, the non-throwing getter,
+  as a throwing one-argument call: BeschleunigerBallett's `Src/` showed five such false matches. It now catches the
+  one-argument throwing overloads, the iterator declaration and a bare `current_path()`, and says that a
+  two-argument throwing call is not caught. AccelerANTgine's and BeschleunigerBallett's rows follow it.
+- `windows-arm-debugger-probe.yml` (by hand) reports which debugger windows-11-arm offers for a fail-fast's stack:
+  `cdb` under the Windows Kits, winget's WinDbg, and the WER settings that keep `LocalDumps` empty there.
+  OxidANT's arm64 abort (0xC0000409) needs one.
+
+## 2026-11-21 — a failed gate names itself on GitHub (CON293); the filesystem pattern recipe (CON295)
+
+- `gates.sh` writes `::error title=<batch>: <gate>::<gate> failed (exit N)` for each failed gate, with `:` and `,`
+  escaped in the title, and a row into `$GITHUB_STEP_SUMMARY` where that is writable. A host step has
+  `GITHUB_ACTIONS=true`; `run-in-linux-container` passes `GATES_GITHUB_ANNOTATIONS=1` into its container, since
+  `GITHUB_ACTIONS` would also change the tools' own behaviour there. `test-gates-annotations.sh` and two recipes
+  hold it; `shared-script-libraries.md` describes the named-parts lane pattern (owner decision D7).
+- `code-quality-tooling.md` § Pattern limits gains the recipe for exception-free `std::filesystem` calls that
+  AccelerANTgine binds (457b753): it matched exactly that tree's three throwing sites.
+
+## 2026-11-21 — Windows images get the CFG bit (CON290); ctest fails on a logged critical (CON291)
+
+- `cmake/Hardening.cmake` linked `/NXCOMPAT` alone and passed `/DYNAMICBASE` and `/guard:cf` only to the compiler,
+  whose `/guard:cf` instruments but cannot set the image's CFG bit: BeschleunigerBallett's Windows binaries shipped
+  without it (none of the 13 lld-link lines of job 136406090876). Every MSVC link now gets `/NXCOMPAT /DYNAMICBASE
+  /guard:cf`, `/CETCOMPAT` still off ARM64; `test-cmake-windows-arch.sh` and a recipe hold it.
+- `ctest-run.sh --fail-on-log-pattern REGEX` (env `CTEST_FAIL_ON_LOG_PATTERN`) fails a run in which a test's output
+  has a matching line, naming each such test, and keeps ctest's own failure status. It reads this run's
+  `Testing/Temporary/LastTest*.log`, not the JUnit report, which cuts a passed test's output to 1 KiB, and only the
+  output section, as a test's `Command:` line holds its own echo text. A real ctest's log is the fixture; a real-ctest
+  case and three recipes cover the gate.
+
+## 2026-11-21 — CON99 measured; two corrections; the oxidation and C++ decisions recorded
+
+- CON99: three probe runs pulled the published gzip image in 387, 515 and 235 s and the zstd copy in 290, 227 and
+  294 s on fresh runners (median -25 %, a quarter of the spread). The probe's comment and CON99 claimed both legs
+  print the same image id; Docker's containerd store names an image by its manifest digest, so they differ, and the
+  copy's source digest ties them. The owner chose zstd from the next chain: `runtime_push_tag` now converts a
+  runtime tag's gzip layers with `nerdctl image convert --zstd --oci` before the push (`CROSS_LAYER_COMPRESSION`,
+  default `zstd`, the cross stages' knob), and a failed conversion pushes nothing; `test-runtime-push.sh` covers both
+  with two mutation recipes.
+- Correction to 2026-11-20's staged-runner entry: WER does not log OxidANT's arm64 fail-fast abort late, it logs none:
+  run 44804439631 waited the full 15 s and found no event 1000, while an access violation is named at once. The wait
+  stays for a record written late; `windows-cross-builds.md` and the script's comments now say what is known.
+- The owner decided the oxidation review (D1 to D17) and the comparison with BeschleunigerBallett's C++ setup (D1 to
+  D12), all as recommended. New: CON288 (the contract cases, ModelANT's among them) and CON289 (one ORT-profile
+  counter) here, CON290 to CON296 for the shared C++ gates (the CFG bit, `--fail-on-log-pattern`, an exact Windows
+  skip list, gate annotations, Linux release hardening, analyzers and warnings, a bridge import helper); the consumer
+  steps went into OxidANT's, AccelerANTgine's, OmniAccelerANT's and OrchestrANT's BACKLOGs.
 
 ## 2026-11-21 — required native cache setup propagates failures explicitly
 
