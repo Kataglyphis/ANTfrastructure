@@ -1574,9 +1574,10 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       actual samples. The clean source's full 42-group/5824-mutation preflight now passes600suites
       and32176assertions, with successful terminal and independent cleanup sealed. Actual instrumented builds remain open. Native and WASM probe products also retain
       the Hub's exact original MIT notice, with missing/altered/linked destinations rejected.
-      Both enabled WASM flavors still need actual source-to-artifact proof and runtime registration; the four
-      local media builds predate these receipts and do not complete that evidence. Before that
-      media rebuild, preserve the
+      The historical ROCm amd64 Media build at `8c4e13b0` rebuilt both Wasm flavors and passes all five factory
+      phases against one ORT revision. The retained default-amd64 Media digest passes the combined offline
+      gate using the same Wasm and loader bytes. The [digest-specific evidence](docs/linux-accelerator-images.md#combined-media-factory-acceptance)
+      leaves the new six-lane build and runtime matrix and hardware acceptance open. Before that rebuild, preserve the
       OpenCV FindCUDA cache repair: its bounded SBSA replay records twelve forced-repeat hits and no misses;
       the complete stage, non-x86 Torch wrapper policy and consumer Rust cache wiring remain follow-ups
       ([cache scope](docs/build-cache-tiers.md#nvcc--hipcc)).

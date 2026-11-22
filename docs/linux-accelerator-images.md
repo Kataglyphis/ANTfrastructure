@@ -2499,6 +2499,20 @@ with raw status zero, checked cleanup and independent container absence. This
 covers the CPU prefix in that media image; other target/variant products, WASM
 execution and fresh final runtime/consumer acceptance remain open.
 
+The 2026-11-14 ROCm amd64 Media build from Hub `8c4e13b0` rebuilt Asyncify and
+JSPI after rejecting the shared output cache. The completed outer BuildKit RUN
+took 1,096.6 seconds. Across all four passes, ccache recorded 1,274 hits and
+245 misses among 1,519 cacheable calls. The native, GIL, FT and both Wasm factory
+replays checked Media manifest
+`sha256:253d1f9c807a968acc79dbcefb7c7f6aac8f2f5bf40dcf0dec3096d16e12edb7`
+with ORT `6af1a932e2286d5c58166085d24c68783033edee`. The default-amd64 Media
+manifest `sha256:170d74a478e32bd30811b572ed2c46120d9bbbbc0a6a88aae6e05d3b01bac447`
+contains the same Wasm module and loader hashes. The combined gate passed all
+five factory phases offline on that digest on 2026-11-22, including the
+GIL-disabled FT check. Evidence is retained under
+`logs/test-results/webgpu-registration-20261110/orchestrant-current-helper-20261122-1/static-docs-20261122-1/`.
+The six-lane production rebuild, FINAL consumers and GPU parity remain open.
+
 The preserved C API probe is built in both native CPU/NVIDIA producers before the
 GIL receipt and FT reconfiguration. Its CMake project reads the core's configured
 compiler, toolchain and C flags; command-line compiler overrides cannot substitute
