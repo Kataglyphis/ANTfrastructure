@@ -60774,5 +60774,29 @@
   "replace": "require(True,",
   "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
   "why": "A malformed captured cache record cannot become a complete source receipt from a zero status alone."
+ },
+ {
+  "id": "host.direct-preflight-runner-policy",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "require(runner == (Path(reference[\"source_snapshot\"]) / runner_name).read_bytes(),",
+  "replace": "require(True,",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "Suite discovery must use the same canonical runner as the accepted reference."
+ },
+ {
+  "id": "host.direct-preflight-harness-library",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "    excluded = set(re.findall(r'^\\s*\\[ \"\\$\\(basename \"\\$\\{suite\\}\"\\)\" = \"([^\"\\n]+)\" \\] && continue\\b', runner.decode(), re.MULTILINE))",
+  "replace": "    excluded = set()",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "The canonical runner excludes its harness library; the receipt must not count it as a test."
+ },
+ {
+  "id": "host.direct-preflight-suite-file",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "if path.is_file()} - excluded",
+  "replace": "} - excluded",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "A directory named like a shell suite is not run by the canonical runner."
  }
 ]

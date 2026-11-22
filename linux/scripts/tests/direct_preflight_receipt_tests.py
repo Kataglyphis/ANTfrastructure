@@ -104,6 +104,11 @@ class DirectReceiptTests(unittest.TestCase):
             path = owner / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("fixture canonical source\n")
+        for name in ("run-tests.sh", "test-harness.sh"):
+            (owner / "linux/scripts/tests" / name).write_bytes((HERE / name).read_bytes())
+        folder = owner / "linux/scripts/tests/test-folder.sh"
+        folder.mkdir()
+        (folder / "ignored.txt").write_text("A directory is not a runnable suite.\n")
         self.put(owner / "docs/scripts/mutations.json", [{"id": "one"}, {"id": "two"}])
         M.PRESERVER["git"](owner, "add", ".")
         M.PRESERVER["git"](owner, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "receipt fixture")
@@ -190,6 +195,18 @@ class DirectReceiptTests(unittest.TestCase):
         raw = self.raw.replace(b"test-two.sh", b"test-one.sh")
         with self.assertRaisesRegex(ValueError, "Suite execution"):
             M.execution_counts(self.source, M.read(self.reference), self.inv, raw)
+
+    def test_canonical_harness_library_is_not_an_executed_suite(self) -> None:
+        counts = M.execution_counts(self.source, M.read(self.reference), self.inv, self.raw)
+        self.assertEqual(counts["script_suites"], 2)
+        self.assertNotIn("test-harness.sh", counts["executed_script_suites"])
+        self.assertNotIn("test-folder.sh", counts["executed_script_suites"])
+
+    def test_changed_canonical_suite_runner_refuses(self) -> None:
+        path = self.source / "linux/scripts/tests/run-tests.sh"
+        path.write_bytes(path.read_bytes() + b"changed runner\n")
+        with self.assertRaisesRegex(ValueError, "Canonical suite runner changed"):
+            M.execution_counts(self.source, M.read(self.reference), self.inv, self.raw)
 
     def test_raw_command_failure_refuses(self) -> None:
         (self.out / "compiler-cache/exit-status.txt").write_text("command_status=23\ncache_stats_status=0\n")

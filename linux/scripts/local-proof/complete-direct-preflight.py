@@ -49,6 +49,9 @@ def execution_counts(source: Path, reference: dict[str, Any], invocation: dict[s
     require(reference["status"] == "passed-complete-Linux-source-preflight-only", "Reference did not pass")
     require((source / "linux/scripts/preflight.sh").read_bytes()
             == (Path(reference["source_snapshot"]) / "linux/scripts/preflight.sh").read_bytes(), "Canonical preflight changed")
+    runner_name = "linux/scripts/tests/run-tests.sh"
+    runner = (source / runner_name).read_bytes()
+    require(runner == (Path(reference["source_snapshot"]) / runner_name).read_bytes(), "Canonical suite runner changed")
     groups = reference["all_default_preflight_groups"]
     require(groups and len(groups) == len(set(groups)) == reference["actual_preflight_group_count"]
             == invocation["expected_default_groups"], "Canonical group inventory differs")
@@ -61,7 +64,8 @@ def execution_counts(source: Path, reference: dict[str, Any], invocation: dict[s
     require(len(summaries) == 1, "Missing unique suite summary")
     suites, assertions = map(int, summaries[0])
     names = re.findall(r"^== (test-[^/\n]+\.sh) ==$", text, re.MULTILINE)
-    discovered = {path.name for path in (source / "linux/scripts/tests").glob("test-*.sh")}
+    excluded = set(re.findall(r'^\s*\[ "\$\(basename "\$\{suite\}"\)" = "([^"\n]+)" \] && continue\b', runner.decode(), re.MULTILINE))
+    discovered = {path.name for path in (source / "linux/scripts/tests").glob("test-*.sh") if path.is_file()} - excluded
     require(suites == len(names) == len(set(names)) == invocation["expected_script_suites"]
             and set(names) == discovered and assertions > 0, "Suite execution inventory differs")
     return {"all_default_preflight_groups": groups, "actual_preflight_group_count": len(groups),
