@@ -415,6 +415,42 @@ outlived the `exec` as a stray child of the program, which Python's `forkserver`
 Python app bundle puts the same launcher on its interpreter
 ([`python-app-bundles.md`](python-app-bundles.md#the-images-glibc-travels)).
 
+### Immutable native helpers
+
+A helper whose compiled bytes are part of a package proof must retain those bytes during
+relocation. Call `kataglyphis_install_linux_closure(LOADER PRIVATE_DIR <name> TARGETS <targets>
+IMMUTABLE_HELPERS <installed-relative-path>...)`. A helper installed in `libexec/` or `lib/`
+belongs in this list; ordinary executable `TARGETS` are resolved under the install bindir.
+Library-only targets are supported when the call supplies immutable helpers. Embedded projects
+still leave their parent's install tree alone. Consumers can require
+`COMMAND kataglyphis_linux_immutable_helpers` before using the new argument with a pinned Hub.
+
+The shared `bundle-loader.sh --preserve-bytes BUNDLE LIB-DIR EXECUTABLE...` leaves a launcher at
+each selected path and moves its original ELF to `LIB-DIR/<basename>-bin`. `--beside` keeps the
+native file next to its launcher as `<basename>.bin`. Both loader branches use the private library
+directory without patching the helper's RUNPATH. `--external-library-path` additionally retains
+nonempty host SDK directories after that private directory. Without this opt-in, a helper's host
+loader receives only the private library directory. Arguments and worker exit statuses survive
+both branches. Legacy RPATH is refused because it takes precedence over the launcher's path.
+
+Helpers must be regular executable files inside the bundle. Library directories must also stay
+inside it. CMake requires literal relative paths without traversal and unique helper basenames;
+existing native payloads refuse replacement. Rerunning the same launcher policy is idempotent;
+changing byte-preservation policy requires freshly staged executables.
+
+CMake wraps helpers before its ordinary launcher and ELF closure steps, protects each exact
+private native path, then compares its hash with the original staged helper. The one generated
+AppImage patcher combines those basenames with optional ORT preservation. Its shared
+`patchelf-keep-glibc.sh --keep-name BASENAME` option is repeatable and checks only the final target
+argument, so a similarly named flag value cannot suppress an unrelated patch.
+
+`bash linux/scripts/tests/test-linux-immutable-helpers.sh --output-dir NEW_ABSOLUTE_DIR` retains
+the real fixture's build logs, relocated trees and TGZ/DEB outputs. The default invocation cleans
+its temporary directory. These checks prove transport and stage-to-package byte identity for the
+fixture. Consumers must separately compare their successful build artifact with every finished
+package payload, including AppImages, and exercise installed DEBs and actual AppRun. The helper
+transport authenticates no source and proves neither GPU inference nor complete licences.
+
 ### ONNX Runtime providers and host SDK paths
 
 Source `linux/scripts/06-packaging/ort-runtime-bundle.sh` and call

@@ -1,8 +1,22 @@
 #!/usr/bin/env bash
-# CPack must not patch glibc; an opt-in also preserves wheel-matched ONNX Runtime files.
+# CPack must retain glibc and any explicitly byte-matched runtime or helper payloads.
 set -euo pipefail
 keep_ort=0
-if [[ "${1:-}" == --keep-ort ]]; then keep_ort=1; shift; fi
+keep_names=()
+while :; do
+  case "${1:-}" in
+    --keep-ort) keep_ort=1; shift ;;
+    --keep-name)
+      [[ $# -ge 2 && "$2" =~ ^[a-zA-Z0-9_.+\ -]+$ && "$2" != . && "$2" != .. ]] || { echo 'Invalid preserved executable basename' >&2; exit 2; }
+      keep_names+=("$2"); shift 2 ;;
+    *) break ;;
+  esac
+done
+target=""
+[[ $# -eq 0 ]] || target="${!#}"
+for name in "${keep_names[@]}"; do
+  [[ "${target##*/}" != "${name}" ]] || exit 0
+done
 for arg in "$@"; do
   case "$(basename -- "${arg}")" in
     ld-linux*.so* | libc.so.6 | libm.so.6 | libmvec.so.1 | libpthread.so.0 | libdl.so.2 | librt.so.1 | \

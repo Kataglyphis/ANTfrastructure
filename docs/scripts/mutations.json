@@ -60798,5 +60798,189 @@
   "replace": "} - excluded",
   "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
   "why": "A directory named like a shell suite is not run by the canonical runner."
+ },
+ {
+  "id": "packaging.immutable-helper-library-paths",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "if(NOT\n         _directory\n         MATCHES\n         \"^[A-Za-z0-9_./+ -]+$\"\n         OR IS_ABSOLUTE \"${_directory}\"\n         OR _directory MATCHES \"(^|/)\\\\.\\\\.?(/|$)|/$\")",
+  "replace": "if(FALSE)",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "Immutable helper library directories must be safe relative paths."
+ },
+ {
+  "id": "packaging.immutable-helper-helper-paths",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "if(NOT\n       _path\n       MATCHES\n       \"^[A-Za-z0-9_./+ -]+$\"\n       OR IS_ABSOLUTE \"${_path}\"\n       OR _path MATCHES \"(^|/)\\\\.\\\\.?(/|$)|/$\")",
+  "replace": "if(FALSE)",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "Immutable helper paths must refuse traversal and absolute selections."
+ },
+ {
+  "id": "packaging.immutable-helper-unique-basename",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "if(_name IN_LIST _names)",
+  "replace": "if(FALSE)",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "Different installed directories cannot collide in one private native payload name."
+ },
+ {
+  "id": "packaging.immutable-helper-requires-loader",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "if(ARG_IMMUTABLE_HELPERS AND NOT ARG_LOADER)",
+  "replace": "if(FALSE)",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "An immutable helper declaration requires the shared portable launcher."
+ },
+ {
+  "id": "packaging.immutable-helper-preserve-forwarding",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "--preserve-bytes ${_external}",
+  "replace": "${_external}",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "CMake must actually request byte-preserving helper transport."
+ },
+ {
+  "id": "packaging.immutable-helper-protect-native-path",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "  list(APPEND ARG_PROTECT ${_helper_protect})",
+  "replace": "  set(_helper_protection_removed TRUE)",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "The ELF closure must not rewrite the exact private helper payload."
+ },
+ {
+  "id": "packaging.immutable-helper-final-staged-hash",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "${_helper_verify}\")",
+  "replace": "\")",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "A successful closure that altered a helper must still fail installation."
+ },
+ {
+  "id": "packaging.immutable-helper-appimage-helper-list",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "${_keep_ort}${_helper_keep}",
+  "replace": "${_keep_ort}",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "One AppImage patcher must preserve helpers together with optional ORT files."
+ },
+ {
+  "id": "packaging.immutable-helper-library-only-targets",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "if(_loader_args OR NOT ARG_IMMUTABLE_HELPERS)",
+  "replace": "if(TRUE)",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "A non-bin helper with library-only targets must not run an empty ordinary launcher step."
+ },
+ {
+  "id": "packaging.immutable-helper-external-sdk-forwarding",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "set(_external \"--external-library-path\")",
+  "replace": "set(_external \"\")",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "Opted-in helpers must retain the host SDK library path on both branches."
+ },
+ {
+  "id": "packaging.immutable-helper-library-containment",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "[[ \"${LIB_DIR}\" == \"${BUNDLE}/\"* ]] || err \"immutable helper libraries must stay inside the bundle\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "An escaping helper library directory must fail before allocation."
+ },
+ {
+  "id": "packaging.immutable-helper-executable-mode",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "[ -x \"${exe}\" ] && [ ! -L \"${exe}\" ]",
+  "replace": "[ -e \"${exe}\" ] && [ ! -L \"${exe}\" ]",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "A regular helper input must be executable before staging."
+ },
+ {
+  "id": "packaging.immutable-helper-input-symlink",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "[ ! -L \"${exe}\" ] && [[ \"${resolved}\"",
+  "replace": "[ -e \"${exe}\" ] && [[ \"${resolved}\"",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "Even an internal absolute symlink cannot be a selected original helper."
+ },
+ {
+  "id": "packaging.immutable-helper-source-containment",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "[[ \"${resolved}\" == \"${BUNDLE}/\"* ]]",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "An executable selected through traversal must stay outside the staged transport."
+ },
+ {
+  "id": "packaging.immutable-helper-legacy-rpath",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "if grep -q '(RPATH)' <<< \"${dynamic}\"; then err \"${rel} has legacy RPATH which precedes the private library path\"; fi",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "Legacy RPATH would precede the private library path and must refuse immutable transport."
+ },
+ {
+  "id": "packaging.immutable-helper-payload-collision",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "[ ! -e \"${home}/${real}\" ] && [ ! -L \"${home}/${real}\" ] || err \"payload already exists at ${home}/${real}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "An existing private native payload must remain unchanged."
+ },
+ {
+  "id": "packaging.immutable-helper-post-move-hash",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "[ \"$(sha256sum < \"${home}/${real}\")\" = \"${original_hash}\" ] || err \"${rel}: original executable bytes changed\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "A successful move that altered bytes cannot publish a launcher."
+ },
+ {
+  "id": "packaging.immutable-helper-skip-runpath-rewrite",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "    byte_policy=$'\\n# Original executable bytes must survive package hash checks.'",
+  "replace": "    move_runpath \"${exe_dir}\" \"${home}/${real}\"\n    byte_policy=$'\\n# Original executable bytes must survive package hash checks.'",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "Byte preservation must not rewrite a helper RUNPATH during relocation."
+ },
+ {
+  "id": "packaging.immutable-helper-host-private-path",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "external_setup=\"$(printf '\\nexport LD_LIBRARY_PATH=\"$here/%s\"' \"${to_lib}\")\"",
+  "replace": "external_setup=\"\"",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "The host loader must find the private dependencies of an unchanged helper."
+ },
+ {
+  "id": "packaging.immutable-helper-policy-boundary",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "[ \"${PRESERVE_BYTES}\" = \"${preserved}\" ] || err \"${rel} has a different byte-preservation policy; restage the executable\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "Dropping byte preservation on an existing immutable launcher must refuse."
+ },
+ {
+  "id": "packaging.immutable-helper-patcher-final-target",
+  "target": "linux/scripts/06-packaging/patchelf-keep-glibc.sh",
+  "find": "target=\"${!#}\"",
+  "replace": "target=\"$2\"",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "A patchelf flag value with a preserved name must not suppress an unrelated patch."
+ },
+ {
+  "id": "packaging.immutable-helper-patcher-literal-names",
+  "target": "linux/scripts/06-packaging/patchelf-keep-glibc.sh",
+  "find": "[[ $# -ge 2 && \"$2\" =~ ^[a-zA-Z0-9_.+\\ -]+$ && \"$2\" != . && \"$2\" != .. ]]",
+  "replace": "[[ $# -ge 2 ]]",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "Malformed or nonliteral preserved basenames must return the explicit usage status."
+ },
+ {
+  "id": "packaging.immutable-helper-patcher-raw-status",
+  "target": "linux/scripts/06-packaging/patchelf-keep-glibc.sh",
+  "find": "exec \"${KATAGLYPHIS_PATCHELF:-patchelf}\" \"$@\"",
+  "replace": "\"${KATAGLYPHIS_PATCHELF:-patchelf}\" \"$@\" || true",
+  "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
+  "why": "Unselected targets retain the real patchelf failure status."
  }
 ]

@@ -255,6 +255,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order.
    Copied `app-packaging.sh` carries `app-packaging-license.sh` and `app-packaging-entrypoint.sh`; both it and `pe-icon-tools.sh` carry `log-bootstrap.sh` in the shared lib layout. Package the original project license and validate declared texts in built artifacts. The standalone entrypoint selector also imports the canonical logging bootstrap.
    Native and Python app DEBs use gzip compression and root-owned payloads; retain both properties when changing their builders.
+   Immutable Linux helpers use the shared byte-preserving launcher and AppImage patcher; retain exact private-payload protection, final staged hashes, safe unique paths and raw worker statuses. Finished consumer packages still require their own binary proofs.
    Linux TAR selection uses the shared bundle resolver and propagates its failure; keep explicit staged trees, default Flutter paths and the separate Android APK source policy.
    Python DEB discovery rejects a host library with multiple reported package owners; retain that refusal without assuming it proves architecture or loader selection.
    Shared bundle DEBs must store payload entries as uid 0 and gid 0 even when built by an unprivileged container user.

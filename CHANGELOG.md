@@ -158,6 +158,12 @@
   skip list, gate annotations, Linux release hardening, analyzers and warnings, a bridge import helper); the consumer
   steps went into OxidANT's, AccelerANTgine's, OmniAccelerANT's and OrchestrANT's BACKLOGs.
 
+## 2026-11-22 — shared immutable native-helper packaging
+
+- Add explicit byte-preserving Linux helper launchers with private library paths on both loader branches, unchanged arguments and raw worker exit statuses. Refuse legacy RPATH, linked or escaping inputs, existing payloads and mismatched launcher policies.
+- CMake accepts installed-relative `IMMUTABLE_HELPERS`, protects their native payloads during ELF closure, checks their hashes after closure and composes helper and ORT protection in one AppImage patcher. Literal paths and unique basenames prevent ambiguous staging.
+- Real ELF, relocation, TGZ and DEB fixtures exercise the shared transport. Finished consumer packages, actual AppRun, hardware inference and complete licence closure retain their separate proof requirements.
+
 ## 2026-11-21 — required native cache setup propagates failures explicitly
 
 - Retain the required environment owner's raw status before resolving the native fixture compiler; validate its two exports explicitly. The hosted launcher-policy suite correctly rejected the new unguarded call after the original Rust/Dart suite passed again.
