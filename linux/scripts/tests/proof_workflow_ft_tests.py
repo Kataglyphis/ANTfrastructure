@@ -131,9 +131,10 @@ class FreeThreadedBootstrapChecks(unittest.TestCase):
         )
         source = self.root / "worker/linux/scripts/isolated-preflight"
         source.mkdir(parents=True)
-        shutil.copy2(
-            self.scripts / "isolated-preflight/worker.sh", source / "worker.sh"
-        )
+        evidence = self.root / "worker evidence"
+        evidence.mkdir()
+        worker = (self.scripts / "isolated-preflight/worker.sh").read_text()
+        (source / "worker.sh").write_text(worker.replace("/evidence", shlex.quote(str(evidence))))
         logs = self.root / "worker/logs"
         for probe, make in ((None, 0), (42, 0), (0, 37), (0, 0)):
             with self.subTest(probe=probe, make=make):

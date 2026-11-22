@@ -15,6 +15,7 @@ from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
 
+import proof_workflow_capture_tests as capture_checks
 import proof_workflow_cleanup_tests as cleanup_checks
 import proof_workflow_ft_tests as ft_checks
 
@@ -66,7 +67,7 @@ class EngineFixture(unittest.TestCase):
         self.addCleanup(self.origin.stop)
 
 
-class RunnerTests(ft_checks.FreeThreadedBootstrapChecks, EngineFixture):
+class RunnerTests(capture_checks.WorkerTranscriptChecks, ft_checks.FreeThreadedBootstrapChecks, EngineFixture):
     scripts = SCRIPTS
 
     def runner_args(self) -> argparse.Namespace:

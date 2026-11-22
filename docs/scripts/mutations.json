@@ -36931,7 +36931,7 @@
  {
   "id": "host.proof-raw-worker-status",
   "target": "linux/scripts/run-isolated-preflight.py",
-  "find": "return status if status else int(cleaned != 0)",
+  "find": "return status if status else int(cleaned != 0 or not captured)",
   "replace": "return 0",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "Worker failure statuses and failed cleanup must reach the caller."
@@ -36939,8 +36939,8 @@
  {
   "id": "host.proof-cleanup-verdict",
   "target": "linux/scripts/run-isolated-preflight.py",
-  "find": "\"passed\" if status == 0 and cleaned == 0 else \"failed\"",
-  "replace": "\"passed\" if status == 0 else \"failed\"",
+  "find": "\"passed\" if status == 0 and cleaned == 0 and captured else \"failed\"",
+  "replace": "\"passed\" if status == 0 and captured else \"failed\"",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "A failed container cleanup cannot be recorded as a passed preflight."
  },
@@ -61798,5 +61798,53 @@
   "replace": "if ($false) { throw \"PE hardening:",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PeHardening.Tests.ps1",
   "why": "reported missing hardening must cause failure"
+ },
+ {
+  "id": "host.proof-mounted-transcript",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "shutil.copyfile(transcript, output / \"preflight.log\")",
+  "replace": "shutil.copyfile(output / \"engine-attach.log\", output / \"preflight.log\")",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "An incomplete attach stream must not replace the complete mounted worker bytes."
+ },
+ {
+  "id": "host.proof-transcript-exit",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "return status if status else int(cleaned != 0 or not captured)",
+  "replace": "return status if status else int(cleaned != 0)",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Missing worker evidence must fail the outer command even after engine and cleanup zero."
+ },
+ {
+  "id": "host.proof-transcript-verdict",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "\"passed\" if status == 0 and cleaned == 0 and captured else \"failed\"",
+  "replace": "\"passed\" if status == 0 and cleaned == 0 else \"failed\"",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The run record must retain a failed capture rather than publish an inner green."
+ },
+ {
+  "id": "host.proof-transcript-regular",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "if transcript.is_symlink() or not transcript.is_file():",
+  "replace": "if not transcript.exists():",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A linked report cannot substitute for the worker transcript."
+ },
+ {
+  "id": "host.proof-worker-transcript",
+  "target": "linux/scripts/isolated-preflight/worker.sh",
+  "find": "exec make preflight > /evidence/isolated-preflight-command.log 2>&1",
+  "replace": "exec make preflight",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The actual worker must persist its output before engine cleanup."
+ },
+ {
+  "id": "host.proof-worker-transcript-stderr",
+  "target": "linux/scripts/isolated-preflight/worker.sh",
+  "find": "exec make preflight > /evidence/isolated-preflight-command.log 2>&1",
+  "replace": "exec make preflight > /evidence/isolated-preflight-command.log 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Failed-command diagnostics must reach the mounted transcript along with stdout."
  }
 ]

@@ -19,6 +19,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-22 — retain complete isolated preflight transcripts
+
+- Save the worker's own stdout and stderr through the existing evidence bind before container cleanup. Keep the attach stream separately; a missing or linked transcript fails even after engine exit zero. Preserve raw command/cleanup statuses and every existing full-source acceptance gate.
+- Retain the original f715 command/cleanup zeros, outer extraction failure and incomplete attach log. Its 7,714 mutation cases are byte-verified; missing outer groups/footer and failed later cleanup still prevent full qualification. Add transport/status fixtures and semantic mutations; a new exact-source full run remains required.
+
 ## 2026-11-22 — integrate exact-source Windows evidence with develop
 
 - Document the existing Ninja generator prerequisite for compiler-less CMake checks in Windows Git Bash when nmake is unavailable; preserve every assertion and mutation gate.

@@ -113,6 +113,19 @@ def cleanup(engine: str, run_id: str, reports: Path) -> int:
         reports.chmod(0o755)
 
 
+def preserve_worker_transcript(reports: Path, output: Path) -> bool:
+    transcript = reports / "isolated-preflight-command.log"
+    if transcript.is_symlink() or not transcript.is_file():
+        print("isolated preflight: missing or nonregular worker transcript", file=sys.stderr)
+        return False
+    shutil.copyfile(transcript, output / "preflight.log")
+    return True
+
+
+def preflight_exit_status(status: int | None, cleaned: int, captured: bool) -> int:
+    return status if status else int(cleaned != 0 or not captured)
+
+
 def run(args: argparse.Namespace) -> int:
     source, sha = freeze_source(args.revision, args.output)
     image = args.image or base_image(source)
@@ -132,11 +145,13 @@ def run(args: argparse.Namespace) -> int:
     status: int | None = None
     interrupted_status: int | None = None
     cleaned = 1
+    captured = False
     try:
         inspect = subprocess.run([args.engine, "image", "inspect", image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=30)
         if inspect.returncode:
             checked_output([args.engine, "pull", image], timeout=1800)
-        status = run_logged(container_args(args, source, reports, sha, image, run_id), args.output / "preflight.log")
+        status = run_logged(container_args(args, source, reports, sha, image, run_id), args.output / "engine-attach.log")
+        captured = preserve_worker_transcript(reports, args.output)
     except SystemExit as error:
         interrupted_status = error.code if isinstance(error.code, int) else 1
         raise
@@ -146,12 +161,12 @@ def run(args: argparse.Namespace) -> int:
             if status == 0 and not (args.output / "container.cid").is_file():
                 cleaned = 1
         finally:
-            record.update({"status": "passed" if status == 0 and cleaned == 0 else "failed",
+            record.update({"status": "passed" if status == 0 and cleaned == 0 and captured else "failed",
                            "command_exit_status": status, "interrupted_exit_status": interrupted_status,
-                           "cleanup_exit_status": cleaned,
+                           "cleanup_exit_status": cleaned, "log_capture_exit_status": 0 if captured else 1,
                            "finished_at": datetime.datetime.now(datetime.UTC).isoformat()})
             metadata.write_text(json.dumps(record, indent=2) + "\n")
-    return status if status else int(cleaned != 0)
+    return preflight_exit_status(status, cleaned, captured)
 
 
 def main() -> int:
