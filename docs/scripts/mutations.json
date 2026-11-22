@@ -49816,7 +49816,7 @@
  {
   "id": "compiler-llvm-tools.oci-parent-reuse-parent-status",
   "target": "linux/scripts/local-proof/native_oci_seed.py",
-  "find": "assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS, ANDROID_STATUS, DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS}, 'Verified native OCI parent required'",
+  "find": "assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS, ANDROID_STATUS, DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS} or proof['status'] in FOREIGN_DEFAULT_STATUSES, 'Verified native OCI parent required'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
   "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
@@ -52384,7 +52384,7 @@
  {
   "id": "compiler-llvm-tools.media-handoff-export-worker-closure",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "if kind in {'media', 'android'}:",
+  "find": "if kind in {'media', 'android', *DEFAULT_EXPORTS}:",
   "replace": "if False:",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
@@ -52648,7 +52648,7 @@
  {
   "id": "compiler-llvm-tools.android-handoff-inherited-worker-closure",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "if kind in {'media', 'android'}:",
+  "find": "if kind in {'media', 'android', *DEFAULT_EXPORTS}:",
   "replace": "if kind == 'media':",
   "test": "bash linux/scripts/tests/test-android-handoff.sh",
   "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
@@ -61110,5 +61110,77 @@
   "replace": "2 * (len(targets) - 1)",
   "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
   "why": "A selected foreign SDK needs both target static executions even when there is only one active target."
+ },
+ {
+  "id": "compiler-llvm-tools.default-handoff-stage-scope",
+  "target": "linux/scripts/local-proof/default_handoff_profile.py",
+  "find": "assert invocation['variant'] == 'default' and invocation['stage'] == stage, 'Default stage scope differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-default-handoff.sh",
+  "why": "Default stage receipts must identify their actual lane."
+ },
+ {
+  "id": "compiler-llvm-tools.default-handoff-same-target",
+  "target": "linux/scripts/local-proof/default_handoff_profile.py",
+  "find": "assert previous['target_arch'] == arch, 'Default parent target differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-default-handoff.sh",
+  "why": "The AMD64 build host cannot stand in for a matching artifact target."
+ },
+ {
+  "id": "compiler-llvm-tools.default-handoff-environment",
+  "target": "linux/scripts/local-proof/default_handoff_profile.py",
+  "find": "assert selected_values == [expected], 'Default environment binding differs: ' + prefix",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-default-handoff.sh",
+  "why": "A second conflicting environment flag must refuse."
+ },
+ {
+  "id": "compiler-llvm-tools.default-handoff-baked-reader",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "        validate_config(native[2])",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-default-handoff.sh",
+  "why": "The reader must verify the baked target from the rehashed OCI configuration."
+ },
+ {
+  "id": "compiler-llvm-tools.default-handoff-baked-seal",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "        default_image_config(child[2], invocation['target_arch'])",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-default-handoff.sh",
+  "why": "The original export seal must check the actual baked target before writing a receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.default-handoff-sdk-parent",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "'default-media': ('Media', 'SDK')",
+  "replace": "'default-media': ('Media', 'GPU')",
+  "test": "bash linux/scripts/tests/test-default-handoff.sh",
+  "why": "Default Media must link every SDK ancestor."
+ },
+ {
+  "id": "compiler-llvm-tools.default-handoff-native-status",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": " or proof['status'] in FOREIGN_DEFAULT_STATUSES, 'Verified native OCI parent required'",
+  "replace": ", 'Verified native OCI parent required'",
+  "test": "bash linux/scripts/tests/test-default-handoff.sh",
+  "why": "The canonical byte reader must recognize the exact reviewed foreign default statuses."
+ },
+ {
+  "id": "compiler-llvm-tools.default-handoff-android-variant",
+  "target": "linux/scripts/local-proof/launch-normal-android.py",
+  "find": "if args.variant == 'default':",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-default-handoff.sh",
+  "why": "The explicit default Android entry must invoke the matching qualified Media profile."
+ },
+ {
+  "id": "compiler-llvm-tools.default-handoff-worker-closure",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "'default_handoff_profile.py', 'default_media_launch.py',",
+  "replace": "'default_media_launch.py',",
+  "test": "bash linux/scripts/tests/test-default-handoff.sh",
+  "why": "Default workers bind the shared profile bytes."
  }
 ]

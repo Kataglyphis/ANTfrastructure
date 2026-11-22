@@ -23,6 +23,20 @@ DEFAULT_ANDROID_STATUS = 'passed-native-default-amd64-Android-OCI-and-Media-ance
 STAT_FIELDS = ('st_dev', 'st_ino', 'st_size', 'st_mode', 'st_uid', 'st_gid', 'st_mtime_ns', 'st_ctime_ns')
 
 
+FOREIGN_DEFAULT_STATUSES = {
+    status.replace('-amd64-', f'-{arch}-')
+    for status in (DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS)
+    for arch in ('arm64', 'riscv64')
+}
+
+
+def default_status(stage: str, arch: str) -> str:
+    native = {'media': DEFAULT_MEDIA_STATUS, 'android': DEFAULT_ANDROID_STATUS}[stage]
+    status = native.replace('-amd64-', f'-{arch}-')
+    assert status == native or status in FOREIGN_DEFAULT_STATUSES, 'Unreviewed default OCI target'
+    return status
+
+
 def plain_directory(path: Path) -> Path:
     value = path.absolute()
     assert value.is_dir() and value.resolve(strict=True) == value, 'OCI context directory must have no symlink components'
@@ -36,7 +50,7 @@ def plain_file(path: Path) -> None:
 def parent_layout(proof_path: Path) -> tuple[Json, Path, NativeLayout]:
     plain_file(proof_path)
     proof = json.loads(proof_path.read_text())
-    assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS, ANDROID_STATUS, DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS}, 'Verified native OCI parent required'
+    assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS, ANDROID_STATUS, DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS} or proof['status'] in FOREIGN_DEFAULT_STATUSES, 'Verified native OCI parent required'
     assert proof['all_native_blob_sizes_and_sha256_verified'] is True, 'Parent blob verification is required'
     assert proof['stopped']['ActiveState'] == 'inactive' and proof['stopped']['MainPID'] == '0', 'Parent export must be sealed'
     context = plain_directory(Path(proof['context']))

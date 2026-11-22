@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-22 — continue default Linux Media through native Android handoffs
+
+- Extend the existing OCI export and ordinary Android launch entries to the
+  default amd64, arm64 and riscv64 chains. Bind target-specific receipts, baked
+  cross environment, immutable SDK/Media parent, both Media Wasm modes and all
+  ancestor layers. Keep the ROCm command defaults and current disk admission.
+- Test all three command and receipt paths with synthetic OCI data. Actual
+  foreign Media/Android builds, runtime and FINAL acceptance remain open.
+
 ## 2026-11-22 — qualify arm64 and riscv64 SDKs for default Media
 
 - Bind the foreign SDK receipts to the matching producer, Linux amd64 image,

@@ -2448,7 +2448,9 @@ existing `launch-normal-media.py` remains restricted to its reviewed ROCm amd64
 chain. The [default Media launcher](local-proof-workflows.md#default-amd64-media-admission)
 qualifies the exact same-target SDK/source and compiler ancestry before shared idle-host
 admission with at least 300 GiB available; stricter caller reserves remain intact.
-Foreign Media exports, NVIDIA handoffs and current image acceptance remain
+The [default Media and Android handoffs](local-proof-workflows.md#default-media-and-android-handoffs)
+bind the same-target parent and cross build environment through native export.
+Actual default builds, NVIDIA handoffs and current image acceptance remain
 open. Command tests compare all six profiles with independent expectations
 and the real shell stage graph; they do not build ORT or run a GPU.
 

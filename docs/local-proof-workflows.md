@@ -42,6 +42,7 @@ For an already closed direct owned-wrapper run, use `python3 linux/scripts/local
 | Retain actual compiler cache evidence | `local-proof/extract-buildkit-vertex.py`, `inspect-buildkit-cache-log.py`, `capture-compiler-cache-log.py`, `capture-live-sccache-log.py`, `replay-sccache-log-capture.py`, `seal-sccache-log-capture.py` |
 | Compare the GPU follow-up's compiler and selected script bytes | `local-proof/verify-amd-parent-identity.py` |
 | Continue exact native Media through ordinary Android | `local-proof/media-oci-handoff.py`, `media_handoff_profile.py`, `launch-normal-android.py` |
+| Continue same-target default Media through native Android | The same entries with `--variant default`, then `local-proof/android-oci-handoff.py` with `default_handoff_profile.py` |
 | Continue verified native Android through ordinary local runtime | `local-proof/launch-normal-runtime.py`, `runtime_launch_profile.py`, `normal_stage_launch.py`; `owned-nerdctl.py`, `owned_nerdctl_args.py` and existing ownership/cleanup companions |
 | Observe one live ordinary runtime and reclaim eligible regular layers | `linux/scripts/launch-runtime-storage-guard.py`, `runtime_storage_guard.py` |
 | Bound full local FINAL consumers and seal owned cleanup | `linux/scripts/launch-local-final.py` |
@@ -229,8 +230,8 @@ python3 linux/scripts/local-proof/default_media_launch.py --arch arm64 \
 Use `riscv64` in the target and unit name for that lane. The engine image for
 both is Linux amd64, while the SDK tools and Media artifacts target the
 selected architecture. Synthetic command and refusal tests cover this wiring.
-Actual SDK builds, foreign Media export and factory replay, NVIDIA handoffs,
-licence closure and FINAL acceptance remain separate.
+Actual SDK builds, factory replay, NVIDIA handoffs, licence closure and FINAL
+acceptance remain open.
 
 ## Native GPU-to-Media handoff
 
@@ -310,6 +311,42 @@ Actual native/GIL/FT and both Wasm products still need their own checks. Other
 Linux architectures and variants require their actual lane proofs. Runtime must
 consume this run's verified Android output; a resumed no-push chain cannot supply
 that prefix from a mutable or published tag.
+
+## Default Media and Android handoffs
+
+After the selected default Media producer succeeds, export and seal its OCI
+context with the existing entry and the explicit default variant. This example
+uses arm64. Substitute amd64 or riscv64 in the unit name for those lanes.
+
+```bash
+python3 linux/scripts/local-proof/media-oci-handoff.py launch --variant default \
+  --compiler-plan PLAN --media-invocation MEDIA_INVOCATION \
+  --context FRESH_PARENT/media-context-NAME --unit webgpu-normal-media-export-default-arm64-YYYYMMDD-N.service
+```
+
+Rerun with `seal` after a successful export. Pass the resulting stopped receipt
+to `launch-normal-android.py --variant default --compiler-plan PLAN
+--media-invocation MEDIA_INVOCATION --parent-proof MEDIA_OCI_STOPPED_PROOF
+--output FRESH_OUTPUT --unit webgpu-normal-android-default-arm64-YYYYMMDD-N.service
+--image-repo ant-local/webgpu-NAME`. After Android succeeds, run
+`android-oci-handoff.py launch|seal --variant default --compiler-plan PLAN
+--android-invocation ANDROID_INVOCATION --context FRESH_PARENT/android-context-NAME
+--unit webgpu-normal-android-export-default-arm64-YYYYMMDD-N.service`.
+
+The default host profiles revalidate the exact source, original SDK receipt,
+both required Media Wasm flags, immutable engine manifest/config and the
+target-specific OCI scope. Both images are Linux amd64 build-host images. Their
+baked target, cross build mode and accelerator flags must agree with the
+invocation. Exports rehash all blobs, compare each ancestor layer descriptor
+and diffID, verify linked parent bytes and retain both raw transport statuses.
+Carry `default_handoff_profile.py`, `default_media_launch.py`, the SDK qualifier
+and Media command companions alongside the shared export and stage profiles.
+The existing idle, fresh-output and at least 180-GiB disk checks still apply,
+with 300 GiB required to launch default Media.
+
+`test-default-handoff.sh` checks all three targets using synthetic OCI layouts
+and declared SDK and systemd doubles. Actual default build, factory, runtime,
+licence, GPU and FINAL receipts remain separate.
 
 ## Native Android export
 
@@ -738,11 +775,12 @@ their original ctime requirement, including refusal after a later link advances 
 receipts are never rewritten or silently upgraded. These checks prove current bytes and file
 identities, not the absence of every past write. Source hashes and logical paths stay unchanged.
 
-The byte protocol also accepts sealed native default-amd64 Media and Android parents through
-their explicit `passed-native-default-amd64-Media-OCI-and-SDK-ancestry-only` and
-`passed-native-default-amd64-Android-OCI-and-Media-ancestry-only` statuses. This requires the
-same manifest/config/index, every blob hash, layer count and stopped-export checks; it does
-not make the private ROCm launch profiles accept a default build or prove source/GPU acceptance.
+The byte protocol accepts sealed native default Media and Android parents for
+amd64, arm64 and riscv64. Each status names its target, stage and parent type,
+for example `passed-native-default-arm64-Media-OCI-and-SDK-ancestry-only`.
+Each profile retains the same manifest/config/index, every blob hash, layer
+count and stopped-export checks. The default and ROCm launchers require their
+own variant and source receipts.
 
 Only layers are shared. Parent receipt and source paths remain explicit, and every final child
 blob and ancestor descriptor/diffID is still verified. These local checks do not authenticate a

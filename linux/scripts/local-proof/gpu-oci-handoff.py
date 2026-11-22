@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export reviewed ordinary ROCm amd64 GPU/Media/Android with native parent ancestry; no full licence closure, inference or FINAL acceptance."""
+"""Export ordinary ROCm and default stages with native parent ancestry; no full licence closure, inference or FINAL acceptance."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from gpu_handoff_profile import STATUS, actual_image, load_gpu, terminal
 from native_oci_layout import layer_ancestry, native_layout, sha
-from native_oci_seed import ANDROID_STATUS, MEDIA_STATUS, verify_seed
+from native_oci_seed import ANDROID_STATUS, MEDIA_STATUS, default_status, verify_seed
 from proof_commands import checked_run
 
 if TYPE_CHECKING:
@@ -26,9 +26,13 @@ if TYPE_CHECKING:
 COMMON = runpy.run_path(str(Path(__file__).with_name('native-oci-handoff.py')))
 EXPORTS = {'gpu': ('GPU', 'SDK', STATUS), 'media': ('Media', 'GPU', MEDIA_STATUS),
            'android': ('Android', 'Media', ANDROID_STATUS)}
+DEFAULT_EXPORTS = {'default-media': ('Media', 'SDK'), 'default-android': ('Android', 'Media')}
 
 
-def export_profile(kind: str) -> tuple[str, str, str]:
+def export_profile(kind: str, arch: str = 'amd64') -> tuple[str, str, str]:
+    if kind in DEFAULT_EXPORTS:
+        label, parent = DEFAULT_EXPORTS[kind]
+        return label, parent, default_status(label.lower(), arch)
     assert kind in EXPORTS, 'Unreviewed native downstream export'
     return EXPORTS[kind]
 
@@ -38,16 +42,21 @@ def worker_inputs(kind: str = 'gpu') -> dict[str, str]:
     directory = Path(__file__).resolve().parent
     paths = [directory.parent / '01-core/context-management.sh',
              *(directory / name for name in ('native_oci_seed.py', 'native_oci_layout.py', 'native-oci-handoff.py', 'normal_stage_launch.py', 'stage_handoff_profile.py', 'gpu_handoff_profile.py', 'gpu-oci-handoff.py'))]
-    if kind in {'media', 'android'}:
+    if kind in {'media', 'android', *DEFAULT_EXPORTS}:
         paths += [directory / name for name in ('media_handoff_profile.py', 'media-oci-handoff.py')]
     if kind == 'android':
         paths += [directory / name for name in ('android_handoff_profile.py', 'android-oci-handoff.py')]
+    if kind in DEFAULT_EXPORTS:
+        paths += [directory / name for name in (
+            'default_handoff_profile.py', 'default_media_launch.py', 'webgpu_media_lanes.py', 'proof_subject.py',
+            'proof_commands.py', 'launch-normal-gpu.py', 'launch-normal-android.py', 'android-oci-handoff.py',
+        )]
     return {str(path):sha(path) for path in paths}
 
 
 def launch(args: argparse.Namespace, plan: Json, invocation: Json, actual: Json, kind: str = 'gpu') -> int:
     label = export_profile(kind)[0]
-    invocation_path = Path(getattr(args, kind + '_invocation'))
+    invocation_path = Path(getattr(args, label.lower() + '_invocation'))
     context = args.context
     path = context.with_suffix('.invocation.json')
     inputs = worker_inputs(kind)
@@ -74,8 +83,8 @@ def launch(args: argparse.Namespace, plan: Json, invocation: Json, actual: Json,
 
 
 def seal(args: argparse.Namespace, invocation: Json, parent: Json, actual: Json, kind: str = 'gpu') -> int:
-    label, parent_label, receipt_status = export_profile(kind)
-    invocation_path = Path(getattr(args, kind + '_invocation'))
+    label, parent_label, receipt_status = export_profile(kind, invocation.get('target_arch', 'amd64'))
+    invocation_path = Path(getattr(args, label.lower() + '_invocation'))
     context = args.context
     path = context.with_suffix('.invocation.json')
     record = json.loads(path.read_text())
@@ -86,6 +95,10 @@ def seal(args: argparse.Namespace, invocation: Json, parent: Json, actual: Json,
     ended = terminal(args.unit)
     child = native_layout(context)
     assert child[0] == actual['manifest'] and child[1]['config']['digest'] == actual['config'], f'{label} native bytes differ'
+    if kind in DEFAULT_EXPORTS:
+        from default_handoff_profile import default_image_config
+
+        default_image_config(child[2], invocation['target_arch'])
     previous, reuse = verify_seed(Path(invocation['parent_OCI_proof']), context)
     transport = json.loads(Path(str(context) + '.transport.json').read_text())
     assert transport == {'producer_status':0, 'extractor_status':0}, f'{label} export producer or extractor failed'
@@ -112,12 +125,27 @@ def main_for(kind: str, loader: Callable[[Path, Path], tuple[Json, Json, Json]])
     for name in ('compiler-plan', kind + '-invocation', 'context'):
         parser.add_argument('--' + name, required=True, type=Path)
     parser.add_argument('--unit', required=True)
+    if kind != 'gpu':
+        parser.add_argument('--variant', choices=('rocm', 'default'), default='rocm')
     args = parser.parse_args()
     args.context = args.context.absolute()
     context = args.context
     assert context.parent.resolve(strict=True) == context.parent and context.name.startswith(kind + '-context-'), f'Fresh plain {label} context required'
-    assert re.fullmatch(r'webgpu-normal-' + kind + r'-export-amd64-[0-9-]+\.service', args.unit), f'Unexpected {label} export unit'
-    plan, invocation, parent = loader(args.compiler_plan, Path(getattr(args, kind + '_invocation')))
+    invocation_path = Path(getattr(args, kind + '_invocation'))
+    if getattr(args, 'variant', 'rocm') == 'default':
+        from default_handoff_profile import (
+            default_unit,
+            load_default_android,
+            load_default_media,
+        )
+
+        loader = {'media': load_default_media, 'android': load_default_android}[kind]
+        kind = 'default-' + kind
+        plan, invocation, parent = loader(args.compiler_plan, invocation_path)
+        default_unit(args.unit, label.lower() + '-export', invocation['target_arch'])
+    else:
+        assert re.fullmatch(r'webgpu-normal-' + kind + r'-export-amd64-[0-9-]+\.service', args.unit), f'Unexpected {label} export unit'
+        plan, invocation, parent = loader(args.compiler_plan, invocation_path)
     actual = actual_image(invocation)
     return launch(args, plan, invocation, actual, kind) if args.action == 'launch' else seal(args, invocation, parent, actual, kind)
 
