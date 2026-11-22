@@ -24,6 +24,7 @@ from normal_stage_tests import STAGE
 PROFILE = importlib.import_module('runtime_launch_profile')
 SOURCE_PROFILE = importlib.import_module('runtime_source_profile')
 ENTRY = runpy.run_path(str(fixtures.TOOLS / 'launch-normal-runtime.py'))
+DEFAULT_HANDOFF = importlib.import_module('default_handoff_profile')
 
 
 class ProfileOptions(TypedDict, total=False):
@@ -67,7 +68,8 @@ class RuntimeTests(unittest.TestCase):
 
     def profile_call(self, *, unit: str | None = None, prefix: str | None = None, app_ref: str | None = None,
                      context: Path | None = None, dirty: bool = False, selected_source: Path | None = None,
-                     source_proof: Path | None = None, serial_smoke: bool = False) -> tuple[int, mock.Mock]:
+                     source_proof: Path | None = None, serial_smoke: bool = False,
+                     invocation: dict | None = None) -> tuple[int, mock.Mock]:
         original = PROFILE.checked_run
         def checked(command: list[str], timeout: float = 60) -> subprocess.CompletedProcess[str]:
             if command[0] == 'git':
@@ -80,7 +82,7 @@ class RuntimeTests(unittest.TestCase):
         smoke_options: SmokeOptions = {'serial_smoke':True} if serial_smoke else {}
         with mock.patch.object(PROFILE, 'checked_run', side_effect=checked), mock.patch.object(PROFILE, 'launch_build', launcher), \
                 mock.patch.object(PROFILE.uuid, 'uuid4', return_value=mock.Mock(hex='c' * 32)):
-            result = PROFILE.launch_runtime(self.plan, self.fixture.android, self.fixture.invocation, self.parent,
+            result = PROFILE.launch_runtime(self.plan, invocation or self.fixture.android, self.fixture.invocation, self.parent,
                         context or self.context, self.proof_path, self.output, unit or self.unit,
                         prefix or self.prefix, app_ref or self.app_ref, selected_source=selected_source, source_proof=source_proof, **smoke_options)
         return result, launcher
@@ -126,6 +128,50 @@ class RuntimeTests(unittest.TestCase):
         with mock.patch.object(PROFILE, 'prepare_local_alias', return_value={'prepared': True}) as prepare:
             self.assertEqual(launcher.call_args.kwargs['prepare'](), {'prepared': True})
         prepare.assert_called_once_with(self.actual, self.output / 'local-alias.json')
+
+    def test_default_driver_separates_native_android_and_runtime_platforms(self) -> None:
+        for arch in ('amd64', 'arm64', 'riscv64'):
+            with self.subTest(arch=arch):
+                self.check_default_driver(arch)
+
+    def check_default_driver(self, arch: str) -> None:
+        invocation = dict(self.fixture.android, variant='default', target_arch=arch, image='ant-local/webgpu-fixture:cross-android-' + arch)
+        unit = f'webgpu-normal-runtime-default-{arch}-99999999-1.service'
+        prefix = 'ant-local/webgpu-fixture:runtime-default-1'
+        context = self.work / ('android-context-' + arch)
+        result, launcher = self.profile_call(unit=unit, prefix=prefix, context=context, invocation=invocation, serial_smoke=True)
+        self.assertEqual(result, 47)
+        args = launcher.call_args.args
+        self.assertEqual(args[:6], (self.work, self.output, unit, prefix + '-' + arch, arch, 322122547200))
+        self.assertEqual(args[8][4:], ['--target-arches', arch, '--artifact-image-prefix', 'ant-local/webgpu-fixture:cross-android',
+                                       '--artifact-build-mode', 'cross', '--skip-manifest'])
+        expected = {'CROSS_VARIANT=', 'ENABLE_AMD=false', 'ENABLE_NVIDIA=false', 'PYTORCH_EXTRA=pytorch-cpu',
+                    f'RUNTIME_ANDROID_PIN_{arch}={self.alias}', 'ARTIFACT_CONTEXT_ROOT=' + str(self.work / 'android-context'),
+                    'CROSS_BUILD_PLATFORM=linux/amd64', 'RUNTIME_WHEELS_SOURCE=export', 'RUNTIME_SMOKE_OVERLAP=0',
+                    'RUNTIME_IMAGE_SMOKE=1', 'RUNTIME_INPUT_PREFLIGHT=1', 'WRAPPER_CONTENT_GATE=1', 'ANCESTRY_STAMP_ENFORCE=1',
+                    'CROSS_IMAGE_PRUNE=0', 'PRUNE_DUP_CACHEMOUNTS=0', 'CROSS_NO_PUSH=1'}
+        self.assertTrue(expected <= set(args[7]))
+        for flag in ('RUNTIME_WHEELS_SOURCE=image', 'ENABLE_AMD=true', 'PYTORCH_EXTRA=pytorch-rocm10'):
+            self.assertNotIn(flag, args[7])
+        self.assertEqual(launcher.call_args.kwargs['images'], tuple(prefix + suffix + '-' + arch for suffix in ('-base', '-package', '')))
+        record = args[6]
+        self.assertEqual(record['variant'], '')
+        self.assertTrue(record['default_android_ancestry_verified'])
+        self.assertEqual(record['parent_context'], str(context))
+        self.assertEqual(record['parent_OCI_proof_sha256'], fixtures.sha(self.proof_path))
+        self.assertIn(str(fixtures.TOOLS / 'default_handoff_profile.py'), record['selected_host_workers_sha256'])
+        with mock.patch.object(PROFILE, 'prepare_local_alias', return_value={'prepared': True}) as prepare:
+            self.assertEqual(launcher.call_args.kwargs['prepare'](), {'prepared': True})
+        prepare.assert_called_once_with(dict(self.actual, image=invocation['image']), self.output / 'local-alias.json')
+
+    def test_default_launch_refuses_a_foreign_context_or_variant(self) -> None:
+        invocation = dict(self.fixture.android, variant='default', target_arch='arm64')
+        unit = 'webgpu-normal-runtime-default-arm64-99999999-1.service'
+        prefix = 'ant-local/webgpu-fixture:runtime-default-1'
+        for changes in ({'unit': self.unit}, {'prefix': self.prefix}, {'context': self.context}):
+            options = {'unit':unit, 'prefix':prefix, 'context':self.work / 'android-context-arm64', **changes}
+            with self.subTest(changes=changes), self.assertRaises(AssertionError):
+                self.profile_call(invocation=invocation, **options)
 
     def test_larger_parent_resource_requirement_is_preserved(self) -> None:
         self.plan['required_bytes'] = 400 * 1024**3
@@ -212,7 +258,7 @@ class RuntimeTests(unittest.TestCase):
                 mock.patch.object(PROFILE, 'runtime_tags', return_value=tags) as provider:
             status, launch = self.profile_call(selected_source=source, source_proof=proof)
         selector.assert_called_once_with(self.fixture.android, source, proof)
-        provider.assert_called_once_with(source, self.prefix)
+        provider.assert_called_once_with(source, self.prefix, 'amd64')
         self.assertEqual(status, 47)
         arguments = launch.call_args.args
         self.assertEqual(arguments[0], source)
@@ -370,6 +416,24 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(launcher.call_args.args, (self.plan, self.fixture.android, self.fixture.invocation, self.parent, self.context,
                              self.proof_path, self.output, self.unit, self.prefix, self.app_ref))
             self.assertEqual(launcher.call_args.kwargs, {'selected_source':selected, 'source_proof':receipt, 'serial_smoke':serial})
+
+    def test_default_cli_uses_the_scoped_default_android_readers(self) -> None:
+        argv = ['launch-normal-runtime.py', '--variant', 'default', '--compiler-plan', str(self.plan_path),
+                '--android-invocation', str(self.fixture.invocation), '--parent-proof', str(self.proof_path),
+                '--output', str(self.output), '--unit', self.unit, '--image-prefix', self.prefix, '--app-ref', self.app_ref]
+        loader = mock.Mock(return_value=(self.plan, self.fixture.android, self.fixture.parent))
+        parent = mock.Mock(return_value=(self.parent, self.context))
+        launcher = mock.Mock(return_value=47)
+        with (
+            mock.patch.object(sys, 'argv', argv),
+            mock.patch.object(DEFAULT_HANDOFF, 'load_default_android', loader),
+            mock.patch.object(DEFAULT_HANDOFF, 'default_android_layout', parent),
+            mock.patch.dict(ENTRY['main'].__globals__, {'launch_runtime': launcher}),
+        ):
+            self.assertEqual(ENTRY['main'](), 47)
+        loader.assert_called_once_with(self.plan_path, self.fixture.invocation)
+        parent.assert_called_once_with(self.proof_path, self.fixture.invocation, self.fixture.android, self.fixture.parent)
+        launcher.assert_called_once()
 
     def common_call(self, *, prepare: mock.Mock, busy: bool = False,
                     cleanup: list[str] | None = None, engine_path: str | None = None,

@@ -52760,7 +52760,7 @@
  {
   "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-12",
   "target": "linux/scripts/local-proof/runtime_launch_profile.py",
-  "find": "assert context.name.endswith('-amd64'), 'Native Android context must retain the runtime architecture suffix'",
+  "find": "assert context.name.endswith(suffix), 'Native Android context must retain the runtime architecture suffix'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
@@ -53000,7 +53000,7 @@
  {
   "id": "compiler-llvm-tools.runtime-native-root",
   "target": "linux/scripts/local-proof/runtime_launch_profile.py",
-  "find": "str(context).removesuffix('-amd64')",
+  "find": "str(context).removesuffix(suffix)",
   "replace": "str(context)",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
@@ -53008,8 +53008,8 @@
  {
   "id": "compiler-llvm-tools.runtime-android-pin",
   "target": "linux/scripts/local-proof/runtime_launch_profile.py",
-  "find": "'RUNTIME_ANDROID_PIN_amd64=' + reference",
-  "replace": "'RUNTIME_ANDROID_PIN_amd64=mutable'",
+  "find": "'RUNTIME_ANDROID_PIN_' + arch + '=' + reference",
+  "replace": "'RUNTIME_ANDROID_PIN_' + arch + '=mutable'",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
  },
@@ -53160,8 +53160,8 @@
  {
   "id": "compiler-llvm-tools.runtime-cli-parent",
   "target": "linux/scripts/local-proof/launch-normal-runtime.py",
-  "find": "android_layout(args.parent_proof, args.android_invocation, invocation, media)",
-  "replace": "android_layout(args.output, args.android_invocation, invocation, media)",
+  "find": "parent, context = android_layout(args.parent_proof, args.android_invocation, invocation, media)",
+  "replace": "parent, context = android_layout(args.output, args.android_invocation, invocation, media)",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
  },
@@ -54280,7 +54280,7 @@
  {
   "id": "disk-guard.runtime-storage-launch-5",
   "target": "linux/scripts/runtime_storage_guard.py",
-  "find": "    require(arch in {'amd64', 'arm64', 'riscv64'}, 'Supported ordinary runtime architecture required')\n",
+  "find": "    require(isinstance(variant, str) and (variant, arch) in LANES, 'Supported ordinary runtime lane required')\n",
   "replace": "    pass\n",
   "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
   "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
@@ -54288,7 +54288,7 @@
  {
   "id": "disk-guard.runtime-storage-launch-6",
   "target": "linux/scripts/runtime_storage_guard.py",
-  "find": "    require(re.fullmatch(r'webgpu-normal-runtime-' + arch + r'-[0-9-]+\\.service', runtime['unit']), 'Ordinary runtime unit required')\n",
+  "find": "    require(producer_unit('runtime', arch, variant).fullmatch(runtime['unit']), 'Ordinary runtime unit required')\n",
   "replace": "    pass\n",
   "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
   "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
@@ -55192,24 +55192,24 @@
  {
   "id": "compiler-llvm-tools.runtime-rocm-starting-reserve",
   "target": "linux/scripts/local-proof/runtime_launch_profile.py",
-  "find": "ROCM_RUNTIME_REQUIRED_BYTES = 300 * 1024**3",
-  "replace": "ROCM_RUNTIME_REQUIRED_BYTES = 180 * 1024**3",
+  "find": "RUNTIME_REQUIRED_BYTES = 300 * 1024**3",
+  "replace": "RUNTIME_REQUIRED_BYTES = 180 * 1024**3",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "The independent driver expectation must retain the stronger ROCm starting budget after the real serial-smoke import failure; no peak-space sufficiency claim."
  },
  {
   "id": "compiler-llvm-tools.runtime-rocm-preserves-larger-plan",
   "target": "linux/scripts/local-proof/runtime_launch_profile.py",
-  "find": "max(plan['required_bytes'], ROCM_RUNTIME_REQUIRED_BYTES)",
-  "replace": "min(plan['required_bytes'], ROCM_RUNTIME_REQUIRED_BYTES)",
+  "find": "max(plan['required_bytes'], RUNTIME_REQUIRED_BYTES)",
+  "replace": "min(plan['required_bytes'], RUNTIME_REQUIRED_BYTES)",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "A larger independent parent budget must survive the runtime minimum; fixtures do not authenticate parent receipts or guarantee physical capacity."
  },
  {
   "id": "compiler-llvm-tools.runtime-rocm-reserve-delegation",
   "target": "linux/scripts/local-proof/runtime_launch_profile.py",
-  "find": "return launch_build(source, output, unit, images[-1], 'amd64', required_bytes, record, environment, driver,",
-  "replace": "return launch_build(source, output, unit, images[-1], 'amd64', plan['required_bytes'], record, environment, driver,",
+  "find": "return launch_build(source, output, unit, images[-1], arch, required_bytes, record, environment, driver,",
+  "replace": "return launch_build(source, output, unit, images[-1], arch, plan['required_bytes'], record, environment, driver,",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "The real shared transport must receive the selected stronger runtime budget, not merely compute it for display; no actual build is performed."
  },
@@ -61182,5 +61182,77 @@
   "replace": "'default_media_launch.py',",
   "test": "bash linux/scripts/tests/test-default-handoff.sh",
   "why": "Default workers bind the shared profile bytes."
+ },
+ {
+  "id": "compiler-llvm-tools.default-runtime-cli",
+  "target": "linux/scripts/local-proof/launch-normal-runtime.py",
+  "find": "if args.variant == 'default':",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The explicit default CLI must load and consume the same-target default Android proof."
+ },
+ {
+  "id": "compiler-llvm-tools.default-runtime-wheel-export",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'PYTORCH_EXTRA=pytorch-cpu', 'RUNTIME_WHEELS_SOURCE=export'",
+  "replace": "'PYTORCH_EXTRA=pytorch-cpu', 'RUNTIME_WHEELS_SOURCE=image'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The reviewed default lane uses the canonical sealed wheelhouse export."
+ },
+ {
+  "id": "compiler-llvm-tools.default-runtime-host-platform",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'CROSS_BUILD_PLATFORM=linux/amd64', 'CROSS_BUILDKIT_KEEP_GB=120'",
+  "replace": "'CROSS_BUILD_PLATFORM=linux/arm64', 'CROSS_BUILDKIT_KEEP_GB=120'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Default Android remains an amd64 build-host image even for a foreign runtime target."
+ },
+ {
+  "id": "compiler-llvm-tools.default-runtime-export-platform",
+  "target": "linux/scripts/lib-runtime-wheels.sh",
+  "find": "    platform=\"$(runtime_artifact_platform \"${arch}\")\" || return 1\n",
+  "replace": "    platform=\"linux/${arch}\"\n",
+  "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+  "why": "A local OCI wheel-only build resolves the Android platform while the wrapper keeps its own target."
+ },
+ {
+  "id": "compiler-llvm-tools.default-runtime-final-parent",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    default_parent_binding(invocation, android, proof, android_path)\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Local FINAL retains the declared default Android provenance and checked scope."
+ },
+ {
+  "id": "compiler-llvm-tools.default-runtime-final-target",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "default_status('android', arch)",
+  "replace": "default_status('android', 'amd64')",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "An ARM64 local runtime must not consume an amd64-scoped Android receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.default-runtime-worker",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'default_handoff_profile.py', 'default_media_launch.py',",
+  "replace": "'default_media_launch.py',",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The default host launcher binds the checked default handoff module."
+ },
+ {
+  "id": "compiler-llvm-tools.default-runtime-final-normalization",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "        android = {**android, 'variant': ''}\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Default Android invocation scope must map to the canonical default runtime variant."
+ },
+ {
+  "id": "compiler-llvm-tools.default-runtime-scope-android",
+  "target": "linux/scripts/local-proof/default_handoff_profile.py",
+  "find": "default_layout(proof_path, invocation_path, invocation, parent, 'android', 'Media')",
+  "replace": "default_layout(proof_path, invocation_path, invocation, parent, 'media', 'SDK')",
+  "test": "bash linux/scripts/tests/test-default-handoff.sh",
+  "why": "Default Android reader keeps the matching Media parent and the Android producer scope."
  }
 ]

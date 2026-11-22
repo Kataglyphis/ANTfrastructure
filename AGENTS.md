@@ -328,6 +328,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Test workers use the harness optional-function emitter; keep required definitions mandatory.
    Stream receipt suites carry `stream-receipt-fixture.sh`; keep their expected results independent of production code.
    Wheelhouse stderr fixtures pin child locale to C.UTF-8; retain both parent-locale controls and original receipt bytes.
+   Default runtime handoffs retain the exact Android/source receipt and 300-GiB admission. A local OCI wheel export selects the Android build-host platform; the wrapper keeps the target architecture. Local FINAL binds the same Android receipt and runtime worker closure.
    Named mutation-check suites carry their case-executor companion; failed controls and invalid recipes remain failed results.
    Shared mirror enumeration preserves source-file order and original shell-option behavior; artifact and image probes retain caller failure policies.
    ORT and GenAI provenance checks share hashing and chain-byte membership; keep their distinct archive and exemption policies.

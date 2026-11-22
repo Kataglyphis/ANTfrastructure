@@ -22,6 +22,7 @@ MAIN = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MAIN)
 LOCAL = MAIN.local_module()
 RUNTIME = LOCAL.local_api('runtime_launch_profile')
+SEED = LOCAL.local_api('native_oci_seed')
 NAMES = ['AccelerANTgine', 'OxidANT', 'ANThology', 'OmniAccelerANT', 'jotrockenmitlocken', 'WebDavClient']
 
 
@@ -132,7 +133,7 @@ class LocalFixture:
         self.invocation_path.write_text(json.dumps(self.invocation))
 
     def api(self, name: str) -> Any:
-        return {'runtime_launch_profile':RUNTIME, 'normal_stage_launch':types.SimpleNamespace(full_source=self.full_source),
+        return {'runtime_launch_profile':RUNTIME, 'native_oci_seed':SEED, 'normal_stage_launch':types.SimpleNamespace(full_source=self.full_source),
                 'gpu_handoff_profile':types.SimpleNamespace(terminal=self.terminal)}[name]
 
     def dispatch(self, command: list[str], **options: Any) -> subprocess.CompletedProcess[str]:

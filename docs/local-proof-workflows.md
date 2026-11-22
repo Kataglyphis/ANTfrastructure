@@ -383,6 +383,9 @@ separate required steps.
 
 ## Ordinary local runtime
 
+The [default runtime workflow](#default-runtime-and-local-final) covers amd64,
+arm64 and riscv64.
+
 The explicit ROCm amd64 host profile uses `launch-normal-runtime.py
 --compiler-plan PLAN --android-invocation ANDROID_INVOCATION --parent-proof
 STOPPED_ANDROID_PROOF --output FRESH_OUTPUT --unit
@@ -467,6 +470,36 @@ finished consumer/provider-profile requirements remain separate required work.
 An explicit `--serial-smoke` on the host launcher adds only `RUNTIME_SMOKE_OVERLAP=0`: the same mandatory package smoke runs before the wrapper, with its raw failure still fatal. The default retains ordinary overlap. This is a host scheduling choice, not a new production source, a smoke bypass or a changed consumer contract; record it alongside the original source/full-preflight, Android, app, worker and cleanup bindings.
 
 Actual Runtime5 completed base (244 s, status 0) and package import (938 s, status 0). Its concurrent smoke and wrapper both failed after 310 s with ENOSPC while materializing separate native contexts. The guardian's third live cleanup had already reclaimed 63,756,185,600 bytes and allowed package import to finish; it did not establish sufficient space for both later contexts. Retain the complete raw failures and six cleanup receipts. Before a fresh attempt, qualify the scheduling choice and remeasure headroom; passing the ordinary admission floor alone does not establish a full runtime.
+
+## Default runtime and local FINAL
+
+After the [default Android handoff](#default-media-and-android-handoffs) is
+sealed, pass its original invocation and stopped OCI receipt to
+`launch-normal-runtime.py`. Use the target as the suffix of the Android
+context name and in the runtime unit below.
+
+```bash
+python3 linux/scripts/local-proof/launch-normal-runtime.py --variant default \
+  --compiler-plan PLAN --android-invocation ANDROID_INVOCATION \
+  --parent-proof STOPPED_ANDROID_PROOF --output FRESH_OUTPUT \
+  --unit webgpu-normal-runtime-default-arm64-YYYYMMDD-N.service \
+  --image-prefix ant-local/webgpu-NAME:runtime-default-YYYYMMDD-N \
+  --app-ref EXACT_40_HEX_COMMIT --serial-smoke
+```
+
+The reader rehashes the Android export, matches the Media descriptors and
+diffIDs, and checks the baked target in the original Linux amd64 image. The
+runtime exports that exact Android wheelhouse on the build-host platform.
+Base, package, smoke and wrapper consume the selected target. The default lane
+uses CPU Torch with both accelerator flags off. Start requires at least 300 GiB
+available and retains any stricter plan requirement. Use a clean committed host
+toolkit and keep the existing local alias, gate and ownership checks.
+
+After the runtime build and invocation-owned cleanup pass, run the ordinary
+[six-consumer local FINAL](#local-final-consumer-acceptance) with the runtime
+invocation and exact wrapper manifest. It checks the Android target, original
+receipt hashes, same complete source proof, and the runtime's worker hashes and
+command. The focused tests use synthetic OCI data and command doubles.
 
 ## Local FINAL consumer acceptance
 

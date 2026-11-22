@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-22 — continue default Linux Android through runtime and local FINAL
+
+- Launch the existing runtime chain for default amd64, arm64 and riscv64 from
+  same-target stopped Android receipts. Local wheel exports use the artifact's
+  build-host platform and the runtime build uses the target platform.
+- Retain exact parent/source bindings through the six-consumer local FINAL
+  entry and use the same 300-GiB runtime admission. Synthetic transport and
+  receipt tests exercise these paths. Fresh builds and acceptance are pending.
+
 ## 2026-11-22 — continue default Linux Media through native Android handoffs
 
 - Extend the existing OCI export and ordinary Android launch entries to the

@@ -99,10 +99,19 @@ def load_default_media(plan_path: Path, invocation_path: Path) -> tuple[Json, Js
     return plan, invocation, parent
 
 
-def default_media_layout(proof_path: Path, invocation_path: Path, invocation: Json, parent: Json) -> tuple[Json, Path]:
+def default_layout(proof_path: Path, invocation_path: Path, invocation: Json, parent: Json,
+                   stage: str, parent_kind: str) -> tuple[Json, Path]:
     arch = invocation['target_arch']
-    return native_stage_layout(proof_path, invocation_path, invocation, parent, 'Media', 'SDK',
-                               default_status('media', arch), actual_image, validate_config=partial(default_image_config, arch=arch))
+    return native_stage_layout(proof_path, invocation_path, invocation, parent, stage.capitalize(), parent_kind,
+                               default_status(stage, arch), actual_image, validate_config=partial(default_image_config, arch=arch))
+
+
+def default_media_layout(proof_path: Path, invocation_path: Path, invocation: Json, parent: Json) -> tuple[Json, Path]:
+    return default_layout(proof_path, invocation_path, invocation, parent, 'media', 'SDK')
+
+
+def default_android_layout(proof_path: Path, invocation_path: Path, invocation: Json, parent: Json) -> tuple[Json, Path]:
+    return default_layout(proof_path, invocation_path, invocation, parent, 'android', 'Media')
 
 
 def load_default_android(plan_path: Path, invocation_path: Path) -> tuple[Json, Json, Json]:

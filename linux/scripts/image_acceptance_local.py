@@ -82,6 +82,12 @@ def command_binding(invocation: dict[str, Any], android: dict[str, Any], platfor
              'NERDCTL_BIN':text(invocation, 'engine_wrapper'), 'ANT_RUNTIME_ENGINE':text(invocation, 'engine'),
              'ANT_RUNTIME_OWNER_LABEL':'org.kataglyphis.normal-runtime', 'ANT_RUNTIME_RUN_ID':text(invocation, 'run_id', re.compile(r'[0-9a-f]{32}\Z')),
              'CROSS_RUN_ID':text(invocation, 'expected_runtime_run_id', re.compile(r'runtime-[0-9a-f]{32}\Z')), 'APP_REF':text(invocation, 'app_ref', SHA)}
+    if invocation.get('default_android_ancestry_verified') is True:
+        context = text(invocation, 'parent_context')
+        require(context.endswith('-' + arch), 'Default Android context target differs')
+        flags.update(CROSS_BUILD_PLATFORM='linux/amd64', RUNTIME_WHEELS_SOURCE='export',
+                     ARTIFACT_CONTEXT_ROOT=context.removesuffix('-' + arch),
+                     CROSS_IMAGE_PRUNE='0', PRUNE_DUP_CACHEMOUNTS='0')
     for name, expected_value in flags.items():
         require([value for value in command if value.startswith(name + '=')] == [name + '=' + expected_value], 'Local runtime gate or pin differs: ' + name)
     require('--push' not in command and '--gates-only' not in command, 'Actual unpublished local runtime required')
@@ -126,7 +132,9 @@ def host_binding(invocation: dict[str, Any]) -> None:
     host = profiles[0].parents[3]
     require(output(['git', '-C', str(host), 'rev-parse', 'HEAD']).strip() == text(invocation, 'host_tools_revision', SHA), 'Runtime host source revision differs')
     require(not output(['git', '-C', str(host), 'status', '--porcelain']).strip(), 'Runtime host source changed')
-    workers = local_api('runtime_launch_profile').runtime_worker_files(host)
+    runtime = local_api('runtime_launch_profile')
+    workers = (runtime.runtime_worker_files(host, default=True) if invocation.get('default_android_ancestry_verified') is True
+               else runtime.runtime_worker_files(host))
     require(invocation.get('selected_host_workers_sha256') == {str(path): fingerprint(path) for path in workers}, 'Runtime worker closure changed')
     require(not output(['git', '-C', str(wrapper.parents[2]), 'status', '--porcelain']).strip(), 'Runtime wrapper source changed')
     for path in workers:
@@ -154,7 +162,10 @@ def android_command(android: dict[str, Any], platform: str) -> Path:
 
 
 def android_input(android: dict[str, Any], platform: str) -> dict[str, Any]:
-    if 'stage' in android:
+    if android.get('variant') == 'default':
+        require(android.get('stage') == 'android', 'Default Android stage differs')
+        android = {**android, 'variant': ''}
+    elif 'stage' in android:
         return android
     source = android_command(android, platform)
     require(type(android.get('launch_status')) is int and android['launch_status'] == 0 and android.get('publication') is False
@@ -168,10 +179,32 @@ def android_input(android: dict[str, Any], platform: str) -> dict[str, Any]:
     return {**android, 'stage': 'android'}
 
 
+def default_parent_binding(invocation: dict[str, Any], android: dict[str, Any], proof: dict[str, Any],
+                           android_path: Path) -> None:
+    default_android = android.get('variant') == 'default'
+    require(default_android == (invocation.get('default_android_ancestry_verified') is True), 'Default Android ancestry scope differs')
+    if not default_android:
+        return
+    for key in ('source_revision', 'source_full_preflight_proof', 'source_full_preflight_sha256'):
+        require(android.get(key) == invocation.get(key), 'Default runtime source differs from Android: ' + key)
+    arch = invocation['target_arch']
+    status = local_api('native_oci_seed').default_status('android', arch)
+    require(proof.get('status') == status and proof.get('Android_invocation') == str(android_path.resolve())
+            and proof.get('Android_invocation_sha256') == invocation['Android_invocation_sha256'], 'Default Android receipt scope differs')
+    require(proof.get('index_sha256') == text(invocation, 'parent_OCI_index_sha256', HASH)
+            and proof.get('context') == text(invocation, 'parent_context')
+            and proof.get('matched_Media_layers_and_diffIDs') == invocation['Media_layers_matched']
+            and proof.get('layers') == invocation['Android_layers_rehashed'], 'Default Android ancestry differs')
+    require(proof.get('export_transport') == {'producer_status': 0, 'extractor_status': 0}
+            and proof.get('parent_layer_reuse_verified') is True
+            and proof.get('all_native_blob_sizes_and_sha256_verified') is True, 'Default Android export proof is incomplete')
+
+
 def parent_binding(invocation: dict[str, Any], platform: str) -> tuple[dict[str, Any], str]:
     android_path, proof_path = Path(text(invocation, 'Android_invocation')), Path(text(invocation, 'parent_OCI_proof'))
     require(fingerprint(android_path) == text(invocation, 'Android_invocation_sha256', HASH) and fingerprint(proof_path) == text(invocation, 'parent_OCI_proof_sha256', HASH), 'Original Android evidence changed')
     android, proof = read_object(android_path), read_object(proof_path)
+    default_parent_binding(invocation, android, proof, android_path)
     android = android_input(android, platform)
     require(android.get('stage') == 'android' and android.get('target_arch') == platform.removeprefix('linux/') and android.get('variant') == invocation['variant'], 'Original Android lane differs')
     require(android.get('source_revision') == proof.get('source_revision') == text(invocation, 'parent_source_revision', SHA), 'Original Android source differs')

@@ -141,6 +141,11 @@ class DefaultHandoffTests(unittest.TestCase):
         verified, verified_path, _ = SEED['parent_layout'](args.context.with_suffix('.proof-stopped.json'))
         self.assertEqual(verified, stopped)
         self.assertEqual(verified_path, args.context)
+        actual = {'image': android['image'], 'manifest': child['manifest'], 'config': child['config']}
+        with mock.patch.object(profile, 'actual_image', return_value=actual) as inspect:
+            self.assertEqual(profile.default_android_layout(args.context.with_suffix('.proof-stopped.json'), path, android, parent),
+                             (stopped, args.context))
+        inspect.assert_called_once_with(android)
 
     def test_default_media_refuses_changed_identity_environment_and_flags(self) -> None:
         path, media, sdk, parent = self.selected_media('arm64')
