@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-22 — verify packaged image source originals byte for byte
+
+- Add a shared finished-file checker for staged original trees and their original manifest, preserving exact bytes, selected scope and raw verifier failures.
+- Keep empty sources forbidden by default; allow explicitly selected empty members and forward that permission through native AppImage extraction only for recorded source patches.
+- Share Flatpak's private import/checkout between text and binary checks; the fixture declares its actual defaults and omits unused controls. Share exact member-name validation and drive empty-source CLI cases through one Python fixture. Preserve default ZIP/TAR/DEB/MSI verdicts and native architecture/path checks.
+- Add synthetic archive, real DEB, controlled native-extraction and conditional real Flatpak controls. Actual rebuilt images and application packages, complete binary/source licences and GPU inference remain separate requirements.
+
 ## 2026-11-22 — transport selected image source originals
 
 - Add a reusable consumer stager for the reviewed GCC and GStreamer original trees, retaining exact notices, source records, working context and patches. Validate selected inputs before fresh output allocation.

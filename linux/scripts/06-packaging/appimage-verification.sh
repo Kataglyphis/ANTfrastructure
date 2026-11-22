@@ -40,14 +40,20 @@ appimage_create_work() {
 }
 
 appimage_verify_file() {
-  local verifier="$1" entry expected
+  local verifier="$1" entry expected allow_empty=0
+  local -a empty_args=()
   shift
+  if [ "${1:-}" = --allow-empty-source ]; then
+    allow_empty=1
+    shift
+  fi
   appimage_require_args "$#" 4 "$0" 'APPIMAGE ARCH ENTRY SOURCE' || return $?
   appimage_init "$1" "$2" || return $?
   entry="$3"
   expected="$(realpath -e -- "$4")" || return $?
   appimage_validate_path "$entry" 'AppImage entry' || return $?
   appimage_require_native "$2" || return $?
+  if [ "$allow_empty" -eq 1 ]; then empty_args=(--allow-empty "$entry"); fi
   appimage_create_work || return $?
   (
     cd "$work" || exit $?
@@ -56,7 +62,7 @@ appimage_verify_file() {
       printf 'AppImage extraction root is missing or linked\n' >&2
       exit 1
     fi
-    python3 "$verifier" squashfs-root --require "${entry}=${expected}"
+    python3 "$verifier" squashfs-root --require "${entry}=${expected}" "${empty_args[@]}"
   ) || return $?
   rm -rf -- "$work" || return $?
   trap - EXIT

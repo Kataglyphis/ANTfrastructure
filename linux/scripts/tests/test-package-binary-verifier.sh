@@ -28,6 +28,10 @@ t_assert_fails python3 -I "$SCRIPT" "$work/symlink.zip" --require "app/onnxrunti
 t_assert_fails python3 -I "$SCRIPT" "$work/special.zip" --require "app/onnxruntime_providers_cuda.dll=$work/provider.dll"
 t_assert_fails python3 -I "$SCRIPT" "$work/unsafe.zip" --require "app/onnxruntime_providers_cuda.dll=$work/provider.dll"
 
+t_case 'empty-source permissions are exact, selected and explicit'
+python3 -B "$TESTS_DIR/package_binary_empty_tests.py" "$SCRIPT" "$work"
+t_assert_eq 0 "$?" 'all empty-source CLI controls pass'
+
 t_case 'MSI media mapping selects one embedded cabinet and streams its exact member'
 mkdir -p "$work/tools"
 cp "$TESTS_DIR/package-msi-7z-fixture.sh" "$work/tools/7z"

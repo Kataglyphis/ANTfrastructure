@@ -19,4 +19,6 @@ python3 -B "${TESTS_DIR}/gstreamer_notice_tests.py" "${SUBJECT}" "${tree}"
 t_assert_eq 0 "$?" 'all source notice staging controls pass'
 python3 -B "${TESTS_DIR}/image_source_original_tests.py" "${SUBJECT}" "${tree}"
 t_assert_eq 0 "$?" 'all image source-original transport controls pass'
+python3 -B "${TESTS_DIR}/image_source_package_tests.py" "${SUBJECT}" "${tree}"
+t_assert_eq 0 "$?" 'all finished source-original package controls pass'
 t_summary

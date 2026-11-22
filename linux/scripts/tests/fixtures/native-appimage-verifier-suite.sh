@@ -35,6 +35,11 @@ if [ "$kind" = binary ]; then
   t_case 'text normalization cannot excuse different binary bytes'
   printf '\177ELF\n\000\377original\n' > "$work/normalized"
   t_assert_fails bash "$script" "$work/appimage" "$arch" "$EXPECTED_ENTRY" "$work/normalized"
+  t_case 'an empty selected original stays opt-in and still requires exact delivered bytes'
+  : > "$work/empty"
+  EXPECTED_FILE="$work/empty" t_assert_ok bash "$script" --allow-empty-source "$work/appimage" "$arch" "$EXPECTED_ENTRY" "$work/empty"
+  EXPECTED_FILE="$work/empty" t_assert_fails bash "$script" "$work/appimage" "$arch" "$EXPECTED_ENTRY" "$work/empty"
+  EXPECTED_FILE="$work/empty" APPIMAGE_FIXTURE=wrong t_assert_fails bash "$script" --allow-empty-source "$work/appimage" "$arch" "$EXPECTED_ENTRY" "$work/empty"
 fi
 t_case 'native architecture and selected-path checks run before extraction'
 if [ "$arch" = amd64 ]; then other=arm64; else other=amd64; fi

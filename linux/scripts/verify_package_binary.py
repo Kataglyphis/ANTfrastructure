@@ -8,6 +8,7 @@ cabinet and File-table identifier returned by Get-MsiCabinetPattern. The check
 proves regular-file byte equality, not source provenance, executable mode, loader
 behavior or the integrity of unselected members. TAR permits one conventional
 leading './' but rejects duplicate or ambiguous selected paths.
+Empty sources require --allow-empty for their exact selected member; Flatpak uses a private checkout.
 """
 # PACKAGE_BINARY_WHEEL_API=1
 
@@ -33,6 +34,7 @@ safe_name = _shared["safe_name"]
 sevenzip_member_names = _shared["sevenzip_member_names"]
 msi_cabinet_checks = _shared["msi_cabinet_checks"]
 checked_deb_payload = _shared["checked_deb_payload"]
+PACKAGE_BINARY_EMPTY_API = 1
 
 
 def digest(stream: IO[bytes]) -> tuple[str, int]:
@@ -58,45 +60,52 @@ def exact_name(name: str) -> str:
     return result
 
 
-def load_rules(items: list[str], *, msi: bool) -> dict[str, tuple[str, int]]:
+def selected_member_name(name: str, *, msi: bool) -> str:
+    if not msi:
+        return exact_name(name)
+    cabinet, sep, member = name.partition("::")
+    if not sep or "::" in member:
+        raise ValueError("MSI members require cabinet.cab::file-id")
+    if "/" in cabinet or "\\" in cabinet or not cabinet.lower().endswith(".cab"):
+        raise ValueError("MSI cabinet must be an embedded cabinet basename")
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", member):
+        raise ValueError("MSI member must be a File-table identifier")
+    return f"{exact_name(cabinet)}::{exact_name(member)}"
+
+
+def load_rules(
+    items: list[str], *, msi: bool, allow_empty: set[str] | None = None
+) -> dict[str, tuple[str, int]]:
     rules: dict[str, tuple[str, int]] = {}
     for item in items:
         name, separator, source = item.partition("=")
         if not separator or not name or not source:
             raise ValueError(f"invalid rule: {item!r}; expected MEMBER=SOURCE")
-        if msi:
-            cabinet, sep, member = name.partition("::")
-            if not sep or "::" in member:
-                raise ValueError("MSI members require cabinet.cab::file-id")
-            if (
-                "/" in cabinet
-                or "\\" in cabinet
-                or not cabinet.lower().endswith(".cab")
-            ):
-                raise ValueError("MSI cabinet must be an embedded cabinet basename")
-            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", member):
-                raise ValueError("MSI member must be a File-table identifier")
-            name = f"{exact_name(cabinet)}::{exact_name(member)}"
-        else:
-            name = exact_name(name)
+        name = selected_member_name(name, msi=msi)
         if name.casefold() in {existing.casefold() for existing in rules}:
             raise ValueError(f"duplicate package member rule: {name}")
         with Path(source).open("rb") as stream:
             expected = digest(stream)
-        if not expected[1]:
+        if not expected[1] and name not in (allow_empty or set()):
             raise ValueError(f"empty binary source: {source}")
         rules[name] = expected
+    if allow_empty and not allow_empty <= rules.keys():
+        raise ValueError("empty-source allowance names an unselected member")
     return rules
 
 
 def selected_name(raw: str, names: dict[str, str]) -> str | None:
-    canonical = "/".join(part for part in safe_name(raw).split("/") if part not in ("", "."))
+    canonical = "/".join(
+        part for part in safe_name(raw).split("/") if part not in ("", ".")
+    )
     return names.get(canonical.casefold())
 
 
 def require_member_count(name: str, count: int) -> None:
     if count != 1:
-        raise ValueError(f"package member {name!r} matched {count} entries; expected one")
+        raise ValueError(
+            f"package member {name!r} matched {count} entries; expected one"
+        )
 
 
 def require_regular_member(name: str, actual_name: str, regular: bool) -> None:
@@ -106,7 +115,9 @@ def require_regular_member(name: str, actual_name: str, regular: bool) -> None:
         raise ValueError(f"package member is not a regular file: {name}")
 
 
-def require_binary(actual: tuple[str, int], expected: tuple[str, int], name: str) -> None:
+def require_binary(
+    actual: tuple[str, int], expected: tuple[str, int], name: str
+) -> None:
     if actual != expected:
         raise ValueError(f"package binary differs from source: {name}")
 
@@ -123,7 +134,11 @@ def check_zip(path: Path, rules: dict[str, tuple[str, int]]) -> None:
             require_member_count(name, len(found))
             entry = found[0]
             mode_type = stat.S_IFMT(entry.external_attr >> 16)
-            require_regular_member(name, entry.filename, not entry.is_dir() and mode_type in (0, stat.S_IFREG))
+            require_regular_member(
+                name,
+                entry.filename,
+                not entry.is_dir() and mode_type in (0, stat.S_IFREG),
+            )
             with archive.open(entry) as stream:
                 require_binary(digest(stream), rules[name], name)
 
@@ -140,7 +155,11 @@ def check_directory(path: Path, rules: dict[str, tuple[str, int]]) -> None:
     for name, found in entries.items():
         require_member_count(name, len(found))
         entry = found[0]
-        require_regular_member(name, entry.relative_to(path).as_posix(), stat.S_ISREG(entry.lstat().st_mode))
+        require_regular_member(
+            name,
+            entry.relative_to(path).as_posix(),
+            stat.S_ISREG(entry.lstat().st_mode),
+        )
         with entry.open("rb") as stream:
             require_binary(digest(stream), rules[name], name)
 
@@ -225,10 +244,19 @@ def main() -> int:
     parser.add_argument(
         "--require", action="append", required=True, metavar="MEMBER=SOURCE"
     )
+    parser.add_argument(
+        "--allow-empty",
+        action="append",
+        default=[],
+        metavar="MEMBER",
+        help="permit an empty source only for this exact selected member",
+    )
     args = parser.parse_args()
     try:
+        if len(args.allow_empty) != len(set(args.allow_empty)):
+            raise ValueError("duplicate empty-source allowance")
         msi = args.package.suffix.lower() == ".msi"
-        rules = load_rules(args.require, msi=msi)
+        rules = load_rules(args.require, msi=msi, allow_empty=set(args.allow_empty))
         if args.package.is_dir():
             check_directory(args.package, rules)
         elif msi:
@@ -237,11 +265,16 @@ def main() -> int:
             check_zip(args.package, rules)
         elif args.package.suffix.lower() == ".deb":
             checked_deb_payload(args.package, lambda stream: check_tar(stream, rules))
+        elif args.package.suffix.lower() == ".flatpak":
+            with _shared["flatpak_checkout"](args.package) as checkout:
+                check_directory(checkout, rules)
         elif tarfile.is_tarfile(args.package):
             with args.package.open("rb") as stream:
                 check_tar(stream, rules)
         else:
-            raise ValueError("package must be a directory, TAR, DEB, ZIP, MSIX, wheel or MSI")
+            raise ValueError(
+                "package must be a directory, TAR, DEB, ZIP, MSIX, wheel or MSI"
+            )
     except (
         OSError,
         ValueError,

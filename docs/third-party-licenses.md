@@ -102,9 +102,28 @@ with source, preserve complete corresponding sources or collect all native and
 Cargo dependencies. The consumer selects components for its actual payload and
 checks every selected original in its finished artifact. Use the shared exact-byte
 package verifier for raw originals; the text licence verifier normalizes text.
-An empty `source.patch` must be checked by the consumer's archive/tree proof because
-the generic binary verifier deliberately rejects empty source files. A passed
-transport receipt never certifies complete binary, licence or source closure.
+`verify-image-source-originals.py` validates that staged record, every selected
+file's hash/size and the exact staged tree, then compares the selected raw bytes
+and the record itself with the finished artifact. Supply `--originals DIR` and
+`--prefix INSTALLED/ORIGINALS/PATH`; `--appimage-arch ARCH` uses the shared native
+extractor without 7-Zip. The generic byte reader handles directory, TAR, DEB,
+ZIP/MSIX/wheel, MSI and Flatpak inputs; Flatpak shares the licence reader's private
+OSTree import/checkout and requires both existing host tools. Import is not install.
+
+The generic byte reader still rejects empty source files by default. Its explicit
+`--allow-empty EXACT_MEMBER` applies only to selected exact names; duplicate or
+unselected allowances refuse. The native binary AppImage wrapper accepts the
+prefix option `--allow-empty-source` for its one selected member. The source-original
+checker emits these permissions only for recorded empty GStreamer `source.patch`
+files; other selected originals must remain nonempty. Missing or changed empty
+members still fail, and child-verifier failures remain fatal with their status.
+
+Keep the source-original checker beside its stager, both Python package verifiers
+and their shared native AppImage/platform companions. Synthetic ZIP/TAR/DEB and
+controlled AppImage/Flatpak transports prove selected bytes and failures, not an
+actual application build. The existing conditional Flatpak test also exercises a
+real bundle when both tools are installed. A passed transport or finished-file
+receipt never certifies complete binary, licence or corresponding-source closure.
 
 ## Maintaining this list
 

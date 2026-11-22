@@ -12,7 +12,7 @@ def create_binary_archives(root: pathlib.Path) -> bytes:
     (root / 'wrong.dll').write_bytes(data[:-1] + bytes([data[-1] ^ 1]))
     (root / 'empty.dll').write_bytes(b'')
     for name in ('app.zip', 'app.msix', 'app.whl'):
-        fixture.write_zip(root / name, [('app/onnxruntime_providers_cuda.dll', data), ('app/shared.dll', b'shared\r\n')], zipfile.ZIP_DEFLATED)
+        fixture.write_zip(root / name, [('app/onnxruntime_providers_cuda.dll', data), ('app/shared.dll', b'shared\r\n'), ('app/source.patch', b'')], zipfile.ZIP_DEFLATED)
     (root / 'shared.dll').write_bytes(b'shared\r\n')
     with zipfile.ZipFile(root / 'duplicate.zip', 'w') as archive:
         archive.writestr('app/onnxruntime_providers_cuda.dll', data)

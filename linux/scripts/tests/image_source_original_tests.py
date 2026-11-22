@@ -16,7 +16,7 @@ from pathlib import Path
 from gstreamer_notice_tests import SourceNoticeFixture
 
 
-class ImageOriginalTests(SourceNoticeFixture):
+class ImageOriginalFixture(SourceNoticeFixture):
     def setUp(self) -> None:
         super().setUp()
         self.image = self.root / "image prefix"
@@ -85,6 +85,8 @@ class ImageOriginalTests(SourceNoticeFixture):
         record[field] = value
         path.write_text(json.dumps(record))
 
+
+class ImageOriginalTests(ImageOriginalFixture):
     def test_exact_transport_and_empty_patch(self) -> None:
         result = self.transport()
         self.assertEqual(result.returncode, 0, result.stderr)

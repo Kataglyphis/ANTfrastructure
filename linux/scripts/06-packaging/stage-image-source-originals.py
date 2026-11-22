@@ -13,6 +13,8 @@ import stat
 from pathlib import Path
 from typing import Any
 
+IMAGE_SOURCE_ORIGINALS_API = 1
+
 GSTREAMER_CONTRACT = (
     Path(__file__).parents[1]
     / "03-media/build/gstreamer/common/stage-original-notices.py"

@@ -60206,5 +60206,189 @@
   "replace": "True",
   "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
   "why": "A changed read size must fail even when the regular-file metadata was initially valid."
+ },
+ {
+  "id": "package.image-source-originals-empty-default",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "if not expected[1] and name not in (allow_empty or set()):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-package-binary-verifier.sh",
+  "why": "An empty archive source still refuses without explicit exact-member permission."
+ },
+ {
+  "id": "package.image-source-originals-empty-specific",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "name not in (allow_empty or set())",
+  "replace": "not allow_empty",
+  "test": "bash linux/scripts/tests/test-package-binary-verifier.sh",
+  "why": "Permission for one selected member cannot permit another empty member."
+ },
+ {
+  "id": "package.image-source-originals-empty-selected",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "if allow_empty and not allow_empty <= rules.keys():",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-package-binary-verifier.sh",
+  "why": "An allowance cannot refer to a member outside the selected rule set."
+ },
+ {
+  "id": "package.image-source-originals-empty-duplicate",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "len(args.allow_empty) != len(set(args.allow_empty))",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-package-binary-verifier.sh",
+  "why": "Duplicate empty-source permissions are rejected before verification."
+ },
+ {
+  "id": "package.image-source-originals-flatpak-dispatch",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "elif args.package.suffix.lower() == \".flatpak\":",
+  "replace": "elif args.package.suffix.lower() == \".unused\":",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Exact Flatpak bytes use the shared private checkout rather than an unsupported fallback."
+ },
+ {
+  "id": "package.image-source-originals-native-empty-forward",
+  "target": "linux/scripts/06-packaging/appimage-verification.sh",
+  "find": "empty_args=(--allow-empty \"$entry\")",
+  "replace": "empty_args=()",
+  "test": "bash linux/scripts/tests/test-verify-native-appimage-binary.sh",
+  "why": "Native extraction retains explicit permission for the one selected empty member."
+ },
+ {
+  "id": "package.image-source-originals-required-api",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "_module.get(_api) != 1",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "An incompatible required companion is rejected before argument parsing."
+ },
+ {
+  "id": "package.image-source-originals-required-export",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "not callable(_module.get(_name))",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Required companion callables are validated even for help."
+ },
+ {
+  "id": "package.image-source-originals-record-identity",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "record.get(\"status\") == \"selected-image-source-originals-preserved\"",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "An unrelated record status cannot certify source-original transport."
+ },
+ {
+  "id": "package.image-source-originals-record-scope",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "record.get(\"binary_linkage_or_complete_license_source_closure_proven\") is False",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "A source-original record must retain its explicit limited scope."
+ },
+ {
+  "id": "package.image-source-originals-nonempty-record",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "isinstance(files, dict) and bool(files)",
+  "replace": "isinstance(files, dict)",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "A metadata-only package cannot satisfy a selected original payload proof."
+ },
+ {
+  "id": "package.image-source-originals-record-hash",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "expected == {\"sha256\": _originals[\"sha\"](data), \"bytes\": len(data)}",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Changing both staged and packaged bytes still fails the retained original-file record."
+ },
+ {
+  "id": "package.image-source-originals-record-byte-type",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "type(expected.get(\"bytes\")) is int",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Boolean byte counts cannot masquerade as an integer file-size record."
+ },
+ {
+  "id": "package.image-source-originals-empty-only-patch",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "allow_empty=patch",
+  "replace": "allow_empty=True",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Even a matching zero-size record cannot permit an empty GNU notice."
+ },
+ {
+  "id": "package.image-source-originals-patch-bound",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "max_bytes=8 * 1024 * 1024 if patch",
+  "replace": "max_bytes=16 * 1024 * 1024 if patch",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "A recorded and packaged oversized source patch still refuses before artifact verification."
+ },
+ {
+  "id": "package.image-source-originals-exact-input-tree",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "_originals[\"exact_tree\"](root, set(files) | {\"source-originals.json\"})",
+  "replace": "None",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Unlisted staged input files cannot be silently excluded from the selected proof."
+ },
+ {
+  "id": "package.image-source-originals-manifest-member",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "    rules.append(\n        (prefix + \"/source-originals.json\", root / \"source-originals.json\", False)\n    )",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "The original staging record itself must be read back from the artifact."
+ },
+ {
+  "id": "package.image-source-originals-native-all-members",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "native = Path(__file__).with_name(\"verify-native-appimage-binary.sh\")\n        for member, source, empty in rules:",
+  "replace": "native = Path(__file__).with_name(\"verify-native-appimage-binary.sh\")\n        for member, source, empty in rules[:1]:",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Native readback checks later empty-patch and record members as well as the first notice."
+ },
+ {
+  "id": "package.image-source-originals-archive-all-members",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "command = [sys.executable, \"-B\", str(BINARY), str(args.package)]\n        for member, source, empty in rules:",
+  "replace": "command = [sys.executable, \"-B\", str(BINARY), str(args.package)]\n        for member, source, empty in rules[:1]:",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Every selected archive member reaches the shared byte verifier."
+ },
+ {
+  "id": "package.image-source-originals-native-empty-permission",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "command.append(\"--allow-empty-source\")",
+  "replace": "None",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "The native reader receives the explicit empty-patch permission."
+ },
+ {
+  "id": "package.image-source-originals-archive-empty-permission",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "command.extend((\"--allow-empty\", member))",
+  "replace": "None",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "The generic reader receives the explicit permission for each recorded empty patch."
+ },
+ {
+  "id": "package.image-source-originals-native-raw-failure",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "            if result.returncode:\n                return result.returncode",
+  "replace": "            if result.returncode:\n                return 0",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "Native extraction or byte-verifier failure remains fatal with its raw status."
+ },
+ {
+  "id": "package.image-source-originals-archive-raw-failure",
+  "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
+  "find": "        if result.returncode:\n            return result.returncode",
+  "replace": "        if result.returncode:\n            return 0",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "why": "A failed shared archive verifier cannot become a green source-original receipt."
  }
 ]

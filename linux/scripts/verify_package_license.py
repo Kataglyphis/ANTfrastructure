@@ -24,7 +24,8 @@ import tarfile
 import tempfile
 import zipfile
 import zlib
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import IO, Protocol
 
@@ -238,8 +239,9 @@ def msi_entries(path: Path, rules: list[tuple[str, bytes]]) -> Iterator[tuple[st
             yield from msi_cabinet_entries(path, cabinet, Path(temporary) / f"{index}.cab", checks)
 
 
-def flatpak_entries(path: Path, rules: list[tuple[str, bytes]]) -> Iterator[tuple[str, bytes]]:
-    """Import into a private repository and inspect one checkout without installing it."""
+@contextmanager
+def flatpak_checkout(path: Path) -> Generator[Path]:
+    """Share one private import without treating import as installation or provenance."""
     with tempfile.TemporaryDirectory(prefix="package-licenses-") as temporary:
         temp = Path(temporary)
         repo = temp / "repo"
@@ -250,6 +252,11 @@ def flatpak_entries(path: Path, rules: list[tuple[str, bytes]]) -> Iterator[tupl
         if len(refs) != 1 or not refs[0].startswith("app/"):
             raise ValueError(f"expected one Flatpak application ref, found {refs!r}")
         subprocess.run(["ostree", "checkout", f"--repo={repo}", "--user-mode", refs[0], str(checkout)], check=True, capture_output=True)
+        yield checkout
+
+
+def flatpak_entries(path: Path, rules: list[tuple[str, bytes]]) -> Iterator[tuple[str, bytes]]:
+    with flatpak_checkout(path) as checkout:
         yield from directory_entries(checkout, rules)
 
 
