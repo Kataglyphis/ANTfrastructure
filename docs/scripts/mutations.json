@@ -60982,5 +60982,29 @@
   "replace": "\"${KATAGLYPHIS_PATCHELF:-patchelf}\" \"$@\" || true",
   "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
   "why": "Unselected targets retain the real patchelf failure status."
+ },
+ {
+  "id": "compiler-llvm-tools.opencv-cache-reader-phase",
+  "target": "linux/scripts/local-proof/cache_capture_profile.py",
+  "find": "    'opencv': 'bash /opt/scripts/03-media/build/opencv/build-opencv.sh ',\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "The original OpenCV Dockerfile RUN needs an explicit Media phase."
+ },
+ {
+  "id": "compiler-llvm-tools.opencv-cache-reader-component",
+  "target": "linux/scripts/local-proof/cache_capture_profile.py",
+  "find": "'opencv': 'bash /opt/scripts/03-media/build/opencv/build-opencv.sh '",
+  "replace": "'opencv': 'bash /opt/scripts/03-media/build/opencv/install-deps.sh '",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "The OpenCV build and dependency setup must remain distinct."
+ },
+ {
+  "id": "compiler-llvm-tools.opencv-cache-reader-drain-lifetime",
+  "target": "linux/scripts/local-proof/capture-live-sccache-log.py",
+  "find": "        assert drain == 'bash /opt/scripts/core/sccache-s3-level.sh drain', 'OpenCV requires the outer RUN through its final drain'",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "The child build and an unrelated tail cannot supply the outer drain lifetime."
  }
 ]

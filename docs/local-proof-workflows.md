@@ -473,14 +473,17 @@ It copies only CMakeCache.txt, build.ninja, CMakeFiles/rules.ninja and CMakeFile
 
 `replay-sccache-log-capture.py` reuses the bounded read-only unit transport with the current canonical `capture-live-sccache-log.py` and its `cache_capture_profile.py` companion. Both reader inputs are hashed in the invocation. The existing GCC, LLVM, Rust and Python phases retain their compiler unit names; `--phase migraphx` matches the actual normal `bash /opt/scripts/03-media/build/migraphx/build-image.sh` process and uses `webgpu-gpu<run>-migraphx-error-capture-<date>-<attempt>.service`.
 
-Media additionally supports `--phase ort-cpu`, `ort-gpu`, `ort-web` and `app-wheelhouse` with
+Media additionally supports `--phase ort-cpu`, `ort-gpu`, `ort-web`, `opencv` and `app-wheelhouse` with
 `webgpu-media<run>-<phase>-error-capture-<date>-<attempt>.service`. The first two
 match the actual outer `build-onnxruntime.sh --step cpu;` and `--step gpu;` RUNs;
 `ort-web` matches the actual `web-wasm-cache.sh;` build wrapper, excluding the
 separate verify-only call. `app-wheelhouse` matches the actual outer `build-app-wheelhouse.sh;` RUN, covering its IREE, Torch and final drain lifetime without claiming per-project counters. The terminating semicolon preserves the outer RUN's
 lifetime through its final drain; an inner child command alone refuses. Independent
 fixtures match the normal Dockerfile declarations and reject wrong phases/owners
-before allocating output. Media seals require both exact worker and profile hashes.
+before allocating output. `opencv` covers the `opencv` and `opencv-gst` RUNs. It requires
+the outer `build-opencv.sh` invocation followed by the final `sccache-s3-level.sh drain`.
+The inner OpenCV command and dependency setup are refused. Media seals require both
+exact worker and profile hashes.
 These profiles collect diagnostics only: the GPU step may skip NVIDIA compilation,
 and Wasm cache reuse or an empty log does not prove either flavor actually built.
 

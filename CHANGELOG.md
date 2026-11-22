@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-22 — retain live OpenCV cache diagnostics
+
+- Add an OpenCV Media phase to the shared read-only cache log reader. Require the
+  outer build command and its final cache drain before allocating evidence.
+- Test both Dockerfile RUNs and reject the inner build command, dependency setup
+  and a missing drain. The full OpenCV compiler-cache measurement remains open.
+
 ## 2026-11-22 — keep the shared Python registration protocol valid under dead-code grading
 
 - Mark the unused positional-only library parameter in the runtime-binding protocol explicitly
