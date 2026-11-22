@@ -52640,7 +52640,7 @@
  {
   "id": "compiler-llvm-tools.android-handoff-worker-closure",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "if kind == 'android':",
+  "find": "if kind in {'android', 'nvidia-android'}:",
   "replace": "if False:",
   "test": "bash linux/scripts/tests/test-android-handoff.sh",
   "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
@@ -61277,12 +61277,12 @@
   "find": "elif args.variant == 'nvidia':",
   "replace": "elif False:",
   "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
-  "why": "Both native OCI exporters must select the matching NVIDIA stage reader."
+  "why": "Each native OCI exporter must select the matching NVIDIA stage reader."
  },
  {
   "id": "compiler-llvm-tools.nvidia-handoff-export-baked",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "        nvidia_image_config(child[2], invocation['target_arch'], media=kind == 'nvidia-media')",
+  "find": "        nvidia_image_config(child[2], invocation['target_arch'], media=kind != 'nvidia-gpu')",
   "replace": "        pass",
   "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
   "why": "The seal refuses a different baked target or disabled Media TensorRT before writing a receipt."
@@ -61342,5 +61342,69 @@
   "replace": "plan['required_bytes']",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "The ordinary ROCm Media entry also retains the chain disk floor."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-android-entry",
+  "target": "linux/scripts/local-proof/launch-normal-android.py",
+  "find": "if args.variant == 'nvidia':",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "The ordinary Android launcher must dispatch the explicit NVIDIA profile."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-android-profile-parent",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "'nvidia-android': ('Android', 'Media', NVIDIA_ANDROID_STATUSES)",
+  "replace": "'nvidia-android': ('Android', 'GPU', NVIDIA_ANDROID_STATUSES)",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "The NVIDIA Android seal binds the native Media receipt as its direct parent."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-android-export-suffix",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert context.name.endswith('-' + invocation['target_arch']), 'NVIDIA Android context must retain the runtime target suffix'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "The exporter must reject an Android context that addresses the wrong runtime target."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-android-reader-suffix",
+  "target": "linux/scripts/local-proof/nvidia_handoff_profile.py",
+  "find": "assert context.name.endswith('-' + arch), 'NVIDIA Android context target suffix differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "The stopped Android proof reader checks the operating context target before downstream use."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-android-export-accelerators",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "media=kind != 'nvidia-gpu'",
+  "replace": "media=kind == 'nvidia-media'",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "NVIDIA Android must retain the baked Media accelerator configuration."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-android-parent-layer-coverage",
+  "target": "linux/scripts/local-proof/nvidia_handoff_profile.py",
+  "find": "assert invocation['Media_layers_rehashed'] == parent['layers'], 'NVIDIA Android Media coverage differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "The NVIDIA Android producer receipt retains the complete same-target Media layer coverage."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-android-gpu-ancestor-coverage",
+  "target": "linux/scripts/local-proof/nvidia_handoff_profile.py",
+  "find": "assert invocation['GPU_layers_matched'] == parent['matched_GPU_layers_and_diffIDs'], 'NVIDIA Android GPU coverage differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "The Android profile retains the Media receipt\u2019s matched GPU ancestry."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-android-disk",
+  "target": "linux/scripts/local-proof/nvidia_handoff_profile.py",
+  "find": "required = max(MEDIA_REQUIRED_BYTES, plan['required_bytes'])",
+  "replace": "required = plan['required_bytes']",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "A smaller valid compiler plan cannot lower ordinary NVIDIA Android disk admission."
  }
 ]

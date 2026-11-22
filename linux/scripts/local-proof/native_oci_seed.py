@@ -21,7 +21,8 @@ DEFAULT_MEDIA_STATUS = 'passed-native-default-amd64-Media-OCI-and-SDK-ancestry-o
 DEFAULT_ANDROID_STATUS = 'passed-native-default-amd64-Android-OCI-and-Media-ancestry-only'
 NVIDIA_GPU_STATUSES = {arch: f'passed-native-NVIDIA-{arch}-GPU-OCI-and-SDK-ancestry-only' for arch in ('amd64', 'arm64')}
 NVIDIA_MEDIA_STATUSES = {arch: f'passed-native-NVIDIA-{arch}-Media-OCI-and-GPU-ancestry-only' for arch in NVIDIA_GPU_STATUSES}
-NVIDIA_STAGE_STATUSES = {*NVIDIA_GPU_STATUSES.values(), *NVIDIA_MEDIA_STATUSES.values()}
+NVIDIA_ANDROID_STATUSES = {arch: f'passed-native-NVIDIA-{arch}-Android-OCI-and-Media-ancestry-only' for arch in NVIDIA_GPU_STATUSES}
+NVIDIA_STAGE_STATUSES = {*NVIDIA_GPU_STATUSES.values(), *NVIDIA_MEDIA_STATUSES.values(), *NVIDIA_ANDROID_STATUSES.values()}
 
 STAT_FIELDS = ('st_dev', 'st_ino', 'st_size', 'st_mode', 'st_uid', 'st_gid', 'st_mtime_ns', 'st_ctime_ns')
 

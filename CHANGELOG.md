@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-22 — carry NVIDIA Linux Media through the Android stage
+
+- Use the same-target NVIDIA Media receipt to launch Android on amd64 and
+  arm64/SBSA. The OCI exporter checks inherited accelerator settings and all
+  Media ancestor layers and requires a target-suffixed runtime context.
+
 ## 2026-11-22 — bind NVIDIA Linux GPU and WebGPU Media to the target SDK
 
 - Add local amd64 and arm64/SBSA GPU and Media launch/export profiles. Bind

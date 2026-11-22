@@ -18,6 +18,7 @@ from native_oci_layout import layer_ancestry, native_layout, sha
 from native_oci_seed import (
     ANDROID_STATUS,
     MEDIA_STATUS,
+    NVIDIA_ANDROID_STATUSES,
     NVIDIA_GPU_STATUSES,
     NVIDIA_MEDIA_STATUSES,
     default_status,
@@ -35,8 +36,9 @@ COMMON = runpy.run_path(str(Path(__file__).with_name('native-oci-handoff.py')))
 EXPORTS = {'gpu': ('GPU', 'SDK', STATUS), 'media': ('Media', 'GPU', MEDIA_STATUS),
            'android': ('Android', 'Media', ANDROID_STATUS)}
 DEFAULT_EXPORTS = {'default-media': ('Media', 'SDK'), 'default-android': ('Android', 'Media')}
-NVIDIA_EXPORTS = {'nvidia-gpu': ('GPU', 'SDK', NVIDIA_GPU_STATUSES), 'nvidia-media': ('Media', 'GPU', NVIDIA_MEDIA_STATUSES)}
-EXPORT_VARIANTS = {'gpu': ('rocm', 'nvidia'), 'media': ('rocm', 'default', 'nvidia'), 'android': ('rocm', 'default')}
+NVIDIA_EXPORTS = {'nvidia-gpu': ('GPU', 'SDK', NVIDIA_GPU_STATUSES), 'nvidia-media': ('Media', 'GPU', NVIDIA_MEDIA_STATUSES),
+                  'nvidia-android': ('Android', 'Media', NVIDIA_ANDROID_STATUSES)}
+EXPORT_VARIANTS = {'gpu': ('rocm', 'nvidia'), 'media': ('rocm', 'default', 'nvidia'), 'android': ('rocm', 'default', 'nvidia')}
 
 
 def export_profile(kind: str, arch: str = 'amd64') -> tuple[str, str, str]:
@@ -57,7 +59,7 @@ def worker_inputs(kind: str = 'gpu') -> dict[str, str]:
              *(directory / name for name in ('native_oci_seed.py', 'native_oci_layout.py', 'native-oci-handoff.py', 'normal_stage_launch.py', 'stage_handoff_profile.py', 'gpu_handoff_profile.py', 'gpu-oci-handoff.py'))]
     if kind in {'media', 'android', *DEFAULT_EXPORTS, *NVIDIA_EXPORTS}:
         paths += [directory / name for name in ('media_handoff_profile.py', 'media-oci-handoff.py')]
-    if kind == 'android':
+    if kind in {'android', 'nvidia-android'}:
         paths += [directory / name for name in ('android_handoff_profile.py', 'android-oci-handoff.py')]
     if kind in DEFAULT_EXPORTS:
         paths += [directory / name for name in (
@@ -122,7 +124,7 @@ def seal(args: argparse.Namespace, invocation: Json, parent: Json, actual: Json,
     if kind in NVIDIA_EXPORTS:
         from nvidia_handoff_profile import nvidia_image_config
 
-        nvidia_image_config(child[2], invocation['target_arch'], media=kind == 'nvidia-media')
+        nvidia_image_config(child[2], invocation['target_arch'], media=kind != 'nvidia-gpu')
     previous, reuse = verify_seed(Path(invocation['parent_OCI_proof']), context)
     transport = json.loads(Path(str(context) + '.transport.json').read_text())
     assert transport == {'producer_status':0, 'extractor_status':0}, f'{label} export producer or extractor failed'
@@ -168,15 +170,18 @@ def main_for(kind: str, loader: Callable[[Path, Path], tuple[Json, Json, Json]])
         default_unit(args.unit, label.lower() + '-export', invocation['target_arch'])
     elif args.variant == 'nvidia':
         from nvidia_handoff_profile import (
+            load_nvidia_android,
             load_nvidia_gpu,
             load_nvidia_media,
             nvidia_unit,
         )
 
-        loader = {'gpu': load_nvidia_gpu, 'media': load_nvidia_media}[kind]
+        loader = {'gpu': load_nvidia_gpu, 'media': load_nvidia_media, 'android': load_nvidia_android}[kind]
         kind = 'nvidia-' + kind
         plan, invocation, parent = loader(args.compiler_plan, invocation_path)
         nvidia_unit(args.unit, label.lower() + '-export', invocation['target_arch'])
+        if kind == 'nvidia-android':
+            assert context.name.endswith('-' + invocation['target_arch']), 'NVIDIA Android context must retain the runtime target suffix'
     else:
         assert re.fullmatch(r'webgpu-normal-' + kind + r'-export-amd64-[0-9-]+\.service', args.unit), f'Unexpected {label} export unit'
         plan, invocation, parent = loader(args.compiler_plan, invocation_path)

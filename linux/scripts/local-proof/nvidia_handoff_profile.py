@@ -1,4 +1,4 @@
-"""Bind ordinary NVIDIA GPU and Media to the selected Linux cross target and native OCI parent."""
+"""Bind ordinary NVIDIA GPU, Media and Android to the selected Linux cross target and native OCI parent."""
 
 from __future__ import annotations
 
@@ -11,8 +11,17 @@ from typing import TYPE_CHECKING
 from default_media_launch import sdk_media_parent
 from gpu_handoff_profile import actual_image
 from media_handoff_profile import validate_wasm_modes
-from native_oci_seed import NVIDIA_GPU_STATUSES, NVIDIA_MEDIA_STATUSES
-from normal_stage_launch import MEDIA_REQUIRED_BYTES, downstream_record, launch_build, stage_inputs
+from native_oci_seed import (
+    NVIDIA_ANDROID_STATUSES,
+    NVIDIA_GPU_STATUSES,
+    NVIDIA_MEDIA_STATUSES,
+)
+from normal_stage_launch import (
+    MEDIA_REQUIRED_BYTES,
+    downstream_record,
+    launch_build,
+    stage_inputs,
+)
 from stage_handoff_profile import (
     load_stage_parent,
     native_stage_layout,
@@ -49,15 +58,17 @@ def nvidia_image_config(config: Json, arch: str, *, media: bool = False) -> None
 
 def nvidia_inputs(source: Path, output: Path, repo: str, stage: str, arch: str, context: Path,
                   reference: str) -> tuple[str, list[str], list[str]]:
-    assert (stage in {'gpu', 'media'} and arch in NVIDIA_TARGETS), 'Unreviewed NVIDIA lane'
+    assert (stage in {'gpu', 'media', 'android'} and arch in NVIDIA_TARGETS), 'Unreviewed NVIDIA lane'
     assert re.fullmatch(LOCAL_REPO, repo) and all(path.is_absolute() for path in (source, output, context)), 'Local NVIDIA stage paths or repository differ'
     assert re.fullmatch(LOCAL_REPO + r'@sha256:[0-9a-f]{64}', reference), 'Immutable local NVIDIA parent required'
     if stage == 'media':
         selected = media_inputs(source, output, repo, 'nvidia', arch, 'gpu', context, reference)
         image, environment, driver = selected['image'], selected['environment'], selected['driver']
     else:
-        image, environment, driver = stage_inputs(source, output, repo, 'gpu', arch, context, reference, 'nvidia')
-        environment += ['CROSS_BUILD_PLATFORM=linux/amd64', 'ENABLE_NVIDIA=true', 'ENABLE_AMD=false', 'CUDA_INSTALL_COMPAT=1']
+        image, environment, driver = stage_inputs(source, output, repo, stage, arch, context, reference, 'nvidia')
+        environment += ['CROSS_BUILD_PLATFORM=linux/amd64', 'ENABLE_NVIDIA=true', 'ENABLE_AMD=false']
+        if stage == 'gpu':
+            environment.append('CUDA_INSTALL_COMPAT=1')
         if arch == 'arm64':
             environment.append('CROSS_NVIDIA_SBSA=1')
     if arch == 'amd64':
@@ -113,6 +124,24 @@ def nvidia_media_layout(proof_path: Path, invocation_path: Path, invocation: Jso
                                validate_config=partial(nvidia_image_config, arch=arch, media=True))
 
 
+def load_nvidia_android(plan_path: Path, invocation_path: Path) -> tuple[Json, Json, Json]:
+    plan, invocation, parent, media = load_stage_parent(plan_path, invocation_path, 'Android', 'Media',
+                                                        load_nvidia_media, nvidia_media_layout)
+    validate_nvidia_stage(invocation, parent, media, 'android', Path(parent['context']))
+    assert invocation['Media_layers_rehashed'] == parent['layers'], 'NVIDIA Android Media coverage differs'
+    assert invocation['GPU_layers_matched'] == parent['matched_GPU_layers_and_diffIDs'], 'NVIDIA Android GPU coverage differs'
+    return plan, invocation, parent
+
+
+def nvidia_android_layout(proof_path: Path, invocation_path: Path, invocation: Json, parent: Json) -> tuple[Json, Path]:
+    arch = invocation['target_arch']
+    proof, context = native_stage_layout(proof_path, invocation_path, invocation, parent, 'Android', 'Media',
+                                         NVIDIA_ANDROID_STATUSES[arch], actual_image,
+                                         validate_config=partial(nvidia_image_config, arch=arch, media=True))
+    assert context.name.endswith('-' + arch), 'NVIDIA Android context target suffix differs'
+    return proof, context
+
+
 def launch_nvidia_gpu(plan_path: Path, sdk_path: Path, proof_path: Path, output: Path, unit: str, repo: str, arch: str) -> int:
     nvidia_unit(unit, 'gpu', arch)
     plan, sdk, parent, context = sdk_media_parent(plan_path, sdk_path, proof_path, arch=arch)
@@ -135,3 +164,17 @@ def launch_nvidia_media(plan_path: Path, invocation_path: Path, proof_path: Path
     record.update(stage='media', variant='nvidia', GPU_layers_rehashed=parent['layers'], SDK_layers_matched=sdk['layers'],
                   ORT_WEB_REQUIRED=1, ORT_WASM_WEBGPU_FLAVORS=True, GPU_or_FINAL_acceptance=False, scope=__doc__)
     return launch_build(source, output, unit, image, arch, max(plan['required_bytes'], MEDIA_REQUIRED_BYTES), record, environment, driver)
+
+
+def launch_nvidia_android(plan_path: Path, invocation_path: Path, proof_path: Path, output: Path, unit: str, repo: str) -> int:
+    plan, media, gpu = load_nvidia_media(plan_path, invocation_path)
+    arch = media['target_arch']
+    nvidia_unit(unit, 'android', arch)
+    parent, context = nvidia_media_layout(proof_path, invocation_path, media, gpu)
+    source = Path(media['source'])
+    image, environment, driver = nvidia_inputs(source, output, repo, 'android', arch, context, stage_parent_reference(media['image'], parent))
+    record = downstream_record(media, invocation_path, proof_path, parent, 'Media')
+    record.update(stage='android', variant='nvidia', Media_layers_rehashed=parent['layers'], GPU_layers_matched=gpu['layers'],
+                  GPU_or_FINAL_acceptance=False, scope=__doc__)
+    required = max(MEDIA_REQUIRED_BYTES, plan['required_bytes'])
+    return launch_build(source, output, unit, image, arch, required, record, environment, driver)

@@ -11,7 +11,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from native_oci_layout import sha
-from normal_stage_launch import MEDIA_REQUIRED_BYTES, downstream_record, full_source, launch_build
+from normal_stage_launch import (
+    MEDIA_REQUIRED_BYTES,
+    downstream_record,
+    full_source,
+    launch_build,
+)
 from proof_subject import SDK_TARGETS
 from webgpu_media_lanes import media_inputs
 

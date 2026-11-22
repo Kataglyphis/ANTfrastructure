@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch ordinary ROCm or default Android from verified native Media; no runtime or FINAL acceptance."""
+"""Launch ordinary Android from verified native Media; no runtime or FINAL acceptance."""
 
 import argparse
 from pathlib import Path
@@ -14,12 +14,17 @@ def main() -> int:
         parser.add_argument('--' + name, required=True, type=Path)
     parser.add_argument('--unit', required=True)
     parser.add_argument('--image-repo', required=True)
-    parser.add_argument('--variant', choices=('rocm', 'default'), default='rocm')
+    parser.add_argument('--variant', choices=('rocm', 'default', 'nvidia'), default='rocm')
     args = parser.parse_args()
     if args.variant == 'default':
         from default_handoff_profile import launch_default_android
 
         return launch_default_android(args.compiler_plan, args.media_invocation, args.parent_proof,
+                                      args.output.resolve(), args.unit, args.image_repo)
+    if args.variant == 'nvidia':
+        from nvidia_handoff_profile import launch_nvidia_android
+
+        return launch_nvidia_android(args.compiler_plan, args.media_invocation, args.parent_proof,
                                       args.output.resolve(), args.unit, args.image_repo)
     plan, invocation, gpu = load_media(args.compiler_plan, args.media_invocation)
     parent, context = media_layout(args.parent_proof, args.media_invocation, invocation, gpu)

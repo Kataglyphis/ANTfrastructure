@@ -319,6 +319,18 @@ export profiles, the SDK qualifier and Media command companions together.
 Actual build, factory, binary licence, runtime, FINAL and hardware receipts
 still require their corresponding runs.
 
+Continue from the stopped Media receipt with `launch-normal-android.py
+--variant nvidia --compiler-plan PLAN --media-invocation MEDIA_INVOCATION
+--parent-proof MEDIA_OCI_STOPPED_PROOF --output FRESH_ANDROID --unit
+webgpu-normal-android-nvidia-arm64-YYYYMMDD-N.service --image-repo ant-local/webgpu-NAME`.
+It revalidates the GPU and Media ancestry and requires the same 300 GiB build
+floor. Use `android-oci-handoff.py launch|seal --variant nvidia --compiler-plan PLAN
+--android-invocation ANDROID_INVOCATION --context EXPORTS/android-context-NAME-arm64
+--unit webgpu-normal-android-export-nvidia-arm64-YYYYMMDD-N.service`.
+The context suffix matches the target. The stopped receipt proves native
+Media ancestry and the inherited accelerator environment under the same
+architecture and source bindings.
+
 ## Native Media-to-Android handoff
 
 The explicit ROCm amd64 host profile continues a successful ordinary Media build
