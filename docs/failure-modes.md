@@ -5,6 +5,15 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## Consumer pattern limits flag the native plugin header's status helper
+
+The conservative `throwing_filesystem_calls` consumer scan can flag the file-status overload
+of `std::filesystem::is_symlink(entry)` in an exact imported native header. The queried
+`entry` is already a `file_status`; the canonical fallback compares its type directly and
+retains the distinction between absent optional modules and dangling bundle links. Update
+the exact Hub pin and mirror together, preserving the consumer's zero budget and scan scope.
+The native policy and broken-link controls check resolution; no GPU or package proof follows.
+
 ## Workflow lint identifies an independent source copy as editor
 
 **Symptom.** Full preflight rejects repository `editor` as undeclared in

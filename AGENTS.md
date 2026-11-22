@@ -158,6 +158,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Native MIGraphX CMake plans share caller-array initialization and NUL argument recording; copied CK verification entries carry their CMake/C++ project and existing shared companions.
    The plugin QNN EP stage checks the module, both exports and the HTP backend beside it on arm64; the CPU prefix refuses an in-tree QNN provider.
    Native plugin appends keep external-device reuse explicit; validate module and owned-path bindings first, retain raw enumeration failures and never claim an external registration as owned.
+   Native module fallback compares the queried file-status type and preserves errors for dangling bundle links; exact consumer mirrors keep their conservative filesystem guards.
    Native external-registration mutation controls compile and link each variant before requiring an assertion or independent count failure; crashes, malformed reports and tool failures never count as semantic evidence.
    The GPU prefix refuses an in-tree TensorRT provider and requires the CUDA module's plugin exports; the TensorRT plugin stage runs on nvidia images with TensorRT.
    Native and C++ WASM WebGPU select `--use_webgpu static_plugin`; retain native external Dawn and Emscripten's integrated Dawn.

@@ -40155,7 +40155,7 @@
  {
   "id": "lib.ort-plugin-native-broken-bundle-link",
   "target": "shared/native/ort_plugin_eps.hpp",
-  "find": "!std::filesystem::is_symlink(entry)",
+  "find": "entry.type() != std::filesystem::file_type::symlink",
   "replace": "true",
   "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
   "why": "A broken advertised bundle link is an error rather than optional absence."

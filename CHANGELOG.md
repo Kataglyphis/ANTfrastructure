@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-22 — keep native file-status fallback compatible with consumer guards
+
+- Compare the already queried file-status enum when distinguishing optional absence from a broken bundle link. This preserves resolution and native error behavior while exact C++ consumer mirrors retain their conservative no-throw source guard. Re-key the existing broken-link mutation to the new expression; no quality threshold or exclusion changes.
+
 ## 2026-11-22 — explicitly reuse externally registered native plugin devices
 
 - Add an append opt-in for a device another library already registered in the owning ORT environment. Preserve module checks, registry-owned path bindings, exact device selection and raw failures; external factories do not enter the owned-registration report. Default append and explicit registration retain their existing behavior.

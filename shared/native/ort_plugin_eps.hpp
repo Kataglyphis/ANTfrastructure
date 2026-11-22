@@ -62,7 +62,8 @@ namespace detail {
         if (status) {
             std::error_code link_status;
             const auto entry = std::filesystem::symlink_status(candidate, link_status);
-            if (!advertised && status == std::errc::no_such_file_or_directory && !std::filesystem::is_symlink(entry)) {
+            if (!advertised && status == std::errc::no_such_file_or_directory
+                && entry.type() != std::filesystem::file_type::symlink) {
                 return std::nullopt;
             }
             error = "Cannot resolve plugin module " + candidate.string() + ": " + status.message();

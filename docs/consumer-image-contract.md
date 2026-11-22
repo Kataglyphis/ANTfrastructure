@@ -1187,7 +1187,9 @@ It returns failure text and consumes failed statuses instead of entering abortin
 `ORT_NO_EXCEPTIONS` C++ wrappers. Without an advertised root it resolves the loaded
 core from an address in that supplied API, then finds a bundled module beside it;
 callers may supply an explicit absolute bundle directory. An advertised image root
-still wins. Registration and V2 attachment
+still wins. Missing optional modules and dangling bundle links remain distinct; fallback
+compares the queried file-status enum, allowing exact mirrors under conservative consumer
+filesystem guards. Registration and V2 attachment
 are separate from session creation and real operator placement. The compiled fake API
 suite proves policy, and a real-header object checks signatures; neither proves a new
 runtime image, packaged inference or Windows loading.
