@@ -574,6 +574,7 @@ Five of them are RULES and stay here:
   the mutation recipe contract lives in `mutation_parse.py` beside its runner.
   Source CI dispatch, retrieval and audits use `source-ci.py` with its `source_ci/` and `host_commands.py` companions.
   Mutation seals require a loaded, terminal successful unit before stopping; cached default success is insufficient.
+  Direct-wrapper complete receipts use the original closed evidence; never synthesize driver run.json, re-seal or repeat exclusive cleanup.
   Native worker source tests require Dart, C/C++, Rust and sccache; use `ensure-native-worker-test-tools.sh` and preserve mandatory VM coverage.
   Flutter `--keep-cache` is a test-runner opt-in; fresh image installs retain their default bare-SDK policy.
   Parity CLI copies carry `lib/cli-value-options.sh` and logging companions; retain usage alias binding and complete remaining arguments.

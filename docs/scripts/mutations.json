@@ -60670,5 +60670,109 @@
   "replace": "    if False:\n        assert_native_policy(test, result)",
   "test": "bash linux/scripts/tests/test-ort-plugin-native-mutation-controls.sh",
   "why": "An unchanged passing fixture cannot satisfy the negative-control validator."
+ },
+ {
+  "id": "host.direct-preflight-groups",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "require(all(passes[name] == headings[name] == 1 for name in groups),",
+  "replace": "require(True,",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "A missing or repeated outer canonical group must refuse."
+ },
+ {
+  "id": "host.direct-preflight-suites",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "require(suites == len(names) == len(set(names)) == invocation[\"expected_script_suites\"]\n            and set(names) == discovered and assertions > 0,",
+  "replace": "require(assertions > 0,",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "A duplicated suite cannot replace a missing discovered suite."
+ },
+ {
+  "id": "host.direct-preflight-terminal",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "successful_unit(seal[\"terminal\"], invocation[\"unit\"])",
+  "replace": "str(seal[\"terminal\"])",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "Retained positive terminal identity is mandatory even after unit disappearance."
+ },
+ {
+  "id": "host.direct-preflight-raw-status",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "require((directory / \"compiler-cache/exit-status.txt\").read_text() == \"command_status=0\\ncache_stats_status=0\\n\",",
+  "replace": "require(True,",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "A failed raw command cannot be accepted from passing inner logs."
+ },
+ {
+  "id": "host.direct-preflight-sealed-inputs",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "require(seal[\"inputs\"] == {str(path): fingerprint(path) for path in (manifest, mutations)},",
+  "replace": "require(True,",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "Changed strict-seal inputs must refuse before source acceptance."
+ },
+ {
+  "id": "host.direct-preflight-slice",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "require(extraction[\"source_sha256\"] == hashlib.sha256(raw).hexdigest()\n            and raw[extraction[\"start_byte\"]:extraction[\"end_byte_exclusive\"]] == mutations.read_bytes()\n            and extraction[\"mutation_job_sha256\"] == fingerprint(mutations),",
+  "replace": "require(True,",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "The mutation slice must be exact original log bytes."
+ },
+ {
+  "id": "host.direct-preflight-cleanup-status",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "require(cleanup[\"exit_status\"] == 0 and cleanup[\"finished_at\"],",
+  "replace": "require(True,",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "An original cleanup failure cannot produce an accepted receipt."
+ },
+ {
+  "id": "host.direct-preflight-cleanup-owner",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "require(cleanup[\"run_id\"] == invocation[\"run_id\"] and cleanup[\"owner_label\"] == invocation[\"owner_label\"]\n            and cleanup[\"cidfile\"] == str(directory / \"container.cid\"),",
+  "replace": "require(True,",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "Cleanup must belong to the exact original invocation."
+ },
+ {
+  "id": "host.direct-preflight-reports",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "require(directory.stat().st_mode & 0o777 == 0o700 and (directory / \"reports\").stat().st_mode & 0o777 == 0o755,",
+  "replace": "require(True,",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "Closed reports must not retain their temporary world-writable mode."
+ },
+ {
+  "id": "host.direct-preflight-filters",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "require([value for value in environment if value.startswith(name + \"=\")] == [name + \"=\"],",
+  "replace": "require(True,",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "Observed preflight filters cannot stand for complete source coverage."
+ },
+ {
+  "id": "host.direct-preflight-query",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "require(all(row[\"returncode\"] == 0 and not row[\"stdout\"].strip() for row in rows),",
+  "replace": "require(True,",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "Failed or nonempty independent queries cannot prove container absence."
+ },
+ {
+  "id": "host.direct-preflight-input-drift",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "require(PRESERVER[\"working_snapshot\"](source) == snapshot and all(fingerprint(Path(path)) == digest for path, digest in hashes.items()),",
+  "replace": "require(True,",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "A changed input after validation must refuse final publication of the local receipt."
+ },
+ {
+  "id": "host.direct-preflight-cache-statistics",
+  "target": "linux/scripts/local-proof/complete-direct-preflight.py",
+  "find": "require(isinstance(read(directory / \"compiler-cache/cache-stats.json\").get(\"stats\"), dict),",
+  "replace": "require(True,",
+  "test": "bash linux/scripts/tests/test-direct-preflight-receipt.sh",
+  "why": "A malformed captured cache record cannot become a complete source receipt from a zero status alone."
  }
 ]

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-22 — assemble closed direct-wrapper source receipts
+
+- Preserve complete direct-wrapper preflight receipt assembly with exact suite/mutation evidence, original cleanup identity and fresh absence queries. Never reconstruct driver metadata, re-seal a stopped unit or repeat exclusive cleanup.
+
 ## 2026-11-22 — keep native file-status fallback compatible with consumer guards
 
 - Compare the already queried file-status enum when distinguishing optional absence from a broken bundle link. This preserves resolution and native error behavior while exact C++ consumer mirrors retain their conservative no-throw source guard. Re-key the existing broken-link mutation to the new expression; no quality threshold or exclusion changes.
