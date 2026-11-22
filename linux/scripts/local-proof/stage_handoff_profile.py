@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -14,6 +15,37 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from proof_types import Json
+
+
+def stage_parent_reference(image: str, parent: Json) -> str:
+    return image.rsplit(':', 1)[0] + '@' + parent['manifest']
+
+
+def validate_baked_environment(config: Json, expected_values: dict[str, str], profile: str) -> None:
+    environment = config['config']['Env']
+    for key, value in expected_values.items():
+        assert [entry for entry in environment if entry.startswith(key + '=')] == [key + '=' + value], (
+            profile + ' cross image environment differs: ' + key)
+
+
+def validate_profile_stage(invocation: Json, parent: Json, stage: str, variant: str) -> None:
+    assert invocation['variant'] == variant and invocation['stage'] == stage, 'Stage profile scope differs'
+    assert invocation['launch_status'] == 0 and invocation['publication'] is False, 'Successful unpublished stage launch required'
+    assert invocation['source_full_preflight_passed'] and invocation['producer_source_unchanged'], 'Stage source proof was not retained'
+    for field in ('manifest', 'config'):
+        assert invocation['parent_' + field] == parent[field], 'Stage parent identity differs'
+    assert invocation['parent_OCI_index_sha256'] == parent['index_sha256'], 'Stage parent index differs'
+
+
+def validate_profile_command(invocation: Json, image: str, environment: list[str], driver: list[str]) -> None:
+    command = invocation['command']
+    assert invocation['image'] == image and command[-len(driver):] == driver, 'Stage driver or image differs'
+    assert command[:2] == ['systemd-run', '--user'] and '--expand-environment=no' in command, 'Stage transport differs'
+    assert [value for value in command if value.startswith('--unit=')] == ['--unit=' + invocation['unit']], 'Stage command unit differs'
+    for expected in environment:
+        prefix = expected.partition('=')[0] + '='
+        selected_values = [value for option, value in pairwise(command) if option == '-E' and value.startswith(prefix)]
+        assert selected_values == [expected], 'Stage environment binding differs: ' + prefix
 
 
 def validate_inherited_source(invocation: Json, parent: Json, previous: Json,

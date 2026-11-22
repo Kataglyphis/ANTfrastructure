@@ -196,15 +196,16 @@ class DefaultHandoffTests(unittest.TestCase):
         self.assertEqual(stopped['matched_SDK_layers_and_diffIDs'], 29)
         self.assertFalse(stopped['GPU_or_FINAL_acceptance'])
 
-    def seal_export(self, args: Namespace, path: Path, invocation: Json, child: Json, parent_path: Path, parent: Json, label: str) -> Json:
-        kind = 'default-' + label.lower()
+    def seal_export(self, args: Namespace, path: Path, invocation: Json, child: Json, parent_path: Path,
+                    parent: Json, label: str, *, variant: str = 'default') -> Json:
+        kind = variant + '-' + label.lower()
         seeded_copy(parent_path, args.context)
         Path(str(args.context) + '.transport.json').write_text(json.dumps({'producer_status': 0, 'extractor_status': 0}))
         actual = {'image': invocation['image'], 'manifest': child['manifest'], 'config': child['config']}
         record = {'unit': args.unit, 'context': str(args.context), label + '_invocation': str(path), label + '_invocation_sha256': sha(path),
                   'source_revision': invocation['source_revision'], 'parent_OCI_proof_sha256': invocation['parent_OCI_proof_sha256'],
                   'actual_image': actual, 'worker_inputs_sha256': CLI['worker_inputs'](kind), 'launch_status': 0}
-        self.assertIn(str(TOOLS / 'default_handoff_profile.py'), record['worker_inputs_sha256'])
+        self.assertIn(str(TOOLS / (variant + '_handoff_profile.py')), record['worker_inputs_sha256'])
         args.context.with_suffix('.invocation.json').write_text(json.dumps(record))
         fixture = gpu_fixture.HandoffTests()
         fixture.setUp()

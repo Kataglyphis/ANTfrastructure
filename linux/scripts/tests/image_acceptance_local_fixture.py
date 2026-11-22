@@ -65,7 +65,7 @@ class LocalFixture:
         self.android_path, self.parent_path = self.root / 'android.json', self.root / 'native-parent.json'
         self.android: dict[str, Any] = {'stage':'android', 'variant':self.variant, 'target_arch':self.arch,
                         'source_revision':'b' * 40, 'image':'ant-local/webgpu-fixture:cross-android-' + self.arch}
-        self.parent = {'manifest':'sha256:' + 'b' * 64, 'config':'sha256:' + 'e' * 64, 'source_revision':'b' * 40}
+        self.parent: dict[str, Any] = {'manifest':'sha256:' + 'b' * 64, 'config':'sha256:' + 'e' * 64, 'source_revision':'b' * 40}
         self.android_path.write_text(json.dumps(self.android))
         self.parent_path.write_text(json.dumps(self.parent))
         self.workers = RUNTIME.runtime_worker_files(self.host)

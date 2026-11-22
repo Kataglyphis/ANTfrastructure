@@ -49816,7 +49816,7 @@
  {
   "id": "compiler-llvm-tools.oci-parent-reuse-parent-status",
   "target": "linux/scripts/local-proof/native_oci_seed.py",
-  "find": "assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS, ANDROID_STATUS, DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS} or proof['status'] in FOREIGN_DEFAULT_STATUSES, 'Verified native OCI parent required'",
+  "find": "assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS, ANDROID_STATUS, DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS} or proof['status'] in FOREIGN_DEFAULT_STATUSES or proof['status'] in NVIDIA_STAGE_STATUSES, 'Verified native OCI parent required'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
   "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
@@ -52384,7 +52384,7 @@
  {
   "id": "compiler-llvm-tools.media-handoff-export-worker-closure",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "if kind in {'media', 'android', *DEFAULT_EXPORTS}:",
+  "find": "if kind in {'media', 'android', *DEFAULT_EXPORTS, *NVIDIA_EXPORTS}:",
   "replace": "if False:",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
@@ -52648,7 +52648,7 @@
  {
   "id": "compiler-llvm-tools.android-handoff-inherited-worker-closure",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "if kind in {'media', 'android', *DEFAULT_EXPORTS}:",
+  "find": "if kind in {'media', 'android', *DEFAULT_EXPORTS, *NVIDIA_EXPORTS}:",
   "replace": "if kind == 'media':",
   "test": "bash linux/scripts/tests/test-android-handoff.sh",
   "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
@@ -61113,8 +61113,8 @@
  },
  {
   "id": "compiler-llvm-tools.default-handoff-stage-scope",
-  "target": "linux/scripts/local-proof/default_handoff_profile.py",
-  "find": "assert invocation['variant'] == 'default' and invocation['stage'] == stage, 'Default stage scope differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert invocation['variant'] == variant and invocation['stage'] == stage, 'Stage profile scope differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-default-handoff.sh",
   "why": "Default stage receipts must identify their actual lane."
@@ -61129,8 +61129,8 @@
  },
  {
   "id": "compiler-llvm-tools.default-handoff-environment",
-  "target": "linux/scripts/local-proof/default_handoff_profile.py",
-  "find": "assert selected_values == [expected], 'Default environment binding differs: ' + prefix",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert selected_values == [expected], 'Stage environment binding differs: ' + prefix",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-default-handoff.sh",
   "why": "A second conflicting environment flag must refuse."
@@ -61162,8 +61162,8 @@
  {
   "id": "compiler-llvm-tools.default-handoff-native-status",
   "target": "linux/scripts/local-proof/native_oci_seed.py",
-  "find": " or proof['status'] in FOREIGN_DEFAULT_STATUSES, 'Verified native OCI parent required'",
-  "replace": ", 'Verified native OCI parent required'",
+  "find": " or proof['status'] in FOREIGN_DEFAULT_STATUSES or proof['status'] in NVIDIA_STAGE_STATUSES, 'Verified native OCI parent required'",
+  "replace": " or proof['status'] in NVIDIA_STAGE_STATUSES, 'Verified native OCI parent required'",
   "test": "bash linux/scripts/tests/test-default-handoff.sh",
   "why": "The canonical byte reader must recognize the exact reviewed foreign default statuses."
  },
@@ -61254,5 +61254,93 @@
   "replace": "default_layout(proof_path, invocation_path, invocation, parent, 'media', 'SDK')",
   "test": "bash linux/scripts/tests/test-default-handoff.sh",
   "why": "Default Android reader keeps the matching Media parent and the Android producer scope."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-handoff-gpu-entry",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "if args.variant == 'nvidia':",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "Each public launcher must dispatch the explicit NVIDIA profile on the selected target."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-handoff-media-entry",
+  "target": "linux/scripts/local-proof/launch-normal-media.py",
+  "find": "if args.variant == 'nvidia':",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "Each public launcher must dispatch the explicit NVIDIA profile on the selected target."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-handoff-export-route",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "elif args.variant == 'nvidia':",
+  "replace": "elif False:",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "Both native OCI exporters must select the matching NVIDIA stage reader."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-handoff-export-baked",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "        nvidia_image_config(child[2], invocation['target_arch'], media=kind == 'nvidia-media')",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "The seal refuses a different baked target or disabled Media TensorRT before writing a receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-handoff-media-worker",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "'nvidia_handoff_profile.py', 'default_media_launch.py', 'webgpu_media_lanes.py',",
+  "replace": "'default_media_launch.py', 'webgpu_media_lanes.py',",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "The export worker closure binds the exact NVIDIA profile bytes."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-handoff-sdk-target",
+  "target": "linux/scripts/local-proof/nvidia_handoff_profile.py",
+  "find": "    assert previous['target_arch'] == arch, 'NVIDIA parent target differs'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "A Linux amd64 host manifest cannot stand in for the same SDK or GPU target."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-handoff-arm64-sbsa",
+  "target": "linux/scripts/local-proof/nvidia_handoff_profile.py",
+  "find": "environment.append('CROSS_NVIDIA_SBSA=1')",
+  "replace": "environment.append('CROSS_NVIDIA_SBSA=0')",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "The ordinary arm64 GPU invocation must select NVIDIA cross SBSA."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-handoff-wasm",
+  "target": "linux/scripts/local-proof/nvidia_handoff_profile.py",
+  "find": "    validate_wasm_modes(invocation)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "The Media reader requires both Wasm modes on the receipt it is exporting."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-handoff-media-disk",
+  "target": "linux/scripts/local-proof/nvidia_handoff_profile.py",
+  "find": "max(plan['required_bytes'], MEDIA_REQUIRED_BYTES)",
+  "replace": "plan['required_bytes']",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "An eligible 180-GiB GPU plan cannot lower NVIDIA Media build admission."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-handoff-media-export-disk",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert disk['available_bytes'] >= MEDIA_REQUIRED_BYTES, 'NVIDIA Media export requires 300 GiB'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
+  "why": "Media export must refuse one byte below the unchanged chain reserve."
+ },
+ {
+  "id": "compiler-llvm-tools.rocm-handoff-media-disk",
+  "target": "linux/scripts/local-proof/launch-normal-media.py",
+  "find": "max(plan['required_bytes'], MEDIA_REQUIRED_BYTES)",
+  "replace": "plan['required_bytes']",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "The ordinary ROCm Media entry also retains the chain disk floor."
  }
 ]

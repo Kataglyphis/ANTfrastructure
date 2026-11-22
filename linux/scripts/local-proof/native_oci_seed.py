@@ -19,6 +19,9 @@ MEDIA_STATUS = 'passed-native-ROCm-Media-OCI-and-GPU-ancestry-only'
 ANDROID_STATUS = 'passed-native-ROCm-Android-OCI-and-Media-ancestry-only'
 DEFAULT_MEDIA_STATUS = 'passed-native-default-amd64-Media-OCI-and-SDK-ancestry-only'
 DEFAULT_ANDROID_STATUS = 'passed-native-default-amd64-Android-OCI-and-Media-ancestry-only'
+NVIDIA_GPU_STATUSES = {arch: f'passed-native-NVIDIA-{arch}-GPU-OCI-and-SDK-ancestry-only' for arch in ('amd64', 'arm64')}
+NVIDIA_MEDIA_STATUSES = {arch: f'passed-native-NVIDIA-{arch}-Media-OCI-and-GPU-ancestry-only' for arch in NVIDIA_GPU_STATUSES}
+NVIDIA_STAGE_STATUSES = {*NVIDIA_GPU_STATUSES.values(), *NVIDIA_MEDIA_STATUSES.values()}
 
 STAT_FIELDS = ('st_dev', 'st_ino', 'st_size', 'st_mode', 'st_uid', 'st_gid', 'st_mtime_ns', 'st_ctime_ns')
 
@@ -50,7 +53,7 @@ def plain_file(path: Path) -> None:
 def parent_layout(proof_path: Path) -> tuple[Json, Path, NativeLayout]:
     plain_file(proof_path)
     proof = json.loads(proof_path.read_text())
-    assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS, ANDROID_STATUS, DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS} or proof['status'] in FOREIGN_DEFAULT_STATUSES, 'Verified native OCI parent required'
+    assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS, ANDROID_STATUS, DEFAULT_MEDIA_STATUS, DEFAULT_ANDROID_STATUS} or proof['status'] in FOREIGN_DEFAULT_STATUSES or proof['status'] in NVIDIA_STAGE_STATUSES, 'Verified native OCI parent required'
     assert proof['all_native_blob_sizes_and_sha256_verified'] is True, 'Parent blob verification is required'
     assert proof['stopped']['ActiveState'] == 'inactive' and proof['stopped']['MainPID'] == '0', 'Parent export must be sealed'
     context = plain_directory(Path(proof['context']))

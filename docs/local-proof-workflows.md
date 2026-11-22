@@ -30,10 +30,10 @@ For an already closed direct owned-wrapper run, use `python3 linux/scripts/local
 | Preserve independent committed consumer trees | `preserve-consumer-sources.py --checkouts DIR --plan PLAN --directory NEW_DIR` |
 | Preserve exact staged consumer files and gitlinks over an explicit base | `preserve-consumer-sources.py --working-source ROOT --destination NEW_CHECKOUT --directory NEW_PROOF --revision FULL_SHA` |
 | Inspect frozen Git roots and failed source checks | `local-proof/inspect-preserved-roots.py`, `audit-failed-source-check.py` |
-| Prepare or admit an ordinary compiler; launch its SDK or qualified ROCm GPU child | `local-proof/prepare-next-compiler-plan.py`, `compiler_plan_profile.py`, `check-compiler-disk-admission.py`, `launch-normal-compiler-plan.py`, `launch-normal-sdk.py`, `launch-normal-gpu.py`, `normal_stage_launch.py`, `gpu_source_profile.py` |
+| Prepare or admit an ordinary compiler and launch its SDK or qualified GPU child | `local-proof/prepare-next-compiler-plan.py`, `compiler_plan_profile.py`, `check-compiler-disk-admission.py`, `launch-normal-compiler-plan.py`, `launch-normal-sdk.py`, `launch-normal-gpu.py`, `normal_stage_launch.py`, `gpu_source_profile.py`, `nvidia_handoff_profile.py` |
 | Retain a failed compiler's explicitly unverified prefix and bounded linker controls | `local-proof/compiler-prefix-diagnostic.py`, `launch-cross-clang-link-probe.py`, `probe-cross-clang-link.py`, `probe-cross-clang-link.sh`, `cross-clang-link-minimal.c` |
 | Check baked compiler/SDK selection and native OCI ancestry | `local-proof/compiler-image-qualification.py`, `probe-cross-clang-image.py`, `native-oci-handoff.py` |
-| Export a completed native ROCm GPU stage and launch required Media | `local-proof/gpu-oci-handoff.py`, `gpu_handoff_profile.py`, `launch-normal-media.py` |
+| Export a completed native GPU stage and launch required Media | `local-proof/gpu-oci-handoff.py`, `gpu_handoff_profile.py`, `nvidia_handoff_profile.py`, `launch-normal-media.py` |
 | Prepare all six WebGPU Media command profiles before parent admission | `local-proof/webgpu_media_lanes.py`, `normal_stage_launch.py`; see [Media command profiles](linux-accelerator-images.md#six-webgpu-media-command-profiles) |
 | Launch default amd64 Media from the exact qualified SDK | `local-proof/launch-default-amd64-media.py`, `default_media_launch.py` and the existing SDK/OCI and stage-launch companions; see [default Media admission](#default-amd64-media-admission) |
 | Replay Media profile controls plus the existing source protocol | `local-proof/run-media-lane-controls.sh PROOF_DIRECTORY SELECTED_MUTATIONS`; delegates to `03-media/build/migraphx/source-check.sh` inside the family image |
@@ -237,7 +237,7 @@ acceptance remain open.
 
 Use `gpu-oci-handoff.py launch|seal --compiler-plan PLAN --gpu-invocation GPU_INVOCATION
 --context FRESH_PARENT/gpu-context-NAME --unit webgpu-normal-gpu-export-amd64-DATE-N.service`.
-The explicit reviewed profile supports ordinary ROCm amd64 only. It requires the original
+The default invocation selects the ordinary ROCm amd64 profile. It requires the original
 qualified SDK and compiler ancestry, complete exact source proof, unchanged invocation hashes
 and the GPU producer's actual successful terminal state. Launch binds the current engine's
 manifest/config and independently resolves the bare immutable local manifest ID to the same
@@ -271,13 +271,53 @@ with native GPU context and digest pin, `ORT_WEB_REQUIRED=1` and
 `ORT_WASM_WEBGPU_FLAVORS=true`. The strict Media RUN replays both factories after
 JS staging, including when the shared cache supplied the compiled products.
 Keep the actual build and probe receipts for both flavors. Shared host admission retains idle-engine,
-collision, ambient-flag, fresh temporary-root and mandatory disk checks.
+collision, ambient-flag and fresh temporary-root checks. Media launch admission requires
+at least 300 GiB available and retains any stricter plan.
 
 Carry the existing `normal_stage_launch.py`, `gpu_source_profile.py`, native OCI/seed and
 proof helpers beside these entries. `test-gpu-handoff.sh` uses real synthetic OCI bytes and
 hardlinks with explicit engine/unit doubles; the standard native seed and stage suites
 retain their earlier compiler/SDK scopes. They do not establish actual image completion,
 full binary licences, native loader ABI, GPU parity or digest-specific FINAL acceptance.
+
+## NVIDIA GPU and Media handoffs
+
+Use the same compiler plan, exact proven source and qualified SDK receipt for
+the selected cross target. This example uses arm64/SBSA on the Linux amd64
+build host. For NVIDIA amd64 use `amd64` in the target argument and unit names.
+
+```bash
+python3 linux/scripts/local-proof/launch-normal-gpu.py --variant nvidia --arch arm64 \
+  --compiler-plan PLAN --sdk-invocation SDK_INVOCATION --parent-proof SDK_OCI_STOPPED_PROOF \
+  --output FRESH_GPU --unit webgpu-normal-gpu-nvidia-arm64-YYYYMMDD-N.service --image-repo ant-local/webgpu-NAME
+python3 linux/scripts/local-proof/gpu-oci-handoff.py launch --variant nvidia \
+  --compiler-plan PLAN --gpu-invocation GPU_INVOCATION --context EXPORTS/gpu-context-NAME \
+  --unit webgpu-normal-gpu-export-nvidia-arm64-YYYYMMDD-N.service
+```
+
+After each export succeeds, repeat its command with `seal`. Pass the stopped
+GPU receipt to Media. The launchers select the normal private NVIDIA stage
+tags. The arm64 lane selects SBSA and keeps DeepStream disabled. Both lanes
+enable CUDA and TensorRT, and leave image and cachemount pruning disabled.
+
+```bash
+python3 linux/scripts/local-proof/launch-normal-media.py --variant nvidia \
+  --compiler-plan PLAN --gpu-invocation GPU_INVOCATION --parent-proof GPU_OCI_STOPPED_PROOF \
+  --output FRESH_MEDIA --unit webgpu-normal-media-nvidia-arm64-YYYYMMDD-N.service --image-repo ant-local/webgpu-NAME
+python3 linux/scripts/local-proof/media-oci-handoff.py launch --variant nvidia \
+  --compiler-plan PLAN --media-invocation MEDIA_INVOCATION --context EXPORTS/media-context-NAME \
+  --unit webgpu-normal-media-export-nvidia-arm64-YYYYMMDD-N.service
+```
+
+Media build and export admission require at least 300 GiB free. The strict
+Media build uses both WebGPU Wasm modes and replays the delivered factories.
+The stopped exports bind rehashed image bytes, the baked cross target and
+CUDA/TensorRT environment, every parent descriptor and diffID, and both raw
+export statuses. Carry `nvidia_handoff_profile.py`, the shared stage and
+export profiles, the SDK qualifier and Media command companions together.
+`test-nvidia-handoff.sh` uses synthetic layouts and engine/unit doubles.
+Actual build, factory, binary licence, runtime, FINAL and hardware receipts
+still require their corresponding runs.
 
 ## Native Media-to-Android handoff
 

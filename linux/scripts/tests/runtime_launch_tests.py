@@ -168,10 +168,11 @@ class RuntimeTests(unittest.TestCase):
         invocation = dict(self.fixture.android, variant='default', target_arch='arm64')
         unit = 'webgpu-normal-runtime-default-arm64-99999999-1.service'
         prefix = 'ant-local/webgpu-fixture:runtime-default-1'
-        for changes in ({'unit': self.unit}, {'prefix': self.prefix}, {'context': self.context}):
-            options = {'unit':unit, 'prefix':prefix, 'context':self.work / 'android-context-arm64', **changes}
-            with self.subTest(changes=changes), self.assertRaises(AssertionError):
-                self.profile_call(invocation=invocation, **options)
+        context = self.work / 'android-context-arm64'
+        changes = ((self.unit, prefix, context), (unit, self.prefix, context), (unit, prefix, self.context))
+        for selected_unit, selected_prefix, selected_context in changes:
+            with self.subTest(unit=selected_unit, prefix=selected_prefix, context=selected_context), self.assertRaises(AssertionError):
+                self.profile_call(invocation=invocation, unit=selected_unit, prefix=selected_prefix, context=selected_context)
 
     def test_larger_parent_resource_requirement_is_preserved(self) -> None:
         self.plan['required_bytes'] = 400 * 1024**3

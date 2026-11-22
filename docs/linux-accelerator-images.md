@@ -2444,13 +2444,14 @@ The returned command and environment are preparation data. They explicitly claim
 neither verified parent ancestry nor a launch. Before executing them, the owning
 launcher must qualify the exact parent OCI/source chain, apply normal idle-host,
 storage and cache admission, and register bounded unit/container cleanup. The
-existing `launch-normal-media.py` remains restricted to its reviewed ROCm amd64
-chain. The [default Media launcher](local-proof-workflows.md#default-amd64-media-admission)
+ordinary `launch-normal-media.py` selects ROCm amd64 by default. Its explicit
+NVIDIA variant follows the same-target [GPU and Media handoffs](local-proof-workflows.md#nvidia-gpu-and-media-handoffs)
+for amd64 and arm64/SBSA. The [default Media launcher](local-proof-workflows.md#default-amd64-media-admission)
 qualifies the exact same-target SDK/source and compiler ancestry before shared idle-host
 admission with at least 300 GiB available; stricter caller reserves remain intact.
 The [default Media and Android handoffs](local-proof-workflows.md#default-media-and-android-handoffs)
 bind the same-target parent and cross build environment through native export.
-Actual default builds, NVIDIA handoffs and current image acceptance remain
+Actual default and NVIDIA builds and current image acceptance remain
 open. Command tests compare all six profiles with independent expectations
 and the real shell stage graph; they do not build ORT or run a GPU.
 

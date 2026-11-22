@@ -240,10 +240,11 @@ class HandoffTests(unittest.TestCase):
                  'gpu_layout':mock.Mock(return_value=(parent,context)),'launch_stage':mock.Mock(return_value=47)}) as scope:
             self.assertEqual(MEDIA['main'](),47)
             call = scope['launch_stage'].call_args.args
-            self.assertEqual(call[:1],(self.work,))
-            self.assertEqual(call[4:7],('media','amd64',context))
-            self.assertEqual(call[7],'ant-local/webgpu-fixture@' + parent['manifest'])
-            self.assertEqual(call[9]['GPU_invocation_sha256'],fixtures.sha(self.invocation))
+        self.assertEqual(call[:1],(self.work,))
+        self.assertEqual(call[4:7],('media','amd64',context))
+        self.assertEqual(call[7],'ant-local/webgpu-fixture@' + parent['manifest'])
+        self.assertEqual(call[8], 300 * 1024**3)
+        self.assertEqual(call[9]['GPU_invocation_sha256'],fixtures.sha(self.invocation))
 
     def export_args(self) -> argparse.Namespace:
         self.save_gpu()

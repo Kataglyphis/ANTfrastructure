@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from native_oci_layout import sha
-from normal_stage_launch import downstream_record, full_source, launch_build
+from normal_stage_launch import MEDIA_REQUIRED_BYTES, downstream_record, full_source, launch_build
 from proof_subject import SDK_TARGETS
 from webgpu_media_lanes import media_inputs
 
@@ -20,9 +20,6 @@ from source_ci.common import require
 
 if TYPE_CHECKING:
     from proof_types import Json
-
-MEDIA_REQUIRED_BYTES = 300 * 1024**3
-
 
 def sdk_media_parent(plan_path: Path, invocation_path: Path, proof_path: Path, *, arch: str = 'amd64') -> tuple[Json, Json, Json, Path]:
     require(__debug__, 'Optimization disables shared parent safety assertions')

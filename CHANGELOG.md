@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-22 — bind NVIDIA Linux GPU and WebGPU Media to the target SDK
+
+- Add local amd64 and arm64/SBSA GPU and Media launch/export profiles. Bind
+  the exact SDK source, target-specific image config, immutable native OCI
+  ancestry, both required Media Wasm modes and the 300-GiB Media floor.
+  Ordinary ROCm Media now uses the same launch floor.
+- Synthetic OCI tests cover the launcher and export contracts. Fresh builds,
+  downstream runtime/FINAL acceptance and physical GPU tests remain pending.
+
 ## 2026-11-22 — continue default Linux Android through runtime and local FINAL
 
 - Launch the existing runtime chain for default amd64, arm64 and riscv64 from

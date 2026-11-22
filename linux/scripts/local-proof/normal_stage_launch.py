@@ -20,6 +20,8 @@ if TYPE_CHECKING:
 
     from proof_types import Json
 
+MEDIA_REQUIRED_BYTES = 300 * 1024**3
+
 
 def validate_stage_invocation(invocation: Json, parent: Json, stage: str, parent_image: str) -> None:
     assert stage in {'gpu', 'media', 'android'} and invocation['target_arch'] == 'amd64', 'Unreviewed ordinary downstream stage'

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import re
 from functools import partial
-from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,6 +18,10 @@ from stage_handoff_profile import (
     load_stage_parent,
     native_stage_layout,
     stage_parent,
+    stage_parent_reference,
+    validate_baked_environment,
+    validate_profile_command,
+    validate_profile_stage,
     validate_source_fields,
 )
 from webgpu_media_lanes import media_inputs
@@ -28,13 +31,10 @@ if TYPE_CHECKING:
 
 
 def default_image_config(config: Json, arch: str) -> None:
-    environment = config['config']['Env']
-    for key, expected in {
+    validate_baked_environment(config, {
         'TARGET_ARCH': arch, 'TARGETARCH': arch, 'BUILD_MODE': 'cross', 'BUILDPLATFORM': 'linux/amd64',
         'ENABLE_AMD': 'false', 'ENABLE_NVIDIA': 'false',
-    }.items():
-        assert [row for row in environment if row.startswith(key + '=')] == [key + '=' + expected], (
-            'Default cross image environment differs: ' + key)
+    }, 'Default')
 
 
 def default_android_inputs(source: Path, output: Path, repo: str, arch: str, context: Path,
@@ -42,10 +42,6 @@ def default_android_inputs(source: Path, output: Path, repo: str, arch: str, con
     image, environment, driver = stage_inputs(source, output, repo, 'android', arch, context, reference, '')
     environment += ['CROSS_VARIANT=', 'CROSS_BUILD_PLATFORM=linux/amd64', 'ENABLE_AMD=false', 'ENABLE_NVIDIA=false']
     return image, environment, driver
-
-
-def default_reference(image: str, parent: Json) -> str:
-    return image.rsplit(':', 1)[0] + '@' + parent['manifest']
 
 
 def default_unit(unit: str, stage: str, arch: str) -> None:
@@ -56,13 +52,8 @@ def default_unit(unit: str, stage: str, arch: str) -> None:
 def validate_default_stage(invocation: Json, parent: Json, previous: Json, stage: str) -> None:
     arch = invocation['target_arch']
     default_unit(invocation['unit'], stage, arch)
-    assert invocation['variant'] == 'default' and invocation['stage'] == stage, 'Default stage scope differs'
-    assert invocation['launch_status'] == 0 and invocation['publication'] is False, 'Successful unpublished default launch required'
-    assert invocation['source_full_preflight_passed'] and invocation['producer_source_unchanged'], 'Default source proof was not retained'
+    validate_profile_stage(invocation, parent, stage, 'default')
     validate_source_fields(invocation, previous)
-    for field in ('manifest', 'config', 'index_sha256'):
-        key = 'parent_OCI_index_sha256' if field == 'index_sha256' else 'parent_' + field
-        assert invocation[key] == parent[field], 'Default parent identity differs'
 
 
 def validate_default_command(invocation: Json, parent: Json, previous: Json, stage: str) -> None:
@@ -71,20 +62,13 @@ def validate_default_command(invocation: Json, parent: Json, previous: Json, sta
     source, output, context = Path(invocation['source']), Path(invocation['output']), Path(parent['context'])
     repo = invocation['image'].rsplit(':', 1)[0]
     assert re.fullmatch(r'ant-local/webgpu-[a-z0-9][a-z0-9._/-]*', repo), 'Local default candidate repository required'
-    reference = default_reference(previous['image'], parent)
+    reference = stage_parent_reference(previous['image'], parent)
     if stage == 'media':
         selected = media_inputs(source, output, repo, 'default', arch, 'sdk', context, reference)
         image, environment, driver = selected['image'], selected['environment'], selected['driver']
     else:
         image, environment, driver = default_android_inputs(source, output, repo, arch, context, reference)
-    command = invocation['command']
-    assert invocation['image'] == image and command[-len(driver):] == driver, 'Default stage driver or image differs'
-    assert command[:2] == ['systemd-run', '--user'] and '--expand-environment=no' in command, 'Default stage transport differs'
-    assert [value for value in command if value.startswith('--unit=')] == ['--unit=' + invocation['unit']], 'Default stage command unit differs'
-    for expected in environment:
-        prefix = expected.partition('=')[0] + '='
-        selected_values = [value for option, value in pairwise(command) if option == '-E' and value.startswith(prefix)]
-        assert selected_values == [expected], 'Default environment binding differs: ' + prefix
+    validate_profile_command(invocation, image, environment, driver)
 
 
 def load_default_media(plan_path: Path, invocation_path: Path) -> tuple[Json, Json, Json]:
@@ -131,7 +115,7 @@ def launch_default_android(plan_path: Path, invocation_path: Path, proof_path: P
     assert re.fullmatch(r'ant-local/webgpu-[a-z0-9][a-z0-9._/-]*', repo), 'Local default candidate repository required'
     parent, context = default_media_layout(proof_path, invocation_path, invocation, sdk)
     source = Path(invocation['source'])
-    image, environment, driver = default_android_inputs(source, output, repo, arch, context, default_reference(invocation['image'], parent))
+    image, environment, driver = default_android_inputs(source, output, repo, arch, context, stage_parent_reference(invocation['image'], parent))
     record = downstream_record(invocation, invocation_path, proof_path, parent, 'Media')
     record.update(stage='android', variant='default', Media_layers_rehashed=parent['layers'],
                   SDK_layers_matched=sdk['layers'], scope=__doc__, GPU_or_FINAL_acceptance=False)
