@@ -40483,10 +40483,18 @@
  {
   "id": "lib.openai-stream-lines-shape",
   "target": "shared/contracts/openai-stream-lines.json",
-  "find": "\"expect\": {\"text\": \"cut\", \"thinking\": \"\", \"finish\": \"length\"",
-  "replace": "\"expect\": {\"text\": \"cut\", \"thinking\": \"\", \"finish\": \"truncated\"",
+  "find": "\"expect\": {\"text\": \"Paris\", \"thinking\": \"\", \"finish\": \"stop\", \"usage\": [7, 2]",
+  "replace": "\"expect\": {\"text\": \"Paris\", \"thinking\": \"\", \"finish\": \"stop\", \"usage\": [7, -2]",
   "test": "bash linux/scripts/tests/test-openai-stream-lines.sh",
-  "why": "two readers in two languages replay this file; a finish reason neither knows must fail here, not as a skipped case there"
+  "why": "a negative count is missing (owner D8): three bindings replay this file, and an expectation holding one is a case none can pass"
+ },
+ {
+  "id": "lib.openai-chat-answers-shape",
+  "target": "shared/contracts/openai-chat-answers.json",
+  "find": "\"expect\": {\"text\": \"Paris\", \"thinking\": \"\", \"finish\": \"stop\", \"usage\": [7, 2]}",
+  "replace": "\"expect\": {\"text\": \"Paris\", \"finish\": \"stop\", \"usage\": [7, 2]}",
+  "test": "bash linux/scripts/tests/test-openai-stream-lines.sh",
+  "why": "a binding compares the whole outcome; a case without thinking passes a partial check in one language and fails another"
  },
  {
   "id": "amd64-v3.gcc-arch-default",

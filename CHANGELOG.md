@@ -17,6 +17,23 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-22 — the OpenAI contract cases of owner decisions D7 and D8 (CON288 (a), (d))
+
+- `shared/contracts/openai-stream-lines.json` gains 11 cases for D8: any non-null `error` fails the stream (`false`,
+  `""`, `{}` and an object without a message among them, matched by the error's JSON text), and so does a chunk that
+  is not an object; a `null` error is none; nothing after `[DONE]` is read; the finish reason keeps its raw value
+  (`content_filter`); usage counts prompt and completion alone, beside `total_tokens` and `reasoning_tokens`; a
+  whole-number float counts, and a negative count is missing, which leaves the usage null.
+- The sibling `shared/contracts/openai-chat-answers.json` holds 10 whole, non-streamed answers under the same rules:
+  content and reasoning under either name, a raw finish, usage, error objects, and bodies that are not an object or no
+  JSON. `test-openai-stream-lines.sh` checks the shape of both files and now allows a raw finish reason;
+  `lib.openai-stream-lines-shape` mutates a count negative instead, as its old `truncated` finish is legal now, and
+  `lib.openai-chat-answers-shape` drops an outcome field.
+- `docs/language-ai.md` states the D8 rules and lists `context_length_exceeded` among the text-contract failures
+  (D7), which `orchestrant-serve` answers with HTTP 400.
+- **Consumers:** OxidANT's `endpoint.rs`, OrchestrANT's `answers.py` and OmniAccelerANT's `endpoint_reply.dart`
+  replay every stream case, so the new ones fail each at its next pin until its reader follows D8.
+
 ## 2026-11-21 — the PE twin of the ELF hardening gate (CON294)
 
 - `Assert-PeHardening` (`windows/scripts/modules/WindowsPeHardening.Common.psm1`) reads each PE's DllCharacteristics

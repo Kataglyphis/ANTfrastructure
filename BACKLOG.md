@@ -614,6 +614,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       offset) and raw-head decode cases under D6's rules (same-class IoU > 0.45 in model-input pixels, a stable
       descending score with ties to the lower row, score = objectness × the best class over every class column),
       two overlapping boxes with equal scores among them. Each binding replays the cases at its next pin.
+      **In source since 2026-11-22:** (a), 11 D8 stream cases and `shared/contracts/openai-chat-answers.json` with 10
+      whole answers, one shape test over both and two recipes, and (d). Left: (b), (c), (e), and each binding's
+      replay of the new cases at its next pin (OxidANT, OrchestrANT, OmniAccelerANT).
 ## Open — Linux image (all arches)
 
 - [ ] **CON238 — two test tools the images lack: cargo-mutants and pytest-timeout** [S, ★★]. Found by the audit
