@@ -10,6 +10,18 @@ parse_common_args() { :; }
 git() { printf '%040d\n' 1; }
 source "$(dirname "${BASH_SOURCE[0]}")/logging.sh"
 SH
+mv "${work}/bin/node" "${work}/bin/cache-fixture-node"
+cat > "${work}/bin/node" <<'SH'
+#!/usr/bin/env bash
+if [ "${!#}" = jspi ]; then
+  case "${FIXTURE_MODE}" in
+    replay-fail) exit 29 ;;
+    replay-rewrite) printf changed >> "${WASM_OUTPUT_DIR}/ort-wasm-simd-threaded.asyncify.wasm" ;;
+  esac
+fi
+exec "$(dirname "$0")/cache-fixture-node" "$@"
+SH
+chmod +x "${work}/bin/node"
 cat > "${work}/build-onnxruntime.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -35,7 +47,7 @@ _case() {
 _run() {
   local required="$1" mode="${2:-good}" flavors="${3:-true}" version="${4:-v1.31.1}" config="${5:-Release}"
   local -a extra=()
-  [ "${6:-0}" != 1 ] || extra+=(--verify-only)
+  [ "$#" -lt 6 ] || extra+=("$6")
   status=0
   output="$(env LC_ALL=C PATH="${work}/bin:${PATH}" FIXTURE_ROOT="${case_root}" FIXTURE_MODE="${mode}" FIXTURE_EVENTS="${case_root}/events" \
     FIXTURE_EMITTER="${TESTS_DIR}/wasm_proof_fixture.py" FIXTURE_PROOF="${work}/lib/ort-webgpu-wasm-proof.py" \
@@ -87,9 +99,31 @@ t_case "post-JS verify-only checks artifacts without a cache or a compiler call"
 _case; _run 1
 t_assert_eq 0 "${status}" "${output}"
 mv "${case_root}/shared" "${case_root}/previous shared"
-_run 1 good true v1.31.1 Release 1
+_run 1 good true v1.31.1 Release --verify-only
 t_assert_eq 0 "${status}" "${output}"
+t_assert_eq 0 "$(grep -c '^WASM-FACTORY-REPLAY:' <<<"${output}")"
 t_assert_fails test -e "${case_root}/shared"
+t_assert_eq 1 "$(grep -c '^build$' "${case_root}/events")"
+
+t_case "required delivery replays both compiled flavors without a cache or a compiler call"
+_run 1 good true v1.31.1 Release --verify-delivery
+t_assert_eq 0 "${status}" "${output}"
+t_assert_eq $'asyncify\njspi' "$(sed -nE 's/^WASM-FACTORY-REPLAY: .*"flavor": "(asyncify|jspi)".*$/\1/p' <<<"${output}")"
+_run 1 replay-fail true v1.31.1 Release --verify-delivery
+t_assert_eq 1 "${status}" "${output}"
+t_assert_contains "${output}" '"returncode": 29'
+_run 1 replay-rewrite true v1.31.1 Release --verify-delivery
+t_assert_eq 1 "${status}" "${output}"
+t_assert_contains "${output}" 'WASM-PROOF FAIL:'
+t_assert_fails test -e "${case_root}/shared"
+t_assert_eq 1 "$(grep -c '^build$' "${case_root}/events")"
+
+t_case "required delivery with flavors disabled still verifies the core WASM artifacts"
+_case; _run 1 good false
+t_assert_eq 0 "${status}" "${output}"
+_run 1 good false v1.31.1 Release --verify-delivery
+t_assert_eq 0 "${status}" "${output}"
+t_assert_eq 0 "$(grep -c '^WASM-FACTORY-REPLAY:' <<<"${output}")"
 t_assert_eq 1 "$(grep -c '^build$' "${case_root}/events")"
 
 t_case "an invalid strict-mode value cannot silently select optional policy"
@@ -127,11 +161,13 @@ _case; _run 1
 t_assert_eq 87 "${status}" "${output}"
 t_assert_contains "${output}" 'failed and ORT_WEB_REQUIRED=1'
 t_assert_fails test -e "${case_root}/shared/.complete"
-t_case "the Dockerfile executes the strict wrapper and verifies again after JS staging"
+t_case "the Dockerfile executes the strict wrapper and checks delivery after JS staging"
 dockerfile="$(cat "${TESTS_DIR}/../../Dockerfile.media")"
 t_assert_contains "${dockerfile}" 'ORT_WEB_REQUIRED="${ORT_WEB_REQUIRED}" ORT_WASM_WEBGPU_FLAVORS="${ORT_WASM_WEBGPU_FLAVORS}"'
 t_assert_contains "${dockerfile}" 'bash /opt/scripts/03-media/build/onnxruntime/build/web-wasm-cache.sh;'
 t_assert_contains "${dockerfile}" 'ORT_WEB_REQUIRED="${ORT_WEB_REQUIRED}" bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step js;'
-t_assert_contains "${dockerfile}" 'bash /opt/scripts/03-media/build/onnxruntime/build/web-wasm-cache.sh --verify-only;'
+delivery_run="$(sed -n '/^LABEL kataglyphis.step=onnxruntime-pkgconfig$/,/^LABEL kataglyphis.step=onnxruntime-pkgconfig-verify$/p' <<<"${dockerfile}")"
+t_assert_contains "${delivery_run}" 'if [ "${ORT_WEB_REQUIRED}" = 1 ]; then'
+t_assert_contains "${delivery_run#*--step js;}" 'bash /opt/scripts/03-media/build/onnxruntime/build/web-wasm-cache.sh --verify-delivery;'
 
 t_summary

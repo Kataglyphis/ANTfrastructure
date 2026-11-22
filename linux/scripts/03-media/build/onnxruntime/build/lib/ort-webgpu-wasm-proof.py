@@ -149,6 +149,8 @@ def replay(args: argparse.Namespace) -> None:
         result = RUNTIME["run_probe"](args.prefix, flavor, product, source_identity(args), file_digest)
         print("WASM-FACTORY-REPLAY: " + json.dumps(result, sort_keys=True))
         RUNTIME["validate"](result, flavor, product, source_identity(args), file_digest)
+    if checked_receipt(args, True) != receipt:
+        raise ValueError("WASM factory receipts changed during replay")
 
 
 def cache_files(prefix: Path) -> dict[str, str]:

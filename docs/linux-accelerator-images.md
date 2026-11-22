@@ -2593,9 +2593,13 @@ availability, inference and complete global-runtime teardown remain separate.
 
 For CON233's own chains, export `ORT_WEB_REQUIRED=1 ORT_WASM_WEBGPU_FLAVORS=true`.
 The canonical media-stage argument builder forwards both; required build, copy and
-receipt failures propagate through the outer driver. The post-JS `--verify-only`
-path checks the compiled modules again without creating a cache. Generic optional
-web builds retain their explicit policy and cannot stamp an incomplete pool.
+receipt failures propagate through the outer driver. After JS staging,
+`web-wasm-cache.sh --verify-delivery` replays both enabled factory modules in
+separate Node processes, retains their raw result records and checks both
+products and receipts again. Cached builds still run these checks.
+The same mode verifies the core artifacts when flavors
+are explicitly disabled. `--verify-only` remains available for receipt and
+artifact inspection. Neither mode creates a cache or rebuilds products.
 Start the strict AMD64 lane before foreign targets so the common host-built pool
 exists; a foreign-target skip cannot seal an empty directory. The existing disk
 admission and digest-pinned parent handoff rules still apply.

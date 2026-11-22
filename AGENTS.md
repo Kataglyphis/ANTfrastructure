@@ -166,7 +166,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Record both WASM products before their configured trees change; reuse the shared pool only after its source, mode, direct recipe and every artifact hash pass.
    Both WASM factory receipts require the real linked C export, exact unregister/negative controls, raw Node success and unchanged module/loader/recipe bytes; initialization or Dawn instance creation is insufficient.
    Instrumented WASM products carry the Hub probe's original MIT notice as a hash-bound sidecar; keep the companion identical to the root LICENSE and refuse foreign or linked destinations.
-   CON233 media chains forward ORT_WEB_REQUIRED=1 and require both flavors; preserve strict failures through the cache wrapper and after JS staging.
+   CON233 media chains forward ORT_WEB_REQUIRED=1 and require fresh Node factory replays of both delivered flavors after JS staging; preserve strict failures and the explicit disabled-flavor check.
    Copied WASM proof modules carry the build-proof/runtime modules and webgpu-factory-probe companions; copied suites carry wasm_proof_fixture.py and its independent node fixture.
    Python proof suites carry python-proof-fixture.sh; raw zero, a nonempty executed unittest suite and its successful summary are all required.
    Native/GIL and free-threaded builds carry `ort-webgpu-build-proof.py`; record each linker product before its configured tree changes.

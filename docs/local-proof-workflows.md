@@ -256,8 +256,9 @@ Then use `launch-normal-media.py --compiler-plan PLAN --gpu-invocation GPU_INVOC
 webgpu-normal-media-amd64-DATE-N.service --image-repo ant-local/webgpu-NAME`.
 It revalidates that exact subject and starts the unchanged ordinary `build-cross-stage.sh`
 with native GPU context and digest pin, `ORT_WEB_REQUIRED=1` and
-`ORT_WASM_WEBGPU_FLAVORS=true`. Both actual Wasm build/probe receipts remain required;
-forwarded flags alone prove neither flavor. Shared host admission retains idle-engine,
+`ORT_WASM_WEBGPU_FLAVORS=true`. The strict Media RUN replays both factories after
+JS staging, including when the shared cache supplied the compiled products.
+Keep the actual build and probe receipts for both flavors. Shared host admission retains idle-engine,
 collision, ambient-flag, fresh temporary-root and mandatory disk checks.
 
 Carry the existing `normal_stage_launch.py`, `gpu_source_profile.py`, native OCI/seed and

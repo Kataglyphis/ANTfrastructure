@@ -295,7 +295,7 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
     ORT_WEB_REQUIRED="${ORT_WEB_REQUIRED}" bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step js; \
     if [ "${ORT_WEB_REQUIRED}" = 1 ]; then \
         ORT_WASM_WEBGPU_FLAVORS="${ORT_WASM_WEBGPU_FLAVORS}" \
-            bash /opt/scripts/03-media/build/onnxruntime/build/web-wasm-cache.sh --verify-only; \
+            bash /opt/scripts/03-media/build/onnxruntime/build/web-wasm-cache.sh --verify-delivery; \
     fi; \
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step pkgconfig
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-22 — replay the delivered WebGPU Wasm factories
+
+- After JS staging, strict Linux Media builds run the Asyncify and JSPI factory
+  checks against the delivered modules. The replay also runs on shared output
+  cache hits. Preserve ordinary receipt-only checks and the explicit
+  disabled-flavor path.
+
 ## 2026-11-22 — retain live OpenCV cache diagnostics
 
 - Add an OpenCV Media phase to the shared read-only cache log reader. Require the

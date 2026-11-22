@@ -43032,10 +43032,10 @@
  {
   "id": "lib.onnx-wasm-proof-post-js",
   "target": "linux/scripts/03-media/build/onnxruntime/build/web-wasm-cache.sh",
-  "find": "if [ \"${verify_only}\" = 1 ]; then",
+  "find": "if [ -n \"${check_mode}\" ]; then",
   "replace": "if false; then",
   "test": "bash linux/scripts/tests/test-onnx-web-cache.sh",
-  "why": "Post-JS verification must not rebuild or allocate a shared cache."
+  "why": "Inspection and post-JS delivery modes cannot rebuild or allocate a shared cache."
  },
  {
   "id": "lib.onnx-wasm-proof-strict-value",
@@ -43056,10 +43056,10 @@
  {
   "id": "lib.onnx-wasm-proof-docker-verification",
   "target": "linux/Dockerfile.media",
-  "find": "web-wasm-cache.sh --verify-only;",
-  "replace": "web-wasm-cache.sh;",
+  "find": "web-wasm-cache.sh --verify-delivery;",
+  "replace": "web-wasm-cache.sh --verify-only;",
   "test": "bash linux/scripts/tests/test-onnx-web-cache.sh",
-  "why": "JS staging cannot bypass the final compiled-product verification."
+  "why": "Post-JS delivery runs both enabled factory probes instead of inspecting saved receipts only."
  },
  {
   "id": "lib.onnx-wasm-proof-docker-js-policy",
@@ -61006,5 +61006,45 @@
   "replace": "        pass",
   "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
   "why": "The child build and an unrelated tail cannot supply the outer drain lifetime."
+ },
+ {
+  "id": "lib.onnx-wasm-proof-delivery-factory-replay",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/web-wasm-cache.sh",
+  "find": "then action=replay; fi",
+  "replace": "then action=verify; fi",
+  "test": "bash linux/scripts/tests/test-onnx-web-cache.sh",
+  "why": "A populated output cache still needs an actual Asyncify and JSPI factory replay after JS."
+ },
+ {
+  "id": "lib.onnx-wasm-proof-delivery-disabled-core",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/web-wasm-cache.sh",
+  "find": "&& [ \"${ORT_WASM_WEBGPU_FLAVORS}\" = true ]; then action=replay; fi",
+  "replace": "; then action=replay; fi",
+  "test": "bash linux/scripts/tests/test-onnx-web-cache.sh",
+  "why": "Explicitly disabled optional flavors keep strict artifact verification without requiring a missing plugin."
+ },
+ {
+  "id": "lib.onnx-wasm-proof-delivery-factory-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/web-wasm-cache.sh",
+  "find": "exec \"${proof[@]}\" \"${action}\" --prefix \"${WASM_OUTPUT_DIR}\" \"${options[@]}\"",
+  "replace": "\"${proof[@]}\" \"${action}\" --prefix \"${WASM_OUTPUT_DIR}\" \"${options[@]}\" || true; exit 0",
+  "test": "bash linux/scripts/tests/test-onnx-web-cache.sh",
+  "why": "A post-JS factory failure must fail the Media delivery RUN."
+ },
+ {
+  "id": "lib.onnx-wasm-proof-delivery-recheck-all",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
+  "find": "    if checked_receipt(args, True) != receipt:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-onnx-web-cache.sh",
+  "why": "A later Node probe must not be able to change the earlier flavor while leaving a green delivery verdict."
+ },
+ {
+  "id": "lib.onnx-wasm-proof-docker-delivery-strict",
+  "target": "linux/Dockerfile.media",
+  "find": "if [ \"${ORT_WEB_REQUIRED}\" = 1 ]; then",
+  "replace": "if [ \"${ORT_WEB_REQUIRED}\" = 0 ]; then",
+  "test": "bash linux/scripts/tests/test-onnx-web-cache.sh",
+  "why": "Only strict builds run the post-JS delivery gate."
  }
 ]
