@@ -61846,5 +61846,53 @@
   "replace": "exec make preflight > /evidence/isolated-preflight-command.log 2>/dev/null",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "Failed-command diagnostics must reach the mounted transcript along with stdout."
+ },
+ {
+  "id": "compiler-llvm-tools.complete-preflight-joined-property-prefix",
+  "target": "linux/scripts/local-proof/complete-preflight-receipt.py",
+  "find": "r\"^(?:--property=|-p)?ExecStopPost=\"",
+  "replace": "r\"^ExecStopPost=\"",
+  "test": "bash linux/scripts/tests/test-complete-preflight-receipt.sh",
+  "why": "Synthetic CLI controls require all supported property argument forms, exactly one cleanup, the original owner and raw cleanup success. They do not execute systemd, authenticate receipts or prove image acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.complete-preflight-separated-property-value",
+  "target": "linux/scripts/local-proof/complete-preflight-receipt.py",
+  "find": "r\"^(?:--property=|-p)?ExecStopPost=\"",
+  "replace": "r\"^(?:--property=|-p)ExecStopPost=\"",
+  "test": "bash linux/scripts/tests/test-complete-preflight-receipt.sh",
+  "why": "Synthetic CLI controls require all supported property argument forms, exactly one cleanup, the original owner and raw cleanup success. They do not execute systemd, authenticate receipts or prove image acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.complete-preflight-unique-cleanup",
+  "target": "linux/scripts/local-proof/complete-preflight-receipt.py",
+  "find": "assert len(cleanup_commands) == 1",
+  "replace": "assert len(cleanup_commands) >= 1",
+  "test": "bash linux/scripts/tests/test-complete-preflight-receipt.sh",
+  "why": "Synthetic CLI controls require all supported property argument forms, exactly one cleanup, the original owner and raw cleanup success. They do not execute systemd, authenticate receipts or prove image acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.complete-preflight-argv-owner",
+  "target": "linux/scripts/local-proof/complete-preflight-receipt.py",
+  "find": "assert cleanup_argv[cleanup_argv.index(\"--run-id\") + 1] == record[\"owner_run_id\"]",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-complete-preflight-receipt.sh",
+  "why": "Synthetic CLI controls require all supported property argument forms, exactly one cleanup, the original owner and raw cleanup success. They do not execute systemd, authenticate receipts or prove image acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.complete-preflight-raw-cleanup-status",
+  "target": "linux/scripts/local-proof/complete-preflight-receipt.py",
+  "find": "assert cleanup[\"exit_status\"] == 0 and cleanup[\"run_id\"] == record[\"owner_run_id\"]",
+  "replace": "assert cleanup[\"run_id\"] == record[\"owner_run_id\"]",
+  "test": "bash linux/scripts/tests/test-complete-preflight-receipt.sh",
+  "why": "Synthetic CLI controls require all supported property argument forms, exactly one cleanup, the original owner and raw cleanup success. They do not execute systemd, authenticate receipts or prove image acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.complete-preflight-cleanup-receipt-owner",
+  "target": "linux/scripts/local-proof/complete-preflight-receipt.py",
+  "find": "assert cleanup[\"exit_status\"] == 0 and cleanup[\"run_id\"] == record[\"owner_run_id\"]",
+  "replace": "assert cleanup[\"exit_status\"] == 0",
+  "test": "bash linux/scripts/tests/test-complete-preflight-receipt.sh",
+  "why": "Synthetic CLI controls require all supported property argument forms, exactly one cleanup, the original owner and raw cleanup success. They do not execute systemd, authenticate receipts or prove image acceptance."
  }
 ]

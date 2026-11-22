@@ -582,6 +582,7 @@ Five of them are RULES and stay here:
   Copied host proof tools carry `host_commands.py`; the watcher also carries `preflight-status.py`,
   and isolated preflight carries both scripts under `isolated-preflight/`.
   Isolated preflight keeps the mounted worker transcript separately from engine attach output; a missing or linked transcript cannot pass, and complete source acceptance still requires every normal group and mutation.
+  Complete-preflight cleanup readers accept joined and separated systemd property arguments, require exactly one ExecStopPost, and retain the original argv and all cleanup/owner checks.
   Copied `append-operational-memory.py` carries both `operational_memory` modules, `host_commands.py` and `source_ci/common.py`; preserve controller refusals, exact prefix checks and exclusive backups.
   Isolated preflight requires the engine init to reap orphaned test children; group-disappearance checks stay strict.
   Cached-image replays use its explicit image and read-only native-tools-cache options; retain report writability and record the altered environment scope.

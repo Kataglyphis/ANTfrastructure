@@ -19,6 +19,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-22 — read equivalent systemd cleanup arguments
+
+- Accept joined and separated systemd `ExecStopPost` arguments when assembling a complete-preflight receipt. Require exactly one across all forms; keep the executed argv unchanged and retain every source, mutation, owner, cleanup and engine-query check.
+- Add end-to-end synthetic CLI regression controls and parse-valid mutations. Preserve the original successful 753e source run and failed receipt assembly separately; tooling replay does not qualify a new production commit.
+
 ## 2026-11-22 — retain complete isolated preflight transcripts
 
 - Save the worker's own stdout and stderr through the existing evidence bind before container cleanup. Keep the attach stream separately; a missing or linked transcript fails even after engine exit zero. Preserve raw command/cleanup statuses and every existing full-source acceptance gate.

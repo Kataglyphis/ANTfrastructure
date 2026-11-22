@@ -164,6 +164,15 @@ they do not prove a real container run. Complete acceptance still requires the e
 42-group, exact-registry, source, terminal and cleanup checks. Keep earlier incomplete
 logs and failed sealing attempts unchanged; do not add a success footer to them.
 
+The final receipt reader accepts the original `--property=ExecStopPost=...`,
+`--property ExecStopPost=...`, `-p ExecStopPost=...` and joined `-pExecStopPost=...`
+forms. Exactly one cleanup property is required across all forms. Preserve the
+executed argv without rewriting it. The same owner ID, raw cleanup result, strict
+mutation proof and independent engine absence checks still apply. Mixed or repeated
+properties, a missing cleanup, wrong owner or failed cleanup refuse. Synthetic CLI
+fixtures cover those cases and quoted paths with spaces; they do not authenticate
+receipts, execute systemd or establish image acceptance.
+
 ## Media profile source controls
 
 The isolated `run-isolated-preflight.py` runner accepts
