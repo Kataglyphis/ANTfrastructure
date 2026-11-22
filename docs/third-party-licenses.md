@@ -56,7 +56,7 @@ source commits and every original SHA256. `stage-original-notices.py` requires t
 actual checkout, matching release tag and unchanged original notice bytes. Missing,
 empty, linked, rewritten or oversized inputs, reused or linked outputs, and failed
 staging abort the setup, including conditional callers. Preserve both companions
-when copying setup; its existing Dockerfile directory mount includes them.
+when copying setup, together with `01-core/source_originals.py`. The Dockerfile retains the GStreamer directory and a narrow mount for that shared file companion.
 
 Each output keeps `source-record.json` with original-file hashes, source URL,
 commit and the tracked `source.patch`. Reviewed original context files remain
@@ -69,6 +69,42 @@ sources, map every installed binary, or collect all wrapped/native/Cargo licence
 Use the existing Cargo collector for the actual selected dependency graph and
 verify original texts in finished packages separately. Synthetic source controls
 do not establish a rebuilt image, complete licence closure or GPU acceptance.
+
+## Transport image source originals into a consumer
+
+`06-packaging/stage-image-source-originals.py` validates selected GCC and/or
+GStreamer original trees from an image before writing a fresh consumer directory:
+
+```bash
+python3 linux/scripts/06-packaging/stage-image-source-originals.py \
+  --gcc-prefix /opt/gcc-16.2.0 --gcc-version 16.2.0 \
+  --gstreamer-prefix /opt/gstreamer --gstreamer-version 1.29.2 \
+  --destination /bundle/licenses/image-source-originals
+```
+
+Supply each selected prefix together with its version. GCC uses the reviewed
+`gcc-runtime-originals.json` policy for both original notices, the official archive
+SHA512 and canonical source URL. GStreamer reuses its producer's canonical policy,
+requiring the monorepo and exactly one Rust tree. Original hashes, record identity,
+working manifests, GTK4 package identity and tracked patch hashes must agree.
+Missing, unexpected, linked, hardlinked, empty or oversized selected inputs refuse;
+a patch may be empty and remains bounded at 8 MiB. Existing destinations refuse.
+All selected inputs are validated before creating the output directory.
+
+The output retains exact input bytes under component directories and writes
+`source-originals.json` with their hashes and sizes. Copy the entry, GCC policy,
+GStreamer producer and policy, and shared `01-core/source_originals.py` in their
+hub layout. Synthetic tests share the real-Git fixture and cover both producer and
+transport failures; they do not establish a rebuilt image or consumer integration.
+
+This transport does not authenticate producer records, associate selected binaries
+with source, preserve complete corresponding sources or collect all native and
+Cargo dependencies. The consumer selects components for its actual payload and
+checks every selected original in its finished artifact. Use the shared exact-byte
+package verifier for raw originals; the text licence verifier normalizes text.
+An empty `source.patch` must be checked by the consumer's archive/tree proof because
+the generic binary verifier deliberately rejects empty source files. A passed
+transport receipt never certifies complete binary, licence or source closure.
 
 ## Maintaining this list
 

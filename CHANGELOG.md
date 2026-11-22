@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-22 — transport selected image source originals
+
+- Add a reusable consumer stager for the reviewed GCC and GStreamer original trees, retaining exact notices, source records, working context and patches. Validate selected inputs before fresh output allocation.
+- Share bounded file validation and fresh writes with the GStreamer producer; retain its narrow Dockerfile companion mount and required API checks. Copy the two media smoke siblings together without increasing the frozen Dockerfile size.
+- Add synthetic transport/refusal and mutation controls. Actual rebuilt images, consumer integration, finished packages and complete native licences and corresponding sources remain open.
+
 ## 2026-11-21 — preserve selected GStreamer source notices before cleanup
 
 - Retain distinct original monorepo and Rust-plugin notices, source commits, tracked patches and the GTK4 package's own version under the GStreamer prefix.

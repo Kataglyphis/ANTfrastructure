@@ -1284,7 +1284,8 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
 
 - Use `nerdctl` first on this host; `buildctl`/`ctr` commonly fail with permission errors.
 - GCC builds retain archive-matched original `COPYING3` and `COPYING.RUNTIME` with their source URL and SHA512 before cleanup; staging failures abort. These selected texts do not prove complete native licence closure.
-- GStreamer builds retain reviewed original monorepo and selected Rust notices before source cleanup; copied setup entries carry `stage-original-notices.py` and `original-notices.json`. Keep exact release/commit/byte checks and fatal native/cross handoffs; selected texts do not prove binary linkage or complete licences.
+- GStreamer builds retain reviewed original monorepo and selected Rust notices before source cleanup; copied setup entries carry `stage-original-notices.py`, `original-notices.json` and `01-core/source_originals.py`. Keep exact release/commit/byte checks and fatal native/cross handoffs; selected texts do not prove binary linkage or complete licences.
+- Image source-original transport validates every selected tree before fresh output allocation; copied callers carry its GCC policy, the canonical GStreamer producer/policy and shared original-file companion. Keep exact bytes and limited-scope receipts; transport does not prove binary linkage or finished-package acceptance.
 - Keep both the QEMU/binfmt multi-platform lane and the cross-build lane working.
 - QNN plugin configure retries use the shared retry helper, retain every attempt in `build.log`
   and return the last raw configure failure after exhaustion. Keep compilation outside that retry;

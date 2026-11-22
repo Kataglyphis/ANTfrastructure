@@ -5,14 +5,19 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
+import runpy
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+
+from dockerfile_runs import dockerfile_runs, dockerfile_script_map
 
 MONOREPO = (
     "LICENSE",
@@ -47,7 +52,7 @@ def fixture(root: Path) -> None:
     (root / "source.c").write_text("source before build patches\n")
 
 
-class NoticeTests(unittest.TestCase):
+class SourceNoticeFixture(unittest.TestCase):
     subject: Path
     fixture: Path
 
@@ -120,6 +125,84 @@ class NoticeTests(unittest.TestCase):
             "-qm",
             "changed source",
         )
+
+    def mirror_scripts(self, *names: str) -> Path:
+        scripts = self.root / "mirror/linux/scripts"
+        for name in names:
+            output = scripts / name
+            output.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(self.subject.parents[4] / name, output)
+        return scripts
+
+
+class NoticeTests(SourceNoticeFixture):
+    def test_shared_output_relative_paths(self) -> None:
+        shared = runpy.run_path(
+            str(self.subject.parents[4] / "01-core/source_originals.py")
+        )
+        for index, name in enumerate(
+            ("../escape", "/absolute", "a//b", "./notice", "")
+        ):
+            output = self.root / ("invalid-output-" + str(index))
+            with self.assertRaisesRegex(ValueError, "Invalid original output path"):
+                shared["write_originals"](output, {name: b"original"})
+            self.assertFalse(output.exists())
+
+    def test_shared_read_size_change(self) -> None:
+        shared = runpy.run_path(
+            str(self.subject.parents[4] / "01-core/source_originals.py")
+        )
+        notice = self.tree / "LICENSE"
+        self.assertEqual(shared["original_bytes"](notice), notice.read_bytes())
+        with (
+            mock.patch.object(Path, "open", return_value=io.BytesIO(b"short")),
+            self.assertRaisesRegex(ValueError, "Original size changed"),
+        ):
+            shared["original_bytes"](notice)
+
+    def test_media_notice_mount_and_smoke_siblings(self) -> None:
+        root = self.subject.resolve().parents[6]
+        selected = [
+            text
+            for _, text in dockerfile_runs(str(root / "linux/Dockerfile.media"))
+            if "bash /opt/scripts/03-media/build/gstreamer/common/build-gstreamer-stage.sh"
+            in text
+        ]
+        self.assertEqual(len(selected), 1)
+        self.assertIn(
+            "--mount=type=bind,source=linux/scripts/01-core/source_originals.py,target=/opt/scripts/01-core/source_originals.py,readonly",
+            selected[0],
+        )
+        mapping = dockerfile_script_map(root, "Dockerfile.media")
+        for name in ("smoke-common.sh", "smoke-media.sh"):
+            self.assertEqual(
+                mapping.get("/opt/scripts/packaging/" + name),
+                "linux/scripts/06-packaging/" + name,
+            )
+
+    def test_required_original_file_companion(self) -> None:
+        relative = "03-media/build/gstreamer/common/stage-original-notices.py"
+        scripts = self.mirror_scripts(relative, "01-core/source_originals.py")
+        entry = scripts / relative
+        companion = scripts / "01-core/source_originals.py"
+        original = (self.subject.parents[4] / "01-core/source_originals.py").read_text()
+        for changed, expected in (
+            (original, 0),
+            (
+                original.replace(
+                    "SOURCE_ORIGINALS_API = 1", "SOURCE_ORIGINALS_API = 0"
+                ),
+                1,
+            ),
+            (original + "\nwrite_originals = None\n", 1),
+        ):
+            companion.write_text(changed)
+            result = subprocess.run(
+                [sys.executable, "-B", str(entry), "--help"],
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, expected, result.stderr)
 
     def test_exact_originals_and_patch(self) -> None:
         (self.tree / "source.c").write_bytes(b"patched\r\nsource\n")
@@ -251,9 +334,10 @@ class NoticeTests(unittest.TestCase):
 
     def test_linked_original(self) -> None:
         file = self.tree / "LICENSE"
-        original = self.root / "original"
+        # Equal lengths keep the size check from masking the regular-file guard.
+        original = file.with_name("x" * len(file.read_bytes()))
         file.rename(original)
-        file.symlink_to(original)
+        file.symlink_to(original.name)
         self.refused()
 
     def test_hardlinked_original(self) -> None:

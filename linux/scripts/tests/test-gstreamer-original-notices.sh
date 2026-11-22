@@ -17,4 +17,6 @@ git -C "${tree}" tag gstreamer-1.29.2 || exit 1
 t_case 'original notice staging retains bytes, source identity and fatal producer handoffs'
 python3 -B "${TESTS_DIR}/gstreamer_notice_tests.py" "${SUBJECT}" "${tree}"
 t_assert_eq 0 "$?" 'all source notice staging controls pass'
+python3 -B "${TESTS_DIR}/image_source_original_tests.py" "${SUBJECT}" "${tree}"
+t_assert_eq 0 "$?" 'all image source-original transport controls pass'
 t_summary

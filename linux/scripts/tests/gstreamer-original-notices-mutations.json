@@ -49,7 +49,7 @@
   },
   {
     "id": "lib.gstreamer-original-notices-regular",
-    "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+    "target": "linux/scripts/01-core/source_originals.py",
     "find": "stat.S_ISREG(info.st_mode) and info.st_nlink == 1",
     "replace": "info.st_nlink == 1",
     "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
@@ -57,7 +57,7 @@
   },
   {
     "id": "lib.gstreamer-original-notices-single-link",
-    "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+    "target": "linux/scripts/01-core/source_originals.py",
     "find": "stat.S_ISREG(info.st_mode) and info.st_nlink == 1",
     "replace": "stat.S_ISREG(info.st_mode)",
     "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
@@ -65,31 +65,31 @@
   },
   {
     "id": "lib.gstreamer-original-notices-nonempty",
-    "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
-    "find": "0 < info.st_size <= 1024 * 1024",
-    "replace": "0 <= info.st_size <= 1024 * 1024",
+    "target": "linux/scripts/01-core/source_originals.py",
+    "find": "int(not allow_empty) <= info.st_size <= max_bytes",
+    "replace": "0 <= info.st_size <= max_bytes",
     "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
     "why": "An empty committed original with a matching hash still cannot satisfy the notice contract."
   },
   {
     "id": "lib.gstreamer-original-notices-bounded-original",
-    "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
-    "find": "0 < info.st_size <= 1024 * 1024",
-    "replace": "0 < info.st_size",
+    "target": "linux/scripts/01-core/source_originals.py",
+    "find": "int(not allow_empty) <= info.st_size <= max_bytes",
+    "replace": "int(not allow_empty) <= info.st_size",
     "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
     "why": "Selected notice inputs stay bounded before reading."
   },
   {
     "id": "lib.gstreamer-original-notices-source-parents",
-    "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
-    "find": "def original_bytes(path: Path) -> bytes:\n    plain_parents(path)",
-    "replace": "def original_bytes(path: Path) -> bytes:\n    pass",
+    "target": "linux/scripts/01-core/source_originals.py",
+    "find": "    plain_parents(path)\n",
+    "replace": "    pass\n",
     "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
     "why": "A selected notice cannot traverse a symlinked source directory."
   },
   {
     "id": "lib.gstreamer-original-notices-output-parents",
-    "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+    "target": "linux/scripts/01-core/source_originals.py",
     "find": "    plain_parents(destination)\n",
     "replace": "    pass\n",
     "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
@@ -97,7 +97,7 @@
   },
   {
     "id": "lib.gstreamer-original-notices-fresh-output",
-    "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+    "target": "linux/scripts/01-core/source_originals.py",
     "find": "    destination.mkdir()",
     "replace": "    destination.mkdir(exist_ok=True)",
     "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
@@ -121,7 +121,7 @@
   },
   {
     "id": "lib.gstreamer-original-notices-unique-policy",
-    "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
+    "target": "linux/scripts/01-core/source_originals.py",
     "find": "len(result) == len(pairs)",
     "replace": "True",
     "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
@@ -162,8 +162,8 @@
   {
     "id": "lib.gstreamer-original-notices-patch-bytes",
     "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
-    "find": "(destination / \"source.patch\").write_bytes(patch)",
-    "replace": "(destination / \"source.patch\").write_bytes(b\"\")",
+    "find": "payloads[\"source.patch\"] = patch",
+    "replace": "payloads[\"source.patch\"] = b\"\"",
     "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
     "why": "The actual tracked patch bytes are retained rather than an empty placeholder."
   },

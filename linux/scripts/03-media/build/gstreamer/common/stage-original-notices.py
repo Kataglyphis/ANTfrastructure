@@ -9,7 +9,7 @@ import argparse
 import hashlib
 import json
 import re
-import stat
+import runpy
 import subprocess
 import tomllib
 from pathlib import Path
@@ -41,41 +41,24 @@ CONTEXT_PATHS = {
 }
 
 
-def require(condition: bool, message: str) -> None:
-    if not condition:
-        raise ValueError(message)
-
-
-def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result = dict(pairs)
-    require(len(result) == len(pairs), "Duplicate policy key")
-    return result
-
-
-def plain_parents(path: Path) -> None:
-    require(
-        path.is_absolute() and ".." not in path.parts,
-        "Path must be absolute without traversal",
-    )
-    for parent in reversed(path.parents):
-        if parent.exists() or parent.is_symlink():
-            require(
-                stat.S_ISDIR(parent.lstat().st_mode),
-                "Linked or non-directory parent: " + str(parent),
-            )
-
-
-def original_bytes(path: Path) -> bytes:
-    plain_parents(path)
-    info = path.lstat()
-    require(
-        stat.S_ISREG(info.st_mode) and info.st_nlink == 1,
-        "Original must be a single regular file: " + str(path),
-    )
-    require(
-        0 < info.st_size <= 1024 * 1024, "Empty or oversized original: " + str(path)
-    )
-    return path.read_bytes()
+_shared = runpy.run_path(str(Path(__file__).parents[4] / "01-core/source_originals.py"))
+if _shared.get("SOURCE_ORIGINALS_API") != 1:
+    raise ValueError("Unsupported original-file companion")
+for _name in (
+    "require",
+    "unique_object",
+    "plain_parents",
+    "original_bytes",
+    "write_originals",
+):
+    if not callable(_shared.get(_name)):
+        raise TypeError("Missing original-file companion export: " + _name)
+require = _shared["require"]
+unique_object = _shared["unique_object"]
+plain_parents = _shared["plain_parents"]
+original_bytes = _shared["original_bytes"]
+write_originals = _shared["write_originals"]
+GSTREAMER_SOURCE_NOTICES_API = 1
 
 
 def git(tree: Path, *arguments: str) -> bytes:
@@ -188,28 +171,13 @@ def preserve(
     metadata: dict[str, Any],
     patch: bytes,
 ) -> None:
-    plain_parents(destination)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.mkdir()
     payloads = dict(originals)
     payloads.update(
         ("working-context/" + name, data) for name, data in working_context.items()
     )
-    for relative, data in payloads.items():
-        output = destination / relative
-        output.parent.mkdir(parents=True, exist_ok=True)
-        require(
-            output.write_bytes(data) == len(data),
-            "Incomplete original write: " + relative,
-        )
-        require(output.read_bytes() == data, "Staged original differs: " + relative)
-    require(
-        (destination / "source.patch").write_bytes(patch) == len(patch),
-        "Incomplete source patch write",
-    )
-    (destination / "source-record.json").write_text(
-        json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
-    )
+    payloads["source.patch"] = patch
+    payloads["source-record.json"] = (json.dumps(metadata, indent=2) + "\n").encode()
+    write_originals(destination, payloads)
 
 
 def stage(
