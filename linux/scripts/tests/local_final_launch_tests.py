@@ -135,6 +135,15 @@ class FinalLaunchTests(unittest.TestCase):
         self.observe.assert_called_once_with(M.ENGINE, self.fixture.reference, 'linux/amd64', self.fixture.invocation_path)
         self.assertEqual(M.read(self.directory / 'launch-result.json')['stderr'], 'launch stderr')
 
+    def test_launch_and_binding_use_the_observed_nvidia_worker_scope(self) -> None:
+        self.origin['variant'] = 'nvidia'
+        record = self.launch()
+        self.assertEqual(record['local_subject']['variant'], 'nvidia')
+        self.assertEqual(M.workers.call_args_list, [mock.call('nvidia'), mock.call('nvidia')])
+        observed = {path.name for path in ORIGINAL_WORKERS('nvidia')}
+        self.assertIn('nvidia_handoff_profile.py', observed)
+        self.assertIn('proof_types.py', observed)
+
     def test_launch_refuses_existing_paths_units_and_symlinks(self) -> None:
         self.directory.mkdir()
         with self.assertRaises(ValueError):

@@ -1,4 +1,4 @@
-"""Prepare ordinary default and ROCm runtime from actual native Android; no registry publication, licence, hardware or FINAL acceptance."""
+"""Prepare ordinary runtime from actual native Android; no registry publication, licence, hardware or FINAL acceptance."""
 
 from __future__ import annotations
 
@@ -62,18 +62,22 @@ def prepare_local_alias(actual: Json, path: Path, *, platform: str = 'linux/amd6
     return {'local_immutable_alias': record, 'local_alias_receipt_sha256': sha(path)}
 
 
-def runtime_worker_files(host_root: Path, *, default: bool = False) -> list[Path]:
+def runtime_worker_files(host_root: Path, *, default: bool = False, nvidia: bool = False) -> list[Path]:
     scripts = host_root / 'linux/scripts'
     tools = scripts / 'local-proof'
     ordinary = [tools / name for name in ['runtime_launch_profile.py', 'launch-normal-runtime.py', 'normal_stage_launch.py',
                                          'android_handoff_profile.py', 'runtime_source_profile.py']] + [
         scripts / name for name in ['owned-nerdctl.py', 'owned_nerdctl_args.py', 'owned_containers.py',
                                     'cleanup-owned-containers.py', 'host_commands.py']]
-    if default:
+    if default or nvidia:
         ordinary += [tools / name for name in (
             'default_handoff_profile.py', 'default_media_launch.py', 'webgpu_media_lanes.py', 'stage_handoff_profile.py',
             'media_handoff_profile.py', 'gpu_handoff_profile.py', 'launch-normal-gpu.py', 'proof_subject.py',
             'native-oci-handoff.py', 'native_oci_seed.py', 'native_oci_layout.py', 'proof_commands.py',
+        )]
+    if nvidia:
+        ordinary += [tools / name for name in (
+            'nvidia_handoff_profile.py', 'gpu_source_profile.py', 'proof_types.py',
         )]
     return ordinary
 
@@ -95,16 +99,39 @@ def runtime_lane(invocation: Json, unit: str, prefix: str) -> tuple[str, str]:
         default_unit(unit, 'runtime', arch)
         assert re.fullmatch(r'ant-local/webgpu-[a-z0-9][a-z0-9-]*:runtime-default-[A-Za-z0-9][A-Za-z0-9_.-]{0,90}', prefix), 'Fresh local default runtime prefix required'
         return arch, ''
+    if lane == 'nvidia':
+        from nvidia_handoff_profile import nvidia_unit
+
+        nvidia_unit(unit, 'runtime', arch)
+        assert re.fullmatch(r'ant-local/webgpu-[a-z0-9][a-z0-9-]*:runtime-nvidia-[A-Za-z0-9][A-Za-z0-9_.-]{0,90}', prefix), 'Fresh local NVIDIA runtime prefix required'
+        return arch, lane
     assert (lane, arch) == ('rocm', 'amd64'), 'Unreviewed ordinary runtime lane'
     assert re.fullmatch(r'webgpu-normal-runtime-amd64-[0-9-]+\.service', unit), 'Unexpected runtime producer unit'
     assert re.fullmatch(r'ant-local/webgpu-[a-z0-9][a-z0-9-]*:runtime-rocm-[A-Za-z0-9][A-Za-z0-9_.-]{0,90}', prefix), 'Fresh local ROCm runtime prefix required'
     return arch, lane
 
 
-def runtime_backend(variant: str) -> tuple[str, str, str, str]:
+def nvidia_runtime_flags(arch: str) -> dict[str, str]:
+    return {'CROSS_VARIANT':'nvidia', 'CROSS_NO_PUSH':'1', 'ENABLE_AMD':'false', 'ENABLE_NVIDIA':'true',
+            'ENABLE_DEEPSTREAM':'true' if arch == 'amd64' else 'false', 'ENABLE_TENSORRT':'true', 'ENABLE_ROCM_ASAN':'false',
+            'BUILD_TYPE':'Release', 'TORCH_APP_MODE':'all', 'ONNX_PACKAGE':'onnxruntime-gpu', 'PYTORCH_EXTRA':'pytorch-cu130',
+            'CROSS_BUILD_PLATFORM':'linux/amd64', 'CROSS_NVIDIA_SBSA':'1' if arch == 'arm64' else '0',
+            'CROSS_BUILDKIT_KEEP_GB':'120', 'CROSS_IMAGE_PRUNE':'0', 'PRUNE_DUP_CACHEMOUNTS':'0',
+            'RUNTIME_WHEELS_SOURCE':'export'}
+
+
+def runtime_backend(variant: str, arch: str) -> tuple[list[str], str]:
+    if variant == 'nvidia':
+        flags = nvidia_runtime_flags(arch)
+        wheels = flags.pop('RUNTIME_WHEELS_SOURCE')
+        return [f'{key}={value}' for key, value in flags.items()], 'RUNTIME_WHEELS_SOURCE=' + wheels
     if not variant:
-        return 'CROSS_VARIANT=', 'ENABLE_AMD=false', 'PYTORCH_EXTRA=pytorch-cpu', 'RUNTIME_WHEELS_SOURCE=export'
-    return 'CROSS_VARIANT=rocm', 'ENABLE_AMD=true', 'PYTORCH_EXTRA=pytorch-rocm10', 'RUNTIME_WHEELS_SOURCE=image'
+        variant_flag, amd_flag, torch_extra, wheels = 'CROSS_VARIANT=', 'ENABLE_AMD=false', 'PYTORCH_EXTRA=pytorch-cpu', 'RUNTIME_WHEELS_SOURCE=export'
+    else:
+        variant_flag, amd_flag, torch_extra, wheels = 'CROSS_VARIANT=rocm', 'ENABLE_AMD=true', 'PYTORCH_EXTRA=pytorch-rocm10', 'RUNTIME_WHEELS_SOURCE=image'
+    return [variant_flag, 'CROSS_NO_PUSH=1', amd_flag, 'ENABLE_NVIDIA=false', 'ENABLE_DEEPSTREAM=false',
+            'ENABLE_TENSORRT=false', 'ENABLE_ROCM_ASAN=false', 'BUILD_TYPE=Release', 'TORCH_APP_MODE=all',
+            'ONNX_PACKAGE=onnxruntime', torch_extra], wheels
 
 
 def launch_runtime(plan: Json, invocation: Json, invocation_path: Path, parent: Json, context: Path,
@@ -126,11 +153,8 @@ def launch_runtime(plan: Json, invocation: Json, invocation_path: Path, parent: 
     wrapper = str(scripts / 'owned-nerdctl.py')
     cleanup = ['python3', str(scripts / 'cleanup-owned-containers.py'), '--engine', engine, '--owner-label', owner_label,
                '--run-id', run_id, '--cidfile', str(output / 'container.cid'), '--output', str(output / 'cleanup.json')]
-    variant_flag, amd_flag, torch_extra, wheels = runtime_backend(variant)
-    environment = [variant_flag, 'CROSS_NO_PUSH=1', amd_flag, 'ENABLE_NVIDIA=false', 'ENABLE_DEEPSTREAM=false',
-                   'ENABLE_TENSORRT=false', 'ENABLE_ROCM_ASAN=false', 'BUILD_TYPE=Release', 'TORCH_APP_MODE=all',
-                   'ONNX_PACKAGE=onnxruntime', torch_extra, 'APP_REF=' + app_ref,
-                   'ARTIFACT_CONTEXT_MODE=oci', 'ARTIFACT_CONTEXT_ROOT=' + str(context).removesuffix(suffix),
+    environment, wheels = runtime_backend(variant, arch)
+    environment += ['APP_REF=' + app_ref, 'ARTIFACT_CONTEXT_MODE=oci', 'ARTIFACT_CONTEXT_ROOT=' + str(context).removesuffix(suffix),
                    'RUNTIME_ANDROID_PIN_' + arch + '=' + reference, wheels, 'RUNTIME_USE_LOCAL_CONTEXT_CHAIN=true',
                    'RUNTIME_CONTEXT_ROOT=' + str(output / 'runtime-contexts'), 'LOG_DIR=' + str(output / 'logs'),
                    'RUNTIME_REUSE_CHILDREN=0', 'RUNTIME_IMAGE_SMOKE=1', 'RUNTIME_INPUT_PREFLIGHT=1',
@@ -151,12 +175,14 @@ def launch_runtime(plan: Json, invocation: Json, invocation_path: Path, parent: 
                       runtime_source_selection=review)
     record.update(stage='runtime', variant=variant, image_prefix=prefix, app_ref=app_ref, Android_layers_rehashed=parent['layers'],
                   Media_layers_matched=parent['matched_Media_layers_and_diffIDs'], host_tools_revision=checked_run(['git', '-C', str(host_root), 'rev-parse', 'HEAD']).stdout.strip(),
-                  selected_host_workers_sha256={str(path): sha(path) for path in runtime_worker_files(host_root, default=not variant)},
+                  selected_host_workers_sha256={str(path): sha(path) for path in runtime_worker_files(host_root, default=not variant, nvidia=variant == 'nvidia')},
                   run_id=run_id, owner_label=owner_label, expected_runtime_run_id='runtime-' + run_id,
                   engine=engine, engine_wrapper=wrapper, cleanup_command=cleanup,
                   smoke_overlap='serial' if serial_smoke else 'ordinary-default', GPU_or_FINAL_acceptance=False, scope=__doc__)
     if not variant:
         record.update(default_android_ancestry_verified=True, parent_context=str(context))
+    if variant == 'nvidia':
+        record.update(nvidia_android_ancestry_verified=True, parent_context=str(context))
     required_bytes = max(plan['required_bytes'], RUNTIME_REQUIRED_BYTES)
     return launch_build(source, output, unit, images[-1], arch, required_bytes, record, environment, driver,
                         images=images, prepare=lambda: prepare_local_alias(actual, output / 'local-alias.json'),

@@ -54704,7 +54704,7 @@
  {
   "id": "image-acceptance.bounded.binding-5",
   "target": "linux/scripts/launch-local-final.py",
-  "find": "require(record['workers_sha256'] == {str(path):fingerprint(path) for path in workers()}, 'FINAL launcher worker closure changed')",
+  "find": "require(record['workers_sha256'] == {str(path):fingerprint(path) for path in workers(record['local_subject']['variant'])}, 'FINAL launcher worker closure changed')",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-local-final-launch.sh",
   "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
@@ -54912,8 +54912,8 @@
  {
   "id": "image-acceptance.bounded-call-binding-3",
   "target": "linux/scripts/launch-local-final.py",
-  "find": "def binding(directory: Path, record: dict[str, Any]) -> None:\n    require(record['source'] == str(ROOT) and record['engine'] == ENGINE, 'FINAL tooling or engine belongs elsewhere')\n    require(record['owner_label'] == OWNER, 'FINAL ownership label differs')\n    require(type(record['timeout_seconds']) is int and record['timeout_seconds'] == TIMEOUT, 'FINAL deadline profile differs')\n    OwnedContainers(ENGINE, OWNER, record['run_id'])\n    require(re.fullmatch(r'webgpu-local-final-' + record['platform'].removeprefix('linux/') + r'-[0-9-]+\\.service', record['unit']), 'FINAL unit identity differs')\n    clean_source(record['revision'])\n    require(record['workers_sha256'] == {str(path):fingerprint(path) for path in workers()}, 'FINAL launcher worker closure changed')\n    require(fingerprint(Path(record['runtime_invocation'])) == record['runtime_invocation_sha256'], 'FINAL runtime invocation changed')\n    require(fingerprint(directory / 'plan.json') == record['plan_sha256'], 'FINAL plan bytes changed')\n    plan = API['read_plan'](directory / 'plan.json')\n    API['local_module']().complete_plan(plan, API['read_plan'](API['DEFAULT_PLAN']))\n",
-  "replace": "def binding(directory: Path, record: dict[str, Any]) -> None:\n    require(record['source'] == str(ROOT) and record['engine'] == ENGINE, 'FINAL tooling or engine belongs elsewhere')\n    require(record['owner_label'] == OWNER, 'FINAL ownership label differs')\n    require(type(record['timeout_seconds']) is int and record['timeout_seconds'] == TIMEOUT, 'FINAL deadline profile differs')\n    OwnedContainers(ENGINE, OWNER, record['run_id'])\n    require(re.fullmatch(r'webgpu-local-final-' + record['platform'].removeprefix('linux/') + r'-[0-9-]+\\.service', record['unit']), 'FINAL unit identity differs')\n    clean_source(record['revision'])\n    require(record['workers_sha256'] == {str(path):fingerprint(path) for path in workers()}, 'FINAL launcher worker closure changed')\n    require(fingerprint(Path(record['runtime_invocation'])) == record['runtime_invocation_sha256'], 'FINAL runtime invocation changed')\n    require(fingerprint(directory / 'plan.json') == record['plan_sha256'], 'FINAL plan bytes changed')\n    plan = API['read_plan'](directory / 'plan.json')\n    pass\n",
+  "find": "def binding(directory: Path, record: dict[str, Any]) -> None:\n    require(record['source'] == str(ROOT) and record['engine'] == ENGINE, 'FINAL tooling or engine belongs elsewhere')\n    require(record['owner_label'] == OWNER, 'FINAL ownership label differs')\n    require(type(record['timeout_seconds']) is int and record['timeout_seconds'] == TIMEOUT, 'FINAL deadline profile differs')\n    OwnedContainers(ENGINE, OWNER, record['run_id'])\n    require(re.fullmatch(r'webgpu-local-final-' + record['platform'].removeprefix('linux/') + r'-[0-9-]+\\.service', record['unit']), 'FINAL unit identity differs')\n    clean_source(record['revision'])\n    require(record['workers_sha256'] == {str(path):fingerprint(path) for path in workers(record['local_subject']['variant'])}, 'FINAL launcher worker closure changed')\n    require(fingerprint(Path(record['runtime_invocation'])) == record['runtime_invocation_sha256'], 'FINAL runtime invocation changed')\n    require(fingerprint(directory / 'plan.json') == record['plan_sha256'], 'FINAL plan bytes changed')\n    plan = API['read_plan'](directory / 'plan.json')\n    API['local_module']().complete_plan(plan, API['read_plan'](API['DEFAULT_PLAN']))\n",
+  "replace": "def binding(directory: Path, record: dict[str, Any]) -> None:\n    require(record['source'] == str(ROOT) and record['engine'] == ENGINE, 'FINAL tooling or engine belongs elsewhere')\n    require(record['owner_label'] == OWNER, 'FINAL ownership label differs')\n    require(type(record['timeout_seconds']) is int and record['timeout_seconds'] == TIMEOUT, 'FINAL deadline profile differs')\n    OwnedContainers(ENGINE, OWNER, record['run_id'])\n    require(re.fullmatch(r'webgpu-local-final-' + record['platform'].removeprefix('linux/') + r'-[0-9-]+\\.service', record['unit']), 'FINAL unit identity differs')\n    clean_source(record['revision'])\n    require(record['workers_sha256'] == {str(path):fingerprint(path) for path in workers(record['local_subject']['variant'])}, 'FINAL launcher worker closure changed')\n    require(fingerprint(Path(record['runtime_invocation'])) == record['runtime_invocation_sha256'], 'FINAL runtime invocation changed')\n    require(fingerprint(directory / 'plan.json') == record['plan_sha256'], 'FINAL plan bytes changed')\n    plan = API['read_plan'](directory / 'plan.json')\n    pass\n",
   "test": "bash linux/scripts/tests/test-local-final-launch.sh",
   "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
  },
@@ -54928,8 +54928,8 @@
  {
   "id": "image-acceptance.bounded-call-launch-2",
   "target": "linux/scripts/launch-local-final.py",
-  "find": "def launch(runtime_path: Path, image: str, directory: Path, unit: str) -> None:\n    require(not directory.exists() and not directory.is_symlink(), 'Preserve existing FINAL output')\n    directory = directory.resolve()\n    runtime_path = runtime_path.resolve(strict=True)\n    runtime = read(runtime_path)\n    platform = 'linux/' + runtime['target_arch']\n    require(runtime['target_arch'] in {'amd64', 'arm64', 'riscv64'}, 'Unsupported FINAL architecture')\n    require(re.fullmatch(r'webgpu-local-final-' + runtime['target_arch'] + r'-[0-9-]+\\.service', unit), 'Explicit bounded FINAL unit required')\n    require(UNIT_STATE(unit).get('LoadState') == 'not-found', 'Preserve an existing FINAL unit')\n    revision = checked_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip()\n    clean_source(revision)\n    origin, _ = API['local_module']().observe(ENGINE, image, platform, runtime_path)\n    temporary = Path.home() / '.cache' / unit.removesuffix('.service')\n    require(not temporary.exists() and all(not (path / '.git').exists() for path in [temporary, *temporary.parents]), 'FINAL TMPDIR must be fresh and outside Git')\n    owner = OwnedContainers(ENGINE, OWNER, uuid.uuid4().hex)\n    require(not owner.ids(owned=True), 'FINAL invocation ownership already exists')\n    directory.mkdir(parents=True)\n    temporary.mkdir(mode=0o700)\n    API['materialize_plan'](str(API['DEFAULT_PLAN']), str(directory / 'plan.json'), platform)\n    cleanup = [sys.executable, str(HERE / 'cleanup-owned-containers.py'), '--engine', ENGINE, '--owner-label', OWNER,\n               '--run-id', owner.run_id, '--cidfile', str(directory / 'container.cid'), '--output', str(directory / 'cleanup.json')]\n    command = ['systemd-run', '--user', '--no-block', '--expand-environment=no', '--unit=' + unit]\n    properties = ['Type=oneshot', 'RemainAfterExit=yes', 'TimeoutStartSec=' + str(TIMEOUT), 'TimeoutStopSec=300',\n                  'KillMode=control-group', 'WorkingDirectory=' + str(ROOT), 'ExecStopPost=' + shlex.join(cleanup),\n                  'StandardOutput=append:' + str(directory / 'unit.log'), 'StandardError=append:' + str(directory / 'unit.log')]\n    for value in properties:\n        command += ['-p', value]\n    for value in ['LC_ALL=C', 'HOME=' + str(Path.home()), 'TMPDIR=' + str(temporary),\n                  'PATH=' + str(Path.home() / '.local/bin') + ':/usr/local/bin:/usr/bin:/bin',\n                  'ANT_RUNTIME_ENGINE=' + ENGINE, 'ANT_RUNTIME_OWNER_LABEL=' + OWNER, 'ANT_RUNTIME_RUN_ID=' + owner.run_id]:\n        command += ['-E', value]\n    command += [sys.executable, str(Path(__file__).resolve()), 'worker', '--directory', str(directory)]\n    record = {'source':str(ROOT), 'revision':revision, 'workers_sha256':{str(path):fingerprint(path) for path in workers()},\n              'unit':unit, 'engine':ENGINE, 'owner_label':OWNER, 'run_id':owner.run_id, 'platform':platform, 'image':image,\n              'runtime_invocation':str(runtime_path), 'runtime_invocation_sha256':fingerprint(runtime_path), 'local_subject':origin,\n              'plan_sha256':fingerprint(directory / 'plan.json'), 'command':command, 'cleanup_command':cleanup,\n              'created_at':timestamp(), 'timeout_seconds':TIMEOUT, 'scope':__doc__}\n    save(directory / 'invocation.json', record)\n    binding(directory, record)\n",
-  "replace": "def launch(runtime_path: Path, image: str, directory: Path, unit: str) -> None:\n    require(not directory.exists() and not directory.is_symlink(), 'Preserve existing FINAL output')\n    directory = directory.resolve()\n    runtime_path = runtime_path.resolve(strict=True)\n    runtime = read(runtime_path)\n    platform = 'linux/' + runtime['target_arch']\n    require(runtime['target_arch'] in {'amd64', 'arm64', 'riscv64'}, 'Unsupported FINAL architecture')\n    require(re.fullmatch(r'webgpu-local-final-' + runtime['target_arch'] + r'-[0-9-]+\\.service', unit), 'Explicit bounded FINAL unit required')\n    require(UNIT_STATE(unit).get('LoadState') == 'not-found', 'Preserve an existing FINAL unit')\n    revision = checked_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip()\n    clean_source(revision)\n    origin, _ = API['local_module']().observe(ENGINE, image, platform, runtime_path)\n    temporary = Path.home() / '.cache' / unit.removesuffix('.service')\n    require(not temporary.exists() and all(not (path / '.git').exists() for path in [temporary, *temporary.parents]), 'FINAL TMPDIR must be fresh and outside Git')\n    owner = OwnedContainers(ENGINE, OWNER, uuid.uuid4().hex)\n    require(not owner.ids(owned=True), 'FINAL invocation ownership already exists')\n    directory.mkdir(parents=True)\n    temporary.mkdir(mode=0o700)\n    API['materialize_plan'](str(API['DEFAULT_PLAN']), str(directory / 'plan.json'), platform)\n    cleanup = [sys.executable, str(HERE / 'cleanup-owned-containers.py'), '--engine', ENGINE, '--owner-label', OWNER,\n               '--run-id', owner.run_id, '--cidfile', str(directory / 'container.cid'), '--output', str(directory / 'cleanup.json')]\n    command = ['systemd-run', '--user', '--no-block', '--expand-environment=no', '--unit=' + unit]\n    properties = ['Type=oneshot', 'RemainAfterExit=yes', 'TimeoutStartSec=' + str(TIMEOUT), 'TimeoutStopSec=300',\n                  'KillMode=control-group', 'WorkingDirectory=' + str(ROOT), 'ExecStopPost=' + shlex.join(cleanup),\n                  'StandardOutput=append:' + str(directory / 'unit.log'), 'StandardError=append:' + str(directory / 'unit.log')]\n    for value in properties:\n        command += ['-p', value]\n    for value in ['LC_ALL=C', 'HOME=' + str(Path.home()), 'TMPDIR=' + str(temporary),\n                  'PATH=' + str(Path.home() / '.local/bin') + ':/usr/local/bin:/usr/bin:/bin',\n                  'ANT_RUNTIME_ENGINE=' + ENGINE, 'ANT_RUNTIME_OWNER_LABEL=' + OWNER, 'ANT_RUNTIME_RUN_ID=' + owner.run_id]:\n        command += ['-E', value]\n    command += [sys.executable, str(Path(__file__).resolve()), 'worker', '--directory', str(directory)]\n    record = {'source':str(ROOT), 'revision':revision, 'workers_sha256':{str(path):fingerprint(path) for path in workers()},\n              'unit':unit, 'engine':ENGINE, 'owner_label':OWNER, 'run_id':owner.run_id, 'platform':platform, 'image':image,\n              'runtime_invocation':str(runtime_path), 'runtime_invocation_sha256':fingerprint(runtime_path), 'local_subject':origin,\n              'plan_sha256':fingerprint(directory / 'plan.json'), 'command':command, 'cleanup_command':cleanup,\n              'created_at':timestamp(), 'timeout_seconds':TIMEOUT, 'scope':__doc__}\n    save(directory / 'invocation.json', record)\n    pass\n",
+  "find": "def launch(runtime_path: Path, image: str, directory: Path, unit: str) -> None:\n    require(not directory.exists() and not directory.is_symlink(), 'Preserve existing FINAL output')\n    directory = directory.resolve()\n    runtime_path = runtime_path.resolve(strict=True)\n    runtime = read(runtime_path)\n    platform = 'linux/' + runtime['target_arch']\n    require(runtime['target_arch'] in {'amd64', 'arm64', 'riscv64'}, 'Unsupported FINAL architecture')\n    require(re.fullmatch(r'webgpu-local-final-' + runtime['target_arch'] + r'-[0-9-]+\\.service', unit), 'Explicit bounded FINAL unit required')\n    require(UNIT_STATE(unit).get('LoadState') == 'not-found', 'Preserve an existing FINAL unit')\n    revision = checked_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip()\n    clean_source(revision)\n    origin, _ = API['local_module']().observe(ENGINE, image, platform, runtime_path)\n    temporary = Path.home() / '.cache' / unit.removesuffix('.service')\n    require(not temporary.exists() and all(not (path / '.git').exists() for path in [temporary, *temporary.parents]), 'FINAL TMPDIR must be fresh and outside Git')\n    owner = OwnedContainers(ENGINE, OWNER, uuid.uuid4().hex)\n    require(not owner.ids(owned=True), 'FINAL invocation ownership already exists')\n    directory.mkdir(parents=True)\n    temporary.mkdir(mode=0o700)\n    API['materialize_plan'](str(API['DEFAULT_PLAN']), str(directory / 'plan.json'), platform)\n    cleanup = [sys.executable, str(HERE / 'cleanup-owned-containers.py'), '--engine', ENGINE, '--owner-label', OWNER,\n               '--run-id', owner.run_id, '--cidfile', str(directory / 'container.cid'), '--output', str(directory / 'cleanup.json')]\n    command = ['systemd-run', '--user', '--no-block', '--expand-environment=no', '--unit=' + unit]\n    properties = ['Type=oneshot', 'RemainAfterExit=yes', 'TimeoutStartSec=' + str(TIMEOUT), 'TimeoutStopSec=300',\n                  'KillMode=control-group', 'WorkingDirectory=' + str(ROOT), 'ExecStopPost=' + shlex.join(cleanup),\n                  'StandardOutput=append:' + str(directory / 'unit.log'), 'StandardError=append:' + str(directory / 'unit.log')]\n    for value in properties:\n        command += ['-p', value]\n    for value in ['LC_ALL=C', 'HOME=' + str(Path.home()), 'TMPDIR=' + str(temporary),\n                  'PATH=' + str(Path.home() / '.local/bin') + ':/usr/local/bin:/usr/bin:/bin',\n                  'ANT_RUNTIME_ENGINE=' + ENGINE, 'ANT_RUNTIME_OWNER_LABEL=' + OWNER, 'ANT_RUNTIME_RUN_ID=' + owner.run_id]:\n        command += ['-E', value]\n    command += [sys.executable, str(Path(__file__).resolve()), 'worker', '--directory', str(directory)]\n    record = {'source':str(ROOT), 'revision':revision, 'workers_sha256':{str(path):fingerprint(path) for path in workers(origin['variant'])},\n              'unit':unit, 'engine':ENGINE, 'owner_label':OWNER, 'run_id':owner.run_id, 'platform':platform, 'image':image,\n              'runtime_invocation':str(runtime_path), 'runtime_invocation_sha256':fingerprint(runtime_path), 'local_subject':origin,\n              'plan_sha256':fingerprint(directory / 'plan.json'), 'command':command, 'cleanup_command':cleanup,\n              'created_at':timestamp(), 'timeout_seconds':TIMEOUT, 'scope':__doc__}\n    save(directory / 'invocation.json', record)\n    binding(directory, record)\n",
+  "replace": "def launch(runtime_path: Path, image: str, directory: Path, unit: str) -> None:\n    require(not directory.exists() and not directory.is_symlink(), 'Preserve existing FINAL output')\n    directory = directory.resolve()\n    runtime_path = runtime_path.resolve(strict=True)\n    runtime = read(runtime_path)\n    platform = 'linux/' + runtime['target_arch']\n    require(runtime['target_arch'] in {'amd64', 'arm64', 'riscv64'}, 'Unsupported FINAL architecture')\n    require(re.fullmatch(r'webgpu-local-final-' + runtime['target_arch'] + r'-[0-9-]+\\.service', unit), 'Explicit bounded FINAL unit required')\n    require(UNIT_STATE(unit).get('LoadState') == 'not-found', 'Preserve an existing FINAL unit')\n    revision = checked_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip()\n    clean_source(revision)\n    origin, _ = API['local_module']().observe(ENGINE, image, platform, runtime_path)\n    temporary = Path.home() / '.cache' / unit.removesuffix('.service')\n    require(not temporary.exists() and all(not (path / '.git').exists() for path in [temporary, *temporary.parents]), 'FINAL TMPDIR must be fresh and outside Git')\n    owner = OwnedContainers(ENGINE, OWNER, uuid.uuid4().hex)\n    require(not owner.ids(owned=True), 'FINAL invocation ownership already exists')\n    directory.mkdir(parents=True)\n    temporary.mkdir(mode=0o700)\n    API['materialize_plan'](str(API['DEFAULT_PLAN']), str(directory / 'plan.json'), platform)\n    cleanup = [sys.executable, str(HERE / 'cleanup-owned-containers.py'), '--engine', ENGINE, '--owner-label', OWNER,\n               '--run-id', owner.run_id, '--cidfile', str(directory / 'container.cid'), '--output', str(directory / 'cleanup.json')]\n    command = ['systemd-run', '--user', '--no-block', '--expand-environment=no', '--unit=' + unit]\n    properties = ['Type=oneshot', 'RemainAfterExit=yes', 'TimeoutStartSec=' + str(TIMEOUT), 'TimeoutStopSec=300',\n                  'KillMode=control-group', 'WorkingDirectory=' + str(ROOT), 'ExecStopPost=' + shlex.join(cleanup),\n                  'StandardOutput=append:' + str(directory / 'unit.log'), 'StandardError=append:' + str(directory / 'unit.log')]\n    for value in properties:\n        command += ['-p', value]\n    for value in ['LC_ALL=C', 'HOME=' + str(Path.home()), 'TMPDIR=' + str(temporary),\n                  'PATH=' + str(Path.home() / '.local/bin') + ':/usr/local/bin:/usr/bin:/bin',\n                  'ANT_RUNTIME_ENGINE=' + ENGINE, 'ANT_RUNTIME_OWNER_LABEL=' + OWNER, 'ANT_RUNTIME_RUN_ID=' + owner.run_id]:\n        command += ['-E', value]\n    command += [sys.executable, str(Path(__file__).resolve()), 'worker', '--directory', str(directory)]\n    record = {'source':str(ROOT), 'revision':revision, 'workers_sha256':{str(path):fingerprint(path) for path in workers(origin['variant'])},\n              'unit':unit, 'engine':ENGINE, 'owner_label':OWNER, 'run_id':owner.run_id, 'platform':platform, 'image':image,\n              'runtime_invocation':str(runtime_path), 'runtime_invocation_sha256':fingerprint(runtime_path), 'local_subject':origin,\n              'plan_sha256':fingerprint(directory / 'plan.json'), 'command':command, 'cleanup_command':cleanup,\n              'created_at':timestamp(), 'timeout_seconds':TIMEOUT, 'scope':__doc__}\n    save(directory / 'invocation.json', record)\n    pass\n",
   "test": "bash linux/scripts/tests/test-local-final-launch.sh",
   "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
  },
@@ -61406,5 +61406,157 @@
   "replace": "required = plan['required_bytes']",
   "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
   "why": "A smaller valid compiler plan cannot lower ordinary NVIDIA Android disk admission."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-cli",
+  "target": "linux/scripts/local-proof/launch-normal-runtime.py",
+  "find": "elif args.variant == 'nvidia':",
+  "replace": "elif False:",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The ordinary runtime entry selects the sealed NVIDIA Android profile."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-layout",
+  "target": "linux/scripts/local-proof/launch-normal-runtime.py",
+  "find": "parent, context = nvidia_android_layout(args.parent_proof, args.android_invocation, invocation, media)",
+  "replace": "parent, context = media, args.parent_proof.parent",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The runtime entry must verify the NVIDIA Android OCI export before scheduling."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-unit",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "        nvidia_unit(unit, 'runtime', arch)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The launch scope must name the same NVIDIA platform as the Android export."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-prefix",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert re.fullmatch(r'ant-local/webgpu-[a-z0-9][a-z0-9-]*:runtime-nvidia-[A-Za-z0-9][A-Za-z0-9_.-]{0,90}', prefix), 'Fresh local NVIDIA runtime prefix required'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The NVIDIA producer may reserve only the reviewed local wrapper names."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-ort",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'ONNX_PACKAGE':'onnxruntime-gpu'",
+  "replace": "'ONNX_PACKAGE':'onnxruntime'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "NVIDIA runtime uses the CUDA-enabled ONNX Runtime distribution."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-torch",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'PYTORCH_EXTRA':'pytorch-cu130'",
+  "replace": "'PYTORCH_EXTRA':'pytorch-cpu'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The NVIDIA runtime must not silently build against CPU Torch."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-sbsa",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'CROSS_NVIDIA_SBSA':'1' if arch == 'arm64' else '0'",
+  "replace": "'CROSS_NVIDIA_SBSA':'0'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Only the NVIDIA arm64 target selects the SBSA CUDA packaging path."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-wheel-export",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'RUNTIME_WHEELS_SOURCE':'export'",
+  "replace": "'RUNTIME_WHEELS_SOURCE':'image'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The runtime exports its exact Android wheelhouse with the local artifact platform."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-worker-deps",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'nvidia_handoff_profile.py', 'gpu_source_profile.py', 'proof_types.py',",
+  "replace": "'gpu_source_profile.py', 'proof_types.py',",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The runtime binds all NVIDIA worker inputs."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-receipt-declaration",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "record.update(nvidia_android_ancestry_verified=True,",
+  "replace": "record.update(nvidia_android_ancestry_verified=False,",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Emit the NVIDIA ancestry scope on the actual runtime invocation."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-final-baked-command",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "        require_nvidia_transport(command, invocation['unit'], {**flags, 'RUNTIME_ANDROID_PIN_' + arch:parent})",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "NVIDIA FINAL requires real exact environment binding and the explicit NVIDIA unit."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-final-env-arity",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    environment = [value for option, value in pairwise(command[:-11]) if option == '-E']",
+  "replace": "    environment = command",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "A bare token cannot supply a selected systemd environment setting."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-final-parent",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    nvidia_parent_binding(invocation, android, proof, android_path)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Local NVIDIA FINAL must consume its exact stopped Android and Media proof."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-final-context-index",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "and fingerprint(context / 'index.json') == proof['index_sha256']",
+  "replace": "and True",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Changes to the sealed Android OCI index must refuse before local consumers run."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-final-media-receipt",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "require(fingerprint(media) == text(android, 'parent_OCI_proof_sha256', HASH)",
+  "replace": "require(text(android, 'parent_OCI_proof_sha256', HASH)",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Local NVIDIA FINAL rechecks the original Media proof bytes."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-final-export-status",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "'MainPID':'0', 'Result':'success', 'ExecMainStatus':'0',",
+  "replace": "'MainPID':'0', 'Result':'success',",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "An Android export with a failing raw status cannot become local FINAL input."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-final-explicit-android",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "elif 'stage' in android and android.get('variant') != 'nvidia':",
+  "replace": "elif 'stage' in android:",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "An explicit NVIDIA Android stage still needs its actual command and exact source proof."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-final-current-workers",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "nvidia=invocation.get('variant') == 'nvidia')",
+  "replace": "nvidia=False)",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "The local NVIDIA check compares the entire original variant-specific worker closure."
+ },
+ {
+  "id": "compiler-llvm-tools.nvidia-runtime-final-bounded-worker",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "for path in workers(origin['variant'])",
+  "replace": "for path in workers()",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "The bounded FINAL invocation retains worker hashes for the observed NVIDIA variant."
  }
 ]

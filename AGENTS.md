@@ -330,6 +330,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Stream receipt suites carry `stream-receipt-fixture.sh`; keep their expected results independent of production code.
    Wheelhouse stderr fixtures pin child locale to C.UTF-8; retain both parent-locale controls and original receipt bytes.
    Default runtime handoffs retain the exact Android/source receipt and 300-GiB admission. A local OCI wheel export selects the Android build-host platform; the wrapper keeps the target architecture. Local FINAL binds the same Android receipt and runtime worker closure.
+   NVIDIA runtime and local FINAL bind the exact same-target stopped Android export, its Media receipt and its OCI index. Preserve the CUDA backend, SBSA selection, amd64 wheel export, target wrapper and 300-GiB admission. FINAL requires these flags as actual systemd environment arguments.
    Named mutation-check suites carry their case-executor companion; failed controls and invalid recipes remain failed results.
    Shared mirror enumeration preserves source-file order and original shell-option behavior; artifact and image probes retain caller failure policies.
    ORT and GenAI provenance checks share hashing and chain-byte membership; keep their distinct archive and exemption policies.

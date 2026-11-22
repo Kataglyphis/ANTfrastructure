@@ -25,6 +25,7 @@ PROFILE = importlib.import_module('runtime_launch_profile')
 SOURCE_PROFILE = importlib.import_module('runtime_source_profile')
 ENTRY = runpy.run_path(str(fixtures.TOOLS / 'launch-normal-runtime.py'))
 DEFAULT_HANDOFF = importlib.import_module('default_handoff_profile')
+NVIDIA_HANDOFF = importlib.import_module('nvidia_handoff_profile')
 
 
 class ProfileOptions(TypedDict, total=False):
@@ -171,6 +172,50 @@ class RuntimeTests(unittest.TestCase):
         context = self.work / 'android-context-arm64'
         changes = ((self.unit, prefix, context), (unit, self.prefix, context), (unit, prefix, self.context))
         for selected_unit, selected_prefix, selected_context in changes:
+            with self.subTest(unit=selected_unit, prefix=selected_prefix, context=selected_context), self.assertRaises(AssertionError):
+                self.profile_call(invocation=invocation, unit=selected_unit, prefix=selected_prefix, context=selected_context)
+
+    def test_nvidia_runtime_uses_same_target_android_and_cuda_backend(self) -> None:
+        for arch in ('amd64', 'arm64'):
+            with self.subTest(arch=arch):
+                self.check_nvidia_driver(arch)
+
+    def check_nvidia_driver(self, arch: str) -> None:
+        artifact = 'ant-local/webgpu-fixture-stages:cross-android-nvidia'
+        invocation = dict(self.fixture.android, variant='nvidia', target_arch=arch, image=artifact + '-' + arch)
+        unit = f'webgpu-normal-runtime-nvidia-{arch}-99999999-1.service'
+        prefix = 'ant-local/webgpu-fixture:runtime-nvidia-1'
+        context = self.work / ('android-context-' + arch)
+        result, launcher = self.profile_call(unit=unit, prefix=prefix, context=context, invocation=invocation)
+        self.assertEqual(result, 47)
+        args = launcher.call_args.args
+        self.assertEqual(args[:6], (self.work, self.output, unit, prefix + '-' + arch, arch, 322122547200))
+        self.assertEqual(args[8][4:], ['--target-arches', arch, '--artifact-image-prefix', artifact,
+                                       '--artifact-build-mode', 'cross', '--skip-manifest'])
+        pin = 'docker.io/ant-local/webgpu-fixture-stages@' + self.actual['manifest']
+        for flag in ('CROSS_VARIANT=nvidia', 'ENABLE_NVIDIA=true', 'ENABLE_AMD=false', 'ENABLE_TENSORRT=true',
+                     'ENABLE_DEEPSTREAM=' + ('true' if arch == 'amd64' else 'false'),
+                     'CROSS_NVIDIA_SBSA=' + ('1' if arch == 'arm64' else '0'), 'CROSS_BUILD_PLATFORM=linux/amd64',
+                     'ONNX_PACKAGE=onnxruntime-gpu', 'PYTORCH_EXTRA=pytorch-cu130', 'RUNTIME_WHEELS_SOURCE=export',
+                     'ARTIFACT_CONTEXT_ROOT=' + str(self.work / 'android-context'), f'RUNTIME_ANDROID_PIN_{arch}={pin}',
+                     'CROSS_BUILDKIT_KEEP_GB=120', 'CROSS_IMAGE_PRUNE=0', 'PRUNE_DUP_CACHEMOUNTS=0', 'CROSS_NO_PUSH=1',
+                     'RUNTIME_IMAGE_SMOKE=1', 'RUNTIME_INPUT_PREFLIGHT=1', 'WRAPPER_CONTENT_GATE=1', 'ANCESTRY_STAMP_ENFORCE=1'):
+            self.assertEqual(sum(value.startswith(flag.partition('=')[0] + '=') for value in args[7]), 1)
+            self.assertIn(flag, args[7])
+        record = args[6]
+        self.assertTrue(record['nvidia_android_ancestry_verified'])
+        self.assertEqual(record['parent_context'], str(context))
+        self.assertEqual(record['parent_OCI_proof_sha256'], fixtures.sha(self.proof_path))
+        for name in ('nvidia_handoff_profile.py', 'gpu_source_profile.py', 'proof_types.py'):
+            self.assertEqual(record['selected_host_workers_sha256'][str(fixtures.TOOLS / name)], fixtures.sha(fixtures.TOOLS / name))
+        self.assertEqual(launcher.call_args.kwargs['images'], tuple(prefix + suffix + '-' + arch for suffix in ('-base', '-package', '')))
+
+    def test_nvidia_runtime_refuses_wrong_unit_repository_or_context(self) -> None:
+        invocation = dict(self.fixture.android, variant='nvidia', target_arch='arm64')
+        unit = 'webgpu-normal-runtime-nvidia-arm64-99999999-1.service'
+        prefix = 'ant-local/webgpu-fixture:runtime-nvidia-1'
+        context = self.work / 'android-context-arm64'
+        for selected_unit, selected_prefix, selected_context in ((self.unit, prefix, context), (unit, self.prefix, context), (unit, prefix, self.context)):
             with self.subTest(unit=selected_unit, prefix=selected_prefix, context=selected_context), self.assertRaises(AssertionError):
                 self.profile_call(invocation=invocation, unit=selected_unit, prefix=selected_prefix, context=selected_context)
 
@@ -435,6 +480,22 @@ class RuntimeTests(unittest.TestCase):
         loader.assert_called_once_with(self.plan_path, self.fixture.invocation)
         parent.assert_called_once_with(self.proof_path, self.fixture.invocation, self.fixture.android, self.fixture.parent)
         launcher.assert_called_once()
+
+    def test_nvidia_cli_uses_native_readers_and_raw_runtime_status(self) -> None:
+        argv = ['launch-normal-runtime.py', '--variant', 'nvidia', '--compiler-plan', str(self.plan_path),
+                '--android-invocation', str(self.fixture.invocation), '--parent-proof', str(self.proof_path),
+                '--output', str(self.output), '--unit', self.unit, '--image-prefix', self.prefix, '--app-ref', self.app_ref]
+        launcher = mock.Mock(return_value=47)
+        with (
+            mock.patch.object(sys, 'argv', argv),
+            mock.patch.object(NVIDIA_HANDOFF, 'load_nvidia_android', return_value=(self.plan, self.fixture.android, self.fixture.parent)) as load,
+            mock.patch.object(NVIDIA_HANDOFF, 'nvidia_android_layout', return_value=(self.parent, self.context)) as layout,
+            mock.patch.dict(ENTRY['main'].__globals__, {'launch_runtime': launcher}),
+        ):
+            self.assertEqual(ENTRY['main'](), 47)
+        load.assert_called_once_with(self.plan_path, self.fixture.invocation)
+        layout.assert_called_once_with(self.proof_path, self.fixture.invocation, self.fixture.android, self.fixture.parent)
+        self.assertEqual(launcher.call_args.args[3:5], (self.parent, self.context))
 
     def common_call(self, *, prepare: mock.Mock, busy: bool = False,
                     cleanup: list[str] | None = None, engine_path: str | None = None,

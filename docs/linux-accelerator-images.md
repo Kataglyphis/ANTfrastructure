@@ -2447,6 +2447,8 @@ storage and cache admission, and register bounded unit/container cleanup. The
 ordinary `launch-normal-media.py` selects ROCm amd64 by default. Its explicit
 NVIDIA variant follows the same-target [GPU and Media handoffs](local-proof-workflows.md#nvidia-gpu-and-media-handoffs)
 for amd64 and arm64/SBSA, including the Android OCI export that supplies runtime inputs.
+The [NVIDIA runtime and FINAL path](local-proof-workflows.md#nvidia-runtime-and-local-final)
+uses that stopped export and checks the target's CUDA and TensorRT settings.
 The [default Media launcher](local-proof-workflows.md#default-amd64-media-admission)
 qualifies the exact same-target SDK/source and compiler ancestry before shared idle-host
 admission with at least 300 GiB available; stricter caller reserves remain intact.

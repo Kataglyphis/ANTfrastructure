@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch ordinary local default or ROCm runtime from verified native Android; no publication or FINAL acceptance."""
+"""Launch ordinary local runtime from verified native Android; no publication or FINAL acceptance."""
 
 import argparse
 from pathlib import Path
@@ -16,7 +16,7 @@ def main() -> int:
         parser.add_argument('--' + name, required=True)
     parser.add_argument('--runtime-source', type=Path)
     parser.add_argument('--runtime-source-proof', type=Path)
-    parser.add_argument('--variant', choices=('rocm', 'default'), default='rocm')
+    parser.add_argument('--variant', choices=('rocm', 'default', 'nvidia'), default='rocm')
     parser.add_argument('--serial-smoke', action='store_true', help='Run the same required package smoke before the wrapper to reduce concurrent context storage')
     args = parser.parse_args()
     if args.variant == 'default':
@@ -24,6 +24,14 @@ def main() -> int:
 
         plan, invocation, media = load_default_android(args.compiler_plan, args.android_invocation)
         parent, context = default_android_layout(args.parent_proof, args.android_invocation, invocation, media)
+    elif args.variant == 'nvidia':
+        from nvidia_handoff_profile import (
+            load_nvidia_android,
+            nvidia_android_layout,
+        )
+
+        plan, invocation, media = load_nvidia_android(args.compiler_plan, args.android_invocation)
+        parent, context = nvidia_android_layout(args.parent_proof, args.android_invocation, invocation, media)
     else:
         plan, invocation, media = load_android(args.compiler_plan, args.android_invocation)
         parent, context = android_layout(args.parent_proof, args.android_invocation, invocation, media)

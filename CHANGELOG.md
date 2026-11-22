@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-22 — continue the local NVIDIA Android export through runtime and FINAL
+
+- Launch the amd64 and arm64/SBSA runtime from the verified same-target Android
+  export. Use the NVIDIA GPU ORT and CUDA Torch packages, the amd64 Android
+  wheelhouse export and the target runtime wrapper.
+- Bind the original Android, Media and runtime receipts in local FINAL. Check
+  the recorded runtime environment and worker closure before the complete
+  consumer plan. Actual builds and consumer acceptance remain pending.
+
 ## 2026-11-22 — carry NVIDIA Linux Media through the Android stage
 
 - Use the same-target NVIDIA Media receipt to launch Android on amd64 and

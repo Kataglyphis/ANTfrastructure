@@ -553,6 +553,38 @@ invocation and exact wrapper manifest. It checks the Android target, original
 receipt hashes, same complete source proof, and the runtime's worker hashes and
 command. The focused tests use synthetic OCI data and command doubles.
 
+## NVIDIA runtime and local FINAL
+
+Pass the same-target stopped NVIDIA Android export from the
+[GPU and Media handoffs](#nvidia-gpu-and-media-handoffs) to the ordinary runtime
+launcher. The same committed source produces every stage. This example selects
+arm64/SBSA. Use amd64 in the unit and Android context suffix for the amd64 lane.
+
+```bash
+python3 linux/scripts/local-proof/launch-normal-runtime.py --variant nvidia \
+  --compiler-plan PLAN --android-invocation ANDROID_INVOCATION \
+  --parent-proof STOPPED_ANDROID_PROOF --output FRESH_OUTPUT \
+  --unit webgpu-normal-runtime-nvidia-arm64-YYYYMMDD-N.service \
+  --image-prefix ant-local/webgpu-NAME:runtime-nvidia-YYYYMMDD-N \
+  --app-ref EXACT_40_HEX_COMMIT --serial-smoke
+```
+
+The launcher rehashes the Android export and its Media ancestry before
+admission. Both lanes use `onnxruntime-gpu` and `pytorch-cu130` with TensorRT
+enabled. Only arm64 selects SBSA, and DeepStream is enabled on amd64. The
+wheelhouse export uses the amd64 build-host platform. The base, package, smoke
+and wrapper use the target platform. Launch requires at least 300 GiB available
+and honors any stricter plan. The input, smoke, wrapper and ancestry gates run
+with invocation-owned cleanup. Image and cachemount pruning stay disabled.
+
+The [local FINAL runner](#local-final-consumer-acceptance) checks the same
+Android index, stopped export and original Media receipt. It checks the
+variant, target flags and digest pin in the runtime's systemd environment,
+then uses the actual wrapper manifest and the complete canonical consumer plan.
+Copy the matching NVIDIA, Media, native OCI and runtime companions with the
+launcher. Fixture tests cover both targets and the refusal paths. A fresh
+runtime and the actual consumers still have to run for receipt-based acceptance.
+
 ## Local FINAL consumer acceptance
 
 The producer-bound checks accept both canonical wheelhouse delivery modes and bind an explicit lane name to the same declared variant. A separate owned-wrapper checkout is permitted only with identical selected companion bytes and a clean tree; the host revision and complete worker mapping still identify the original launcher checkout. No producer receipt is rewritten to fit the acceptance tool.
