@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-22 — qualify arm64 and riscv64 SDKs for default Media
+
+- Bind the foreign SDK receipts to the matching producer, Linux amd64 image,
+  target LLVM drivers and C/C++ QEMU smokes in both shell modes. Reuse the
+  compiler OCI ancestry checks and the ordinary Media launcher's disk guard.
+- Add fixture and mutation controls for target selection and receipt coverage.
+  The actual foreign SDK builds, Media exports and factory replays remain open.
+
 ## 2026-11-22 — replay the delivered WebGPU Wasm factories
 
 - After JS staging, strict Linux Media builds run the Asyncify and JSPI factory

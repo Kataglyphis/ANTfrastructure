@@ -156,7 +156,8 @@ class ToolTests(unittest.TestCase):
         result = self.run_tool(TOOLS / 'test-sdk-image-profile.py', '--source', str(ROOT))
         self.assertEqual(result.returncode, 0, result.stderr)
         receipt = json.loads(result.stdout)
-        self.assertEqual(receipt['refusal_controls'], 70)
+        self.assertEqual(receipt['refusal_controls'], 85)
+        self.assertEqual(receipt['foreign_refusals'], 14)
         self.assertEqual(receipt['positive_controls'], 6)
         self.assertFalse(receipt['actual_image_acceptance'])
 
@@ -184,20 +185,28 @@ class ToolTests(unittest.TestCase):
     def test_sdk_image_profile_launch_transport(self) -> None:
         data = self.sdk_transport_fixture()
         terminal = {'LoadState':'loaded','ActiveState':'active','SubState':'exited','MainPID':'0','ExecMainStatus':'0','Result':'success'}
-        for kind in ['compiler','sdk','current']:
-            sdk = kind == 'sdk'
+        for kind in ['compiler','sdk','current','sdk-arm64','sdk-riscv64']:
+            sdk = kind.startswith('sdk')
+            arch = kind.removeprefix('sdk-') if kind.startswith('sdk-') else 'amd64'
             with self.subTest(kind=kind):
                 profile = copy.deepcopy(data['plan'])
                 if kind == 'current':
                     profile.pop('launcher_contract')
                     profile.update(source_proofs={}, image_qualification_profile='compiler-cross-cpu')
                 (self.work / 'plan.json').write_text(json.dumps(profile))
+                stage = copy.deepcopy(data['invocation'])
+                stage.update(target_arch=arch, unit=f'webgpu-normal-sdk-{arch}-99999999-1.service',
+                             image='ant-local/webgpu-fixture:cross-sdk-' + arch)
+                stage['command'][-5] = arch
+                (self.work / 'sdk-invocation.json').write_text(json.dumps(stage))
                 unit = 'webgpu-' + ('sdk' if sdk else 'compiler') + '-image-qualification-' + kind + '.service'
-                units = {data['plan']['unit']:terminal, data['invocation']['unit']:terminal, unit:{'LoadState':'not-found'}}
+                units = {data['plan']['unit']:terminal, stage['unit']:terminal, unit:{'LoadState':'not-found'}}
                 (self.work / 'units.json').write_text(json.dumps(units))
-                image = data['invocation']['image'] if sdk else data['plan']['local_image']
-                (self.work / 'image.json').write_text(json.dumps([{'RepoDigests':[image.rsplit(':',1)[0] + '@sha256:' + 'a' * 64],
-                                                                  'Id':'sha256:' + 'b' * 64, 'Config':{'Env':[]}}]))
+                image = stage['image'] if sdk else data['plan']['local_image']
+                facts = {'RepoDigests':[image.rsplit(':',1)[0] + '@sha256:' + 'a' * 64], 'Architecture':'amd64',
+                         'Os':'linux','Id':'sha256:' + 'b' * 64, 'Config':{'Env':[f'TARGET_ARCH={arch}',f'TARGETARCH={arch}',
+                                                                                  'BUILD_MODE=cross','BUILDPLATFORM=linux/amd64']}}
+                (self.work / 'image.json').write_text(json.dumps([facts]))
                 self.env['OPERATIONAL_EXPECTED_IMAGE'] = image
                 output = self.work / kind
                 arguments = ['launch','--plan',str(self.work / 'plan.json'),'--output',str(output),'--unit',unit,
@@ -208,15 +217,23 @@ class ToolTests(unittest.TestCase):
                 self.assertEqual(result.returncode,0,result.stderr)
                 record = json.loads((output / 'invocation.json').read_text())
                 self.assertEqual(record['image'],image)
-                self.assertEqual(record['subject']['native_prefix'],'/opt/llvm-target' if sdk else '/opt/llvm-target-amd64')
+                self.assertEqual(record['subject']['native_prefix'],'/opt/llvm-target' if sdk and arch == 'amd64' else '/opt/llvm-target-amd64')
                 if sdk:
                     for field, name in [('sdk_invocation_sha256','sdk-invocation.json'), ('compiler_parent_sha256','parent.json'), ('source_proof_sha256','full.json')]:
                         self.assertEqual(record['subject'][field],hashlib.sha256((self.work / name).read_bytes()).hexdigest())
                 self.assertEqual(record['sdk_native_checks_required'],sdk)
                 self.assertEqual(record['cross_wrapper_checks_required'],not sdk)
                 self.assertIn('/qualify-with-cross.sh',record['command'])
-                self.assertEqual(record['command'][-1],'sdk-amd64' if sdk else '/opt/llvm-target-amd64')
+                self.assertEqual(record['command'][-1], 'sdk-' + arch if sdk else '/opt/llvm-target-amd64')
                 self.assertEqual(record['command'].count('--env'),1)
+                if arch != 'amd64':
+                    facts['Config']['Env'][0] = 'TARGET_ARCH=amd64'
+                    (self.work / 'image.json').write_text(json.dumps([facts]))
+                    altered = [str(self.work / (kind+'-wrong-image')) if arg == str(output) else arg for arg in arguments]
+                    rejected = self.run_tool(TOOLS / 'compiler-image-qualification.py',*altered)
+                    self.assertNotEqual(rejected.returncode,0)
+                    self.assertIn('Foreign SDK image environment differs',rejected.stderr)
+                    self.assertFalse((self.work / (kind+'-wrong-image')).exists())
 
     def fake_systemd(self) -> None:
         binary = self.work / 'bin'

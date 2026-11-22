@@ -90,7 +90,7 @@ producer = producer_fixture()
 assert validate_producer(producer)['kind'] == 'sdk-amd64'
 assert subject_module['image_subject'](producer['plan'])['cross_required'] is True
 for name, field, key, value in [
-        ('target','invocation','target_arch','arm64'), ('source','invocation','source','/wrong'),
+        ('target','invocation','target_arch','ppc64le'), ('source','invocation','source','/wrong'),
         ('revision','invocation','source_revision','wrong'), ('parent-source','invocation','parent_source_revision','wrong'),
         ('unit','invocation','unit','fixture-wrong.service'), ('launch','invocation','launch_status',47),
         ('publication','invocation','publication',True), ('source-proof','invocation','source_full_preflight_passed',False),
@@ -112,6 +112,7 @@ reject('producer-base-image', lambda p:p['invocation']['command'].__setitem__(3,
 reject('producer-base-context', lambda p:p['invocation']['command'].__setitem__(4,'CROSS_SDK_BASE_CONTEXT=/wrong'), check=validate_producer, facts=producer)
 reject('producer-push', lambda p:p['invocation']['command'].insert(3,'--push'), check=validate_producer, facts=producer)
 reject('producer-candidate',lambda p:(p['invocation'].update(image='ghcr.io/fixture/published:cross-sdk-amd64'),p['invocation']['command'].__setitem__(-3,'ghcr.io/fixture/published')),check=validate_producer,facts=producer)
+reject('producer-unreviewed-coherent-target',lambda p:None,check=validate_producer,facts=producer_fixture('ppc64le'))
 producer_cases = len(cases) - sdk_cases
 
 oci = runpy.run_path(str(Path(__file__).with_name('native-oci-handoff.py')))
@@ -181,6 +182,49 @@ assert oci['base_ancestry'](child_layout,base_layout) == 12
 reject('ancestry-count',lambda p:p.update(count=25),check=validate_ancestry,facts=ancestry)
 reject('ancestry-layer',lambda p:p['child'][1]['layers'][25].update(fixture_layer=-1),check=validate_ancestry,facts=ancestry)
 reject('ancestry-diffID',lambda p:p['child'][2]['rootfs']['diff_ids'].__setitem__(25,'wrong'),check=validate_ancestry,facts=ancestry)
+
+
+def target_fixture(arch: str, machine: str) -> Json:
+    foreign = copy.deepcopy(fixture['payload'])
+    native_facts = copy.deepcopy(payload['materialization'])
+    native_facts.update(host_prefix_is_real=True, architecture_prefixes=['llvm-target-amd64', 'llvm-target-' + arch])
+    for driver in native_facts['drivers'].values():
+        driver['elf'] = fixture['child']('  Machine: ' + machine + '\n')
+    foreign.update(profile='sdk-' + arch, materialization=native_facts,
+                   wrappers={name: row for name,row in foreign['wrappers'].items() if name.endswith('-' + arch)})
+    return foreign
+
+
+foreign_start = len(cases)
+for arch, machine in (('arm64','AArch64'), ('riscv64','RISC-V')):
+    foreign = target_fixture(arch, machine)
+    profile = 'sdk-' + arch
+    def validate_target(data: Json, selected: str = profile) -> Json:
+        return fixture['probe']['validate'](data, '16.2.0', '23.1.5', fixture['helpers'], profile=selected)
+    foreign_result = validate_target(foreign)
+    assert foreign_result['cross_targets'] == [arch] and foreign_result['foreign_static_executions_required'] == 2
+    assert foreign_result['wrapper_count'] == 2
+    reject(arch+'-wrong-ELF',lambda p:p['materialization']['drivers']['clang'].update(elf=fixture['child']('  Machine: Advanced Micro Devices X86-64\n')),check=validate_target,facts=foreign)
+    reject(arch+'-host-alias',lambda p:p['materialization'].update(host_prefix_is_real=False),check=validate_target,facts=foreign)
+    reject(arch+'-no-static',lambda p:p['smoke'].update(stdout='\n'.join(line for line in p['smoke']['stdout'].splitlines() if 'static binary RUNS' not in line)),check=validate_target,facts=foreign)
+    subject = validate_producer(producer_fixture(arch))
+    assert subject['kind'] == profile and subject['native_prefix'] == '/opt/llvm-target-amd64'
+    image = {'Architecture':'amd64','Os':'linux','Config':{'Env':[f'TARGET_ARCH={arch}',f'TARGETARCH={arch}','BUILD_MODE=cross','BUILDPLATFORM=linux/amd64']}}
+    def check_image(data: Json, sdk: Json = subject) -> None:
+        subject_module['validate_foreign_sdk_image'](data, sdk)
+    check_image(image)
+    reject(arch+'-invalid-build-architecture',lambda p, wrong=arch:p.update(Architecture=wrong),check=check_image,facts=image)
+    reject(arch+'-mismatched-image-target',lambda p:p['Config']['Env'].__setitem__(0,'TARGET_ARCH=amd64'),check=check_image,facts=image)
+    reject(arch+'-duplicate-image-target',lambda p:p['Config']['Env'].append('TARGETARCH=amd64'),check=check_image,facts=image)
+    foreign_proof = {**sdk_proof,'subject':subject,'sdk_native_modes':{mode:{**foreign_result,'mode':mode} for mode in ('default','login')}}
+
+    def check_receipt(data: Json, sdk: Json = subject) -> None:
+        oci['sdk_cpu_qualification'](data, sdk)
+
+    check_receipt(foreign_proof)
+    reject(arch+'-missing-target-executions',lambda p:p['sdk_native_modes']['login'].update(foreign_static_executions_required=0),check=check_receipt,facts=foreign_proof)
+
 print(json.dumps({'status':'passed-independent-SDK-image-profile-fixtures-only', 'positive_controls':6,
                   'refusal_controls':len(cases), 'SDK_image_refusals':sdk_cases, 'producer_refusals':producer_cases,
-                  'handoff_refusals':handoff_cases, 'cases':cases, 'actual_image_acceptance':False}))
+                  'handoff_refusals':handoff_cases, 'foreign_refusals':len(cases)-foreign_start,
+                  'cases':cases, 'actual_image_acceptance':False}))

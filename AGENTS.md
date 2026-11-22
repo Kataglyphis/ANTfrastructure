@@ -80,7 +80,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    failed container cleanup or ownership restoration cannot produce a passed receipt.
    Combined WebGPU media factory acceptance requires native/GIL/FT plus fresh Asyncify and JSPI replay at one exact ORT revision; partial receipts cannot stand for the combined result.
    Six-lane Media command preparation keeps SDK parents for default targets and GPU parents for accelerators; NVIDIA arm64 requires SBSA. Prepared commands do not qualify parent ancestry or authorize a launch.
-   Default amd64 Media launches recheck the exact qualified SDK/source and native compiler ancestry before shared idle-host admission; retain the 300 GiB minimum and both required Wasm modes. This profile does not qualify the other five lanes or FINAL acceptance.
+   Default Media launches match the SDK target and recheck exact source and compiler ancestry before shared idle-host admission; retain the 300 GiB minimum and both required Wasm modes.
    Fake sccache server startup tests clear inherited cache-chain settings in their child environments; retain the explicit inherited-setting regression and original fallback assertions.
    Isolated preflight mirror opt-ins use the shared Ubuntu rewrite before apt; retain signed source metadata, the recorded URL and default-off behavior.
    Relocate only closed, Git-ignored quality venvs to a different existing tmpfs; shared inodes, nonregular payloads or changed canonical archive bytes cannot produce a receipt.
@@ -115,6 +115,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Wheel unpack/pack transport keeps Python argument boundaries and raw status; packaging execution keeps best-effort and sudo failure policies separate.
    Cross-Clang wrappers use the filesystem-root sysroot with Debian's absolute target linker scripts; foreign target trees remain mandatory. Independent image probes require that same root and reject the old double-root wrappers.
    Copied compiler/SDK qualifiers and OCI handoffs carry `proof_subject.py` and `proof_commands.py`; SDK profiles bind the actual invocation, complete source and compiler parent, both native shell modes and all compiler ancestor layers. Never retarget a compiler plan to represent an SDK.
+   Foreign SDK proofs keep the Linux amd64 build image, both target driver ELF checks and both target QEMU executions in each shell mode.
    Copied live configure snapshots carry their cache reader/profile, native OCI layout/seed and command companions; require a live matching process, stable before/after source and copied bytes, bounded regular files, fresh output and no source/output overlap.
    Copied cache log readers/replayers/sealers carry `cache_capture_profile.py`; retain actual PID/start identity, existing regular-file and live inode checks, input hashes, bounded named units and explicit partial-timeout verdicts.
    Copied normal SDK/GPU launchers carry `normal_stage_launch.py`; GPU admission requires the exact qualified SDK, rehashed native blobs and compiler ancestry, complete source proof, fresh local alias, idle host and unchanged disk floor.

@@ -23,6 +23,8 @@ TARGETS = {'amd64': ('x86_64-linux-gnu', '/'), 'arm64': ('aarch64-linux-gnu', '/
 BACKENDS = {'X86', 'AArch64', 'RISCV', 'AMDGPU'}
 BAKED_FILES = ('smoke-toolchain.sh', 'smoke-common.sh', 'probe-compiler-defaults.py', 'llvm-loader-path.sh')
 PREFIX = '/opt/llvm-target-amd64'
+PROFILES = ('compiler', *('sdk-' + arch for arch in TARGETS))
+FOREIGN_MACHINES = {'arm64': 'AArch64', 'riscv64': 'RISC-V'}
 
 
 def sha(path: Path) -> str:
@@ -30,22 +32,29 @@ def sha(path: Path) -> str:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def sdk_materialization(payload: Json) -> None:
+def sdk_materialization(payload: Json, arch: str, helpers: Helpers) -> None:
     materialized = payload.get('materialization')
     assert isinstance(materialized, dict), 'SDK materialization facts are required'
     assert materialized['alias_is_symlink'] is True and materialized['alias_target'] == '/opt/llvm-target', 'SDK native architecture alias differs'
-    assert materialized['architecture_prefixes'] == ['llvm-target-amd64'], 'SDK retained foreign target-native prefixes'
+    expected = sorted({'llvm-target-amd64', 'llvm-target-' + arch})
+    assert materialized['architecture_prefixes'] == expected, 'SDK architecture prefixes differ'
     assert set(materialized['drivers']) == {'clang', 'clang++'}, 'Both SDK driver byte comparisons are required'
     for row in materialized['drivers'].values():
         assert re.fullmatch(r'[0-9a-f]{64}', row['alias_sha256']) and row['alias_sha256'] == row['target_sha256'], 'SDK architecture alias selects different compiler bytes'
+        if arch != 'amd64':
+            machine = re.escape(FOREIGN_MACHINES[arch])
+            assert re.search(rf'^\s*Machine:\s+{machine}\s*$', helpers['output'](row['elf']), re.MULTILINE), 'Target-native SDK driver has the wrong ELF machine'
+    if arch != 'amd64':
+        assert materialized['host_prefix_is_real'] is True, 'Foreign SDK must retain its host-native tool prefix'
 
 
 def validate(payload: Json, gcc_pin: str, llvm_pin: str, helpers: Helpers, *, profile: str = 'compiler') -> Json:
-    assert profile in {'compiler', 'sdk-amd64'}, 'Unknown compiler image probe profile'
+    assert profile in PROFILES, 'Unknown compiler image probe profile'
     assert payload.get('profile', 'compiler') == profile, 'Image probe profile differs'
-    targets = {'amd64': TARGETS['amd64']} if profile == 'sdk-amd64' else TARGETS
-    if profile == 'sdk-amd64':
-        sdk_materialization(payload)
+    arch = profile.removeprefix('sdk-')
+    targets = TARGETS if profile == 'compiler' else {arch: TARGETS[arch]}
+    if profile != 'compiler':
+        sdk_materialization(payload, arch, helpers)
     output = helpers['output']
     assert payload['schema_version'] == 1 and payload['gcc_pin'] == gcc_pin and payload['llvm_pin'] == llvm_pin
     backends = output(payload['backends']).split()
@@ -77,15 +86,31 @@ def validate(payload: Json, gcc_pin: str, llvm_pin: str, helpers: Helpers, *, pr
         assert output(row['execution']) == '42', 'Native executable returned the wrong result: ' + name
         assert re.search(r'^\s*Machine:\s+Advanced Micro Devices X86-64\s*$', output(row['elf']), re.MULTILINE), 'Native executable has the wrong ELF machine'
     assert not payload['environment'].get('LD_PRELOAD'), 'Preload cannot qualify the ordinary image'
-    status = 'passed-baked-SDK-Clang-wrappers-and-CPU-smokes-only' if profile == 'sdk-amd64' else 'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only'
+    status = 'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only' if profile == 'compiler' else 'passed-baked-SDK-Clang-wrappers-and-CPU-smokes-only'
     return {'status':status, 'profile':profile, 'native_backends':sorted(BACKENDS),
-            'cross_targets':list(targets), 'wrapper_count':2 * len(targets), 'native_languages':['c','cxx'], 'foreign_static_executions_required':2 * (len(targets) - 1),
+            'cross_targets':list(targets), 'wrapper_count':2 * len(targets), 'native_languages':['c','cxx'], 'foreign_static_executions_required':2 * len(targets.keys() - {'amd64'}),
             'compiler_smoke_driver':'/opt/scripts/packaging/smoke-toolchain.sh', 'complete_Cxx_ABI_claimed':False,
             'SDK_acceptance_claimed':False, 'GPU_acceptance_claimed':False}
 
 
+def collect_sdk(arch: str, helpers: Helpers) -> Json:
+    alias = Path('/opt/llvm-target-' + arch)
+    target = Path('/opt/llvm-target')
+    drivers: dict[str, Json] = {
+        name: {'alias_sha256':sha(alias / 'bin' / name), 'target_sha256':sha(target / 'bin' / name)}
+        for name in ('clang', 'clang++')
+    }
+    for name, row in drivers.items():
+        if arch != 'amd64':
+            row['elf'] = helpers['command']('readelf', ['-h', str(target / 'bin' / name)])
+    return {'alias_is_symlink':alias.is_symlink(), 'alias_target':os.readlink(alias),
+            'architecture_prefixes':sorted(path.name for path in Path('/opt').glob('llvm-target-*')),
+            'host_prefix_is_real':Path(PREFIX).is_dir() and not Path(PREFIX).is_symlink(), 'drivers':drivers}
+
+
 def collect(evidence: Path, stem: str, gcc_pin: str, llvm_pin: str, helpers: Helpers, *, profile: str = 'compiler') -> Json:
-    targets = {'amd64': TARGETS['amd64']} if profile == 'sdk-amd64' else TARGETS
+    arch = profile.removeprefix('sdk-')
+    targets = TARGETS if profile == 'compiler' else {arch: TARGETS[arch]}
     packaging = Path('/opt/scripts/packaging')
     command = helpers['command']
     payload = {'schema_version':1, 'profile':profile, 'gcc_pin':gcc_pin, 'llvm_pin':llvm_pin,
@@ -112,12 +137,8 @@ def collect(evidence: Path, stem: str, gcc_pin: str, llvm_pin: str, helpers: Hel
         programs[language] = {'source_sha256':sha(source), 'build':build, 'execution':command(str(binary), []),
                               'elf':command('readelf', ['-h', str(binary)])}
     payload['native_programs'] = programs
-    if profile == 'sdk-amd64':
-        alias = Path(PREFIX)
-        payload['materialization'] = {'alias_is_symlink':alias.is_symlink(), 'alias_target':os.readlink(alias),
-                                     'architecture_prefixes':sorted(path.name for path in Path('/opt').glob('llvm-target-*')),
-                                     'drivers':{driver:{'alias_sha256':sha(alias / 'bin' / driver), 'target_sha256':sha(Path('/opt/llvm-target/bin') / driver)}
-                                                for driver in ['clang','clang++']}}
+    if profile != 'compiler':
+        payload['materialization'] = collect_sdk(profile.removeprefix('sdk-'), helpers)
     return payload
 
 
@@ -127,7 +148,7 @@ def main() -> None:
     parser.add_argument('--mode', choices=['default','login'], required=True)
     parser.add_argument('--gcc-pin', required=True)
     parser.add_argument('--llvm-pin', required=True)
-    parser.add_argument('--profile', choices=['compiler','sdk-amd64'], default='compiler')
+    parser.add_argument('--profile', choices=PROFILES, default='compiler')
     args = parser.parse_args()
     assert all(re.fullmatch(r'\d+\.\d+\.\d+', value) for value in [args.gcc_pin,args.llvm_pin])
     stem = '' if args.mode == 'default' else 'login-'

@@ -53,14 +53,14 @@ class DefaultMediaTests(unittest.TestCase):
         self.sdk_path.write_text(json.dumps(self.sdk))
         self.parent['subject']['sdk_invocation_sha256'] = fixtures.sha(self.sdk_path)
 
-    def load(self, parent: dict | None = None) -> tuple:
+    def load(self, parent: dict | None = None, *, arch: str = 'amd64') -> tuple:
         loader = mock.Mock(return_value=(parent or self.parent, self.context))
         with mock.patch.object(MODULE, 'full_source') as full, \
                 mock.patch.object(MODULE.runpy, 'run_path', return_value={'sdk_parent': loader}) as api:
-            result = MODULE.sdk_media_parent(self.plan_path, self.sdk_path, self.proof_path)
+            result = MODULE.sdk_media_parent(self.plan_path, self.sdk_path, self.proof_path, arch=arch)
         full.assert_called_once_with(self.work, self.full, self.plan['source_revision'])
         api.assert_called_once_with(str(fixtures.TOOLS / 'launch-normal-gpu.py'))
-        loader.assert_called_once_with(self.plan, self.sdk_path, self.proof_path)
+        loader.assert_called_once_with(self.plan, self.sdk_path, self.proof_path, arch=arch)
         return result
 
     def test_qualified_sdk_inputs_are_retained(self) -> None:
@@ -117,7 +117,7 @@ class DefaultMediaTests(unittest.TestCase):
                 mock.patch.dict(os.environ, {'ENABLE_AMD': 'true', 'ENABLE_NVIDIA': 'true'}):
             result = MODULE.launch(self.plan_path, self.sdk_path, self.proof_path, self.output, self.unit, self.repo)
         self.assertEqual(result, 47)
-        parent.assert_called_once_with(self.plan_path, self.sdk_path, self.proof_path)
+        parent.assert_called_once_with(self.plan_path, self.sdk_path, self.proof_path, arch='amd64')
         source, output, unit, image, arch, required, record, environment, driver = build.call_args.args
         self.assertEqual((source, output, unit, image, arch),
                          (self.work, self.output, self.unit, self.repo + ':cross-media-amd64', 'amd64'))
@@ -172,7 +172,29 @@ class DefaultMediaTests(unittest.TestCase):
                 '--output', str(self.output), '--unit', self.unit, '--image-repo', self.repo]
         with mock.patch.object(sys, 'argv', argv), mock.patch.object(MODULE, 'launch', return_value=53) as launch:
             self.assertEqual(MODULE.main(), 53)
-        launch.assert_called_once_with(self.plan_path, self.sdk_path, self.proof_path, self.output, self.unit, self.repo)
+        launch.assert_called_once_with(self.plan_path, self.sdk_path, self.proof_path, self.output, self.unit, self.repo, arch='amd64')
+
+    def test_foreign_default_lanes_require_matching_qualified_sdk_target(self) -> None:
+        for arch in ('arm64', 'riscv64'):
+            self.sdk.update(target_arch=arch, image='ant-local/webgpu-sdk:cross-sdk-' + arch)
+            self.save_sdk()
+            unit = f'webgpu-normal-media-default-{arch}-99999999-1.service'
+            selected = self.load(arch=arch)
+            with self.subTest(arch=arch), mock.patch.object(MODULE, 'sdk_media_parent', return_value=selected) as parent, \
+                    mock.patch.object(MODULE, 'launch_build', return_value=47) as build:
+                self.assertEqual(MODULE.launch(self.plan_path, self.sdk_path, self.proof_path,
+                                               self.output, unit, self.repo, arch=arch), 47)
+                parent.assert_called_once_with(self.plan_path, self.sdk_path, self.proof_path, arch=arch)
+                args = build.call_args.args
+                self.assertEqual(args[3:6], (self.repo + ':cross-media-' + arch, arch, 300 * 1024**3))
+                self.assertIn('CROSS_BUILD_PLATFORM=linux/amd64', args[7])
+                self.assertIn('ORT_WASM_WEBGPU_FLAVORS=true', args[7])
+                self.assertEqual(args[8][4:6], ['--arch', arch])
+            with self.assertRaisesRegex(ValueError, 'reviewed amd64 SDK'):
+                self.load()
+            with mock.patch.object(MODULE, 'sdk_media_parent') as parent, self.assertRaisesRegex(ValueError, 'Explicit default'):
+                MODULE.launch(self.plan_path, self.sdk_path, self.proof_path, self.output, self.unit, self.repo, arch=arch)
+            parent.assert_not_called()
 
     def test_optimized_python_cannot_remove_shared_parent_guards(self) -> None:
         code = ('from pathlib import Path; import default_media_launch as module; '

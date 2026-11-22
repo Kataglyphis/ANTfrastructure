@@ -216,10 +216,21 @@ The shared launcher owns the bounded unit and cache transport. Keep successful
 producer units for subsequent checked handoffs and require owned cleanup and
 independent absence queries when closing any container proof.
 
-This adds one owned launch profile. Synthetic command/refusal tests and their
-mutations do not prove a built image, real factory replay, licence closure or
-FINAL acceptance. Default arm64/riscv64 and NVIDIA parents still need their own
-qualification/launch/handoff profiles; the existing ROCm launcher stays unchanged.
+For arm64 or riscv64, run the same module directly with the selected SDK target.
+The SDK must pass the matching [component qualification](#sdk-component-qualification).
+
+```bash
+python3 linux/scripts/local-proof/default_media_launch.py --arch arm64 \
+  --compiler-plan PLAN --sdk-invocation SDK_INVOCATION --parent-proof SDK_OCI_PROOF \
+  --output FRESH_OUTPUT --unit webgpu-normal-media-default-arm64-YYYYMMDD-N.service \
+  --image-repo ant-local/webgpu-default
+```
+
+Use `riscv64` in the target and unit name for that lane. The engine image for
+both is Linux amd64, while the SDK tools and Media artifacts target the
+selected architecture. Synthetic command and refusal tests cover this wiring.
+Actual SDK builds, foreign Media export and factory replay, NVIDIA handoffs,
+licence closure and FINAL acceptance remain separate.
 
 ## Native GPU-to-Media handoff
 
@@ -670,21 +681,26 @@ type and annotation errors in both modules without reducing the existing scan.
 
 Pass the actual normal SDK's `invocation.json` through `--sdk-invocation` to both
 `compiler-image-qualification.py launch|seal` and `native-oci-handoff.py launch|seal`.
-Keep `--plan` pointed at the unchanged compiler plan. The reviewed profile currently accepts
-only an amd64 SDK from that same complete source and its sealed 26-layer compiler parent;
-new architectures or parent layouts require their own reviewed profile and controls.
+Keep `--plan` pointed at the unchanged compiler plan. The amd64, arm64 and
+riscv64 profiles require the same complete source and its sealed 26-layer
+compiler parent. The producer unit, stage command and image alias must select
+the same SDK target.
 
 The qualifier uses a fresh `webgpu-sdk-image-qualification-<id>.service` and output directory.
 Retain the original `--plain-load-probe` and `--original-qualification` inputs. The SDK's
 materialized `/opt/llvm-target` must own all 157 native tools and source LLVM loader selection;
 its `llvm-target-amd64` alias, exact two native wrapper scripts, driver byte comparisons and
 actual native C/C++ object/link/execution smokes must pass in default and login shells.
-The compiler profile still requires all three targets and four foreign static QEMU executions
-per mode. The SDK profile neither substitutes a compiler proof nor claims foreign SDK, complete
-C++ ABI, Vulkan API or GPU inference coverage. Native materialization replay on a disposable
-compiler container remains a separate component check.
+For arm64 and riscv64, the Linux amd64 SDK image must retain the real
+`/opt/llvm-target-amd64` host tools and source loader. The target alias must
+resolve to `/opt/llvm-target`, and both target driver ELF headers must match the
+selected architecture. Both target wrappers must compile, link and execute
+the static C and C++ smokes under QEMU in each shell mode. These profiles
+cover the selected compiler checks. Full C++ ABI, Vulkan API and GPU inference
+remain separate. The compiler image retains its three targets and four
+foreign QEMU executions per mode.
 
-SDK OCI exports use `webgpu-normal-sdk-export-amd64-<id>.service` and a fresh `sdk-context-*`
+SDK OCI exports use `webgpu-normal-sdk-export-<arch>-<id>.service` and a fresh `sdk-context-*`
 directory beside the compiler plan. Sealing hashes every native blob, binds the actual SDK
 manifest/config and matches every compiler parent descriptor and diffID; the compiler path
 retains its original 12-layer base check. The unchanged 180-GiB admission applies before an

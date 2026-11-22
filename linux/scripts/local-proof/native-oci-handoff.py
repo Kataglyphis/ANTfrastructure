@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export and verify reviewed compiler/amd64-SDK native OCI ancestry; no foreign SDK, complete C++ ABI or GPU proof."""
+"""Export and verify compiler and SDK OCI ancestry; no complete C++ ABI or GPU proof."""
 
 from __future__ import annotations
 
@@ -48,10 +48,12 @@ def sdk_cpu_qualification(proof: Json, subject: Json) -> None:
     validate_subject_binding(proof, subject, cpu_checks=True)
     assert proof['sdk_native_checks_required'] and proof['sdk_native_CPU_checks_passed'], 'SDK native CPU checks are required'
     assert not proof['cross_wrapper_checks_required'] and set(proof['sdk_native_modes']) == {'default','login'}, 'SDK proof requires both native modes'
+    profile = subject['cpu_profile']
+    arch = profile.removeprefix('sdk-')
     for mode, result in proof['sdk_native_modes'].items():
-        assert result['status'] == 'passed-baked-SDK-Clang-wrappers-and-CPU-smokes-only' and result['profile'] == 'sdk-amd64' and result['mode'] == mode, 'SDK native mode identity differs'
-        assert result['native_backends'] == ['AArch64','AMDGPU','RISCV','X86'] and result['wrapper_count'] == 2 and result['cross_targets'] == ['amd64'], 'SDK native compiler scope differs'
-        assert result['native_languages'] == ['c','cxx'] and result['foreign_static_executions_required'] == 0, 'SDK native languages differ'
+        assert result['status'] == 'passed-baked-SDK-Clang-wrappers-and-CPU-smokes-only' and result['profile'] == profile and result['mode'] == mode, 'SDK native mode identity differs'
+        assert result['native_backends'] == ['AArch64','AMDGPU','RISCV','X86'] and result['wrapper_count'] == 2 and result['cross_targets'] == [arch], 'SDK native compiler scope differs'
+        assert result['native_languages'] == ['c','cxx'] and result['foreign_static_executions_required'] == (0 if arch == 'amd64' else 2), 'SDK native languages or target execution coverage differ'
 
 
 def qualification(path: Path, plan: Json, sdk_invocation: Path | None = None) -> Json:
@@ -63,7 +65,7 @@ def qualification(path: Path, plan: Json, sdk_invocation: Path | None = None) ->
     assert proof["container_environment_matches_baked_image"] and proof["baked_script_bytes_match_source"]
     assert proof["login_shell_selection_passed"]
     assert proof["native_facts"]["native_tool_count"] == 157
-    if subject['kind'] == 'sdk-amd64':
+    if sdk_invocation is not None:
         sdk_cpu_qualification(proof, subject)
     elif subject['cross_required']:
         assert proof['cross_wrapper_checks_required'] and proof['cross_wrapper_CPU_checks_passed']
@@ -101,7 +103,7 @@ def launch(args: argparse.Namespace, plan: Json, proof: Json) -> int:
     assert disk["available_bytes"] >= plan["required_bytes"]
     image = json.loads(run([str(Path.home() / ".local/bin/nerdctl"), "image", "inspect", subject['image']]).stdout)[0]
     assert image["Id"] == proof["image_config"] and any(item.endswith("@" + proof["actual_image_manifest"]) for item in image["RepoDigests"])
-    sdk = subject['kind'] == 'sdk-amd64'
+    sdk = args.sdk_invocation is not None
     worker_inputs = export_worker_inputs(plan,sdk)
     helper = Path(next(iter(worker_inputs)))
     parent_proof = subject['compiler_parent_proof'] if sdk else ''
@@ -124,7 +126,7 @@ def launch(args: argparse.Namespace, plan: Json, proof: Json) -> int:
 
 def seal(args: argparse.Namespace, plan: Json, proof: Json) -> int:
     subject = load_subject(plan, args.sdk_invocation)
-    sdk = subject['kind'] == 'sdk-amd64'
+    sdk = args.sdk_invocation is not None
     invocation = json.loads(args.context.with_suffix(".invocation.json").read_text())
     assert invocation["unit"] == args.unit and invocation["qualification_sha256"] == sha(args.qualification)
     validate_subject_binding(invocation, subject)
@@ -187,7 +189,9 @@ def main() -> int:
     plan = json.loads(args.plan.read_text())
     args.context = args.context.resolve()
     sdk = args.sdk_invocation is not None
-    unit_pattern = r'webgpu-normal-sdk-export-amd64-[0-9-]+\.service' if sdk else r'webgpu-normal-compiler-export-[0-9-]+\.service'
+    subject = load_subject(plan, args.sdk_invocation)
+    arch = subject['cpu_profile'].removeprefix('sdk-')
+    unit_pattern = rf'webgpu-normal-sdk-export-{arch}-[0-9-]+\.service' if sdk else r'webgpu-normal-compiler-export-[0-9-]+\.service'
     assert re.fullmatch(unit_pattern, args.unit)
     assert args.context.parent == args.plan.resolve().parent and args.context.name.startswith('sdk-context-' if sdk else 'compiler-context-')
     assert run(["git", "-C", plan["source"], "rev-parse", "HEAD"]).stdout.strip() == plan["source_revision"]

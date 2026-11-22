@@ -20,8 +20,9 @@ if TYPE_CHECKING:
     from proof_types import Json
 
 
-def sdk_parent(plan: Json, invocation: Path, proof_path: Path) -> tuple[Json, Path]:
+def sdk_parent(plan: Json, invocation: Path, proof_path: Path, *, arch: str = 'amd64') -> tuple[Json, Path]:
     subject = load_subject(plan, invocation)
+    assert subject['kind'] == 'sdk-' + arch, 'SDK parent target differs'
     proof, context, native = parent_layout(proof_path)
     assert proof['status'] == 'passed-qualified-native-SDK-OCI-and-compiler-ancestry' and proof['SDK_built'] is True, 'Actual SDK OCI required'
     assert proof['source_revision'] == plan['source_revision'] and proof['subject'] == subject, 'SDK source or subject differs'
