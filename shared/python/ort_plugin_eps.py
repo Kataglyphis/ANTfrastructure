@@ -30,7 +30,7 @@ class RuntimeBinding(Protocol):
     __file__: str
 
     def register_execution_provider_library(
-        self, name: str, library_path: str, /
+        self, name: str, _library_path: str, /
     ) -> None:
         """Register a library in this binding's environment."""
         ...

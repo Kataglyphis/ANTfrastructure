@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-22 — keep the shared Python registration protocol valid under dead-code grading
+
+- Mark the unused positional-only library parameter in the runtime-binding protocol explicitly
+  unused. Preserve its argument order, types and positional-only contract; registration behavior
+  and owning-binding state remain unchanged.
+- The ordinary consumer Vulture gate exposed the defect at its existing 100-confidence bound.
+  Retain that bound and the shared-asset equality check; a real-analyser consumer regression
+  checks the mirror rather than adding a private copy or quality exception. This proves no
+  native loading, compiled consumer package or GPU inference.
+
 ## 2026-11-22 — assemble closed direct-wrapper source receipts
 
 - Preserve complete direct-wrapper preflight receipt assembly with exact suite/mutation evidence, canonical runner library exclusions and regular-file discovery, original cleanup identity and fresh absence queries. Never reconstruct driver metadata, re-seal a stopped unit or repeat exclusive cleanup.

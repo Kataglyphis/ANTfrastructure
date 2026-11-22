@@ -1165,8 +1165,10 @@ BACKLOG CON231 step 2.
 
 The shared Python owner is `shared/python/ort_plugin_eps.py`, declared as the exact
 `ort-plugin-registration-python` asset. Give its consumer-manifest row a path inside
-the installed application package, then import that copy. `register_plugin_library`
-uses the supplied ORT binding, not an implicit import; only a successful native call
+the installed application package, then import that copy. The runtime-binding protocol
+keeps its library argument positional-only and marks the unused declaration with an
+underscore prefix, so strict dead-code checks can grade the shared copy without an exception.
+`register_plugin_library` uses the supplied ORT binding, not an implicit import; only a successful native call
 enters its locked per-binding cache. A missing advertised root or module is fatal,
 while an absent advertisement and absent bundled module leave CPU use untouched.
 `registered_plugin_names` reports those successful calls. `select_plugin_device`
