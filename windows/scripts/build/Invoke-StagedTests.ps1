@@ -13,8 +13,10 @@
     counted from their own summaries (a pytest exe is the product's python.exe with "-m pytest" in args); an
     exitcode entry is one test. skip_pattern (optional) names the line a test prints when it skips
     itself, which its framework counts as passed (a wgpu test without an adapter): each match moves one test from
-    passed to skipped. A failing test is counted, not thrown, so the verdict line always prints; a missing binary
-    or a summary that cannot be read is an error.
+    passed to skipped. allowed_skips (optional, gtest only) is the exact list of tests the entry may skip: a skip
+    not on it, and a listed test that passed, failed or did not run, each count as a failure and are named; an empty
+    list refuses every skip. A failing test is counted, not thrown, so the verdict line always prints; a missing
+    binary or a summary that cannot be read is an error.
 .PARAMETER AssertVerdict
     After the counts line, throw when a test failed or none passed, as WindowsTesting.Common's Assert-StagedTestVerdict does.
 #>
@@ -26,7 +28,9 @@ param(
     [scriptblock]$CrashEventReader = {
         param([datetime]$Since)
         Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000; StartTime = $Since } -ErrorAction Stop
-    }
+    },
+    # Seconds a crash waits for that record, in case WER writes it late; for a fail-fast abort it may write none.
+    [ValidateRange(0, 120)][int]$CrashEventWaitSeconds = 15
 )
 
 $ErrorActionPreference = 'Stop'
@@ -52,18 +56,62 @@ function Format-StagedExitCode([int]$Code) {
 
 # Windows Error Reporting's event 1000 for a binary that crashed since -Since, which names the faulting module; best effort.
 function Get-StagedCrashReport([string]$ExeName, [datetime]$Since) {
-    try {
-        $events = @(& $CrashEventReader $Since)
-    } catch {
-        return $null
+    for ($waited = 0; ; $waited++) {
+        try {
+            $events = @(& $CrashEventReader $Since)
+        } catch {
+            # Get-WinEvent throws while nothing matches yet, as it does where no event log exists.
+            $events = @()
+        }
+        foreach ($werEvent in $events) {
+            # Properties, not Message, which is localized: [0] application, [3] module, [6] exception code, [7] offset.
+            $data = @($werEvent.Properties | ForEach-Object { "$($_.Value)" })
+            if ($data.Count -lt 8 -or $data[0] -ne $ExeName) { continue }
+            return "WER: faulting module $($data[3]) at offset 0x$($data[7]), exception 0x$($data[6])"
+        }
+        if ($waited -ge $CrashEventWaitSeconds) { return $null }
+        Start-Sleep -Seconds 1
     }
-    foreach ($werEvent in $events) {
-        # Properties, not Message, which is localized: [0] application, [3] module, [6] exception code, [7] offset.
-        $data = @($werEvent.Properties | ForEach-Object { "$($_.Value)" })
-        if ($data.Count -lt 8 -or $data[0] -ne $ExeName) { continue }
-        return "WER: faulting module $($data[3]) at offset 0x$($data[7]), exception 0x$($data[6])"
+}
+
+# A gtest entry's skips against its exact allowed_skips (CON292): each mismatch is named, and counted as a failure.
+function Get-StagedSkipVerdict {
+    param([AllowEmptyCollection()][string[]]$Lines, [AllowEmptyCollection()][string[]]$Allowed)
+    $results = @{}
+    foreach ($hit in @($Lines | Select-String -Pattern '^\[\s*(OK|FAILED|SKIPPED)\s*\]\s+([^\s,]+)(,.*)?\s+\(\d+ ms\)\s*$')) {
+        $results[$hit.Matches[0].Groups[2].Value] = $hit.Matches[0].Groups[1].Value
     }
-    return $null
+    $verdict = @{ Problems = [System.Collections.Generic.List[string]]::new(); Unlisted = 0; ListedPassed = 0; Absent = 0 }
+    foreach ($name in @($results.Keys | Where-Object { $results[$_] -eq 'SKIPPED' -and $_ -cnotin $Allowed } | Sort-Object)) {
+        $verdict.Problems.Add("skipped, not on allowed_skips: $name"); $verdict.Unlisted++
+    }
+    foreach ($name in $Allowed) {
+        switch ($results[$name]) {
+            'SKIPPED' { }
+            'OK' { $verdict.Problems.Add("on allowed_skips, but it passed: $name"); $verdict.ListedPassed++ }
+            'FAILED' { $verdict.Problems.Add("on allowed_skips, but it failed: $name") }
+            default { $verdict.Problems.Add("on allowed_skips, but it did not run: $name"); $verdict.Absent++ }
+        }
+    }
+    return $verdict
+}
+
+# allowed_skips belongs to gtest entries: any other kind carrying it is refused before its binary runs (CON292).
+function Assert-StagedSkipListKind([object]$Entry) {
+    if ($Entry.PSObject.Properties['allowed_skips'] -and $Entry.kind -ne 'gtest') {
+        throw "$($Entry.exe): allowed_skips lists gtest skips; a $($Entry.kind) entry cannot carry it"
+    }
+}
+
+# Counts an entry's mismatches with its allowed_skips as failures and names each; an entry without the list is left alone.
+function Update-StagedSkipCount {
+    param([object]$Entry, [AllowEmptyCollection()][string[]]$Lines, [hashtable]$Counts)
+    $skipList = $Entry.PSObject.Properties['allowed_skips']
+    if (-not $skipList) { return }
+    $skips = Get-StagedSkipVerdict -Lines $Lines -Allowed @($skipList.Value)
+    $skips.Problems | ForEach-Object { Write-Host "   $_" }
+    $Counts.Skipped -= $skips.Unlisted; $Counts.Passed -= $skips.ListedPassed
+    $Counts.Failed += $skips.Unlisted + $skips.ListedPassed + $skips.Absent
 }
 
 # Adds -Passed/-Failed/-Skipped to the running -Into tally.
@@ -114,6 +162,7 @@ $total = @{ Passed = 0; Failed = 0; Skipped = 0 }
 foreach ($entry in $entries) {
     $exe = Join-Path $root $entry.exe
     if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "staged test missing: $exe" }
+    Assert-StagedSkipListKind $entry
     $testArgs = @(if ($entry.PSObject.Properties['args']) { $entry.args })
     Write-Host "== $($entry.exe) $($testArgs -join ' ')"
     $started = Get-Date
@@ -133,6 +182,7 @@ foreach ($entry in $entries) {
         $crash = if ($code -lt 0) { Get-StagedCrashReport -ExeName (Split-Path -Leaf $exe) -Since $started }
         throw "$($entry.exe): $($_.Exception.Message); exit $(Format-StagedExitCode $code)$(if ($crash) { "; $crash" })"
     }
+    Update-StagedSkipCount -Entry $entry -Lines $lines -Counts $counts
     if ($entry.PSObject.Properties['skip_pattern']) {
         $selfSkipped = [Math]::Min(@($lines | Select-String -Pattern $entry.skip_pattern).Count, $counts.Passed)
         $counts.Passed -= $selfSkipped; $counts.Skipped += $selfSkipped

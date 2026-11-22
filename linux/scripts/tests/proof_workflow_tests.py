@@ -15,6 +15,9 @@ from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
 
+import proof_workflow_cleanup_tests as cleanup_checks
+import proof_workflow_ft_tests as ft_checks
+
 SCRIPTS = Path(sys.argv.pop(1)).resolve()
 FIXTURE = Path(sys.argv.pop(1)).resolve()
 REVISION = sys.argv.pop(1)
@@ -33,9 +36,10 @@ def load(name: str, filename: str) -> ModuleType:
 RUNNER = load("fixture_preflight_runner", "run-isolated-preflight.py")
 WATCH = load("fixture_build_watch", "watch-build-units.py")
 PROBE = load("fixture_preflight_status", "preflight-status.py")
+OWNER = load("fixture_owned_containers", "owned_containers.py")
 
 
-class RunnerTests(unittest.TestCase):
+class EngineFixture(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory(prefix="ant-proof-workflow-")
         self.addCleanup(self.temporary.cleanup)
@@ -61,6 +65,10 @@ class RunnerTests(unittest.TestCase):
         self.origin.start()
         self.addCleanup(self.origin.stop)
 
+
+class RunnerTests(ft_checks.FreeThreadedBootstrapChecks, EngineFixture):
+    scripts = SCRIPTS
+
     def runner_args(self) -> argparse.Namespace:
         return argparse.Namespace(
             revision=REVISION,
@@ -69,206 +77,16 @@ class RunnerTests(unittest.TestCase):
             jobs=4,
             memory="12g",
             engine=str(self.engine),
+            image=None,
+            native_tools_cache=None,
+            fast_ubuntu_mirror_url=None,
+            run_id="1" * 32,
         )
 
-    def ft_tools(self) -> tuple[Path, Path, dict[str, str]]:
-        directory = self.root / "ft tools"
-        directory.mkdir(exist_ok=True)
-        scripts = {
-            "uv": 'printf "uv[%s] %s\\n" "$UV_PYTHON_INSTALL_DIR" "$*" >> "$FT_TRACE"\ncase "$2" in install) exit "${FT_INSTALL_RC:-0}" ;; find) printf "%s\\n" "$FT_EXECUTABLE" ;; *) exit 41 ;; esac\n',
-            "ft-python": 'printf "ft %s\\n" "$*" >> "$FT_TRACE"\nexit "${FT_PROBE_RC:-0}"\n',
-            "git": 'printf "%s\\n" "$ISOLATED_PREFLIGHT_REVISION"\n',
-            "make": 'printf "make %s\\n" "$*" >> "$FT_TRACE"\nexit "${FT_MAKE_RC:-0}"\n',
-            "python3": "exit 0\n",
-        }
-        for name in (
-            "jq",
-            "shellcheck",
-            "rsync",
-            "ps",
-            "cc",
-            "readelf",
-            "ldconfig",
-            "patchelf",
-            "pytest",
-            "pwsh",
-            "node",
-            "chromium",
-        ):
-            scripts[name] = "exit 0\n"
-        for name, body in scripts.items():
-            path = directory / name
-            path.write_text("#!/usr/bin/env bash\n" + body)
-            path.chmod(0o755)
-        trace = self.root / "ft-trace"
-        trace.unlink(missing_ok=True)
-        environment = dict(
-            os.environ,
-            PATH=str(directory) + os.pathsep + os.environ["PATH"],
-            FT_TRACE=str(trace),
-            FT_EXECUTABLE=str(directory / "ft-python"),
-            ISOLATED_PREFLIGHT_REVISION="f" * 40,
-            ISOLATED_PREFLIGHT_JOBS="4",
-        )
-        return directory, trace, environment
-
-    def test_ft_bootstrap_installs_the_source_pin_and_preserves_raw_failures(
-        self,
-    ) -> None:
-        bootstrap = (SCRIPTS / "isolated-preflight/bootstrap.sh").read_text()
-        self.assertIn("unset UV_VERSION PYTHON_VERSION", bootstrap)
-        self.assertLess(
-            bootstrap.index("unset UV_VERSION PYTHON_VERSION"),
-            bootstrap.index(
-                'load_versions_env "${task_source}/linux/scripts/01-core/versions.env"'
-            ),
-        )
-        prefix = "uv pip install --python /opt/preflight-venv/bin/python --require-hashes --requirement /tmp/preflight-quality.txt\n"
-        block = bootstrap.split(prefix, 1)[1].split(
-            'bash "${task_source}/linux/scripts/ensure-pe-icon-test-tools.sh"', 1
-        )[0]
-        pin = next(
-            line.split("=", 1)[1]
-            for line in (SCRIPTS / "01-core/versions.env").read_text().splitlines()
-            if line.startswith("PYTHON_VERSION=")
-        )
-        for install, probe in ((0, 0), (43, 0), (0, 47)):
-            with self.subTest(install=install, probe=probe):
-                directory, trace, environment = self.ft_tools()
-                environment.update(
-                    PYTHON_VERSION=pin,
-                    FT_INSTALL_RC=str(install),
-                    FT_PROBE_RC=str(probe),
-                )
-                result = subprocess.run(
-                    [
-                        "bash",
-                        "-euo",
-                        "pipefail",
-                        "-c",
-                        block + '\nprintf "%s\\n" "$task_ft_python"',
-                    ],
-                    env=environment,
-                    capture_output=True,
-                    check=False,
-                )
-                self.assertEqual(result.returncode, install or probe, result.stderr)
-                calls = trace.read_text().splitlines()
-                self.assertEqual(
-                    calls[0], f"uv[/opt/preflight-ft-python] python install {pin}t"
-                )
-                if install:
-                    self.assertEqual(len(calls), 1)
-                else:
-                    self.assertEqual(
-                        calls[1],
-                        f"uv[/opt/preflight-ft-python] python find --managed-python {pin}t",
-                    )
-                    self.assertEqual(len(calls), 3)
-                    self.assertTrue(calls[2].startswith("ft -I -c import sys;"))
-                    self.assertTrue(calls[2].endswith(pin))
-                if not (install or probe):
-                    self.assertEqual(
-                        result.stdout.decode().strip(), str(directory / "ft-python")
-                    )
-
-    def test_ft_worker_keeps_the_clean_envelope_and_refuses_a_failed_probe(
-        self,
-    ) -> None:
-        bootstrap = (SCRIPTS / "isolated-preflight/bootstrap.sh").read_text()
-        forwarded = 'FT_PYTHON="${task_ft_python}"'
-        self.assertIn(forwarded, bootstrap)
-        self.assertLess(bootstrap.index("exec setpriv"), bootstrap.index(forwarded))
-        self.assertLess(
-            bootstrap.index(forwarded),
-            bootstrap.index(
-                '/bin/bash "${task_source}/linux/scripts/isolated-preflight/worker.sh"'
-            ),
-        )
-        source = self.root / "worker/linux/scripts/isolated-preflight"
-        source.mkdir(parents=True)
-        shutil.copy2(SCRIPTS / "isolated-preflight/worker.sh", source / "worker.sh")
-        logs = self.root / "worker/logs"
-        for probe, make in ((None, 0), (42, 0), (0, 37), (0, 0)):
-            with self.subTest(probe=probe, make=make):
-                directory, trace, environment = self.ft_tools()
-                environment.pop("FT_PYTHON", None)
-                if probe is not None:
-                    environment.update(
-                        FT_PYTHON=str(directory / "ft-python"), FT_PROBE_RC=str(probe)
-                    )
-                environment["FT_MAKE_RC"] = str(make)
-                if logs.is_symlink():
-                    logs.unlink()
-                result = subprocess.run(
-                    ["bash", str(source / "worker.sh")],
-                    env=environment,
-                    capture_output=True,
-                    check=False,
-                )
-                calls = trace.read_text().splitlines() if trace.exists() else []
-                if probe is None:
-                    self.assertNotEqual(result.returncode, 0)
-                else:
-                    self.assertEqual(result.returncode, probe or make, result.stderr)
-                    self.assertTrue(calls[0].startswith("ft -I -c "))
-                self.assertEqual(
-                    any(call == "make preflight" for call in calls), probe == 0
-                )
-
-    def test_ft_worker_genuine_probe_refuses_the_normal_interpreter(self) -> None:
-        worker = (SCRIPTS / "isolated-preflight/worker.sh").read_text()
-        line = next(
-            (
-                line
-                for line in worker.splitlines()
-                if line.startswith('"${FT_PYTHON:?}" -I -c ')
-            ),
-            None,
-        )
-        self.assertIsNotNone(
-            line,
-            "The worker must run its genuine free-threading/header probe before make.",
-        )
-        assert line is not None
-        code = shlex.split(line)[-1]
-        result = subprocess.run(
-            [sys.executable, "-I", "-c", code], capture_output=True, check=False
-        )
-        self.assertNotEqual(
-            result.returncode,
-            0,
-            "A normal GIL interpreter cannot satisfy the FT prerequisite.",
-        )
-        include = self.root / "probe include"
-        include.mkdir()
-        (include / "Python.h").write_text("fixture existence only\n")
-        for ft, gil, headers in (
-            (1, False, True),
-            (0, False, True),
-            (1, True, True),
-            (1, False, False),
-        ):
-            with self.subTest(ft=ft, gil=gil, headers=headers):
-                selected = include if headers else self.root / "absent headers"
-                patched = (
-                    f"import sys,sysconfig; sysconfig.get_config_var=lambda name: {ft}; "
-                    f"sys._is_gil_enabled=lambda: {gil!r}; "
-                    f'sysconfig.get_paths=lambda: {{"include": {str(selected)!r}}}; exec({code!r})'
-                )
-                result = subprocess.run(
-                    [sys.executable, "-I", "-c", patched],
-                    capture_output=True,
-                    check=False,
-                )
-                self.assertEqual(
-                    result.returncode == 0,
-                    bool(ft and not gil and headers),
-                    result.stderr,
-                )
-
-    def run_fixture(self, mode: str) -> tuple[int, dict[str, object], list[list[str]]]:
-        args = self.runner_args()
+    def run_fixture(
+        self, mode: str, args: argparse.Namespace | None = None
+    ) -> tuple[int, dict[str, object], list[list[str]]]:
+        args = args or self.runner_args()
         with patch.dict(os.environ, {"PROOF_ENGINE_MODE": mode}):
             status = RUNNER.run(args)
         record = json.loads((self.output / "run.json").read_text())
@@ -286,10 +104,200 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual((FIXTURE / "marker").read_text(), "dirty\n")
         self.assertEqual((self.output / "preflight.log").read_bytes(), b"worker\xff\n")
         run = next(args for args in commands if args[0] == "run")
+        self.assertIn("--init", run)
         self.assertIn(f"{self.output / 'source'}:/source:ro", run)
         self.assertIn(f"{self.output / 'reports'}:/evidence", run)
         self.assertNotIn(f"{self.output}:/evidence", run)
         self.assertIn(["rm", "--force", "a" * 64], commands)
+        self.assertIn("ISOLATED_PREFLIGHT_UBUNTU_MIRROR_URL=", run)
+        self.assertIsNone(record["fast_ubuntu_mirror_url"])
+
+    def test_explicit_mirror_reaches_one_container_environment_and_receipt(
+        self,
+    ) -> None:
+        args = self.runner_args()
+        args.fast_ubuntu_mirror_url = "http://de.archive.ubuntu.com/ubuntu/"
+        status, record, commands = self.run_fixture("success", args)
+        self.assertEqual(status, 0)
+        self.assertEqual(record["fast_ubuntu_mirror_url"], args.fast_ubuntu_mirror_url)
+        run = next(argv for argv in commands if argv[0] == "run")
+        values = [
+            value
+            for value in run
+            if value.startswith("ISOLATED_PREFLIGHT_UBUNTU_MIRROR_URL=")
+        ]
+        self.assertEqual(
+            values,
+            ["ISOLATED_PREFLIGHT_UBUNTU_MIRROR_URL=" + args.fast_ubuntu_mirror_url],
+        )
+
+    def test_mirror_argument_refusals_precede_output_allocation(self) -> None:
+        base = [
+            "runner",
+            "--output",
+            str(self.output),
+            "--name",
+            "fixture",
+            "--fast-ubuntu-mirror-url",
+        ]
+        for value in [
+            "file:///tmp/mirror",
+            "http://",
+            "http://user:password@mirror.invalid/ubuntu/",
+            "http://mirror.invalid/ubuntu/?key=value",
+            "http://mirror.invalid/ubuntu/#part",
+            "http://mirror.invalid/with space",
+            "http://[broken",
+            "http://mirror.invalid:bad/ubuntu/",
+        ]:
+            with (
+                self.subTest(value=value),
+                patch.object(sys, "argv", [*base, value]),
+                self.assertRaises(SystemExit) as error,
+            ):
+                RUNNER.arguments()
+            self.assertEqual(error.exception.code, 2)
+            self.assertFalse(self.output.exists())
+        for value in [
+            "http://de.archive.ubuntu.com/ubuntu/",
+            "https://mirror.invalid/ubuntu/",
+        ]:
+            with self.subTest(value=value), patch.object(sys, "argv", [*base, value]):
+                self.assertEqual(RUNNER.arguments().fast_ubuntu_mirror_url, value)
+
+    def test_bootstrap_mirror_precedes_apt_preserves_sources_and_raw_failure(
+        self,
+    ) -> None:
+        text = (SCRIPTS / "isolated-preflight/bootstrap.sh").read_text()
+        prefix = text.split("apt-get install", 1)[0]
+        anchor = "configure_preflight_mirror /source/linux/scripts"
+        self.assertEqual(prefix.count(anchor), 1)
+        for mode in ["disabled", "enabled", "failed"]:
+            with self.subTest(mode=mode):
+                root = self.root / mode
+                core = root / "scripts/01-core"
+                core.mkdir(parents=True)
+                for name in [
+                    "use-fast-ubuntu-mirror.sh",
+                    "ubuntu-mirror.sh",
+                    "platform.sh",
+                ]:
+                    shutil.copy2(SCRIPTS / "01-core" / name, core / name)
+                if mode == "failed":
+                    (core / "use-fast-ubuntu-mirror.sh").write_text(
+                        "#!/bin/bash\nexit 47\n"
+                    )
+                sources = root / "etc/apt/sources.list.d/ubuntu.sources"
+                sources.parent.mkdir(parents=True)
+                original = (
+                    "Types: deb\nURIs: http://archive.ubuntu.com/ubuntu/ http://security.ubuntu.com/ubuntu/\n"
+                    "Suites: resolute resolute-updates resolute-security\nComponents: main\n"
+                    "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n"
+                )
+                sources.write_text(original)
+                apt = root / "apt-get"
+                apt.write_text(
+                    '#!/bin/bash\ncat "$UBUNTU_SOURCES_ROOT/etc/apt/sources.list.d/ubuntu.sources" > "$APT_TRACE"\n'
+                )
+                apt.chmod(0o755)
+                trace = root / "apt-trace"
+                script = root / "bootstrap-prefix.sh"
+                script.write_text(
+                    prefix.replace(
+                        anchor,
+                        "configure_preflight_mirror "
+                        + shlex.quote(str(root / "scripts")),
+                    )
+                )
+                environment = dict(
+                    os.environ,
+                    PATH=str(root) + os.pathsep + os.environ["PATH"],
+                    UBUNTU_SOURCES_ROOT=str(root),
+                    APT_TRACE=str(trace),
+                    ISOLATED_PREFLIGHT_UBUNTU_MIRROR_URL=""
+                    if mode == "disabled"
+                    else "http://de.archive.ubuntu.com/ubuntu/",
+                )
+                result = subprocess.run(
+                    ["bash", str(script)],
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                )
+                self.assertEqual(
+                    result.returncode, 47 if mode == "failed" else 0, result.stderr
+                )
+                if mode == "failed":
+                    self.assertFalse(trace.exists())
+                else:
+                    expected = (
+                        original
+                        if mode == "disabled"
+                        else original.replace(
+                            "http://archive.ubuntu.com/ubuntu/",
+                            "http://de.archive.ubuntu.com/ubuntu/",
+                        ).replace(
+                            "http://security.ubuntu.com/ubuntu/",
+                            "http://de.archive.ubuntu.com/ubuntu/",
+                        )
+                    )
+                    self.assertEqual(trace.read_text(), expected)
+                    self.assertEqual(sources.read_text(), expected)
+
+    def test_explicit_image_and_readonly_native_cache_reach_the_canonical_runner(
+        self,
+    ) -> None:
+        args = self.runner_args()
+        args.image = "example.invalid/cached-tool@sha256:" + "d" * 64
+        args.native_tools_cache = self.root / "retained SDK"
+        args.native_tools_cache.mkdir()
+        with patch.object(
+            RUNNER,
+            "base_image",
+            side_effect=AssertionError("explicit image was ignored"),
+        ):
+            status, record, commands = self.run_fixture("success", args)
+        self.assertEqual(status, 0)
+        self.assertEqual(record["owner_run_id"], args.run_id)
+        self.assertEqual(record["image"], args.image)
+        self.assertEqual(record["image_selection"], "explicit")
+        self.assertEqual(record["native_tools_cache"], str(args.native_tools_cache))
+        run = next(argv for argv in commands if argv[0] == "run")
+        self.assertIn(args.image, run)
+        self.assertIn(f"{args.native_tools_cache}:/opt/preflight-native-tools:ro", run)
+        self.assertIn("--init", run)
+
+    def test_missing_native_cache_refuses_before_allocating_a_run(self) -> None:
+        argv = [
+            "runner",
+            "--output",
+            str(self.output),
+            "--name",
+            "fixture",
+            "--native-tools-cache",
+            str(self.root / "absent"),
+        ]
+        with patch.object(sys, "argv", argv), self.assertRaises(SystemExit) as error:
+            RUNNER.arguments()
+        self.assertEqual(error.exception.code, 2)
+        self.assertFalse(self.output.exists())
+
+    def test_malformed_ownership_token_refuses_before_allocating_a_run(self) -> None:
+        argv = [
+            "runner",
+            "--output",
+            str(self.output),
+            "--name",
+            "fixture",
+            "--run-id",
+            "not-a-token",
+        ]
+        with patch.object(sys, "argv", argv), self.assertRaises(SystemExit) as error:
+            RUNNER.arguments()
+        self.assertEqual(error.exception.code, 2)
+        self.assertFalse(self.output.exists())
 
     def test_worker_failure_keeps_raw_status_and_removes_only_owned_container(
         self,
@@ -639,6 +647,11 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(handed(calls), [])
 
 
+class CleanupTests(cleanup_checks.OwnedContainerCleanupChecks, EngineFixture):
+    scripts = SCRIPTS
+    container_api = OWNER
+
+
 class StatusTests(unittest.TestCase):
     def test_running_success_field_is_not_a_terminal_verdict(self) -> None:
         unit = {
@@ -661,6 +674,17 @@ class StatusTests(unittest.TestCase):
                 dict(
                     unit,
                     ActiveState="inactive",
+                    MainPID="0",
+                    ExecMainExitTimestampMonotonic="123",
+                )
+            )
+        )
+        self.assertFalse(WATCH.terminal(dict(unit, SubState="exited", MainPID="0")))
+        self.assertTrue(
+            WATCH.terminal(
+                dict(
+                    unit,
+                    SubState="exited",
                     MainPID="0",
                     ExecMainExitTimestampMonotonic="123",
                 )

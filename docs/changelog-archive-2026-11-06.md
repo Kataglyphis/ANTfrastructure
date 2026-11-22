@@ -1,13 +1,7 @@
-<!--
-Copyright (c) 2026 Kataglyphis
-SPDX-License-Identifier: MIT
--->
+# Changelog archive: 2026-11-05 … 2026-11-06
 
-# Changelog archive — 2026-11-05 … 2026-11-06
-
-Entries moved from the root `CHANGELOG.md` on 2026-11-13 at complete date
-boundaries. Original text is preserved; relative links are rebased to this directory.
-The preceding history is in [the 2026-11-04 archive](changelog-archive-2026-11-04.md).
+Later entries are in [the 2026-11-07 … 2026-11-12 archive](changelog-archive-2026-11-12.md);
+earlier entries remain in the older archives listed by [the current changelog](../CHANGELOG.md).
 
 ## 2026-11-06 — IREE builds outside the 20 GB RUN scratch
 
@@ -72,6 +66,7 @@ The preceding history is in [the 2026-11-04 archive](changelog-archive-2026-11-0
   throw, and the smoke gate fails an `-ExpectGpu` image with an empty `TENSORRT_ROOT`
   (`host.trt-url-tensorrt11-scheme`, `host.trt-missing-throws`, `smoke.trt-required-expect-gpu`).
   The runtime-only rule is unchanged. Windows arm64 TensorRT stays off as an owner decision (CON230).
+
 ## 2026-11-06 — QNN's Hexagon skeletons are DSP payload, and NVIDIA's gst plugins are recorded
 
 - The first green arm64 nvidia package stage reached the runtime-image smoke, which failed on 107 QDSP6 objects
@@ -160,6 +155,7 @@ The preceding history is in [the 2026-11-04 archive](changelog-archive-2026-11-0
   end. The live server carries the fix and cut the bucket from 104.0 to 90.1 GiB. `test-sccache-evict.sh` runs the
   script's real text against stubs, and `lib.sccache-evict-reads-whole-list` proves it
   ([failure-modes.md](failure-modes.md#sccache-evictservice-fails-with-sort-write-failed-standard-output-broken-pipe)).
+
 ## 2026-11-05 — The SBSA DeepStream build finds the target's multiarch headers
 
 - The first arm64 media builds of the nvidia chain (CON42 phase 7) died in civetweb on `zconf.h`: the cross GCC's

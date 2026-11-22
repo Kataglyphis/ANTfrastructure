@@ -41,7 +41,7 @@ _consumer_contract_symptom() {
     [android-emulator]='an Android lane has no device to install on: adb reports "no devices/emulators found" and every on-device test is skipped'
     [cargo-qa-tools]='every OxidANT security and coverage step cargo-installs cargo-audit, cargo-deny and cargo-tarpaulin from crates.io first, minutes of compiles per run, and its weekly rust-mutants.yml runs nothing'
     [free-threaded-python]='every X.Yt leg has uv download a free-threaded CPython first, its patch version unpinned'
-    [lint-tools]='OrchestrANT'"'"'s coding bench reports "[shellcheck SKIPPED: not on PATH]" and "[hadolint SKIPPED: not on PATH]" on every row, so no bash or Dockerfile answer is linted'
+    [lint-tools]='OrchestrANT'"'"'s coding bench reports "[shellcheck SKIPPED: not on PATH]" and "[hadolint SKIPPED: not on PATH]" on every row, so no bash or Dockerfile answer is linted, and an offline secret scan downloads gitleaks and fails'
     [uv-cache-seed]='the riscv64 Python lane'"'"'s uv sync of the test extra builds numpy, matplotlib, contourpy, pillow, line-profiler, psutil and pyyaml under QEMU: 108 min of a 6 h job'
     [gtk4-dev]='OxidANT'"'"'s GTK GUI stops in a gtk4-rs -sys build script ("The system library `graphene-gobject-1.0` required by crate `graphene-sys` was not found" on amd64, `gtk4` elsewhere), and uid 1001 cannot apt-get the dev package'
   )
@@ -63,10 +63,10 @@ _consumer_versioned_verdict() {
                                  "cargo-audit=$(_rt_versions_env_pin CARGO_AUDIT_VERSION) cargo-deny=$(_rt_versions_env_pin CARGO_DENY_VERSION) cargo-tarpaulin=$(_rt_versions_env_pin CARGO_TARPAULIN_VERSION) cargo-mutants=${_cm}")" ;;
         free-threaded-python)
                        line="$(_consumer_free_threaded_verdict "${row}" "${probe}" "$(_rt_versions_env_pin PYTHON_VERSION)")" ;;
-        lint-tools)    _sc="$(_rt_tool_pin SHELLCHECK_VERSION)"; _hl="$(_rt_tool_pin HADOLINT_VERSION)"
-                       # hadolint publishes no riscv64 binary, so a riscv64 image must report none.
-                       [ "${arch}" != riscv64 ] || _hl=''
-                       line="$(_consumer_lint_tools_verdict "${row}" "${probe}" "shellcheck=${_sc#v} hadolint=${_hl#v}")" ;;
+        lint-tools)    _sc="$(_rt_tool_pin SHELLCHECK_VERSION)"; _hl="$(_rt_tool_pin HADOLINT_VERSION)"; _gl="$(_rt_tool_pin GITLEAKS_VERSION)"
+                       # hadolint and gitleaks publish no riscv64 binary, so a riscv64 image must report neither.
+                       [ "${arch}" != riscv64 ] || { _hl=''; _gl=''; }
+                       line="$(_consumer_lint_tools_verdict "${row}" "${probe}" "shellcheck=${_sc#v} hadolint=${_hl#v} gitleaks=${_gl#v}")" ;;
         uv-cache-seed) line="$(_consumer_uv_seed_verdict "${row}" "${probe}" "${arch}")" ;;
         gtk4-dev)      line="$(_consumer_gtk4_verdict "${row}" "${probe}")" ;;
   esac

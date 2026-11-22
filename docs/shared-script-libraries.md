@@ -5,6 +5,14 @@ SPDX-License-Identifier: MIT
 
 # Shared script libraries (`linux/scripts/lib/`)
 
+`shared/python/verify_ort_loader_trace.py` owns ORT/plugin loader parsing for Linux
+bundle and AppImage evidence. Its public `verify_loader_traces` API retains caller
+layout rules and optional live symlink resolution. Profile mode requires the sibling
+`verify_ort_profile.py` and binds the selected trace to the provider-checked process;
+see [loader evidence](consumer-image-contract.md#onnx-runtime-loader-evidence) for
+arguments, the copied closure and the limits of path/process evidence. The shared
+profile suites carry `shared/python/tests/ort_profile_fixture.py` with their tests.
+
 Sourceable, **project-agnostic** cores. Nothing about a specific project is
 hard-coded in any of them. The contract is always the same:
 
@@ -138,6 +146,52 @@ preserve ordered shell-quoted fields, and worker invocations pass the harness pa
 explicitly. `t_capture_command` captures merged output and raw failure status for
 assertions; it does not turn a failed command into a successful test. These fixtures
 exercise stubbed operations and do not prove live cache servers or package builds.
+
+The packaging inventory companion also owns `media_rocm_library_paths [IMAGE_ROOT]`.
+It emits image-relative directories with source MIGraphX first, one entry per
+existing directory, and excludes ASAN. Its shared `publish_rocm_ld_path` uses
+that complete list only after a successful scan and sort. The normal GPU entry
+and runtime copy entry call that same publisher. Copied consumers already carry
+`media-payloads.sh`; no private publication or path-ordering copy is needed.
+These filesystem controls do not establish actual loader selection or GPU ABI.
+
+## Selected script closures
+
+`script_closure.py` owns deterministic selected-file staging; its CLI is
+`stage-script-closure.py PROFILE`. The plans under `script-closures` map source
+files to image paths and include other plans explicitly. SDK and AMD consume
+one common core selection, while their remaining files stay profile-specific.
+The stager reads every selected source before allocating a fresh output, preserves
+its bytes and records hashes, rejects unsafe or ambiguous inputs, and normalizes
+file modes and timestamps. The receipt describes staged sources only.
+
+The cross-stage driver reads one literal Dockerfile profile label with
+`stage-script-closure.py --profile-for DOCKERFILE`. It stages fresh selected bytes
+under the run's log directory. `--context` prints only the full receipt SHA256
+and stages the bundle at `PATH/SHA256/files/`. The driver validates that key and
+passes both `--build-context hub-scripts=PATH` and
+`--build-arg HUB_SCRIPTS_KEY=SHA256`. SDK COPY and AMD read-only mounts select
+that exact namespace and leaf; a missing key cannot fall back to the flat root.
+The legacy flat staging API remains available for its existing callers.
+Dry runs validate the profile without creating a staging directory. Query,
+allocation and staging failures retain their raw status and prevent dispatch.
+Legacy Dockerfiles without this contract keep their existing argument list.
+
+The absolute script-copy gate follows the declared external context only through
+its actual COPY or read-only bind transport, including a declared FROM alias. It also models canonical internal
+producers when all selected inputs and transitive plans are mounted. Its read-only
+`--provided-scripts Dockerfile.sdk` report gives a JSON image-path/source map.
+The shared structural fixture runs that report in a fresh process, retaining
+copied-root isolation. Cold SDK import suites use the actual declared map and
+prove required-child failures; they do not establish SDK execution, binary ABI
+or BuildKit hits.
+
+`script_context_cache.py` and `probe-script-context-cache.py` reuse that stager
+and the shared evidence helpers for the [actual BuildKit transport probe](build-cache-tiers.md#selected-script-contexts).
+Both production transports, exact step markers, exported bytes and unchanged
+original inputs are required. The selected-source control changes bytes without
+changing their length; each child status is recorded before semantic assertions.
+Keep its fake-engine fixture visibly separate from real cache receipts.
 
 ## Shared synthetic test fixtures
 
@@ -458,6 +512,11 @@ target-decomposition suite uses it for every host tool it fakes; dropping its
 
 ## The logging bootstrap
 
+The commit/push hooks' `hook-host-red.sh` imports this bootstrap like the other
+shared shell libraries. Its unchanged host-red selection policy cannot bypass a
+failed unmutated library control. Copies carry the bootstrap companion; the
+existing standalone-library suite checks real logger exports and repeat imports.
+
 The bootstrap also owns fallback registration for standalone Abseil, Torch
 wheelhouse and payload-copy scripts. A scoped `_LOG_BOOTSTRAP_REGISTRAR_ONLY=1`
 source imports only the registrar; it loads no real logger and leaves the
@@ -569,6 +628,13 @@ for why.
 
 The shared native-app DEB builder uses gzip control and data archives for older
 Debian package managers, and makes payload entries root-owned.
+
+Linux TAR selects its source through `app_packaging_detect_bundle_dir`, honoring
+`APP_PACKAGING_BUNDLE_DIR` and its default Flutter path. It refuses a missing selected tree
+or failed resolution instead of falling back to raw build output. The generic TAR writer
+retains its legacy `out/` and project-root copies; Android APK TAR still selects its own
+build output. Real TAR fixture tests cover selected bytes, notices and paths with spaces,
+but do not establish native execution or complete licence coverage.
 
 Every packager in the file obeys three rules. Staging trees are container-native,
 never inside the mounted workspace: a bind-mounted host drive refuses chmod/fchmod
@@ -735,6 +801,16 @@ fails those anyway. The report is the caller's last `--output-junit`, removed be
 run so an old one cannot stand in, or a temporary one the library appends and deletes; no
 readable report fails the run. It needs `python3`, and an invalid pattern stops before
 ctest starts.
+
+**`--fail-on-log-pattern REGEX` (env `CTEST_FAIL_ON_LOG_PATTERN`): a passing test can still
+log what must never happen** (CON291). After ctest, every line of a test's output that
+matches REGEX names that test with its count and first line, and fails the run as
+`--fail-on-skipped` does. It reads this run's `Testing/Temporary/LastTest*.log` (newer
+than a marker taken before ctest starts; `-T test` names each run's log anew), not the
+JUnit report, whose output ctest cuts to 1 KiB for a passed test; and only the section
+between `Output:` and `<end of output>`, as a test's `Command:` line holds its own echo
+text. AccelerANTgine's pattern, `[A-Za-z0-9-]+-CRITICAL \*\*`, catches GLib's and
+GStreamer's criticals; BeschleunigerBallett's SYNC-HAZARD scan fits the same option.
 
 A GPU test suite needs the loader and the layers on the same terms the build had,
 which is why the Vulkan environment is resolved here too.
@@ -1091,6 +1167,16 @@ loads `01-core/logging.sh` through `log-bootstrap.sh`, so `info`, `warn` and `er
 "run every gate, then fail once" idiom (the PowerShell half is
 `Invoke-BuildGate` / `Add-BuildGateSkip` / `Assert-BuildGates` in
 `WindowsBuild.Common.psm1`).
+
+On GitHub a failed gate also writes `::error title=<batch>: <gate>::<gate> failed (exit N)`
+and, where `$GITHUB_STEP_SUMMARY` is writable, a summary row, so the run's annotations name
+it (CON293). A host step has `GITHUB_ACTIONS=true`; `run-in-linux-container` passes
+`GATES_GITHUB_ANNOTATIONS=1` into its container instead, as `GITHUB_ACTIONS` would also
+change the tools' own behaviour there. A lane split into named parts (owner decision D7,
+no reusable Linux C++ lane) runs one step per part under `if: ${{ !cancelled() }}` plus
+that part's own build outcome, and guards each upload with `hashFiles`, as
+BeschleunigerBallett's `reusable-linux.yml` does: every check runs, and the red step names
+the failure.
 
 ```bash
 source "${CORE_DIR}/gates.sh"
@@ -1794,6 +1880,18 @@ its first argument for behavior comparison.
 ### Shared bundle packaging lifetime
 
 The public deb, AppImage and Flatpak bundle entry points keep their arguments.
+`app-packaging-entrypoint.sh` owns executable selection and is a required companion
+of copied `app-packaging.sh`; a missing module or export fails during import.
+The selector sources `log-bootstrap.sh` itself, including when imported directly.
+Set `APP_PACKAGING_BINARY_NAME` for a bundle containing executable helpers, such
+as OxidANT with its HIP worker. It selects the application for the installed DEB
+wrapper, AppRun and Flatpak command. A nonempty value must be an ASCII portable
+basename (letters, digits, `_`, `.`, `+`, `-`), excluding `.` and `..`, and name
+a regular executable file inside the bundle. Missing, nonexecutable or linked
+selections fail without choosing a different program. Unset or empty values keep
+the existing automatic discovery policy. The entrypoint suite executes the real
+rendered AppRun and inspects the DEB wrapper using stub builders; it proves no
+compression, installation or GPU execution.
 They share a dispatcher that owns local bundle facts, the common icon name
 and the final nonempty-artifact verdict. Format callbacks retain their layout,
 commands, output names and diagnostics. A callback failure propagates before
@@ -2524,3 +2622,66 @@ The initializer is carried beside both the entrypoint and `bootstrap.sh` in
 standalone bundles and fresh per-stage copy/mount closures. It is sourced directly
 rather than invoked through a function that an older bootstrap may not provide.
 This shares the import policy without changing source scope or using `eval`.
+
+### Bound CLI callbacks
+
+`parse_cli_value_options MAP REMAINING +CALLBACK ARGS...` invokes the selected callback
+unconditionally so the caller's active Bash errexit policy survives. The callback receives the
+consumed-count variable name first, shifts that parameter, then handles the complete remaining
+argv and assigns its count through a nameref. It returns normally for handled flags; help and
+errors keep their original exit policy. Existing callback names without `+` retain their
+status-as-count interface. The host parity verifier uses the bound form; its frozen help
+receipts cover strict/conditional calls and usage aliases, with separate empty/spaced values.
+
+### Loaded module and isolated worker assets
+
+`shared/rust/loaded_module.rs` owns address-to-loaded-file lookup. Its exact shared asset accompanies the isolated Rust binding/tests, C source/header and HIP worker source/header. Declare consumer destinations in `.antfrastructure-shared.manifest`; retain the complete companion set. The [consumer contract](consumer-image-contract.md#amds-plugin-migraphx-ep) explains path and runtime evidence limits.
+
+The C supervisor uses one monotonic-clock helper before starting a worker and for
+elapsed time. Clock failure preserves the original nonzero errno and otherwise
+returns `EIO`, so it cannot report success with an unset timestamp. A failure
+during supervision still kills and reaps its worker before returning the error.
+`isolated-helper-compile.sh` compiles both the shared C object and clock fixture
+with `-O3 -Wall -Wextra -Werror` through the measured compiler cache. It imports
+the canonical `01-core/common.sh`, requires both cache launcher APIs, initializes
+the address in the compiling shell and resolves the guarded launcher before
+capturing each command. The ASAN C++ fixtures share this boundary with their
+original flags. Required import, resolver and real compiler failures retain their
+raw status; the required environment call also propagates its status explicitly
+before resolution or compilation. Clock fixture compilation still fails before linking.
+The launcher-policy suite canonicalizes scan roots before excluding tests and
+checks guarded and bare calls through a `tests/..` fixture, plus missing-root refusal.
+
+`test-isolated-helper-cache.sh` injects the hosted cache-internal temporary-file
+failure into both real C/C++ compiles. The canonical launcher retries the cache
+and then compiles directly; real compiler errors are not retried. Controls also
+check required imports/exports, parent-shell address publication and captured raw
+statuses. These fake cache controls do not establish real daemon health, hit
+performance or inference; the existing Rust/Dart and clock suites remain required.
+
+`test-isolated-helper-clock.sh` injects initial and elapsed clock failures with
+zero or nonzero errno into real supervised child runs. It checks error values,
+unchanged failed output, no worker on initial failure, actual reaping after an
+elapsed failure and ordinary timeout cleanup. These controls do not prove HIP,
+package placement, consumer integration or kernel-blocked process cleanup.
+
+### Cargo native helper transport
+
+`06-packaging/stage-cargo-native-helper.py` stages one exact OUT_DIR helper using successful Cargo JSON and the selected native artifact. Copies include `ort_census_probe.py`; the wheel-license stager imports the same ELF identity function. [The staging contract](linux-build-basics.md#cargo-native-helper-staging) states its target, no-replace and evidence limits.
+
+The existing Rust release driver optionally captures its workspace and final
+CLI calls into [separate Cargo JSON streams](linux-build-basics.md#cargo-release-metadata).
+Both paths are cleared before shared wrapper setup; ordinary releases retain
+their original full workspace, explicit CLI and raw failure behavior.
+## Hook host diagnostics
+
+`linux/scripts/lib/hook-host-red.sh` imports its sibling `log-bootstrap.sh` before
+defining the hook diagnostic helper. Standalone sourcing therefore publishes the
+canonical `info`, `warn` and `err` functions, just as it does for other libraries.
+Callers copying this helper must retain the shared bootstrap and its logging owner.
+
+The existing `test-lib-modules.sh` checks standalone loading, real logging and the
+bootstrap import. Removing that import must fail those positive checks; the dedicated
+removal mutation proves the regression. A failing unmutated suite invalidates a
+mutation result rather than proving that a mutant was caught. These source controls
+do not establish a successful hosted workflow, image or consumer build.

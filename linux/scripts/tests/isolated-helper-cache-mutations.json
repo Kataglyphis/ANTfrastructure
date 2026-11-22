@@ -1,0 +1,83 @@
+[
+ {
+  "target": "linux/scripts/lib/isolated-helper-compile.sh",
+  "test": "bash linux/scripts/tests/test-isolated-helper-cache.sh",
+  "timeout": 180,
+  "id": "lib.isolated-cache.guarded-c",
+  "find": "_ih_cached_compile \"${_ih_root}\" \"${_ih_output}\" \"${_ih_stem}\" cc",
+  "replace": "bash \"${_ih_root}/linux/scripts/capture-sccache-command.sh\" \"${_ih_output}/${_ih_stem}-cache\" -- sccache cc",
+  "why": "Both fixture compiler branches must use the guarded cache route; a fake own-error still requires real C output, not cache performance."
+ },
+ {
+  "target": "linux/scripts/lib/isolated-helper-compile.sh",
+  "test": "bash linux/scripts/tests/test-isolated-helper-cache.sh",
+  "timeout": 180,
+  "id": "lib.isolated-cache.guarded-cpp",
+  "find": "_ih_cached_compile \"${_ih_root}\" \"${_ih_output}\" \"${_ih_stem}\" c++",
+  "replace": "bash \"${_ih_root}/linux/scripts/capture-sccache-command.sh\" \"${_ih_output}/${_ih_stem}-cache\" -- sccache c++",
+  "why": "The ASAN C++ branch must retain the guarded resolver and raw real-compiler status under cache infrastructure failures."
+ },
+ {
+  "target": "linux/scripts/lib/isolated-helper-compile.sh",
+  "test": "bash linux/scripts/tests/test-isolated-helper-cache.sh",
+  "timeout": 180,
+  "id": "lib.isolated-cache.parent-env",
+  "find": "  compiler_cache_launcher_env || return $?\n",
+  "replace": "  :\n",
+  "why": "The selected server address must be published in the actual compiling shell before resolver substitution."
+ },
+ {
+  "target": "linux/scripts/lib/isolated-helper-compile.sh",
+  "test": "bash linux/scripts/tests/test-isolated-helper-cache.sh",
+  "timeout": 180,
+  "id": "lib.isolated-cache.import-status",
+  "find": "source \"${_ih_root}/linux/scripts/01-core/common.sh\" || return",
+  "replace": "source \"${_ih_root}/linux/scripts/01-core/common.sh\"",
+  "why": "A required cache owner import must retain its raw failure even when it declared usable-looking exports."
+ },
+ {
+  "target": "linux/scripts/lib/isolated-helper-compile.sh",
+  "test": "bash linux/scripts/tests/test-isolated-helper-cache.sh",
+  "timeout": 180,
+  "id": "lib.isolated-cache.exports",
+  "find": "declare -F compiler_cache_launcher_env >/dev/null || { err \"Missing required compiler cache API: compiler_cache_launcher_env\"; return 1; }",
+  "replace": ":",
+  "why": "The required environment export must be validated before invoking it; a missing API must retain its explicit refusal."
+ },
+ {
+  "target": "linux/scripts/lib/isolated-helper-compile.sh",
+  "test": "bash linux/scripts/tests/test-isolated-helper-cache.sh",
+  "timeout": 180,
+  "id": "lib.isolated-cache.resolver-status",
+  "find": "_ih_launcher=\"$(compiler_cache_launcher)\" || return",
+  "replace": "_ih_launcher=\"$(compiler_cache_launcher)\"",
+  "why": "The caller must not replace a failed resolver status with an attempted empty launcher command."
+ },
+ {
+  "target": "linux/scripts/lib/isolated-helper-compile.sh",
+  "test": "bash linux/scripts/tests/test-isolated-helper-cache.sh",
+  "timeout": 180,
+  "id": "lib.isolated-cache.capture-status",
+  "find": "\"${_ih_launcher}\" \"$@\"",
+  "replace": "\"${_ih_launcher}\" \"$@\" || true",
+  "why": "A real compiler failure cannot become success through the statistics wrapper."
+ },
+ {
+  "id": "lib.isolated-cache.env-status",
+  "target": "linux/scripts/lib/isolated-helper-compile.sh",
+  "find": "compiler_cache_launcher_env || return $?",
+  "replace": "compiler_cache_launcher_env",
+  "test": "bash linux/scripts/tests/test-isolated-helper-cache.sh",
+  "timeout": 180,
+  "why": "A failing required environment owner must retain raw status71 before cache resolution or compiler execution."
+ },
+ {
+  "id": "lib.isolated-cache.resolver-export",
+  "target": "linux/scripts/lib/isolated-helper-compile.sh",
+  "find": "declare -F compiler_cache_launcher >/dev/null || { err \"Missing required compiler cache API: compiler_cache_launcher\"; return 1; }",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-isolated-helper-cache.sh",
+  "timeout": 180,
+  "why": "The separate required resolver export must fail explicitly before an absent command can replace the intended status and diagnostic."
+ }
+]

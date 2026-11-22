@@ -141,8 +141,11 @@ for name, entry, expected in checks:
     assert len(runs) == expected, (name, len(runs))
     for run in runs:
         assert 'source=linux/scripts/01-core/module-bootstrap.sh,' in run, name
-sdk = (root / 'linux/Dockerfile.sdk').read_text().replace(chr(92) + "\n", " ").splitlines()
-assert any(line.startswith('COPY ') and 'linux/scripts/01-core/module-bootstrap.sh' in line and '/opt/scripts/core/' in line for line in sdk)
+sys.path.insert(0, str(root / 'linux/scripts/tests'))
+from dockerfile_runs import dockerfile_script_map
+
+sdk = dockerfile_script_map(root, 'Dockerfile.sdk')
+assert sdk.get('/opt/scripts/core/module-bootstrap.sh') == 'linux/scripts/01-core/module-bootstrap.sh'
 PYTHON
 
 t_summary

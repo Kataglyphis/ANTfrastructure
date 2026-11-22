@@ -31,6 +31,8 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
 _hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../scripts/01-core/python-probe.sh
 . "${_hook_dir}/../../scripts/01-core/python-probe.sh"
+# shellcheck source=../../scripts/lib/hook-host-red.sh
+. "${_hook_dir}/../../scripts/lib/hook-host-red.sh"
 preflight_python_require pre-commit || exit 1
 # Expanded UNQUOTED at every call site: the value may be a command line
 # ("uv run --no-project python"), which is the hint the probe's failure gives.
@@ -190,12 +192,25 @@ if [ -n "${_staged_any}" ]; then
       if [ -n "${_ps}" ]; then
         # Only the tests that start pwsh go to the image; the rest stay on the host they were written for.
         echo "pre-commit: ${_ps} need pwsh; the rest here, those in the image through '${_runner}'"
-        ${_PY} docs/scripts/verify_mutations.py "${_only[@]}" --delegate-chrome </dev/null || _mrc=$?
         _again=()
         for _id in ${_ps}; do _again+=(--only "${_id}"); done
+        ${_PY} docs/scripts/verify_mutations.py "${_only[@]}" --delegate-chrome </dev/null > "${_mlog}" 2>&1 || _mrc=$?
+        cat "${_mlog}"
+        _vac="$(host_red_ids "${_mlog}" pre-commit)"
+        if [ "${_mrc}" -ne 0 ] && [ -n "${_vac}" ]; then
+          _mrc=0
+          for _id in ${_vac}; do _again+=(--only "${_id}"); done
+        fi
       else
         echo "pre-commit: this host lacks a parser the sample needs; the sample again in the image through '${_runner}'"
       fi
+      # The image has its say either way; a survivor on the host still stops the commit.
+      # shellcheck disable=SC2086 # the runner is a command line of its own, split on purpose
+      ${_runner} "python3 docs/scripts/verify_mutations.py ${_again[*]}" </dev/null || _mrc=$?
+    elif [ "${_mrc}" -ne 0 ] && [ -n "${_runner}" ] && _vac="$(host_red_ids "${_mlog}" pre-commit)" && [ -n "${_vac}" ]; then
+      _again=()
+      for _id in ${_vac}; do _again+=(--only "${_id}"); done
+      _mrc=0
       # shellcheck disable=SC2086 # the runner is a command line of its own, split on purpose
       ${_runner} "python3 docs/scripts/verify_mutations.py ${_again[*]}" </dev/null || _mrc=$?
     fi

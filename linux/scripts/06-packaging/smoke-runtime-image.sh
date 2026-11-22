@@ -601,8 +601,8 @@ if [ -x "${_emu}/emulator" ]; then
 else
   printf 'FACT android-emulator no\n'
 fi
-printf 'FACT lint-tools shellcheck=%s hadolint=%s\n' "$(shellcheck --version 2>/dev/null | sed -n 's/^version: //p')" \
-  "$(hadolint --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+printf 'FACT lint-tools shellcheck=%s hadolint=%s gitleaks=%s\n' "$(shellcheck --version 2>/dev/null | sed -n 's/^version: //p')" \
+  "$(hadolint --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)" "$(gitleaks version 2>/dev/null | grep -oE '[0-9.]+' | head -1)"
 printf 'ENV uv-cache-seed %s\n' "${PYTHON_UV_CACHE_SEED:-}"
 printf 'FACT uv-cache-seed %s\n' "$(bash /opt/scripts/packaging/uv-cache-seed.sh verify "${PYTHON_UV_CACHE_SEED:-/nonexistent}" 2>&1 | tail -1)"
 printf 'FACT gtk4-dev %s\n' "$(bash -c 'source /opt/scripts/packaging/package-image-wiring.sh && verify_gtk4_dev_surface' 2>&1 | tail -1)"
@@ -2332,9 +2332,7 @@ main() {
     run_shipped_truth_probe "${image_tag}" "${target_arch}"
     check_advertised_versions "${image_tag}" "${target_arch}"
     check_venv_package_set "${image_tag}" "${target_arch}"
-    check_riscv64_isa "${image_tag}" "${target_arch}"
-    check_amd64_isa "${image_tag}" "${target_arch}"
-    check_intel_gpu_userspace "${image_tag}" "${target_arch}"
+    check_runtime_platform_baselines "${image_tag}" "${target_arch}"
     check_soname_precedence "${image_tag}" "${target_arch}"
     check_ort_census "${image_tag}" "${target_arch}"
     check_free_threaded_wheels "${image_tag}" "${target_arch}"

@@ -4,7 +4,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/ci-common.sh" || { echo "Error: failed to source ci-common.sh" >&2; exit 1; }
+source "$SCRIPT_DIR/ci-compiler-cache.sh" || { echo "Error: failed to source ci-compiler-cache.sh" >&2; exit 1; }
+declare -F python_ci_cached_command >/dev/null || { echo "Error: ci-compiler-cache.sh lacks its command API" >&2; exit 1; }
 
 detect_workspace
 
@@ -96,15 +97,15 @@ packaging_cross_env() {
 package_build() {
   local venv="$1"
   if [ -n "${CROSS_TARGET}" ]; then
-    uv build --sdist
+    python_ci_cached_command uv build --sdist
     # A subshell: the venv syncs build their own sdists for the host, so the target toolchain reaches only this wheel.
     (
       packaging_cross_env "${CROSS_TARGET}" || exit 1
-      _PYTHON_HOST_PLATFORM="${PYTHON_HOST_PLATFORM_TARGET}" "${venv}/bin/python" -m pip wheel . --no-deps -w dist
+      _PYTHON_HOST_PLATFORM="${PYTHON_HOST_PLATFORM_TARGET}" python_ci_cached_command "${venv}/bin/python" -m pip wheel . --no-deps -w dist
     )
   else
     # uv build ignores the venv; +gil, as a plain request may take the image's free-threaded python.
-    uv build --python "$(uv_python_request "${PYTHON_VERSION}")"
+    python_ci_cached_command uv build --python "$(uv_python_request "${PYTHON_VERSION}")"
   fi
 }
 
@@ -148,7 +149,7 @@ build_free_threaded_wheel() {
     err "no ${FT_VERSION} interpreter for the free-threaded wheel (the image ships python${FT_VERSION}); PYTHON_FREE_THREADED_WHEEL=off skips it"
   info "free-threaded wheel: building with ${FT_PYTHON}"
   rm -rf "${out}"
-  uv build --python "${FT_PYTHON}" --out-dir "${out}" || err "the free-threaded build failed"
+  python_ci_cached_command uv build --python "${FT_PYTHON}" --out-dir "${out}" || err "the free-threaded build failed"
   wheels=("${out}"/*.whl)
   [ "${#wheels[@]}" -eq 1 ] || err "the free-threaded build left ${#wheels[@]} wheels in ${out}, not one"
   name="${wheels[0]##*/}"
@@ -189,7 +190,7 @@ fi
 VENV_SOURCES="$WORKSPACE_ROOT/.venv_packaging_sources"
 uv_venv_ensure "$VENV_SOURCES" "$PYTHON_VERSION" "source packaging venv"
 
-uv_sync_project
+python_ci_cached_command uv_sync_project
 
 package_build "$VENV_SOURCES"
 
@@ -198,7 +199,7 @@ export CYTHONIZE="True"
 VENV_BINARIES="$WORKSPACE_ROOT/.venv_packaging_binaries"
 uv_venv_ensure "$VENV_BINARIES" "$PYTHON_VERSION" "binary packaging venv"
 
-uv_sync_project
+python_ci_cached_command uv_sync_project
 
 package_build "$VENV_BINARIES"
 

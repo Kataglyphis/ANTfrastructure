@@ -1,0 +1,50 @@
+[
+ {
+  "id": "packaging.bundle-tar-prepares-workspace",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "  app_packaging_prepare_workspace \"$matrix_arch\"\n  app_packaging_package_bundle_outputs_tar \"$bundle_source_dir\"",
+  "replace": "  app_packaging_package_bundle_outputs_tar \"$bundle_source_dir\"",
+  "test": "bash linux/scripts/tests/test-app-packaging-api.sh",
+  "why": "a stale obj tree and hosted pub cache from an earlier arch leak into the next package"
+ },
+ {
+  "id": "packaging.apk-tar-source",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "\"build/app/outputs/flutter-apk\"",
+  "replace": "\"build/app/outputs/apk\"",
+  "test": "bash linux/scripts/tests/test-app-packaging-api.sh",
+  "why": "flutter build apk writes build/app/outputs/flutter-apk; any other path packages nothing"
+ },
+ {
+  "id": "packaging.bundle-tar-selected-tree",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "app_packaging_package_bundle_outputs_tar \"$bundle_source_dir\" \"$app_name\" \"$matrix_arch\"",
+  "replace": "app_packaging_package_bundle_outputs_tar \"build/linux/${matrix_arch}/release/bundle\" \"$app_name\" \"$matrix_arch\"",
+  "test": "bash linux/scripts/tests/test-app-packaging-api.sh",
+  "why": "The TAR must carry the selected relocated tree and its original ORT notices, including paths with spaces."
+ },
+ {
+  "id": "packaging.bundle-tar-resolver-status",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "bundle_source_dir=\"$(app_packaging_detect_bundle_dir \"$matrix_arch\")\" || return $?",
+  "replace": "bundle_source_dir=\"$(app_packaging_detect_bundle_dir \"$matrix_arch\")\"",
+  "test": "bash linux/scripts/tests/test-app-packaging-api.sh",
+  "why": "A resolver error must retain its raw status before staging or archive creation."
+ },
+ {
+  "id": "packaging.bundle-tar-resolver-arch",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "bundle_source_dir=\"$(app_packaging_detect_bundle_dir \"$matrix_arch\")\"",
+  "replace": "bundle_source_dir=\"$(app_packaging_detect_bundle_dir)\"",
+  "test": "bash linux/scripts/tests/test-app-packaging-api.sh",
+  "why": "The shared resolver must receive the requested architecture for default bundle selection."
+ },
+ {
+  "id": "packaging.bundle-tar-empty-selection",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "${APP_PACKAGING_BUNDLE_DIR:-build/linux/${matrix_arch}/release/bundle}",
+  "replace": "${APP_PACKAGING_BUNDLE_DIR-build/linux/${matrix_arch}/release/bundle}",
+  "test": "bash linux/scripts/tests/test-app-packaging-api.sh",
+  "why": "An empty override retains the documented default Flutter tree rather than becoming an empty path."
+ }
+]

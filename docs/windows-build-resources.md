@@ -480,6 +480,40 @@ the scoop shims. The Windows image installs that binary rather than building it.
 The [shared source-build record](../shared/upstream/sccache/README.md) owns the
 patches, canary evidence and conditions for returning to upstream release assets.
 
+**Source-bound measurement, 2026-11-22:** the private
+`79e41b6b814c5bab0e1e225bc3c754c2d804f8a3` canonical CUDA repeat completed
+with raw exit zero, all six phases, five exports and full parent layer/diff-ID
+prefixes. All 2,592 source files/modes and six compiler-cache identities were
+unchanged afterward. Its ONNX primary point has 6,304 typed hits, including
+605 NVCC hits, zero misses/cache/compiler failures, and 173 named CUDA-plugin
+object lines. Keep its 605 non-cacheable internal compilations separate from
+zero non-cacheable calls; their causes remain unclassified.
+
+Other repeat points are separate: FFmpeg 2,361 C/C++ hits; OpenCV 3,665 hits,
+including 155 NVCC hits and one C++ miss; Hailo 246 C/C++ hits; GenAI 207 C/C++
+hits. GenAI's direct CUDA path, PyAV/NASM and unmeasured paths gain no coverage.
+Do not add primary points, typed subsets, L0/L1 figures or mirror rows. The
+original NVIDIA Media-Merge point has 4,896 hits, 18 misses, 102 cache errors and
+32 failed compiler requests; those errors remain unclassified despite its
+successful export. The separate OpenCV GStreamer plugin point has one hit and
+zero misses/errors. Torch has no observed primary compiler counter.
+
+The independent whole-repeat audit SHA256 is
+`d17b06b3db4f64c2f652f82681194382a65567f90fb72b1c007aab1d942f1b3b`.
+The later CPU retry independently records TVM 617 hits/zero misses and IREE
+6,912 hits/30 successful misses, with zero cache/compiler errors at those
+points. Its normal/FT wheels and imports, including 13 compiler and one runtime
+FT extension with the GIL off, were checked before the successful TVM/IREE
+export. The run then stopped before Media-Merge, so whole CPU acceptance is
+still missing. Full stage/source receipts are indexed in
+`logs/g2-stage-coverage-current.md` and `logs/g5-results.md`.
+
+The primary upstream check on 2026-11-22 still reports issue 2862 open and
+v0.19.0 as the latest stable release; the pin remains `0.19.0+965c019.pr2809`.
+These observations qualify their exact source and measured paths only. They
+do not qualify the integration successor, other lanes, hosted CI, AMD/ARM64
+hardware or registry promotion. The earlier d9 table retains its own source.
+
 **Upstream checked 2026-11-15:** [sccache#2862](https://github.com/mozilla/sccache/issues/2862)
 is still open; its fix [#2809](https://github.com/mozilla/sccache/pull/2809) merged
 on 2026-11-02. The pin carries that fix. The older bare-nvcc exemption for

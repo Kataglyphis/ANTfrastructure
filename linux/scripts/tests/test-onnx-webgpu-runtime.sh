@@ -7,8 +7,13 @@ t_private_tmpdir
 fixture="$(t_mktemp)"
 t_fake_elf "${fixture}" 62
 common="${TESTS_DIR}/../03-media/build/onnxruntime/build/lib/common.sh"
+suite=ort_webgpu_runtime_tests.py
+case "${1:-}" in
+  --media) suite=ort_webgpu_media_tests.py; shift ;;
+  --acceptance) suite=ort_webgpu_acceptance_tests.py; shift ;;
+esac
 output='' status=0
-t_capture_command output status python3 "${TESTS_DIR}/ort_webgpu_runtime_tests.py" \
+t_capture_command output status python3 "${TESTS_DIR}/${suite}" \
   "${common%/*}/ort-webgpu-build-proof.py" "${fixture}" "${common}" \
   "${1:-${TESTS_DIR}/../03-media/runtime/ort_webgpu_runtime.py}"
 printf '%s\n' "${output}"

@@ -239,10 +239,26 @@ def mapped_product(current: dict | None, rows: list, lines: list[str], stem: Cal
     return {"wheel": wheel, "member": member, "sha256": sha}
 
 
+def unbuilt_prefix(prefix: Path) -> bool:
+    """An unbuilt optional prefix may contain only directories and empty census placeholders."""
+    if prefix.is_symlink() or not prefix.is_dir():
+        return False
+    for path in prefix.rglob("*"):
+        if path.is_symlink():
+            return False
+        if path.is_dir():
+            continue
+        if path.parent != prefix or path.name not in PHASES or not path.is_file() or path.stat().st_size:
+            return False
+    return True
+
+
 def prepare_delivery(mode: str, manifest: Path, rows: list, lines: list[str], wheels: Path,
                      stem: Callable[[str], str], updates: dict[Path, dict]) -> None:
     phase = PHASES[manifest.name]
     prefix = manifest.parent
+    if not rows and not lines and unbuilt_prefix(prefix):
+        return
     if prefix not in updates:
         updates[prefix] = load_receipt(prefix)
     receipt = updates[prefix]

@@ -80,8 +80,9 @@ The `workflow_call` ones run when a caller runs:
 | `container-ci-windows.yml` | Container CI · Windows (reusable) | the family's Windows container lane: x64, and the arm64 cross lane with its arch gate and a run on `windows-11-arm` ([`windows-cross-builds.md`](windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml)) |
 
 `container-ci-riscv64.yml` and `release-packages.yml` are `workflow_call` too, and
-`ci-host-speed-probe.yml`, `riscv64-sysroot-probe.yml`, `sccache-release.yml` and
-`windows-image-census-probe.yml` run only by hand (`workflow_dispatch`).
+`ci-host-speed-probe.yml`, `riscv64-sysroot-probe.yml`, `sccache-release.yml`,
+`windows-image-census-probe.yml`, `windows-arm-debugger-probe.yml` and `zstd-pull-probe.yml` (CON99) run only by
+hand (`workflow_dispatch`).
 
 ## A `skipped` job is still not a pass
 

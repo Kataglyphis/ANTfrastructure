@@ -1,6 +1,7 @@
 # Changelog
 
 > **Older entries** are archived, newest archive first:
+> [`2026-11-15 … 2026-11-17`](docs/changelog-archive-2026-11-17.md) ·
 > [`2026-11-13 … 2026-11-14`](docs/changelog-archive-2026-11-14.md) ·
 > [`2026-11-07 … 2026-11-12`](docs/changelog-archive-2026-11-12.md) ·
 > [`2026-11-05 … 2026-11-06`](docs/changelog-archive-2026-11-06.md) ·
@@ -18,10 +19,124 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-22 — integrate exact-source Windows evidence with develop
+
+- Document the existing Ninja generator prerequisite for compiler-less CMake checks in Windows Git Bash when nmake is unavailable; preserve every assertion and mutation gate.
+- Split free-threaded bootstrap and owned-container fixtures into shared companions while retaining every test and the original selected source/fixture lifetime; keep the unchanged file-size gate.
+- Preserve both source histories, every mutation ID from both histories and the Windows harness's existing closure while adding upstream PE hardening fixtures. Keep strict exact-commit patch acceptance and both Git fixture environment protections. Add six actual refusal mutations for the incoming PE-hardening gate; synthetic PE tests do not prove real linker output.
+- Record the complete local `79e41b6b` NVIDIA producer and separate CUDA repeat: 6,304 primary hits, including 605 NVCC hits, zero misses/cache/compiler errors at that point. Its two original smoke skips have separate exact-image CPU/CUDA/TensorRT/DirectML and negative Pad/MaxPool receipts; they do not qualify another source.
+- Preserve CPU raw outcomes `[1,1]`: TVM/IREE exported successfully, but the unchanged 45-GiB guard stopped before Media-Merge at 29.5 GiB. The completed non-admin cleanup freed about 66 GiB, kept all 22 image identities and six compiler caches, and still missed the 100-GiB full-build target.
+- Keep GStreamer's measured 102 cache errors and 32 failed compiler requests unclassified. Final-source quality, four whole lanes, physical AMD/ARM64 checks, hosted CI and digest-specific ARM64 acceptance remain open; CON228 stays OPEN/DRAFT. Git integration and unused worktree retirement are separate operations.
+
+## 2026-11-22 — the OpenAI contract cases of owner decisions D7 and D8 (CON288 (a), (d))
+
+- `shared/contracts/openai-stream-lines.json` gains 11 cases for D8: any non-null `error` fails the stream (`false`,
+  `""`, `{}` and an object without a message among them, matched by the error's JSON text), and so does a chunk that
+  is not an object; a `null` error is none; nothing after `[DONE]` is read; the finish reason keeps its raw value
+  (`content_filter`); usage counts prompt and completion alone, beside `total_tokens` and `reasoning_tokens`; a
+  whole-number float counts, and a negative count is missing, which leaves the usage null.
+- The sibling `shared/contracts/openai-chat-answers.json` holds 10 whole, non-streamed answers under the same rules:
+  content and reasoning under either name, a raw finish, usage, error objects, and bodies that are not an object or no
+  JSON. `test-openai-stream-lines.sh` checks the shape of both files and now allows a raw finish reason;
+  `lib.openai-stream-lines-shape` mutates a count negative instead, as its old `truncated` finish is legal now, and
+  `lib.openai-chat-answers-shape` drops an outcome field.
+- `docs/language-ai.md` states the D8 rules and lists `context_length_exceeded` among the text-contract failures
+  (D7), which `orchestrant-serve` answers with HTTP 400.
+- **Consumers:** OxidANT's `endpoint.rs`, OrchestrANT's `answers.py` and OmniAccelerANT's `endpoint_reply.dart`
+  replay every stream case, so the new ones fail each at its next pin until its reader follows D8.
+
 ## 2026-11-21 — recognize quiet task-absent Stevedore containers
 
 - Accept nerdctl's complete typed empty process state through the shared container parser; keep raw fields, stopped/disposable selection and all image/cache protection rules.
 - Refuse native stderr in the canonical per-removal query as well as delegated inventory, since a failed task lookup can otherwise resemble task absence. Add regression and mutation controls; installation and real host acceptance remain separate.
+
+## 2026-11-21 — the PE twin of the ELF hardening gate (CON294)
+
+- `Assert-PeHardening` (`windows/scripts/modules/WindowsPeHardening.Common.psm1`) reads each PE's DllCharacteristics
+  and throws naming every file without DYNAMIC_BASE, NX_COMPAT, HIGH_ENTROPY_VA (PE32+ only) or GUARD_CF, the bit
+  BeschleunigerBallett's binaries lacked before CON290; `-NoCfg` waives CFG by leaf name for a third-party DLL. Its own
+  module, as `WindowsTargetArch.Common.psm1` sits near the 800-line limit. `New-OrtTestPe` takes
+  `-DllCharacteristics`, and `PeHardening.Tests.ps1` holds the check on synthetic PEs.
+
+## 2026-11-21 — Linux release hardening for every C++ repo, and its ELF gate (CON294)
+
+- `Hardening.cmake` turns on PIE and links with `-z relro -z now` for GCC and Clang on Linux; BeschleunigerBallett
+  had linked with neither ("Hardening Linker Flags:" was empty), while AccelerANTgine set them itself. Its global mode
+  joins each flag list with spaces: the semicolons of a list had gone into `CMAKE_CXX_FLAGS` and
+  `CMAKE_EXE_LINKER_FLAGS`, where they end the command line.
+- `06-packaging/verify-elf-hardening.sh` checks shipped ELFs for PIE, `GNU_RELRO`, BIND_NOW, the stack protector
+  and `_FORTIFY_SOURCE`, from AccelerANTgine's package gate made generic. `test-cmake-hardening-linux.sh`,
+  `test-verify-elf-hardening.sh` (compiled fixtures, one per missing property) and ten recipes hold both.
+
+## 2026-11-21 — an exact skip list for staged gtest entries (CON292)
+
+- A `tests.json` gtest entry of `Invoke-StagedTests.ps1` may carry `allowed_skips` (owner decision D2): a skip not on
+  the list, and a listed test that passed, failed or did not run, each count as a failure and are named, so the list
+  stays exact. An empty list refuses every skip; the field on a cargo, pytest or exitcode entry is refused before the
+  binary runs. Two cases in `StagedTests.Tests.ps1`; AccelerANTgine (seven tests) and BeschleunigerBallett (none) opt
+  in next.
+
+## 2026-11-21 — the filesystem recipe leaves current_path(ec); a debugger probe for windows-11-arm
+
+- The exception-free filesystem recipe in `code-quality-tooling.md` read `current_path(ec)`, the non-throwing getter,
+  as a throwing one-argument call: BeschleunigerBallett's `Src/` showed five such false matches. It now catches the
+  one-argument throwing overloads, the iterator declaration and a bare `current_path()`, and says that a
+  two-argument throwing call is not caught. AccelerANTgine's and BeschleunigerBallett's rows follow it.
+- `windows-arm-debugger-probe.yml` (by hand) reports which debugger windows-11-arm offers for a fail-fast's stack:
+  `cdb` under the Windows Kits, winget's WinDbg, and the WER settings that keep `LocalDumps` empty there.
+  OxidANT's arm64 abort (0xC0000409) needs one.
+
+## 2026-11-21 — a failed gate names itself on GitHub (CON293); the filesystem pattern recipe (CON295)
+
+- `gates.sh` writes `::error title=<batch>: <gate>::<gate> failed (exit N)` for each failed gate, with `:` and `,`
+  escaped in the title, and a row into `$GITHUB_STEP_SUMMARY` where that is writable. A host step has
+  `GITHUB_ACTIONS=true`; `run-in-linux-container` passes `GATES_GITHUB_ANNOTATIONS=1` into its container, since
+  `GITHUB_ACTIONS` would also change the tools' own behaviour there. `test-gates-annotations.sh` and two recipes
+  hold it; `shared-script-libraries.md` describes the named-parts lane pattern (owner decision D7).
+- `code-quality-tooling.md` § Pattern limits gains the recipe for exception-free `std::filesystem` calls that
+  AccelerANTgine binds (457b753): it matched exactly that tree's three throwing sites.
+
+## 2026-11-21 — Windows images get the CFG bit (CON290); ctest fails on a logged critical (CON291)
+
+- `cmake/Hardening.cmake` linked `/NXCOMPAT` alone and passed `/DYNAMICBASE` and `/guard:cf` only to the compiler,
+  whose `/guard:cf` instruments but cannot set the image's CFG bit: BeschleunigerBallett's Windows binaries shipped
+  without it (none of the 13 lld-link lines of job 136406090876). Every MSVC link now gets `/NXCOMPAT /DYNAMICBASE
+  /guard:cf`, `/CETCOMPAT` still off ARM64; `test-cmake-windows-arch.sh` and a recipe hold it.
+- `ctest-run.sh --fail-on-log-pattern REGEX` (env `CTEST_FAIL_ON_LOG_PATTERN`) fails a run in which a test's output
+  has a matching line, naming each such test, and keeps ctest's own failure status. It reads this run's
+  `Testing/Temporary/LastTest*.log`, not the JUnit report, which cuts a passed test's output to 1 KiB, and only the
+  output section, as a test's `Command:` line holds its own echo text. A real ctest's log is the fixture; a real-ctest
+  case and three recipes cover the gate.
+
+## 2026-11-21 — CON99 measured; two corrections; the oxidation and C++ decisions recorded
+
+- CON99: three probe runs pulled the published gzip image in 387, 515 and 235 s and the zstd copy in 290, 227 and
+  294 s on fresh runners (median -25 %, a quarter of the spread). The probe's comment and CON99 claimed both legs
+  print the same image id; Docker's containerd store names an image by its manifest digest, so they differ, and the
+  copy's source digest ties them. The owner chose zstd from the next chain: `runtime_push_tag` now converts a
+  runtime tag's gzip layers with `nerdctl image convert --zstd --oci` before the push (`CROSS_LAYER_COMPRESSION`,
+  default `zstd`, the cross stages' knob), and a failed conversion pushes nothing; `test-runtime-push.sh` covers both
+  with two mutation recipes.
+- Correction to 2026-11-20's staged-runner entry: WER does not log OxidANT's arm64 fail-fast abort late, it logs none:
+  run 44804439631 waited the full 15 s and found no event 1000, while an access violation is named at once. The wait
+  stays for a record written late; `windows-cross-builds.md` and the script's comments now say what is known.
+- The owner decided the oxidation review (D1 to D17) and the comparison with BeschleunigerBallett's C++ setup (D1 to
+  D12), all as recommended. New: CON288 (the contract cases, ModelANT's among them) and CON289 (one ORT-profile
+  counter) here, CON290 to CON296 for the shared C++ gates (the CFG bit, `--fail-on-log-pattern`, an exact Windows
+  skip list, gate annotations, Linux release hardening, analyzers and warnings, a bridge import helper); the consumer
+  steps went into OxidANT's, AccelerANTgine's, OmniAccelerANT's and OrchestrANT's BACKLOGs.
+
+## 2026-11-21 — required native cache setup propagates failures explicitly
+
+- Retain the required environment owner's raw status before resolving the native fixture compiler; validate its two exports explicitly. The hosted launcher-policy suite correctly rejected the new unguarded call after the original Rust/Dart suite passed again.
+- Add an environment-failure control that requires no cache/compiler command to run. Keep the existing cache retry, raw compiler failure, clock and real Rust/Dart checks.
+- Canonicalize the launcher-policy scan root before excluding tests. Guarded/bare fixtures through `tests/..` and a missing-root refusal prevent the production scan from passing with every path accidentally filtered out; keep the original exclusions and explicit caller failure policies. Isolate the fake subshell-loss control from inherited real socket/port values, with an explicit inherited-setting regression.
+
+## 2026-11-21 — native fixture compiles use the guarded compiler cache
+
+- Resolve the shared C/C++ fixture launcher through the canonical cache owner after publishing its parent-shell environment. Bare sccache bypassed infrastructure-error recovery and made the hosted Rust/Dart suite fail on temporary-file errors.
+- Retain optimized/fatal-warning C compilation, ASAN C++ flags, raw import/resolver/compiler failures and command/cache statistics. Real compiler errors remain fatal; the canonical launcher owns cache retries and direct fallback.
+- Add fake cache-infrastructure controls for both real compiler paths and mutation guards for imports, exports, parent environment, resolver and status propagation. Real clock, Rust/Dart, hosted CI and finished consumer checks retain their separate scope.
 
 ## 2026-11-20 — preserve Stevedore image names and hidden task identity
 
@@ -96,6 +211,112 @@
   `generation_failed`), measured on the image's GenAI: greedy to the budget (`defg`, `length`), the schema case
   (`7`, `stop`), a schema that is an array or a number, an object the grammar compiler refuses, no messages and no
   budget. Owner decision 2026-11-20: all three bindings replay it.
+
+## 2026-11-20 — preserve separate Cargo release metadata for native helpers
+
+- Add paired optional JSON outputs to the shared Rust release driver, retaining its full-workspace build and explicit CLI build. Each file records one complete unfiltered Cargo call, suitable for the existing strict native-helper selector; no extra release builds or combined-message exception are introduced.
+- Validate distinct regular output paths and invalidate both before the shared wrapper runs. Stub controls cover argument boundaries, stale streams, path aliases, nonregular outputs and raw wrapper/build failures; actual module/helper staging and finished consumer packages remain separate evidence.
+- Keep Cargo at its original source-level call sites: the added alias regression rejects the unpublished function-based prototype, and controls cover both wrapper-selected aliases and an alias changed between the two phases.
+
+## 2026-11-20 — isolated worker clock failures remain errors under optimization
+
+- Share the native supervisor's monotonic-clock error boundary before launch and during its wait loop. Preserve nonzero errno and report `EIO` when a failing clock leaves errno zero, avoiding an unset elapsed value that GCC 16.2 rejects under `-O3 -Werror`.
+- Compile shared native fixture objects with optimization and fatal warnings. Add real child controls for initial/elapsed clock failures, exact error preservation and kill/reap behavior; retain the existing timeout, Rust and Dart ownership tests. These source controls do not establish finished consumer packages or GPU acceptance.
+- Normal commit hooks also exposed a missing logging-bootstrap import in the recently added host-red helper. Add its canonical import and a removal mutation; keep the existing unmutated library controls fatal and retain the original rejected commit attempt.
+
+## 2026-11-20 — shared hook diagnostics load the canonical logger
+
+- Import `log-bootstrap.sh` from `hook-host-red.sh` so standalone library checks see the real logging API. The missing import made the hosted preflight fail three library assertions and invalidated twelve mutation baselines in run 44819008926.
+- Add a removal mutation against the existing library suite; retain failed-positive-control refusals and normal hook scope. Local source checks remain separate from the subsequent hosted CI result.
+
+## 2026-11-20 — a probe for zstd layers (CON99); CON283 names OxidANT's Pester suites
+
+- `zstd-pull-probe.yml` (dispatch only, owner OK for a scratch package) recompresses `:latest`'s amd64 image to zstd
+  in `ghcr.io/kataglyphis/antfrastructure-zstd-probe`, times a serial `docker pull` of the published gzip image and
+  of the copy on two fresh runners through `prepare-linux-ci-host`'s `pull-seconds`, and deletes the package with
+  `GHCR_TOKEN` whatever the legs did. The copy fails unless its layers are `tar+zstd`. Its first run (44812697921)
+  read the tag's multi-arch index as the amd64 image and stopped before the pulls; the copy now takes the amd64
+  manifest out of the index, and the cleanup's delete answered 204.
+- CON283: OxidANT's Pester suites speak 3.4 too; AccelerANTgine, OmniAccelerANT and OxidANT each record the migration
+  as blocked on the chain that brings Pester 6.2.0.
+
+## 2026-11-20 — the staged test runner waits for WER's record of a fail-fast abort
+
+- `Invoke-StagedTests.ps1` looked for Windows Error Reporting's event 1000 once, right after a binary died. That
+  works for an access violation (run 44739816593 named `d3d10warp.dll`), but WER logs a fail-fast abort
+  (`0xC0000409`) only after the process has exited, so OxidANT's two arm64 aborts in the traced renderer tests (runs
+  44759227422 and 44782412041) named no module. A crash now looks again each second for up to
+  `-CrashEventWaitSeconds` (default 15); a green run never waits. `StagedTests.Tests.ps1` covers a record that turns up
+  on the second look and one that never does.
+
+## 2026-11-20 — CON287 (slangc), CON283 notes CON273, a stale lint-tools recipe re-pointed
+
+- New BACKLOG CON287: the image's slangc (Vulkan SDK, Slang 2026.17) cannot emit WGSL binding arrays; OxidANT's
+  bindless textures need 2026.22 through a separate pin. CON283 records that CON273 put Pester 6.2.0 into the image
+  source on 2026-11-15, so only the chain is left.
+- `lint-tools.contract-wants-no-hadolint-on-riscv64` follows CON222's riscv64 line, which stopped the hub push as
+  stale, and `lint-tools.contract-wants-no-gitleaks-on-riscv64` holds gitleaks off riscv64 the same way.
+
+## 2026-11-20 — Flutter 3.50.1 in source; CON150's cause named
+
+- `FLUTTER_VERSION` 3.47.9 to 3.50.1 (owner OK; `bump_versions.py --write --only FLUTTER_VERSION`, with
+  `FLUTTER_SDK_SHA256` and `FLUTTER_COMMIT` from `releases_linux.json`; `sync_versions.py --write` and the curated
+  SBOM follow). 3.50.1 fixes multi-threaded skwasm (flutter/flutter#196127), the source of CON150's worker
+  `TypeError` on jonasheinle.de, which jotrockenmitlocken 80f5716 works around with `forceSingleThreadedSkwasm`
+  until the image carries 3.50.1. Images change with the next chain.
+- The pre-commit hook proves a sample in the image when every failing recipe's test is red before any mutation on
+  this host (`baseline test already fails unmutated`), as it already does for a missing pwsh: three hub tests trip
+  over Debian 13's bash 5.2.37 (`pop_var_context: head of shell_variables not a function context`) and pass under the
+  image's bash 5.3.9, so they said nothing about a mutation here. A real survivor beside them still stops the commit.
+  The pre-push hook does the same (it rejected the push of these commits for exactly those four tests); both read
+  `linux/scripts/lib/hook-host-red.sh`, and `test-prepush-hook.sh` covers the push side.
+
+## 2026-11-20 — gitleaks in the image for an offline secret scan (CON222, in source)
+
+- `install-lint-tools.sh` installs gitleaks at `GITLEAKS_VERSION` on amd64 and arm64 beside shellcheck and hadolint,
+  SHA-verified, and fails unless it reports the pin and finds a GitHub-shaped token planted at run time (owner decision:
+  offline consumer linting belongs to the image contract). The smoke's `FACT lint-tools` and the `lint-tools` contract
+  row carry it; riscv64, with no upstream binary, ships none. A real arm64 run reported 8.30.1 and found the token.
+
+## 2026-11-20 — retain the mutation companion in consumer hook fixtures
+
+- Copy the mutation workspace module with the real runner into isolated consumer-hook fixtures. Clean pushes and stale-recipe refusals continue through the actual hook pair; a missing module cannot replace the intended verdict.
+- Clear inherited per-command Git configuration before creating fixture repositories, including runs started by the real hook. Regression mutations remove the companion or either configuration guard; local Git remotes and linter doubles do not qualify downloaded linters or public pushes.
+
+## 2026-11-20 — deduplicate reviewed immutable OCI archives
+
+- Add a default preview and digest-bound apply helper for explicitly selected immutable OCI blobs. Require matching content, ownership, modes and timestamps; exclude identity-bound receipts, parent directories and outside hardlinks.
+- Recheck candidate inputs, authorization, receipt protections and idle engines before atomic per-path replacement. Retain partial-operation journals and verify original paths and receipt bytes before reporting success. This is neither receipt authentication nor a lock against concurrent writers.
+- Scan complete quoted tokens once to bound large escaped source payloads. Detect identity-bearing JSON keys without mistaking unrelated strings in source manifests for identity records; retain their byte fingerprints and refusal of malformed identity receipts.
+- Reuse the qualified native OCI hashing and identity helpers and the additive full-ID host-command query. Container fixture and mutation checks cover refusal paths without touching real archives.
+
+## 2026-11-20 — restore digest-bound consumer source archives
+
+- Restore a parent snapshot from a local base bundle, staged binary patch, index, file/mode manifest and exact original shallow metadata. Check caller-selected archive digests, restored bytes/index and independent Git objects before writing a receipt.
+- Restore original shallow boundaries before checkout; never invent boundaries or claim complete history. Preserve recursive dependencies separately. The archive format and temporary materialization do not establish source authenticity, builds or hardware acceptance.
+- Extend the existing source-preservation suite with real archive round trips, shallow history, changed inputs, exact index/working bytes, required object checks and refused outputs.
+
+## 2026-11-20 — preserve private mutation worker paths
+
+- Add opt-in `verify_mutations.py --workspace-root` for stable worker paths in fresh container-private roots. Keep source copies, baseline controls, isolated workers and existing parallelism/disk caps.
+- Refuse existing paths, source overlap, symlinked parents and in-place combinations. Require root identity and successful cleanup; filesystem and child-process controls do not establish compiler hits, native Windows behavior or build acceptance.
+
+## 2026-11-20 — consolidate the Linux proof work with current develop
+
+- Preserve both explicit ORT census loader-path interfaces and their exemption arguments. Keep the platform grouping in the shared ISA module so the runtime smoke stays within its existing size limit.
+- Preserve both histories and their mutation recipes; rebase archived changelog links and keep all original entries.
+
+## 2026-11-20 — the contract follows `ort` 2.0.0-rc.15 (CON95 step 2)
+
+- OxidANT f76b7f9 pins `ort` 2.0.0-rc.15. The consumer contract's Rust registration names the one `Environment` a
+  consumer builds with `ort::init_from(dylib)?.build()?`, keeps alive (rc.15 holds only a weak reference) and passes
+  to every `Session::builder`; the `ort-sys` build-script rules it quotes are re-read from rc.15 and unchanged.
+
+## 2026-11-20 — CON148 closed: jotrockenmitlocken checks both dev domains live
+
+- jotrockenmitlocken a80c562 runs `check-live-site.py` after each develop upload (the WASM domain before the CanvasKit
+  build replaces `build/web`, then the dev domain), with the URLs from the owner's new `DEV_WASM_SITE_URL` and
+  `DEV_SITE_URL` secrets; run 44716391170 passed both checks.
 
 ## 2026-11-19 — keep media module reads independent of cached directory views
 
@@ -267,6 +488,42 @@
   `run-lint-gates.sh` runs it in the full gates (git's `w/` column) and in the staged checks (`i/`, the bytes the
   commit carries). Every consumer passed on 2026-11-19.
 
+## 2026-11-19 — remove approved unused QA environments reproducibly
+
+- Preserve a default-preview cleanup helper for explicitly reviewed ignored QA virtualenvs under the owner's standing authorization. Reuse canonical environment/inode validation, require fresh usage observations and exact source/input snapshots, and retain empty mountpoints and per-path receipts.
+- Preserve sources, caches, images, packages, archives, logs and the current shared QA environment. Add disposable-tree and fake-host regressions and actual refusal mutations; supplied authorization is not authenticated and usage observations do not lock concurrent writers or establish build/runtime acceptance.
+
+## 2026-11-19 — retain ORT loader identity with internal HIP probes
+
+- Accept unrelated fork-child runtime records in a profiled process's loader trace. The current Rust CLI's internal HIP probe produces these records before the parent loads the MIGraphX plugin.
+- Keep every selected ORT core and requested plugin bound to the profile PID and package origin, including duplicate records. Add regressions for foreign and malformed selected PIDs and missing required libraries; this does not authenticate traces or prove loaded bytes, a single session, clean hosts or licences.
+
+## 2026-11-19 — select an explicit mirror for isolated source proofs
+
+- Add an optional Ubuntu mirror URL to the isolated runner, record it and forward exactly one bootstrap value. Use the existing Ubuntu mirror rewriter before apt; the default retains the image's source configuration and signed metadata. Refuse malformed or credential-bearing URLs before output allocation.
+- Retain closed, ignored quality environments on existing tmpfs through a repository-owned relocation helper. Preserve canonical GNU tar bytes, refuse shared cache inodes and retain an empty original mountpoint. This does not preserve volatile tools across reboots or qualify builds; sources, locks, persistent caches and original outputs remain separate.
+- Add actual prefix/command fixtures for mirror ordering, defaults and raw failure, plus isolated environment-retention controls and mutations. The Media control driver includes these preserved suites; they do not replace a full preflight or image/hardware acceptance.
+
+## 2026-11-19 — prepare the six WebGPU Media command profiles
+
+- Share canonical stage argument construction while retaining the existing ordinary launcher's ROCm/amd64 refusals. Add explicit default amd64/arm64/riscv64, ROCm amd64 and NVIDIA amd64/SBSA arm64 Media profiles, immutable local parents and absolute paths.
+- Require the correct SDK/GPU parent selection, both WASM modes and the amd64 build platform. Check every profile against independent expected argv and the actual shell stage graph. Prepared commands do not launch builds, verify parent ancestry or establish image/hardware acceptance; the remaining owned launch and handoff profiles still need qualification.
+- Clear inherited accelerator flags during canonical tag lookup and select both accelerator toggles explicitly in prepared environments. This prevents a tool image's default AMD/NVIDIA setting from turning a default Media command into a different variant.
+- Reuse the existing source-check protocol for Media controls. Its fake S3 startup children clear an inherited cache-chain setting; an explicit inherited-environment regression retains the original fallback assertions without changing the real compiler-cache setup.
+- Preserve proof-driver input and source checks with isolated command fixtures and mutations. Refuse missing inputs before bootstrap, retain existing evidence, propagate raw child/Git failures and reject patch, index or worktree drift before success.
+
+## 2026-11-19 — combine all WebGPU media factory proofs
+
+- Add a shared media acceptance entry requiring delivered enabled native/GIL/FT products and both compiled Asyncify/JSPI factory replays at one explicit ORT ref and Git revision. Preserve the narrower existing media replay and its CLI failure policy through shared parsing and dispatch.
+- Reject missing flavors, disabled products, mismatched source/configuration, failed or duplicate fresh replay verdicts and changed input receipts. Keep native partial evidence and raw child statuses without publishing an overall receipt on failure. Synthetic fixtures and mutations test these refusals; actual image builds, device inference and final consumer acceptance remain separate requirements.
+
+## 2026-11-19 — preserve append-only operational memory updates
+
+- Add one repository-owned memory appender with explicit expected bytes/SHA256, live-controller refusals, nonblocking file locking, append-only writes and exclusive original-prefix/append backups. Changed prefixes, file identities, unknown observations or failed I/O cannot produce a passed receipt.
+- Add independent controller/file fixtures and mutations, including concurrent suffixes, symlinks, hardlinks, short writes and failed proof writes. Expand strict Python coverage by all four new Python files and retain positive and negative scope controls. The helper does not authenticate writers or provide a crash-atomic transaction; it grants no build, GPU or goal acceptance.
+- Include shared Python test siblings in the type checker's search roots. Extend the independent import chain and prove removal fails, retaining every existing root and file scope.
+- Reverify both saved snapshots after writing as well as before it. An independent red control showed the first version accepted either post-write corruption; two mutations remove the separate checks. The memory prefix remains preserved when a later snapshot check fails.
+
 ## 2026-11-18 — preserve CPython zlib-ng ISA dispatch under ClangCL
 
 - Apply CPython instruction floors after MSBuild per-file metadata: ordinary x64 stays v3; existing AVX-512 files use v4 and retain VNNI/VPCLMUL options. ARM64 is unchanged.
@@ -339,157 +596,12 @@
 - The two sampled consumer rules bind: OxidANT `ef2cad1` (no `[features]` table) and
   AccelerANTgine `bee101b` (no direct stdout diagnostic in `Src/`), each with a row, a planted-tree test and a recipe.
 
-## 2026-11-17 — preserve readable module closures and resume completed media builds
-
-- Add explicit `media-merge` selection after completed media branches, checking
-  all three reused parents before the normal merge, without replaying branch
-  builds or changing the default pipeline.
-- Give every reused media-parent publish check a distinct phase/log label;
-  retain all three receipts alongside final publication. The regression
-  fails on the real collision, and a live mutation restores that failure.
-  Parent labels retain the ordinary publish-probe disk floor; the real
-  misclassification and a live resource-policy mutation are checked too.
-- Keep reused-parent failure and live-mutation case execution in bounded test
-  helpers; preserve all cases and the strict complexity limits.
-- Keep compiler-cache and ROCm stale-parent checks armed for that selection.
-  Functional fixtures cover partial fan-in, failed parents and ordinary builds;
-  executable mutations prove the new checks without claiming image or device
-  acceptance.
-
-- End shared media, TVM-private, merge and ROCm module-copy stages with a
-  readable source view, preserving narrow closures and product image parents.
-- Guard all five stages, COPY/view order and scan coverage with regression
-  checks and executable mutations. Full image and device acceptance remain
-  separate from structural checks and module-read probes.
-- Invoke the existing LiteRT mutation runner directly on Windows; its report
-  directory is created by the shared runner, without a POSIX shell prefix.
-- Keep module-view mutations in the existing portable mount harness so Linux
-  shards prove them without Pester; retain the separate full module-closure suite.
-- Redeclare the target-architecture argument in all four external module-view
-  stages and prove each declaration with a portable mutation.
-- Parse ROCm module closures and compiling-stage pin defaults through shared
-  Dockerfile stage readers, retaining missing-module and missing-pin failures.
-  Shared structural fixtures run on Linux and Windows; native DLL tests stay
-  in the complete Windows suites.
-
-## 2026-11-16 — include the PyTorch adapter in Windows patch drift checks
-
-- Check the torchvision host-cache patch against its actual PyTorch upstream at
-  the existing `PYTORCH_VERSION` pin. Retain full catalogue coverage, Git and GNU
-  patch checks, source-pin loading and explicit diagnostic override precedence.
-- Cover missing mappings, wrong upstream ownership and ignored source pins with
-  local accounting tests and three executable mutation recipes.
-
-## 2026-11-16 — declare the ROCm torchvision patch root
-
-- Give the torchvision entry its own canonical asset-root resolver before it
-  imports the Torch builder. The existing parity gate retains its checks and
-  catches deletion of the declaration in an isolated Windows mutation proof.
-
-## 2026-11-16 — keep portable-bundle mutation baselines host-portable
-
-- Run callback output/failure mutations through a cold, portable harness suite
-  on Linux and Windows, sharing the install fixture with the Windows suite.
-- Retain native Windows CMake/batch coverage in full Windows discovery; preserve
-  the original failing Linux baseline without changing production bundle code.
-
-## 2026-11-16 — preserve portable bundle results after package checks
-
-- Keep successful MSI/ZIP checker output in the build log and return only the
-  portable bundle object, preserving fatal package-check failures.
-- Cover chatty callbacks and rejected installers with valid output-routing and
-  failure-propagation mutations. Real package validation remains separately tested.
-
-## 2026-11-16 — keep the torchvision patch fixture within Python quality gates
-
-- Load the patched temporary module through runpy with explicit compiler and
-  environment facts; preserve launcher selection, reverse-apply and drift cases.
-- Declare fixture parameter/return types and subprocess failure policies explicitly.
-  Keep the original lint failures as negative evidence; full qualification remains
-  required after the correction is committed.
-
-## 2026-11-15 — keep mutation fixtures native on Git Bash
-
-- Pass shard cost-log paths through Python argv and compare the planner's actual
-  host-path spelling, preserving the exact diagnostic and complete shard accounting.
-- Force only the synthetic host-skip fact; retain the real platform so Windows
-  executable lookup can still find bash.exe for mandatory mutant parsing.
-- Preserve the two original failing merge-hook baselines and existing skip policy;
-  the production mutation gate is unchanged.
-
-## 2026-11-15 — wire the Windows ROCm torchvision host compiler cache
-
-- Apply a required, pinned PyTorch patch only in the disposable torchvision build
-  venv and supply the sccache path as a separate host-CXX launcher. Keep real
-  compiler paths for ABI probes and preserve HIP compilation and link rules.
-- Mount the patch only in the torchvision RUN; a patch edit keeps the torch layer.
-- Record a real SDK one-file compile/repeat: one miss then one hit, no cache or
-  compiler errors. Complete changed-source wheel/lane qualification remains open.
-- Add launcher, patch-drift, optional-cache and call-order regression coverage.
-
-## 2026-11-15 — record private Windows737 producers and AMD test limits
-
-- Bind all four private software producers to source737; retain ROCm's three
-  raw results, full ancestry, exact smoke summary and extra HIP-load skip.
-- Record private AMD export provenance and both five-run local CPU controls;
-  keep the Linux-booted AMD machine's Windows inference unaccepted.
-- Preserve the measured torchvision zero-request cache gap and the pinned
-  upstream wrapper limitation; no compiler-cache fix is claimed.
-- Keep final-source integration/CI, ARM device22 and publication open.
-
-## 2026-11-15 — record the completed Windows CUDA-cache repeat
-
-- Bind the complete d9 diagnostic repeat to its source, five exported image
-  identities and parent chains, retained compiler-cache IDs and raw exit zero.
-- Publish the full stage ledger and primary typed CUDA counters; preserve reused
-  layers, direct compilers and unexplained counters as distinct coverage limits.
-- Keep final-source CI, device acceptance and later product lanes separate.
-
 ## 2026-11-18 — a workspace Cargo license is staged under its file name alone
 
 - `stage-cargo-licenses.py` copied a `workspace` policy text to `<name@version>/workspace/<its repo path>`.
   OxidANT's `profiling` texts sit at `packaging/licenses/cargo/aclysma-profiling-8271551172eb/`, which put
   BeschleunigerBallett's NSIS source path at 268 characters and stopped makensis on Windows. The text now lands
   at `<name@version>/workspace/<file name>`; two workspace texts of one package with the same name fail.
-
-## 2026-11-17 — `Write-CPackGeneratorLog` prints what a failed package step's generator said
-
-- CPack reports a failed NSIS or WiX run only as "Problem running NSIS command" and points at a log inside the
-  build tree, which a container lane never uploads. `WindowsCMake.Common`'s `Write-CPackGeneratorLog -BuildPath`
-  writes the tail of every `*.log` under `_CPack_Packages` into the build log; a consumer calls it when its
-  `--target package` step throws.
-
-## 2026-11-17 — the NAS backup retries its mount, a failed run reaches the phone, AIO backs up again
-
-- AIO's `daily_backup_time` on srv-1 was gone from 2026-10-27, so Nextcloud had no new archive for three weeks
-  and every Saturday run failed its age check; nobody saw it, because the sensor only showed on the dashboard.
-  The file is back at `02:00` UTC, and `linux/ansible/README.md` § *Backups to the NAS* says how to check it.
-- `playbooks/backup.yml` retries the NAS mount up to 5 times, 30 s apart (`backup_nas_mount_retries`,
-  `backup_nas_mount_delay`): a NAS waking its disks closed the one try of 2026-11-14 (`mount error(112)`).
-  A share that still does not mount ends the run with a `BACKUP: FAILED the NAS share at: <step>` note.
-- `packages/ansible_backup.yaml` pushes to the phone when a run ends failed or the sensor stays on for
-  15 minutes, and clears the notice when a run is `ok` again.
-
-## 2026-11-17 — the docs lock moves soupsieve 3.0.4 to 4.1.1 (GHSA, Dependabot alert 10)
-
-- Soup Sieve before 4.0.0 takes polynomial time in the descendant combinator. `uv lock --upgrade-package soupsieve`
-  in `docs/` moves it alone; the site builds with it.
-
-## 2026-11-17 — the sccache module docs name the image's fixed build
-
-- `windows-container-build-performance.md` § *sccache on a C++23 modules build* and `windows-build-resources.md`
-  still called sccache 0.18.0 "the image's" and #2876 "not in the image". Both images ship the hub's
-  `0.19.0+965c019.pr2809`, which carries it, and `Test-SccacheModuleSafe` already admits it; the cache-bypass
-  advice now applies only to an older sccache.
-
-## 2026-11-17 — Windows x64 source builds take the x86-64-v3 floor (CON265, in source)
-
-- amd64's `SimdFlags` is `/clang:-march=x86-64-v3` instead of eight `-m` flags, and a new `RustFlags` carries
-  `-C target-cpu=x86-64-v3` (owner decision 2026-11-17: Windows follows CON264). `Invoke-CmakeConfigure` passes
-  the floor as `CMAKE_C/CXX_FLAGS_INIT` to every clang-cl configure (`Get-SourceCmakeIsaArgs`); ORT, OpenCV,
-  GenAI, TVM, LLVM, GStreamer, gst-plugins-rs, FFmpeg (`/arch:AVX2` on its MSVC path) and its codecs, CPython,
-  LiteRT and LiteRT-LM carry it. arm64 gets nothing. Nothing is built with it until the owner's
-  go; `docs/amd64-x86-64-v3-baseline.md` § Windows x64 says where it lands and what it leaves out.
 
 ## 2026-11-18 — pytest-timeout in the arm64 wheel store (CON238, step 2, in source)
 
@@ -514,146 +626,58 @@
   once more through it and that run decides, as pre-push does since CON277. `test-precommit-hook.sh` covers
   the runner's pass and fail, a clone without it and a real survivor.
 
-## 2026-11-17 — the raw-pin test passes on a host with bash 5.2 (CON278)
+## 2026-11-18 — resolve real package loader parent segments
 
-- `raw_pin_reader_tests.py` drops bash 5.2's `pop_var_context: head of shell_variables not a function context`
-  line from the stderr it compares: 5.2 prints it when errexit unwinds a file sourced inside a function, 5.3 does
-  not. On a Debian dev host the test failed 12 of 3081 assertions with unchanged code, so the commit and push hooks'
-  `lib.raw-pin-rust-*` recipes read as vacuous and stopped every change to `install-rust.sh`.
+- Accept a traced `$ORIGIN/../lib` path only with explicit live root resolution, a normalized expected package directory and actual file containment. Canonical CLI roots, missing-file and symlink-escape refusals remain strict; receipts preserve the original trace paths.
+- Synthetic live-file controls and mutations cover valid parent segments, missing files, absent resolution and symlink traversal. This does not authenticate traces or library bytes, prove a session or GPU inference, or repair the original failed C++ hardware receipt.
 
-## 2026-11-17 — mingw and the windows-gnu Rust target in the amd64 image (CON239, in source)
+## 2026-11-18 — preserve the exact staged consumer index
 
-- The package stage asks for `gcc-mingw-w64-x86-64` by name on amd64, and `install-rust.sh` adds the
-  `x86_64-pc-windows-gnu` target there (owner decision 2026-11-17, reversing 2026-11-03): OxidANT's push will
-  type-check Windows on the GNU target, whose `ring` needs mingw's C. About 600 MB on amd64; arm64 and riscv64
-  carry neither, which `test-setup-package-image.sh` holds. `docs/image-decisions.md` records it. A chain
-  publishes it.
+- Restore the optional working-source copier on the current tooling branch. Generate its overlay from the index, preserving staged gitlinks even when both the selected base and actual child checkout differ. Regular-file staging, complete index, copied bytes/modes/links, source-race and independent-object checks remain required; committed recursive acceptance stays strict.
+- Real temporary Git fixtures cover three distinct base/index/child revisions and independently corrupted destination indices. Mutations restore working-tree selection or omit gitlinks; these controls do not authenticate pins, materialize child sources, build a consumer or prove inference.
 
-## 2026-11-17 — a host without a tool the image has runs the push suites in the image (CON277)
+## 2026-11-18 — preserve escaped mutation recipe data
 
-- The shared pre-push hook tees `scripts/linux/pre-push-checks.sh`'s output. When the run fails on
-  `prerequisite missing:` and the clone sets `git config kataglyphis.imageRunner "<command> --"`, it runs the
-  suites once more through that command, and that run decides (owner decision): a Raspberry Pi without node
-  pushes OxidANT without `--no-verify`, through `pi-ci --`. A real failure, or a clone without the setting,
-  stops the push as before. `test-consumer-hooks.sh` covers the four cases;
-  `docs/adopting-in-a-new-project.md` § The git hooks, by reference says how.
-- Proved on 2026-11-17: OxidANT 7a61e8a, pinned to f99f95a6, went from the Raspberry Pi without `--no-verify`;
-  the host run failed on `prerequisite missing: node` and the run through `pi-ci --` passed. CON277 leaves the
-  backlog.
+- Serialize merged registries as ASCII-safe JSON while preserving every decoded value. Intentional corrupt strings in encoding mutations no longer contaminate the clean registry source.
+- Add round-trip, existing-entry and repeated-write controls plus a mutation that restores literal Unicode output. These checks cover registry serialization, not consumer encoding coverage or complete mutation acceptance.
 
-## 2026-11-17 — cargo-mutants in the amd64 image at its pin (CON238, item 1)
+## 2026-11-18 — refresh derived quality documentation
 
-- `versions.env` pins `CARGO_MUTANTS_VERSION=27.1.0`, the version OxidANT's mutation scores were taken with, and
-  `CARGO_MUTANTS_LINUX_X86_64_SHA256` for upstream's one Linux binary (x86_64, glibc). `install_cargo_qa_tools`
-  installs it on amd64 and notes its absence elsewhere; the smoke probe asks its version, and the `cargo-qa-tools`
-  row expects `cargo-mutants=27.1.0` on amd64 and none on arm64. `bump_versions.py` tracks the pin. OxidANT's
-  weekly `rust-mutants.yml` runs once a chain publishes it. Tests: the installer suite (amd64 lands it, aarch64
-  does not) and the contract cases (both arches, both wrong ways).
+- Run the canonical doc-number updater after the package and loader mutation additions. Preserve the computed totals, family counts and census values; repeat the previously invalid doc-number and registry baselines and their existing mutation recipes.
 
-## 2026-11-17 — `build-docs.yml` takes the publish job's limit (`publish-timeout-minutes`)
+## 2026-11-18 — repair full-preflight documentation and recipe namespaces
 
-- The publish job's `timeout-minutes` comes from `publish-timeout-minutes` (default 30, unchanged). An upload the
-  limit cuts off saves no sync state, so every later run uploads the same file again: BeschleunigerBallett's site
-  has not published since 2026-11-15, when its WebGPU demo gained a 61 MB scene that the server takes at about
-  74 kB/s (runs 43956352416, 43987817445 stopped on it at 30 min).
+- Keep the loader-origin pointer in the existing GPU bundle bullet, restoring the README's unchanged 100-line limit.
+- Move the nine AMD provenance recipe IDs from the unregistered `ort` family to the existing `packaging` family. Keep every target, edit, test and reason unchanged and preserve a one-to-one ID map with the proof; the registry retains all 6,922 recipes.
 
-## 2026-11-16 — a source tree beside a Python package gets its own coverage floor (CON250, third part)
+## 2026-11-18 — share profiled ORT loader-origin checks
 
-- `ci_tests.sh` reads `PYTHON_COVERAGE_EXTRA` (`coverage-extra` on `python-ci-linux.yml`, comma-separated `DIR=MIN`):
-  each tree is measured beside the package (`--cov=<workspace>/<dir>`), written to `coverage-<leg>-<dir>.xml` with
-  `coverage xml --include` and gated by `verify-test-reports.py --label <dir>`; the package's
-  `coverage-<leg>.xml` is rewritten with `--omit` of those trees, so its floor and the docs page read the package
-  alone. A malformed pair, `..`, an absolute path or a missing directory stops the driver before any leg. On
-  OrchestrANT in the image: `benchmarks/` 91.03 %, the package alone 71.01 %, both together 77.62 %, which would
-  have let either fall unseen. Tests in `test-python-ci-defaults.sh`, `test-verify-test-reports.sh` and
-  `test-reusable-linux-lane.sh`; mutation recipes `python.lane-coverage-extra-forwarded`,
-  `python.package-floor-reads-the-package` and `python.extra-tree-floor-checked`, and
-  `python.ci-tests-report-check-executed` names the first of the two verifier calls.
-## 2026-11-16 — `ensure_wasm_bindgen` pins wasm-bindgen-cli to a Cargo.lock; the WebGPU flags are exported
+- Add a shared parser and CLI for bundle and AppImage loader paths. Profile mode validates the original profile bytes with the canonical provider/run verifier, then requires the matching PID trace and every requested plugin beside ORT.
+- Refuse foreign origins, lexical escapes, missing evidence and mismatched PIDs. Optional live resolution rejects symlink escapes; trace-only callers retain an explicitly weaker origin check.
+- Synthetic controls and mutations cover these refusals. Loader paths do not prove file hashes, one ORT session, clean-host inference or complete licence closure.
 
-- `lib/rust-toolchain.sh` gains `ensure_wasm_bindgen <Cargo.lock>` and `wasm_bindgen_lock_version <Cargo.lock>`:
-  PATH's `wasm-bindgen` must be the lock's version, else `cargo install --locked wasm-bindgen-cli --version <v>`, then
-  PATH is asked again, since cargo's bin directory is off the image's PATH. 1 on a missing lock or none naming
-  wasm-bindgen, cargo's status on a failed install. BeschleunigerBallett's `docs-build-web.sh` and OxidANT's
-  `webgpu-demo-browser.sh` each carried a copy (`docs/shared-script-libraries.md` § `rust-toolchain.sh`).
-  `test-lib-wasm-tools.sh` stubs cargo and wasm-bindgen; six new `lib.wasm-bindgen-*` recipes.
-- `webgpu-canvas-readback.js` exports its SwiftShader `WEBGPU_FLAGS`, frozen, beside `install` and `verdict`;
-  OxidANT's demo check had copied them while they were private (`docs/docs-sites.md` § Proving a WebGPU page). Two
-  new `docs-site.webgpu-readback-*` recipes.
+## 2026-11-18 — retain original AMD plugin package provenance
 
-## 2026-11-15 — the in-image mutation lane reaps (CON274 done)
+- Extend shared AMD package staging and verification with an optional provenance path outside the exact license tree. Original image bytes, regular files, package containment and fresh stage targets are required; existing three-argument callers retain their behavior.
+- Synthetic refusal cases and mutations cover missing, changed, linked, escaping and overwritten files plus raw copy failures. These checks do not prove linkage, full licence closure or GPU inference.
 
-- OrchestrANT 08f9c4b's `bench.agent-tree-survives-timeout` runs its test with `ORCHESTRANT_REQUIRE_REAPED=1`, under
-  which a zombie counts as alive, so its unmutated run passes only where PID 1 reaps. In `mutation-gates.yml`'s
-  in-image lane (`docker run --init`) it bit with that baseline green (run 43754387381); under a Python PID 1 without
-  an init the same test fails. CON274 leaves the backlog.
+## 2026-11-18 — package the selected Linux TAR bundle
 
-## 2026-11-15 — docs sites type and gzip wasm and glTF
+- Make Linux TAR use the shared bundle resolver, including `APP_PACKAGING_BUNDLE_DIR`, instead of the raw Flutter tree. This retains the prepared runtime closure and ORT notices in Omni packages.
+- Preserve default paths, empty overrides, Android APK selection and legacy output copies; fail on an invalid selected tree or resolver error. Real TAR fixtures and mutations cover selection and argument boundaries, not native inference or full licence closure.
 
-- `docs-site.htaccess` adds `AddType` for `.wasm` (`application/wasm`), `.glb` (`model/gltf-binary`) and `.gltf`
-  (`model/gltf+json`), and `AddOutputFilterByType DEFLATE` for those three types inside `mod_filter` and `mod_deflate`,
-  all FileInfo directives. The host gzips HTML, CSS and JavaScript itself but sent BeschleunigerBallett's 7 MB demo
-  wasm whole; its 61 MB `Colosseum-web.glb` gzips to 30 MB (`docs/docs-sites.md` § The site's .htaccess).
-  `test-docs-site-htaccess.sh` checks the types, the compressed set and both guards; six new `docs-site.*` recipes.
+## 2026-11-18 — preserve consumer command seals
 
-## 2026-11-15 — every detector follows the ORT thread rule (CON240 done)
+- Add a reusable terminal command/cleanup sealer for cache-captured consumer jobs. It reuses the existing unit parser and terminal verdict, retains input hashes and raw statistics, and refuses an existing exclusive cleanup. Caller markers are not artifact, cache or GPU acceptance.
+- Mocked positive/refusal controls and 15 mutations cover identity, status, markers, evidence, stopping, cleanup and preserved scope.
 
-- OxidANT 75d0155 gives its Rust detector the family's rule when `KATAGLYPHIS_ORT_THREADS` is unset (owner
-  decision), so OrchestrANT, AccelerANTgine and OxidANT all take the usable CPUs but one, 1 to 8
-  (`docs/onnxruntime-single-source.md` § The ORT thread rule). CON240 leaves the backlog; CON218 notes ObservANT's
-  `llm_threads`.
+## 2026-11-18 — check ordinary Android commands before local FINAL
 
-## 2026-11-15 — `genai-model-threads.py --threads auto` (CON218)
+- Derive a missing Android stage label from the exact unpublished Android driver, lane, literal transport and hash-bound complete source proof; preserve original producer bytes and reject explicit incorrect labels.
+- Share producer-unit matching across Runtime and Android, and extend independent command, duplicate-flag, launch and source-refusal fixtures across all six supported Linux lane schemas. These fixtures do not establish actual FINAL or GPU acceptance.
 
-- `--threads auto` copies a GenAI model with the family's ORT rule, the usable CPUs but one, 1 to 8: 7 on the Ryzen
-  pinned to 8 CPUs, as the perf baselines used, and 3 on a Pi 5, where the consumers' fixed 7 oversubscribed four
-  cores (34 tokens per second). On the Pi SmolLM2-135M took 161/92/73/72 ms to the first token and decoded
-  109/92/80/71 tokens per second at 1/2/3/4 threads. New recipe `quality-report.perf-genai-threads-auto-unbounded`.
+## 2026-11-18 — bind local FINAL acceptance to canonical runtime exports
 
-## 2026-11-15 — one hub command locks a consumer in the image (CON272)
-
-- `linux/scripts/02-toolchain/python/uv-lock-in-image.sh [--no-build-isolation-package NAME]...` runs a consumer's
-  `uv lock` with the image's `/opt/venv` as the project environment, after installing `setuptools<82` and `wheel`
-  there when missing, so a git source like OrchestrANT's torchvision builds its metadata against the image's torch
-  instead of an isolated environment that wants a PyPI torch the pinned Python has no wheel for. Proven on a Pi 5:
-  OrchestrANT with `tomli-w` added locked in 849 s and the lock moved by that package alone
-  (`docs/dependency-updates.md` § A consumer's uv lock in the image). `test-uv-lock-in-image.sh`. New CON276:
-  ship setuptools and wheel in `/opt/venv`.
-- New CON275: GCC 16's `_mm_loadl_epi64` fails UBSan's alignment check (AccelerANTgine worked around it).
-
-## 2026-11-15 — the family's ORT thread rule is written once; the hub backlog catches up
-
-- `docs/onnxruntime-single-source.md` § The ORT thread rule: a detector's intra-op pool takes the usable CPUs (the
-  affinity mask) but one, 1 to 8, overrides kept; which consumer follows it (OrchestrANT, AccelerANTgine since
-  6e35dad; OxidANT not yet) and the Ryzen and Pi 5 figures behind it, plus the one-thread rule for a language model
-  beside a detector (OrchestrANT's `--describe-threads`).
-- BACKLOG: CON240 open again with only OxidANT left; CON218 notes the Pi finding and the consumers' fixed
-  `--threads 7` perf copies; CON236's recipe half is done.
-- `mutation-gates.yml`'s in-image runner starts the container with `docker run --init`: `verify_mutations.py` was
-  PID 1 and never reaped the orphans a test killed (OrchestrANT run 43657675126); the proof in a run is CON274.
-
-## 2026-11-15 — Pester in the Linux image; a pwsh recipe goes to CI on a host without it (CON273)
-
-- `install_pwsh` also installs Pester at the new pin `PESTER_VERSION=6.2.0` (windows-x64.yml's floor) from the
-  PowerShell Gallery into `$PSHOME/Modules`, verified against `PESTER_NUPKG_SHA256` and failing the stage unless
-  `pwsh` lists it at its pin. Proven in a throwaway container of `:latest` on arm64: the real nupkg installs and
-  `Invoke-Pester` passes. `test-package-image-wiring.sh` covers the pin, the unpinned case and a wrong version.
-- `verify_mutations.py --delegate-chrome` (the pre-push hook's mode) also hands an entry whose test needs `pwsh` to
-  CI when this host has none (`mutation_push.host_has_pwsh`, asked only when such an entry is selected), printing
-  `needs pwsh, which this host lacks`. Such an entry is set aside before the parse check, which needs `pwsh` for a
-  PowerShell mutant, so the hook on the arm64 dev host no longer fails with `pwsh is not on PATH`. Pester does not
-  decide it: recipes name harness suites only, which run without Pester. `test-mutation-push.sh` covers both hosts
-  and a PowerShell target.
-- `BuildKit.ConsumerDispatch.Tests.ps1` is a harness suite now, not a Pester one, so the Linux shards run it, and two
-  recipes guard the consumer dispatch: `buildkit.push-tag-takes-the-repository` and
-  `buildkit.dispatch-without-tag-runs` (CI's first run skipped the Pester suite and failed both, and
-  `test-mutation-pester-targets.sh` refused them).
-
-## 2026-11-15 — the pwsh delegation also covers suites that demand pwsh; Pester's pin follows its releases
-
-- `mutation_push.needs_pwsh` also counts a test command that names a suite carrying
-  `t_skip_unless "…" command -v pwsh` (`test-mutation-parse.sh`, `test-harness-suite-driver.sh`,
-  `test-windows-icon-pe.sh`), so editing `verify_mutations.py` on the arm64 dev host no longer needs `--no-verify`.
-- `PESTER_VERSION` is annotated `datasource=github-releases depName=pester/Pester`, which the versions.env
-  customManager matches, and `bump_versions.py` moves `PESTER_NUPKG_SHA256` with it (`spec_pester`, from the
-  gallery's nupkg).
+- Accept the existing image and verified export wheelhouse modes without changing required runtime gates, original source/Android evidence or the complete six-consumer plan.
+- Match explicit runtime unit lanes to their declared variant and bind the original host checkout through its complete selected worker mapping. Separately located owned wrappers must retain every selected companion byte, a clean source tree and exact invocation ownership flags.
+- Extend synthetic producer, receipt and companion refusal controls across all six Linux lane schemas and both delivery modes. These controls do not establish actual FINAL consumer, GPU, clean-host or legal acceptance.

@@ -34,10 +34,10 @@ cat > "${WORK}/probe.c" <<'EOF'
 int probe_main(void) { return 0; }
 EOF
 
-# Total "cache writes" counter, whatever sccache calls it in this version.
+# Hit rates, durations and subtotals can decrease while actual cache activity increases.
 _writes() {
   sccache --show-stats 2>/dev/null \
-    | awk -F'[[:space:]][[:space:]]+' '/[Cc]ache write|Cache hits|Compile requests executed/ {gsub(/[^0-9]/,"",$2); s+=$2} END{print s+0}'
+    | awk -F'[[:space:]][[:space:]]+' '/^([Cc]ache writes?|Cache hits|Compile requests executed)[[:space:]][[:space:]]+[0-9]+[[:space:]]*$/ {gsub(/[^0-9]/,"",$2); s+=$2} END{print s+0}'
 }
 
 probe_one() {

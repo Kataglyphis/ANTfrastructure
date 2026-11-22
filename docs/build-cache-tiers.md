@@ -34,6 +34,13 @@ caller retains its protected-slug and next-runtime threshold logic. The lifecycl
 `test-storage-sdk-refactors.sh` exercise refusals and fallback ordering without pruning a real
 build cache.
 
+The free-threaded NumPy probe-dependency RUN keeps both compiler cache mounts,
+the S3 secret, a narrow mount of `sccache-s3-level.sh` and a closing canonical
+drain. Its RISC-V builder retains guarded parent-shell cache environment setup,
+compiler statistics and failure-time draining. Native wheel paths do not need a
+compiler server. Source fixtures check this wiring; actual cache reuse still
+requires measured compiler statistics.
+
 ## Fixture host isolation
 
 `test-chain-lifecycle.sh` disables `CROSS_BUILDKIT_PRUNE` and `CROSS_IMAGE_PRUNE`
@@ -60,6 +67,65 @@ Two properties are worth internalising because they are counter-intuitive:
   guard, its trims and the preflight hint.
 - **T0/T1 are in the same store**, so the one command that wipes layers also
   wipes the compiler caches. That is why Standing rule 3 exists.
+
+### Selected script contexts
+
+The host stages the SDK and AMD selected-file plans into a named `hub-scripts`
+context under the full SHA256 of its semantic receipt and a fixed `files` leaf.
+The host passes `HUB_SCRIPTS_KEY` with that key; SDK COPY and AMD read-only
+mounts select the exact path. An empty key selects no bundle. Selected-byte
+changes therefore change the transported path even when sizes and normalized
+mtimes stay equal. `probe-script-context-cache.py --source CLEAN_HUB --base-context OCI_DIR
+--base-digest sha256:INDEX --output NEW_OUTPUT --engine nerdctl` measures their
+actual BuildKit transport on amd64. It uses an existing local OCI base, exports
+one small receipt-bound artifact through a final scratch stage and retains every
+build command and plain step log. It creates no image tag and clears no cache.
+A pinned OCI input is copied into a fresh native layout with exactly one
+linux/amd64 manifest; its config platform, referenced sizes/hashes and copied
+bytes must pass before the new index is written. Original blobs remain unchanged.
+This native wrapper is required by [nerdctl 2.4.1's context selector](https://github.com/containerd/nerdctl/blob/v2.4.1/pkg/cmd/builder/build.go#L610),
+which scans direct manifest descriptors.
+
+Both the SDK FROM-alias/COPY and AMD read-only mount must pass three solves with
+one fresh nonce: an executed cold consumer, a cached consumer after changing an
+actual unselected source in a disposable mirror, and an executed consumer after
+changing a selected source with an equal-length edit. Raw child statuses are
+saved before semantic assertions. Staged receipts and exported artifact bytes must
+agree independently with those decisions. Echoed command text cannot satisfy an
+execution marker. Original inputs and the clean source revision must stay unchanged.
+An existing output directory refuses before any solve.
+
+The fixture suite uses a fake engine to exercise refusals, including nonzero
+status with convincing output, false cache reports and changed source/base
+identities. Those fixtures prove no real cache reuse. A successful real probe
+measures selected-context transport only: it supplies no compiler-cache
+statistics, full compiler-stage reuse, vendor build, binary licence, GPU or
+final-image acceptance.
+
+**Historical flat-context measurement, 2026-11-13: FAILED.** The SDK cold solve executes and
+the unrelated-source solve reuses its consumer step. A selected-source change
+then executes but reads the prior receipt hash. The two staged receipts have
+different SHA256 values, equal 5081-byte sizes and zero mtimes. The strict probe
+rejects this stale delivery; its AMD half has not run. The observation and raw
+logs are preserved under
+`logs/test-results/webgpu-registration-20261110/script-context-cache-20261113/actual-2`.
+Transfer metadata reuse remains an inference, not a proved cause. The full-SHA
+namespace correction and equal-length source control are now implemented;
+the corrected six-solve replay passes on clean local source `2006ae77`.
+
+**Corrected namespace measurement, 2026-11-13: PASSED for script transport.**
+Both SDK COPY and AMD read-only mounts execute cold, reuse the consumer after an
+unselected-source change, and execute with the exact new bytes after an
+equal-length selected-source change. Staged receipts retain equal sizes and zero
+mtimes in each profile; exported artifact bytes bind each expected receipt.
+All six raw child statuses are zero. The loaded successful unit was recorded
+before stopping, followed by an independent engine inventory. Evidence is
+preserved under
+`logs/test-results/webgpu-registration-20261110/script-context-namespaces-20261113/actual-1`
+and its sibling `actual-proof.json`. Original source and OCI inputs remain
+unchanged. The earlier flat-context failure stays failed. This establishes
+selected-script delivery and reuse only; compiler-cache statistics, the ordinary
+compiler/SDK/backend rebuild and finished image/GPU acceptance remain open.
 
 ### 1.1 The cerbero state cachemount (CERB-CACHE)
 
@@ -859,8 +925,23 @@ only after a detour through the config file:
   that proved it, the guard fired 1451 times with ZERO build aborts.
 
   ccache stays installed and mounted as the deeper fallback, and
-  `probe-sccache.sh` exists — it asserts, per compiler SHAPE this chain feeds a
-  launcher, that the compile survives AND that cache activity was recorded.
+  `probe-sccache.sh` checks each compiler shape and reports whether cache activity
+  was recorded. Its sampler sums only aggregate integer executed-request,
+  hit and write counters, including the older singular write label. Rates,
+  timings, error counts and per-language subtotals are excluded: those fields
+  can fall while real activity increases. Fixtures prove that the old sampler
+  fails and the corrected sampler retains raw stats failures; they prove no
+  actual compilation. A real cache probe still requires its compiler output,
+  measured counters and actual container/image identity. Uncached advisories
+  require review even when the diagnostic exits zero.
+
+  The corrected normal-base replay on 2026-11-13 passes four bootstrap gcc/g++
+  calls with two hits, two misses and no uncached label. Its actual container
+  matches the checked base manifest; terminal, cleanup and independent inventory
+  receipts are under
+  `logs/test-results/webgpu-registration-20261110/normal-toolchain-renewal-20261113/base-cache-probe-3`.
+  This proves that bootstrap replay only, not source-built compilers, shared
+  BuildKit cache mounts, S3 or a finished image.
 - **True again, and on purpose:** "sccache's C/C++ path always preprocesses".
   The base image *does* bake `use_preprocessor_cache_mode = true` plus
   `file_stat_matches` / `use_ctime_for_stat` into `/etc/sccache/config.toml`
@@ -910,6 +991,31 @@ Where `setup_sccache` *does* run it overwrites the empty value
 which also drops C/C++ back to ccache (`compiler-cache.sh:136-148`). nvcc and hipcc
 stay untouched (§ 5.4), and the Windows lane records that released sccache
 breaks the build around them.
+
+The one-line `sccache-stats|` record is a counter summary, not error attribution.
+The 13 November ordinary GNU RUN retained 186 `cache_errors` and zero failed S3
+writes. The configured default `SCCACHE_ERROR_LOG=/tmp/sccache.log` points into
+that RUN's tmpfs mount. Whether the original run created a log is unrecorded;
+a file written there would not enter the committed layer. The later compiler
+image contains no such file. The successful build, upload drain and later
+cached solves cannot identify those 186 causes.
+
+The versioned read-only cache reader now has exact native ORT Media CPU,
+GPU/plugin, Wasm and app-wheelhouse outer-RUN profiles. The same host tools can
+retain four stable IREE target CMake/Ninja inputs from the actual Media wheelhouse
+process, selected explicitly and bound to its live unit, start identity and tree. Preserve the selected process start
+identity and final-drain lifetime; a wrong phase or child command refuses.
+Worker/profile hashes bind each seal, and a timeout stays partial. See
+[the host retention workflow](local-proof-workflows.md#live-cache-log-retention).
+This transport does not classify errors, prove flavor compilation or replace
+actual per-language/stage hit measurements.
+
+At the next naturally executed source/media RUN, retain raw phase counters and
+error evidence before its temporary filesystem disappears. Preserve noncacheable
+calls, failed compiles, cache errors and failed uploads separately. Keep unknown
+causes unknown; forcing the expensive cached compiler RUN to execute again would
+measure a different run. Complete-stage CUDA, non-x86 Torch and consumer Rust
+cache proofs below remain required.
 
 ### 5.2 Does the current setup double-cache or fight ccache? No — verified
 
@@ -1352,6 +1458,18 @@ hits or the whole build. Two classes must both bypass to a direct compiler run:
 A real compiler error must pass through untouched (the compiler is never
 re-run), and a clean compile passes through. `test-sccache-launcher.sh` pins
 every case.
+
+Native preflight fixture compiles also resolve this guarded launcher through
+`common.sh`; a bare `sccache cc` or `sccache c++` bypasses the policy even when
+the daemon starts. Their captured C/C++ commands retain cache statistics and raw
+compiler status. The temporary-file cache failure has separate routing controls
+in `test-isolated-helper-cache.sh`; those controls do not measure cache hits.
+Required environment setup retains an explicit raw-status guard before launcher
+resolution. `test-compiler-cache-launcher.sh` checks that policy with canonical
+scan roots and a planted bare call, so a literal `tests/..` prefix cannot make
+its production-path scan pass without observations. Its fake subshell-loss
+control injects then clears inherited socket/port values only in its own child;
+the real parent cache address and statistics remain available.
 
 **The launcher is a bash script (2026-10-21).** dash drops every variable whose
 name is not a shell identifier before it runs a child, so under `#!/bin/sh` cargo's

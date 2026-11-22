@@ -17,6 +17,8 @@ cmake -S "${project}" -B "${work}/build" "-DORT_CONFIG_DIR=${work}/parent with s
   "-DORT_INCLUDE_DIR=${work}/headers with spaces" -DCMAKE_C_COMPILER=/bin/false > "${work}/configure.log" 2>&1 || { cat "${work}/configure.log"; exit 1; }
 cmake --build "${work}/build" > "${work}/build.log" 2>&1 || { cat "${work}/build.log"; exit 1; }
 t_assert_eq "${parent_before}" "$(sha256sum "${work}/parent with spaces/CMakeCache.txt")" 'probe configuration never rewrites the native build cache'
+cmake --install "${work}/build" --prefix "${work}/installed prefix" > "${work}/install.log" 2>&1 || { cat "${work}/install.log"; exit 1; }
+t_assert_ok cmp -s "${project}/LICENSE" "${work}/installed prefix/share/licenses/ort-webgpu-factory-probe/LICENSE"
 mkdir -p "${work}/no compiler"
 printf 'CMAKE_C_FLAGS:STRING=-DWEBGPU_COMPILER_FIXTURE=37 -DWEBGPU_SECOND_FLAG=41\n' > "${work}/no compiler/CMakeCache.txt"
 t_assert_fails cmake -S "${project}" -B "${work}/missing compiler build" "-DORT_CONFIG_DIR=${work}/no compiler" \
@@ -26,10 +28,15 @@ t_assert_fails cmake -S "${project}" -B "${work}/missing header build" "-DORT_CO
 cc -shared -fPIC -DWEBGPU_COMPILER_FIXTURE=37 -DWEBGPU_SECOND_FLAG=41 \
   -o "${work}/core.so" "${TESTS_DIR}/fixtures/webgpu-native/core.c" || exit $?
 cc -shared -fPIC -o "${work}/close-failure.so" "${TESTS_DIR}/fixtures/webgpu-native/close-failure.c" || exit $?
+cc -shared -fPIC -o "${work}/flush-failure.so" "${TESTS_DIR}/fixtures/webgpu-native/flush-failure.c" || exit $?
+cc -DWEBGPU_COMPILER_FIXTURE=37 -DWEBGPU_SECOND_FLAG=41 -DWEBGPU_PROBE_LINKED_CORE \
+  "-DWEBGPU_ORT_C_API_HEADER=\"${work}/headers with spaces/onnxruntime_c_api.h\"" \
+  -o "${work}/linked-probe" "${project}/probe.c" "${TESTS_DIR}/fixtures/webgpu-native/core.c" \
+  "${TESTS_DIR}/fixtures/webgpu-native/linked-main.c" || exit $?
 output='' status=0
 t_capture_command output status python3 "${TESTS_DIR}/ort_webgpu_native_tests.py" \
   "${common%/*}/ort-webgpu-build-proof.py" "${work}/core.so" "${common}" "${work}/build/ort-webgpu-factory-probe" \
-  "${2:-${TESTS_DIR}/../03-media/runtime/ort_webgpu_runtime.py}" "${work}/close-failure.so"
+  "${2:-${TESTS_DIR}/../03-media/runtime/ort_webgpu_runtime.py}" "${work}/close-failure.so" "${work}/linked-probe" "${work}/flush-failure.so"
 printf '%s\n' "${output}"
 t_assert_eq 0 "${status}" 'native C API verdicts and checked runtime invocation must pass'
 t_summary

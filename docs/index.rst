@@ -205,6 +205,7 @@ Common development targets:
    cross-build-verification
    image-acceptance
    code-quality-tooling
+   local-proof-workflows
    code-quality-gates
    fleet-health
    consumer-inventory
@@ -243,6 +244,7 @@ Common development targets:
    refactoring-backlog
    build-watch-list
    windows-refactor-backlog
+   changelog-archive-2026-11-17
    changelog-archive-2026-11-14
    changelog-archive-2026-11-12
    changelog-archive-2026-11-06

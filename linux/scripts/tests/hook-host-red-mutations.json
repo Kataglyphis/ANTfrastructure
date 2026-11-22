@@ -1,0 +1,10 @@
+[
+  {
+    "id": "lib.hook-host-red-log-bootstrap",
+    "target": "linux/scripts/lib/hook-host-red.sh",
+    "find": "source \"${BASH_SOURCE[0]%/*}/log-bootstrap.sh\" || return",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-lib-modules.sh",
+    "why": "The shared hook helper must import the real logging module; positive library controls cannot be bypassed or counted as a vacuous mutation bite."
+  }
+]

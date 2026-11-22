@@ -30,6 +30,8 @@ jobs:
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.0
       - name: Ensure PE icon test tools
         run: bash linux/scripts/ensure-pe-icon-test-tools.sh --install-missing
+      - name: Prepare mandatory native worker tests
+        uses: ./.github/actions/native-worker-test-tools
       # The runner image ships no pytest, and without it every mutation baseline fails unmutated.
       - name: Install pytest (mutation-gate baselines)
         run: pip install --quiet pytest
@@ -73,6 +75,8 @@ jobs:
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.0
       - name: Ensure PE icon test tools
         run: bash linux/scripts/ensure-pe-icon-test-tools.sh --install-missing
+      - name: Prepare mandatory native worker tests
+        uses: ./.github/actions/native-worker-test-tools
       - name: Install pytest (mutation-gate baselines)
         run: pip install --quiet pytest
       - name: Install PyYAML (renovate_audit.py's real YAML parser)

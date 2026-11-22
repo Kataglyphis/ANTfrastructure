@@ -1,0 +1,20 @@
+[
+ {
+  "id": "sccache.env-policy-canonical-root",
+  "target": "linux/scripts/tests/test-compiler-cache-launcher.sh",
+  "find": "  root=\"$(cd \"$1\" && pwd)\" || return",
+  "replace": "  root=\"$1\"",
+  "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+  "timeout": 180,
+  "why": "A tests/.. root must not cause the test-path exclusion to hide every production call; the bare-call fixture must actually fail the policy scan."
+ },
+ {
+  "id": "sccache.env-policy-inherited-address",
+  "target": "linux/scripts/tests/test-compiler-cache-launcher.sh",
+  "find": "  unset SCCACHE_SERVER_UDS SCCACHE_SERVER_PORT\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+  "timeout": 180,
+  "why": "The fake subshell-loss control must clear its explicitly inherited socket and port in its own child, without altering the real parent cache environment."
+ }
+]

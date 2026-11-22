@@ -13,9 +13,10 @@ _load_launcher() {
   mkdir -p "${_COMMON_SH_DIR}"
   # shellcheck disable=SC1090
   source "${TESTS_DIR}/../01-core/logging.sh"
-  # The image path follows [dir]: inside the image /opt/scripts/core holds a real launcher.
-  eval "$(sed -n '/^compiler_cache_launcher() {/,/^}/p' "${TESTS_DIR}/../01-core/common.sh" \
-    | sed "s#/opt/scripts/core#${_COMMON_SH_DIR}#g")"
+  # The real image fallback lives in the shared helper, outside the extracted resolver.
+  # shellcheck source=../01-core/compiler-cache-utils.sh
+  source <(sed "s#/opt/scripts/core#${_COMMON_SH_DIR}#g" "${TESTS_DIR}/../01-core/compiler-cache-utils.sh")
+  eval "$(t_fn_src "${TESTS_DIR}/../01-core/common.sh" compiler_cache_launcher)"
 }
 
 _launcher_stdout() (
@@ -26,6 +27,11 @@ _launcher_stdout() (
   command() { if [ "${2:-}" = ccache ]; then return 0; fi; builtin command "$@"; }
   compiler_cache_launcher 2>/dev/null
 )
+
+t_case "the extracted helper keeps the image fallback inside the fixture"
+_load_launcher
+t_assert_fails grep -qF /opt/scripts/core <<< "$(declare -f compiler_cache_guarded_launcher)"
+t_assert_contains "$(declare -f compiler_cache_guarded_launcher)" "${WORK}/empty/sccache-launcher.sh"
 
 # ── the leak that actually happened ──────────────────────────────────────────
 t_case "sccache branch: stdout carries ONLY the launcher name"
@@ -92,12 +98,14 @@ t_assert_eq "${_env_out}" "/tmp/probe.sock" "a \$( ) resolver cannot do this; th
 
 t_case "MUTATION: the same call inside \$( ) leaves the caller UNSET"
 _env_lost="$(
+  export SCCACHE_SERVER_UDS=/tmp/inherited-cache.sock SCCACHE_SERVER_PORT=12345
+  unset SCCACHE_SERVER_UDS SCCACHE_SERVER_PORT
   _load_env_fn
   ensure_sccache_env() { export SCCACHE_SERVER_UDS=/tmp/probe.sock; return 0; }
   _inner="$(compiler_cache_launcher_env; printf '%s' "${SCCACHE_SERVER_UDS:-UNSET}")"
-  printf '%s|%s' "${_inner}" "${SCCACHE_SERVER_UDS:-UNSET}"
+  printf '%s|%s|%s' "${_inner}" "${SCCACHE_SERVER_UDS:-UNSET}" "${SCCACHE_SERVER_PORT:-UNSET}"
 )"
-t_assert_eq "${_env_lost}" "/tmp/probe.sock|UNSET" "the address is set and then discarded with the subshell"
+t_assert_eq "${_env_lost}" "/tmp/probe.sock|UNSET|UNSET" "the address is set and then discarded with the subshell"
 
 t_case "the env owner is TOTAL: no usable sccache must not kill the caller"
 _env_rc="$(
@@ -129,6 +137,16 @@ _env_quiet="$(
 )"
 t_assert_eq "${_env_quiet}" "" "callers capture the launcher next; a leak here is the 2026-08-26 CC= disaster again"
 
+# Strict callers retain failures; legacy callers retain their optional-core fallback.
+_cache_env_guarded() {
+  local call
+  call="$(printf '%s' "$1" | tr -d ' \t')"
+  case "$call" in
+    'compiler_cache_launcher_env2>/dev/null||true'|'compiler_cache_launcher_env||return$?') return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # ── drift pins: the owner has to be AT the sites, and the guard has to be mounted
 t_case "every launcher resolution in the closure is preceded by the env owner"
 _SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
@@ -138,8 +156,7 @@ while IFS=: read -r _f _n _; do
     */tests/*|*/01-core/common.sh|*/01-core/compiler-cache.sh) continue ;;
   esac
   [ -n "${_n}" ] || continue
-  # Called guarded: without 01-core a bare call is rc 127 under set -e.
-  if [ "$(sed -n "$((_n - 1))p" "${_f}" | tr -d ' \t')" != "compiler_cache_launcher_env2>/dev/null||true" ]; then
+  if ! _cache_env_guarded "$(sed -n "$((_n - 1))p" "${_f}")"; then
     _unpaired="${_unpaired} ${_f}:${_n}"
   fi
 done < <(grep -rn --include='*.sh' -F '$(compiler_cache_launcher' "${_SCRIPTS}" 2>/dev/null)
@@ -152,11 +169,35 @@ t_assert_eq \
   "$(grep -c 'source=linux/scripts/01-core/sccache-launcher.sh' "${_DF}")" \
   "without it these stages run BARE sccache, where an sccache fault ABORTS the build"
 
-t_case "every production call to compiler_cache_launcher_env tolerates 01-core being absent"
-# Each call sits above a ccache fallback that exists because 01-core may be absent.
-_unguarded="$(grep -rn 'compiler_cache_launcher_env' "${TESTS_DIR}/.." --include='*.sh' \
-  | grep -v '/tests/' | grep -v '01-core/common.sh' | grep -v '2>/dev/null || true' || true)"
-t_assert_eq "" "${_unguarded}" "unguarded call site(s) would abort the stage instead of degrading to ccache"
+_cache_env_unguarded() {
+  local root matches status=0 file line call
+  root="$(cd "$1" && pwd)" || return
+  matches="$(grep -rn 'compiler_cache_launcher_env' "${root}" --include='*.sh')" || status=$?
+  [ "${status}" -le 1 ] || return "${status}"
+  while IFS=: read -r file line call; do
+    case "${file}" in */tests/*|*/01-core/common.sh|'') continue ;; esac
+    case "${call}" in *'declare -F compiler_cache_launcher_env'*) continue ;; esac
+    _cache_env_guarded "${call}" || printf '%s:%s:%s\n' "${file}" "${line}" "${call}"
+  done <<< "${matches}"
+}
+
+t_case "production environment calls preserve an explicit required or optional failure policy"
+declare _unguarded _unguarded_status
+t_capture_command _unguarded _unguarded_status _cache_env_unguarded "${_SCRIPTS}"
+t_assert_eq 0 "${_unguarded_status}"
+t_assert_eq "" "${_unguarded}" "a required call retains its raw failure; an optional call retains its fallback"
+
+t_case "a canonicalized scan root keeps bare production calls observable through tests/.."
+mkdir -p "${WORK}/closure/tests" "${WORK}/closure/lib"
+printf 'compiler_cache_launcher_env || return $?\ncompiler_cache_launcher_env 2>/dev/null || true\n' > "${WORK}/closure/lib/guarded.sh"
+t_capture_command _unguarded _unguarded_status _cache_env_unguarded "${WORK}/closure/tests/.."
+t_assert_eq 0 "${_unguarded_status}"
+t_assert_eq '' "${_unguarded}"
+printf 'compiler_cache_launcher_env\n' > "${WORK}/closure/lib/bare.sh"
+t_capture_command _unguarded _unguarded_status _cache_env_unguarded "${WORK}/closure/tests/.."
+t_assert_eq 0 "${_unguarded_status}"
+t_assert_contains "${_unguarded}" 'lib/bare.sh:1:compiler_cache_launcher_env'
+t_assert_fails _cache_env_unguarded "${WORK}/missing-root"
 
 # ── media half (F3): an out-variable, not $( ). See docs/cross-build-verification.md#the-media-compile-cache-launcher
 _MEDIA_COMMON="${TESTS_DIR}/../03-media/core/common.sh"

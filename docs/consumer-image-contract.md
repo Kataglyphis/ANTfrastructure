@@ -691,7 +691,7 @@ skip there ([image-decisions.md](image-decisions.md#deliberate--not-gaps)).
 
 ### shellcheck and hadolint
 
-The torch stage puts both on `PATH` in `/usr/local/bin` (CON83): shellcheck on every arch,
+The torch stage puts them on `PATH` in `/usr/local/bin` (CON83): shellcheck on every arch,
 hadolint on amd64 and arm64, at the
 `SHELLCHECK_VERSION` and `HADOLINT_VERSION` pins in `tool-pins.env`, the same pins the
 hub's lint gates bootstrap. `install-lint-tools.sh` takes each release binary through
@@ -704,11 +704,15 @@ does not report its pin.
   A source build under QEMU took about two hours of every riscv64 wrapper, and CI lints
   Dockerfiles on amd64 anyway. `install-lint-tools.sh` prints
   `NOTE: hadolint publishes no riscv64 binary; none is installed` there.
+- **gitleaks** (owner decision 2026-11-20, CON222): the secret scan's `GITLEAKS_VERSION` on amd64 and arm64, so
+  `lint-secrets.sh` finds it on `PATH` and the gate runs without network. The install fails unless the binary reports
+  the pin and finds a GitHub-shaped token it plants at run time. gitleaks publishes no riscv64 build, so the riscv64
+  image ships none and its secret scan still bootstraps online.
 - The pins live in `tool-pins.env`, not `versions.env`: only the torch stage reads them,
   so a lint-tool bump rebuilds the torch stage, never the compiler.
 
-The `lint-tools` contract row compares what both binaries report with the pins, on
-every arch; on riscv64 it requires that no hadolint reports at all.
+The `lint-tools` contract row compares what the three binaries report with the pins, on
+every arch; on riscv64 it requires that neither hadolint nor gitleaks reports at all.
 
 ### The riscv64 uv cache seed
 
@@ -974,6 +978,34 @@ support also ships as a proved free-threaded (`cp3XYt`) twin, in a store of its 
     `local-task` from 8 threads.
   - `iree-compile` and `iree-run-module` ran from the twins.
 
+### Offline free-threaded probe dependencies
+
+The normal ORT factory import initializes NumPy. Its generic compiled-module declaration probe
+does not execute that full import. The prepared runtime layer therefore stages NumPy separately
+in `/opt/ft-probe-deps`; it does not change `/opt/wheels-free-threaded` or its exact family set.
+`build-free-threaded-probe-deps.sh` reads `PY_NUMPY_VERSION` and the Python pin. Its companion
+`free-threaded-probe-deps.py` requires the matching `free-threaded-probe-deps.json` lock and a
+running target FT interpreter with the GIL off. Copy all three files together.
+
+AMD64 and ARM64 retain their exact official wheels. RISC-V retains the verified original sdist
+and builds its wheel on the target interpreter, including under QEMU. The dedicated per-arch
+BuildKit cache retains the wheel and receipt; every reuse rechecks input/output hashes and runs
+a normal NumPy import in a fresh offline venv with the GIL checked before and after. Source builds
+use the shared compiler-cache launcher, report its statistics to stderr and drain the shared S3
+layer. No cache-size or GC policy changes are part of this layer.
+
+The receipt binds the upstream URL/hash, NumPy version, Python FT tag, architecture and exact
+wheel hash. Validation also checks wheel metadata, the original license, ELF class/byte order
+and machine, and refuses extra files or symlinks. ELF headers do not prove a complete loader
+closure, and the receipt trusts the image builder for the source-to-wheel relation. The wheel
+retains its complete bundled notices; the curated NumPy entry does not enumerate its transitive
+native library licenses.
+
+`FT-STORE` installs only that checked wheel into its disposable venv with `--offline --no-index
+--no-deps`, before the existing module and full ORT factory controls. A failed dependency install
+emits `FTS NOINSTALL` and fails the verdict. Source-level fixtures prove refusal and dispatch;
+they do not establish RISC-V execution, the final image matrix, GPU availability or inference.
+
 ## The Windows image ships lavapipe
 
 The Windows amd64 image and the arm64 bundle carry Mesa's lavapipe — a CPU Vulkan
@@ -1029,7 +1061,7 @@ name, `/usr/local/lib/onnxruntime-gpu/lib/libonnxruntime_providers_cuda.so`, and
 `onnxruntime-gpu` wheel in `/opt/venv` registers it on import, so Python's
 `providers=["CUDAExecutionProvider"]` is unchanged. A C++ or Rust consumer registers that path under
 the name `CUDAExecutionProvider` once per process before it creates a session
-(`Ort::Env::RegisterExecutionProviderLibrary`; in Rust `Environment::register_ep_library`, `ort` 2.0.0-rc.13);
+(`Ort::Env::RegisterExecutionProviderLibrary`; in Rust `Environment::register_ep_library`, `ort` 2.0.0-rc.15);
 the legacy `OrtSessionOptionsAppendExecutionProvider_CUDA` bridge is gone with `GetProvider`.
 
 ## NVIDIA's plugin TensorRT EP
@@ -1048,6 +1080,46 @@ name and root. The in-tree `TensorrtExecutionProvider` left the GPU prefix and t
 2026-11-08; under TensorRT ≥ 11.4 the FP16/INT8/BF16 options are ignored. The Python app bundles
 do not carry it: it is an image-root module a consumer registers by path.
 
+## ONNX Runtime loader evidence
+
+`shared/python/verify_ort_loader_trace.py` checks glibc `LD_DEBUG=libs` output from
+the actual package launch. Its profile mode preserves the profile bytes in a private
+temporary file, requires the canonical `verify_ort_profile.py` provider verdict and
+two complete sequential runs by default, then selects exactly `TRACE_PREFIX.PID`.
+Every selected ORT or plugin init record in that trace must carry the profile's
+process ID and belong to the caller's expected package directory, including duplicates.
+An internal HIP probe can fork before loading its runtime and write unrelated library
+records under its child PID into that same trace. Those records do not supply required
+ORT/plugin evidence. A selected core or plugin under a foreign or malformed PID still
+fails, even when a correct parent record also exists.
+
+```sh
+python3 -I shared/python/verify_ort_loader_trace.py \
+  --trace-prefix evidence/loader --runtime-root /absolute/bundle/lib \
+  --profile evidence/migraphx-profile.json --device migraphx-plugin \
+  --plugin libmigraphx-ep.so
+```
+
+For AppImages, supply the extraction parent as `--runtime-root` and the relative
+payload directory, such as `--appimage-subdir usr/lib/oxidant/lib`. The extraction
+directory must be `appimage_extracted_` followed by exactly 32 lowercase hex digits.
+Canonical CLI roots, malformed trace paths, missing libraries and linked trace files fail.
+Parent segments in a traced path, such as `/usr/bin/../lib/accelerantgine/libonnxruntime.so.1`,
+require explicit `--resolve-root /usr/lib/accelerantgine` while those files still exist.
+The normalized lexical parent must match the expected package directory, and the original
+path must resolve strictly to a file inside that real root. A symlink before `..` can change
+the actual destination, so lexical normalization alone is insufficient. Without live resolution,
+parent segments remain refused. Repeated separators, dot components and backslashes stay invalid;
+receipts retain each original trace path rather than replacing the evidence with a normalized copy.
+
+Copy `verify_ort_profile.py` beside the new CLI when using profile mode. The Python
+API `verify_loader_traces` also accepts a caller-owned directory regex for archived
+evidence layouts. Calls without a profile aggregate traces and make no inference
+claim. Even a profile-bound success proves paths and process association: it does
+not authenticate the traces, compare library bytes, establish a single ORT session,
+prove a clean host or close the source/licence inventory. Preserve finished-package
+byte proofs and the original profile/trace evidence separately.
+
 ## AMD's plugin MIGraphX EP
 
 `:latest-rocm` ships AMD's plugin MIGraphX execution provider, its only MIGraphX EP since 2026-11-08, and names it:
@@ -1063,7 +1135,9 @@ device it reports; the EP's name is the registration name you choose:
   `so.add_provider_for_devices([d for d in ort.get_ep_devices() if d.ep_name == "MIGraphX"], {})`.
 - C++: `Ort::Env::RegisterExecutionProviderLibrary("MIGraphX", path)`, then
   `SessionOptions::AppendExecutionProvider_V2` with the matching `OrtEpDevice`.
-- Rust (`ort` 2.0.0-rc.13): `Environment::current()?.register_ep_library("MIGraphX", path)`, then the device
+- Rust (`ort` 2.0.0-rc.15): the one `Environment` that `ort::init_from(dylib)?.build()?` returns, kept alive by the
+  consumer (`ort` holds only a weak reference) and passed to every `Session::builder(&env)`:
+  `env.register_ep_library("MIGraphX", path)`, then the device
   from `Environment::devices()` whose `ep()` is `"MIGraphX"`, appended with `SessionBuilder::with_devices` (its
   option keys need the `MIGraphX.` prefix; a key without it is dropped) or the raw
   `SessionOptionsAppendExecutionProvider_V2`. The crate has no `register_execution_provider_library`.
@@ -1118,11 +1192,55 @@ are separate from session creation and real operator placement. The compiled fak
 suite proves policy, and a real-header object checks signatures; neither proves a new
 runtime image, packaged inference or Windows loading.
 
+The Rust policy owner is `shared/rust/ort_plugin_eps.rs`, the exact
+`ort-plugin-registration-rust` asset. Its adapter receives the owning environment, returns
+explicit enumeration failures and attaches the selected matching device with plain options.
+The pinned crate's `Environment::devices()` discards `GetEpDevices` errors, so an adapter must
+use its typed C API when preserving that error. `register_ep_library` returns a weak handle;
+dropping that handle does not unregister the library. Keep one locked registration cache per
+environment and never replace a successfully registered name with another canonical path.
+The prepared OxidANT adapter holds a weak environment reference and resolves its bundled module
+beside the actual loaded C API owner. Its fake-adapter tests prove policy/concurrency only;
+actual crate compilation, runtime teardown and finished-package inference remain separate checks.
+
+`shared/rust/loaded_module.rs` resolves a symbol's owning loaded file on Linux and Windows. Linux preserves filename bytes and spaces, prefers the kernel mapping link and refuses ambiguous escaped newlines in its text fallback. This locates a path; it neither authenticates mapped bytes nor retains a module lifetime. The Dart fixture loads the library relatively, changes cwd, and independently rejects an expected path naming a different existing module.
+
+The exact shared asset rows cover this lookup, Rust worker binding and test companion, C source/header and HIP executable source/header. Consumers declare their own destinations; package transport still needs the corresponding target-native built worker.
+
+The prepared Linux worker transport is `shared/rust/isolated_helper.rs` with
+`shared/native/isolated_helper.c` and `.h`. The control-only supervisor owns the fresh
+executable's `waitpid`; the parent validates its complete private packet and EOF before
+accepting a status collected by another runtime. Keep descriptor closure, parent-death
+guards, raw exec failures and timeout kill/reap. The worker runs application work only after
+`execve` and exits normally, including runtime teardown. The actual Dart VM fixture covers
+external reaping and12 isolated-worker cases. Nine native executable/fake-HIP checks now
+preserve cleanup/error exits and a17-byte LSan failure through the actual worker wait; the
+controls run before Dart child cleanup. The required real report rejects a compiled early
+exit86 without sanitizer teardown; matching status alone cannot pass. The actual probe also
+passes under the local engine default seccomp profile. These shared fixture results do not establish Cargo wiring, a real HIP driver,
+installed-bridge, package or hardware acceptance. Details and the original negative control:
+[child ownership](failure-modes.md#a-native-child-returns-echild-while-running-under-dart).
+
 Repeated registration never silently changes the path behind a name. The helper
 coordinates its own calls only; it does not coordinate external unregistration.
 Fake-binding and shared-copy tests prove these policies, not native ABI compatibility,
 a working driver, operator placement or packaged inference. The consumer integrations
 and hardware profile criteria above remain required.
+
+### Historical OxidANT workspace replay
+
+The preserved 11 November 2026 canonical prepared-workspace run passes 912 tests
+in 64 summaries without failed, ignored or filtered cases. It includes required
+CPU models, GenAI, GTK, GStreamer, software Vulkan and post-test
+ORT/tract/XNNPACK photograph parity, with the normal image entrypoint. Its raw
+log SHA256, cleanup and independent container-absence receipts are rechecked.
+
+The newer 955-file prepared package snapshot matches the recorded 953-file
+inventory's declared Rust, Cargo, native and shader hashes; 17 documentation,
+script and test paths differ. Seven files in the historic source root no longer
+match that inventory. Preserve the evidence and do not treat the historic root
+as an unchanged current checkout. Recorded Hub-pin integration, fresh-image
+execution and actual finished GPU packages still require their own receipts.
 
 ## Qualcomm's plugin QNN EP
 
@@ -1157,10 +1275,10 @@ pyke's prebuilt one (G3 of the
 | `ORT_SKIP_DOWNLOAD` | `1` | `1` |
 | `ORT_DYLIB_PATH` | `$ONNX_ROOT\bin\onnxruntime.dll` | `${ONNXRUNTIME_OUTPUT_DIR}/lib/libonnxruntime.so` |
 
-Why these four, read from `ort-sys` 2.0.0-rc.13 (the checksum OxidANT's
-`Cargo.lock` pins) and `ort` 2.0.0-rc.13:
-- `build/main.rs:47-68` reads `ORT_LIB_PATH`, then `ORT_LIB_LOCATION`, before the
-  download branch. With `ORT_PREFER_DYNAMIC_LINK` set to `1` or `true` the build
+Why these four, read from `ort-sys` 2.0.0-rc.15 (the checksum OxidANT's
+`Cargo.lock` pins since 2026-11-20; rc.13 read the same) and `ort` 2.0.0-rc.15:
+- `build/main.rs:47-67` reads `ORT_LIB_PATH`, then `ORT_LIB_LOCATION`, before the
+  download branch (an enabled `pkg-config` feature is tried before both; no consumer enables it). With `ORT_PREFER_DYNAMIC_LINK` set to `1` or `true` the build
   script emits `rustc-link-lib=onnxruntime` from that directory; without it,
   ort-sys tries a static link the chain does not ship.
 - The first SET one of `CARGO_NET_OFFLINE`, `ORT_SKIP_DOWNLOAD` and `ORT_OFFLINE`
@@ -1169,7 +1287,7 @@ Why these four, read from `ort-sys` 2.0.0-rc.13 (the checksum OxidANT's
   `ORT_LIB_PATH` still outranks `ORT_LIB_LOCATION`.
 - `ort`'s load-dynamic opens `ORT_DYLIB_PATH`, otherwise a bare file name, which on
   Windows reaches `System32\onnxruntime.dll` (Windows ML 1.17) before PATH.
-- `ort`'s default features include `download-binaries`.
+- `ort`'s default features include `download-binaries` (and, in rc.15, `copy-dylibs` and `api-31`).
 
 **What it means for a consumer.**
 - An `ort-sys` build in the image links the chain import library, so a shipped

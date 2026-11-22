@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from ort_profile_fixture import profile_node, profile_runs
+
 SCRIPT = Path(__file__).resolve().parents[1] / "verify_ort_profile.py"
 
 
@@ -128,32 +130,8 @@ class ProfileTest(unittest.TestCase):
         )
 
     def test_each_repeated_run_requires_a_gpu_model_operator(self) -> None:
-        runs = [
-            {
-                "name": "model_run",
-                "cat": "Session",
-                "ph": "X",
-                "pid": 1,
-                "ts": start,
-                "dur": 10,
-            }
-            for start in (10, 30)
-        ]
-
-        def node(
-            start: int,
-            provider: str = "CUDAExecutionProvider",
-            name: str = "Conv",
-            pid: int = 1,
-        ) -> dict[str, object]:
-            return {
-                "cat": "Node",
-                "ph": "X",
-                "pid": pid,
-                "ts": start,
-                "dur": 2,
-                "args": {"provider": provider, "op_name": name},
-            }
+        runs = profile_runs()
+        node = profile_node
 
         self.assertEqual(
             self.run_profile(

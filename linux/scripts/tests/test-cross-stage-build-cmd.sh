@@ -9,6 +9,7 @@ _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
 
 # Stubs of functions the subject defines go in restubs.sh, sourced after it, or the source undoes them.
 cat > "${_work}/stubs.sh" <<'STUBS'
+_BUILD_HELPERS_LOADED=1
 append_common_build_args() { local -n _o="$1"; _o+=(--common); }
 append_buildkit_host_arg() { local -n _o="$1"; _o+=(--host); }
 _has_digest_pinned_base() { [ "${HAS_PINNED_BASE:-0}" = "1" ]; }

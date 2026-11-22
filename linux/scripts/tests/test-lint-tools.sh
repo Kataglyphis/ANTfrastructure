@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The image's shellcheck on every arch and hadolint on amd64 and arm64; see docs/consumer-image-contract.md#shellcheck-and-hadolint
+# The image's shellcheck on every arch, hadolint and gitleaks on amd64 and arm64; see docs/consumer-image-contract.md#shellcheck-and-hadolint
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -22,6 +22,7 @@ download_verified_install() {
   case "$1" in
     *shellcheck*) printf '#!/bin/sh\n[ "$1" = --version ] || { echo "${FAKE_SC_FINDING:-SC2086}"; exit 1; }\necho "version: %s"\n' "${FAKE_SC_VERSION}" > "$3" ;;
     *hadolint*)   printf '#!/bin/sh\n[ "$1" = --version ] || { echo "DL3008"; exit 1; }\necho "Haskell Dockerfile Linter %s"\n' "${FAKE_HL_VERSION}" > "$3" ;;
+    *gitleaks*)   printf '#!/bin/sh\n[ "$1" = version ] && { echo "%s"; exit 0; }\nexit ${FAKE_GL_RC:-7}\n' "${FAKE_GL_VERSION}" > "$3" ;;
   esac
   chmod +x "$3"
 }
@@ -29,26 +30,31 @@ download_verified_file() { download_verified_install "$@"; }
 DL
 printf '#!/bin/sh\n[ "$1" = -m ] && { echo "${FAKE_ARCH}"; exit 0; }\nexec /usr/bin/uname "$@"\n' > "${_work}/bin/uname"
 chmod +x "${_work}/bin/uname"
-SC_V="$(_pin SHELLCHECK_VERSION)"; HL_V="$(_pin HADOLINT_VERSION)"
-export FAKE_SC_VERSION="${SC_V#v}" FAKE_HL_VERSION="${HL_V#v}" FAKE_DL_LOG="${_work}/dl.log"
+SC_V="$(_pin SHELLCHECK_VERSION)"; HL_V="$(_pin HADOLINT_VERSION)"; GL_V="$(_pin GITLEAKS_VERSION)"
+export FAKE_SC_VERSION="${SC_V#v}" FAKE_HL_VERSION="${HL_V#v}" FAKE_GL_VERSION="${GL_V}" FAKE_DL_LOG="${_work}/dl.log"
 _install() {
   : > "${FAKE_DL_LOG}"
   FAKE_ARCH="$1" PATH="${_work}/bin:${PATH}" bash "${INSTALL}" "${_work}/prefix-$1" "${_work}/core" 2>&1
 }
 
-t_case "amd64 and arm64 take both release binaries, each at its own pinned checksum"
+t_case "amd64 and arm64 take all three release binaries, each at its own pinned checksum"
 _out="$(_install x86_64)"
 t_assert_contains "${_out}" "shellcheck ${SC_V} and Haskell Dockerfile Linter ${HL_V#v} in ${_work}/prefix-x86_64 (x86_64)"
+t_assert_contains "${_out}" "gitleaks ${GL_V} in ${_work}/prefix-x86_64 (x86_64)"
 t_assert_contains "$(cat "${FAKE_DL_LOG}")" "shellcheck-${SC_V}.linux.x86_64.tar.xz $(_pin SHELLCHECK_LINUX_X86_64_SHA256)"
 t_assert_contains "$(cat "${FAKE_DL_LOG}")" "${HL_V}/hadolint-linux-x86_64 $(_pin HADOLINT_LINUX_X86_64_SHA256)"
+t_assert_contains "$(cat "${FAKE_DL_LOG}")" "v${GL_V}/gitleaks_${GL_V}_linux_x64.tar.gz $(_pin GITLEAKS_LINUX_X64_SHA256)"
 _out="$(_install aarch64)"
 t_assert_contains "$(cat "${FAKE_DL_LOG}")" "shellcheck-${SC_V}.linux.aarch64.tar.xz $(_pin SHELLCHECK_LINUX_AARCH64_SHA256)"
 t_assert_contains "$(cat "${FAKE_DL_LOG}")" "${HL_V}/hadolint-linux-arm64 $(_pin HADOLINT_LINUX_ARM64_SHA256)"
+t_assert_contains "$(cat "${FAKE_DL_LOG}")" "v${GL_V}/gitleaks_${GL_V}_linux_arm64.tar.gz $(_pin GITLEAKS_LINUX_ARM64_SHA256)"
 
-t_case "riscv64 takes shellcheck's riscv64 release and installs no hadolint"
+t_case "riscv64 takes shellcheck's riscv64 release and installs no hadolint and no gitleaks"
 t_assert_ok test -n "$(_pin SHELLCHECK_LINUX_RISCV64_SHA256)"
 _out="$(_install riscv64)"
 t_assert_contains "${_out}" "NOTE: hadolint publishes no riscv64 binary; none is installed"
+t_assert_contains "${_out}" "NOTE: gitleaks publishes no riscv64 binary; none is installed"
+t_assert_ok test ! -e "${_work}/prefix-riscv64/gitleaks"
 t_assert_contains "${_out}" "shellcheck ${SC_V} and no hadolint in ${_work}/prefix-riscv64 (riscv64)"
 t_assert_eq "shellcheck-${SC_V}.linux.riscv64.tar.xz $(_pin SHELLCHECK_LINUX_RISCV64_SHA256)" "$(sed 's|.*/||' "${FAKE_DL_LOG}")" "one download, shellcheck's"
 t_assert_ok test ! -e "${_work}/prefix-riscv64/hadolint"
@@ -57,6 +63,9 @@ t_case "a tool that does not report its pin fails the install, and so does an un
 t_assert_contains "$(FAKE_SC_VERSION=0.0.1 _install x86_64)" "shellcheck reports '0.0.1', the pin is ${SC_V}"
 t_assert_contains "$(FAKE_HL_VERSION=1.0.0 _install x86_64)" "hadolint reports 'Haskell Dockerfile Linter 1.0.0', the pin is ${HL_V}"
 t_assert_contains "$(FAKE_SC_FINDING=clean _install x86_64)" "shellcheck did not report SC2086"
+t_assert_contains "$(FAKE_GL_VERSION=8.0.0 _install x86_64)" "gitleaks reports '8.0.0', the pin is ${GL_V}"
+t_assert_contains "$(FAKE_GL_RC=0 _install x86_64)" "gitleaks did not report a planted GitHub token (exit 0)"
+t_assert_contains "$(FAKE_GL_RC=1 _install aarch64)" "gitleaks did not report a planted GitHub token (exit 1)"
 t_assert_contains "$(_install sparc64)" "no lint tools are pinned for sparc64"
 t_assert_eq 1 "$(FAKE_ARCH=sparc64 PATH="${_work}/bin:${PATH}" t_rc bash "${INSTALL}" "${_work}/p" "" "${_work}/core")"
 
@@ -92,20 +101,21 @@ done
 t_fn_src "${SMOKE}" _rt_env_pin >> "${_work}/rt/06-packaging/row.sh" || exit 1
 t_fn_src "${CONSUMER}" _rt_tool_pin >> "${_work}/rt/06-packaging/row.sh" || exit 1
 _lint_row() { bash -c 'source "$1"; _consumer_lint_tools_verdict lint-tools "$2" "$3"' _ "${_work}/rt/06-packaging/row.sh" "$@"; }
-_pins_want="shellcheck=${SC_V#v} hadolint=${HL_V#v}"
+_pins_want="shellcheck=${SC_V#v} hadolint=${HL_V#v} gitleaks=${GL_V}"
 t_assert_eq "OK lint-tools ${_pins_want}" "$(_lint_row "FACT lint-tools ${_pins_want}" "${_pins_want}")"
-t_assert_contains "$(_lint_row "FACT lint-tools shellcheck= hadolint=${HL_V#v}" "${_pins_want}")" "BAD lint-tools the image has shellcheck= hadolint="
-t_assert_contains "$(_lint_row "FACT lint-tools shellcheck=${SC_V#v} hadolint=" "${_pins_want}")" "BAD lint-tools"
+t_assert_contains "$(_lint_row "FACT lint-tools shellcheck= hadolint=${HL_V#v} gitleaks=${GL_V}" "${_pins_want}")" "BAD lint-tools the image has shellcheck= hadolint="
+t_assert_contains "$(_lint_row "FACT lint-tools shellcheck=${SC_V#v} hadolint= gitleaks=${GL_V}" "${_pins_want}")" "BAD lint-tools"
+t_assert_contains "$(_lint_row "FACT lint-tools shellcheck=${SC_V#v} hadolint=${HL_V#v} gitleaks=" "${_pins_want}")" "BAD lint-tools" "an image without gitleaks fails the row"
 t_assert_contains "$(_lint_row "FACT other x" "${_pins_want}")" "NOFACT lint-tools"
 t_assert_eq "${SC_V}" "$(bash -c 'source "$1"; _rt_tool_pin SHELLCHECK_VERSION' _ "${_work}/rt/06-packaging/row.sh")" "the row reads tool-pins.env"
 _arch_row() { bash -c 'source "$1"; _consumer_versioned_verdict lint-tools "$2" "$3"' _ "${_work}/rt/06-packaging/row.sh" "$@"; }
 t_assert_eq "OK lint-tools ${_pins_want}" "$(_arch_row "FACT lint-tools ${_pins_want}" amd64)" "amd64 wants hadolint at its pin"
-t_assert_contains "$(_arch_row "FACT lint-tools shellcheck=${SC_V#v} hadolint=" amd64)" "BAD lint-tools"
-t_assert_eq "OK lint-tools shellcheck=${SC_V#v} hadolint=" "$(_arch_row "FACT lint-tools shellcheck=${SC_V#v} hadolint=" riscv64)" "riscv64 ships no hadolint"
+t_assert_contains "$(_arch_row "FACT lint-tools shellcheck=${SC_V#v} hadolint= gitleaks=${GL_V}" amd64)" "BAD lint-tools"
+t_assert_eq "OK lint-tools shellcheck=${SC_V#v} hadolint= gitleaks=" "$(_arch_row "FACT lint-tools shellcheck=${SC_V#v} hadolint= gitleaks=" riscv64)" "riscv64 ships no hadolint and no gitleaks"
 t_assert_contains "$(_arch_row "FACT lint-tools ${_pins_want}" riscv64)" "BAD lint-tools the image has ${_pins_want}"
 _smoke_src="$(cat "${SMOKE}" "${SMOKE%/*}/runtime-consumer-contract.sh")"
-t_assert_contains "${_smoke_src}" 'printf '"'"'FACT lint-tools shellcheck=%s hadolint=%s\n'"'"
-t_assert_contains "${_smoke_src}" 'lint-tools)    _sc="$(_rt_tool_pin SHELLCHECK_VERSION)"; _hl="$(_rt_tool_pin HADOLINT_VERSION)"'
+t_assert_contains "${_smoke_src}" 'printf '"'"'FACT lint-tools shellcheck=%s hadolint=%s gitleaks=%s\n'"'"
+t_assert_contains "${_smoke_src}" 'lint-tools)    _sc="$(_rt_tool_pin SHELLCHECK_VERSION)"; _hl="$(_rt_tool_pin HADOLINT_VERSION)"; _gl="$(_rt_tool_pin GITLEAKS_VERSION)"'
 t_assert_contains "$(grep '^_CONSUMER_CONTRACT_ROWS=' "${SMOKE}")" " lint-tools"
 
 t_summary

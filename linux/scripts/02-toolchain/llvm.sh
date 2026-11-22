@@ -32,9 +32,17 @@ build_llvm_clang_from_source() {
   bash "${builder}" "${args[@]}"
 }
 
-# Host LLVM tool path, preferring the -${CLANG_WANTED} suffixed name.
+# Cross wrappers cannot mix apt drivers with the source LLVM loader winner.
 llvm_selected_host_tool() {
   local base="$1" candidate=""
+  local source_prefix
+  source_prefix="/opt/llvm-target-$(build_arch_oci)" || return $?
+  if [ -e "${source_prefix}" ] || [ -L "${source_prefix}" ]; then
+    candidate="${source_prefix}/bin/${base}"
+    [ -x "${candidate}" ] || return 1
+    printf '%s' "${candidate}"
+    return 0
+  fi
   for candidate in "${base}-${CLANG_WANTED}" "${base}"; do
     command -v "${candidate}" >/dev/null 2>&1 || continue
     command -v "${candidate}"
@@ -66,12 +74,13 @@ _llvm_install_cross_clang_wrapper() {
   local triplet sysroot wrapper _pair _name _bin
 
   triplet="$(arch_deb_multiarch_triplet_for "$target_label")" || return 0
-  # The build host's own arch uses "/" as sysroot; compare with build_arch_oci, never a literal amd64.
-  if [ "${target_label}" = "$(build_arch_oci)" ]; then
-    sysroot="/"
-  else
-    sysroot="/usr/${triplet}"
-    [ -d "${sysroot}" ] || die "Expected cross sysroot not found for ${target_label}: ${sysroot}"
+  # Debian linker scripts already name absolute target paths below the filesystem root.
+  sysroot="/"
+  if [ "${target_label}" != "$(build_arch_oci)" ]; then
+    [ -d "/usr/${triplet}" ] || {
+      die "Expected cross target tree not found for ${target_label}: /usr/${triplet}"
+      return 1
+    }
   fi
 
   for _pair in "clang:${host_clang}" "clang++:${host_clangxx}"; do
@@ -107,6 +116,28 @@ install_cross_clang_wrappers() {
 llvm_cross_backend() {
   arch_to_llvm_target "$1" 2>/dev/null
 }
+
+# Native HIP builds need AMDGPU beside the cross-wrapper CPU backends; foreign installs stay narrow.
+llvm_cross_build_backends() {
+  local target="$1" host targets backend result=""
+  host="$(build_arch_oci)" || return $?
+  if [ "${target}" != "${host}" ]; then
+    llvm_cross_backend "${target}"
+    return $?
+  fi
+  targets="$(arch_list_csv_normalize "${CROSS_TARGETS:-amd64,arm64,riscv64}")" || return $?
+  local -a backend_targets=()
+  IFS=',' read -r -a backend_targets <<< "${targets}"
+  for target in "${host}" "${backend_targets[@]}"; do
+    backend="$(llvm_cross_backend "${target}")" || return $?
+    case ";${result};" in
+      *";${backend};"*) ;;
+      *) result+="${result:+;}${backend}" ;;
+    esac
+  done
+  printf '%s;AMDGPU' "${result}"
+}
+
 
 llvm_cross_root() {
   : "${LLVM_CROSS_ROOT:=/opt/llvm-cross}"
@@ -204,6 +235,20 @@ llvm_cross_llvm_config_path() {
     "${prefix}/bin/llvm-config-${major}"
 }
 
+# Installed CPU-only trees cannot satisfy a later native GPU compiler contract.
+llvm_cross_required_backends_available() {
+  local expected actual config backend
+  expected="$(llvm_cross_build_backends "$1")" || return
+  config="$(llvm_cross_llvm_config_path "$2")" || return
+  actual="$(llvm_cross_run_binary "$1" "${config}" --targets-built)" || return
+  local -a required_backends=()
+  IFS=';' read -r -a required_backends <<< "${expected}"
+  for backend in "${required_backends[@]}"; do
+    [[ " ${actual} " =~ [[:space:]]${backend}[[:space:]] ]] || return 1
+  done
+  return 0
+}
+
 llvm_cross_install_looks_complete() {
   local target_label="$1"
   local prefix
@@ -214,6 +259,7 @@ llvm_cross_install_looks_complete() {
   llvm_cross_versioned_shared_umbrella_lib_path "${prefix}" >/dev/null 2>&1 || return 1
   llvm_cross_compat_shared_umbrella_lib_path "${prefix}" >/dev/null 2>&1 || return 1
   llvm_cross_llvm_config_path "${prefix}" >/dev/null 2>&1 || return 1
+  llvm_cross_required_backends_available "${target_label}" "${prefix}" || return 1
   return 0
 }
 
@@ -514,8 +560,8 @@ install_llvm_clang() {
   tool_version flang-new --version
 
   [ "${installed_from_source}" = "1" ] && log "Installed LLVM/Clang ${CLANG_WANTED} from source"
-  install_cross_clang_wrappers
   install_cross_llvm_runner_tools
   build_cross_llvm_targets
+  install_cross_clang_wrappers
 }
 

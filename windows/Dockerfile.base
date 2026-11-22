@@ -54,7 +54,7 @@ ARG GIT_INSTALLER_URL=""
 ARG SCOOP_INSTALLER_SHA256=94f983b190438311e006b957db7c8422709e0ba62a6c2ac04e278164108f2512
 ARG WIX_VERSION=7.0.1
 ARG WIX_UI_EXT_VERSION=7.0.1
-ARG FLUTTER_VERSION=3.47.9
+ARG FLUTTER_VERSION=3.50.1
 # Empty = warn-only, since the base is shared with amd64; see docs/windows-cross-builds.md § Vulkan needs an optional component.
 ARG WINDOWS_ARM64_STRICT=""
 COPY windows\scripts\host\Install-ScoopTools.ps1 C:\temp\scripts\

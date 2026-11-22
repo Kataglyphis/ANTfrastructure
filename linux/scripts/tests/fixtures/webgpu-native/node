@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Emit synthetic child results for receipt/transport tests; no Node, WASM or factory is executed."""
+import json
+import os
+
+print("WEBGPU-WASM-NODE: " + json.dumps({"version": "v26.13.0", "jspiSupported": True}))
+print("WEBGPU-WASM OK: mode=ON api=31 version=" + os.environ.get("ORT_VERSION", "v1.31.1").removeprefix("v"))

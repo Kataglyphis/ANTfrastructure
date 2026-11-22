@@ -8,7 +8,7 @@ t_private_tmpdir
 HUB="${TESTS_DIR%/linux/scripts/tests}"
 HOOKS_REL=third_party/ANTfrastructure/shared/linux/templates/git-hooks
 # A hook or a CI runner that starts this suite must not hand its own git or CI state to the fixtures.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_CEILING_DIRECTORIES CI
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT CI
 # Sourced for the gate lists and the notice function; the hooks run the copy inside each fixture.
 # shellcheck source=../run-lint-gates.sh
 source "${HUB}/linux/scripts/run-lint-gates.sh"
@@ -27,7 +27,7 @@ _REAL=(shared/linux/templates/git-hooks/pre-commit shared/linux/templates/git-ho
   linux/scripts/run-lint-gates.sh linux/scripts/01-core/gates.sh linux/scripts/01-core/python-probe.sh
   linux/scripts/gate_scope.py linux/scripts/quality_allow.py linux/scripts/verify_large_files.py
   docs/scripts/verify_mutations.py docs/scripts/mutation_parse.py docs/scripts/mutation_shards.py
-  docs/scripts/mutation_push.py linux/scripts/verify-shell-eol.sh)
+  docs/scripts/mutation_push.py docs/scripts/mutation_workspace.py linux/scripts/verify-shell-eol.sh)
 # Short of a real token's length, so the hub's own secret scan does not read this suite as a leak.
 _TOKEN="ghp_fixture"
 

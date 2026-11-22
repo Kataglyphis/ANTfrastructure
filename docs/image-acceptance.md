@@ -82,6 +82,81 @@ attestations bound to an included runtime manifest are excluded from platform co
 Only a registry HTTP 404 permits creating an absent tag; authentication and network
 failures stop promotion.
 
+## Check an unpublished local FINAL wrapper
+
+After a normal Linux runtime actually succeeds, preserve its loaded successful
+producer unit, source/full-preflight receipt and original Android evidence.
+If systemd has already unloaded that successful producer, recovery additionally
+requires its sealed canonical storage guardian and a fresh journal query from
+the current boot. The four ordered manager lifecycle records must bind the same
+unit, invocation, UID, manager PID, exact driver and successful start/stop jobs.
+The retained actual process-exit clock remains distinct from the journal finish
+clock. Runtime creation must fall within that same boot, bounded by the trusted
+start event's wall and monotonic clocks. An absent unit alone cannot establish success; an unguarded or previous-boot
+producer cannot use this recovery path.
+Run its exact invocation-owned cleanup command and independently prove every
+owned container absent. A live or failed producer, changed source/worker bytes,
+missing cleanup, a base/package image or a foreign manifest/config cannot qualify.
+
+Both canonical wheelhouse modes, `image` and `export`, retain the same required runtime gates. The unit may use the historical architecture-only name or include its exact `default`, `rocm` or `nvidia` lane; a different lane or architecture refuses. Host-tool identity comes from the complete recorded runtime-worker mapping and its clean pinned checkout. An owned engine wrapper located in another clean checkout must match every selected wrapper companion byte. Missing, duplicate or unsupported mode flags, changed wrapper bytes and a different ownership environment refuse before consumer execution. These transport checks do not replace the actual successful producer, original Android ancestry, complete source proof or cleanup.
+
+An ordinary Android invocation may omit the redundant `stage` label. In that format the checker requires the exact `build-cross-stage.sh --stage android` argument array, matching architecture, local image repository, output log directory, a single matching unit and variant flag, literal transport, unpublished successful launch and the complete hash-bound clean source proof. Only the local parsed view gains `stage=android`; original invocation bytes and their hashes stay unchanged. An existing incorrect stage label still fails, and this inference does not replace the sealed native Android/Media ancestry or prove consumer execution.
+
+Commit the acceptance tooling, then use a fresh workspace and receipt. The [bounded host launcher](local-proof-workflows.md#local-final-consumer-acceptance), `linux/scripts/launch-local-final.py`, installs invocation-owned cleanup before all six consumers and requires a stopped proof with independent container absence. Its explicit scheduling companion `launch-normal-runtime.py --serial-smoke` preserves the runtime's same required smoke while reducing concurrent context materialization. The direct runner remains:
+
+```bash
+python3 linux/scripts/image-acceptance.py check \
+  --image docker.io/ant-local/webgpu-NAME@sha256:WRAPPER_MANIFEST \
+  --local-runtime-invocation logs/RUN/invocation.json \
+  --workspace out/acceptance/local/consumers \
+  --receipt logs/image-acceptance/LOCAL_RUN/receipt.json
+```
+
+The mode uses the complete canonical consumer list, commands, refs and timeout;
+only its supported Linux platform may differ. Its lane schemas cover default
+amd64/arm64/riscv64, ROCm amd64 and NVIDIA amd64/arm64. This schema support and its
+synthetic fixtures prove no actual execution on another architecture or GPU.
+Use the ordinary platform-plan command above for a retained non-amd64 plan.
+
+The same consumer runner freezes sources, recursive submodules, data and
+dependency locks, preserves command statuses/logs and checks tracked-source
+cleanliness and container/ownership cleanup. Both registry and local runs retain
+every successful versioned checkout, recursive Git store and log; a passed receipt
+does not delete those sources. Build outputs are retained too; storage cleanup
+requires a separate scoped decision. It uses the checked local digest
+alias with pull disabled; it never invents a GHCR reference or intercepts a pull.
+Before alias preparation it verifies the original runtime unit, exact complete
+source proof, full host-worker closure and original Android receipt hashes,
+platform, run/app/parent labels and immutable manifest/config. The alias uses
+the actual source tag and is read back through the shared metadata helper.
+A fresh post-consumer observation must match before the receipt can pass.
+
+Local receipts use schema 2 and explicit local transport and retain the alias
+receipt/hash and both producer/image observations. Keep those files, all versioned consumer
+checkouts with their recursive Git stores, all consumer
+logs and the original producer/source/parent evidence. Replay uses the same
+`--local-runtime-invocation`, `--replay` and another fresh workspace; its hub revision,
+image, original producer and complete consumer source/lock bindings must match.
+The original local image and successful producer evidence must still be available.
+Recovered receipts explicitly label the historical guardian observation and bind
+its original source, authorization, invocation, seal, cleanup proofs and fresh
+journal. Both observations must remain identical across the complete consumer run.
+
+A local receipt cannot authorize registry promotion. The public path rejects
+local schema/transport/origin fields before any registry access and retains its
+normal schema-1 immutable GHCR-index and published-platform checks. Local checks
+do not authenticate supplied receipts, independently reconstruct binary ancestry,
+prove full binary licences, provider placement or finished GPU-app parity.
+Those actual checks remain separate obligations.
+
+Copies using the local mode carry `image_acceptance_local.py`, its
+`source_ci.common` helper and the existing native/source/runtime profile closure
+under `local-proof/`. Required companions fail rather than falling back to another
+checkout. Registry mode remains available without loading the local profiles.
+The local companion joins strict ty and parameter/return-annotation scans; isolated
+mutation fixtures prove both scopes. Receipt validation runs before successful
+checkout pruning, so invalid result metadata keeps failed evidence and sources.
+
 ## Native CI proofs
 
 [`linux-arm64-image-acceptance.yml`](../.github/workflows/linux-arm64-image-acceptance.yml)

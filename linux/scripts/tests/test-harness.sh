@@ -37,6 +37,14 @@ t_mktemp() {
   printf '%s\n' "${path}"
 }
 
+# Keep allocation-failure fixtures from touching paths outside their disposable roots.
+t_failed_temp_allocation() {
+  case "$1" in
+    failed) return 71 ;;
+    missing) printf '%s' "$2" ;;
+  esac
+}
+
 # t_private_tmpdir: points TMPDIR at one t_mktemp tree, so the code under test and its children cannot leave anything behind.
 t_private_tmpdir() {
   TMPDIR="$(t_mktemp -d)" || return $?

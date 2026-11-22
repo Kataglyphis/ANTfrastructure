@@ -666,7 +666,33 @@
       "SPDXID": "SPDXRef-Package-Linux-Images-MIGraphX-34c80120",
       "name": "MIGraphX",
       "versionInfo": "2.18.0",
-      "downloadLocation": "https://github.com/ROCm/AMDMIGraphX",
+      "downloadLocation": "https://github.com/ROCm/AMDMIGraphX.git",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional GPU — AMD (Dockerfile.amd)",
+      "licenseComments": "Obligations: keep-notice, include-text | Patched in this repository: linux/scripts/patches/migraphx/001-preserve-zero-pad-maxpool.patch, linux/scripts/patches/migraphx/002-select-pinned-python.patch | MODIFIED before redistribution: The prepared Linux source build preserves negative zero-padding semantics and selects the pinned interpreter, paired Python config and extension ABI."
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-pybind11-MIGraphX-source-build-Python-headers-2bb02aaf",
+      "name": "pybind11 (MIGraphX source-build Python headers)",
+      "versionInfo": "3.1.0",
+      "downloadLocation": "https://github.com/pybind/pybind11",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional GPU — AMD (Dockerfile.amd)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-rocm-cmake-MIGraphX-source-build-tools-7b072080",
+      "name": "rocm-cmake (MIGraphX source-build tools)",
+      "versionInfo": "0.14.0",
+      "downloadLocation": "https://github.com/ROCm/rocm-cmake",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
       "licenseDeclared": "MIT",
@@ -674,6 +700,71 @@
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Linux Images / Optional GPU — AMD (Dockerfile.amd)",
       "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Composable-Kernel-host-code-generator-MIGraphX--b67af378",
+      "name": "Composable Kernel host code generator (MIGraphX source dependency)",
+      "versionInfo": "1.0.0",
+      "downloadLocation": "https://github.com/ROCm/composable_kernel.git",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional GPU — AMD (Dockerfile.amd)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-msgpack-c-MIGraphX-source-headers-b69c9fea",
+      "name": "msgpack-c (MIGraphX source headers)",
+      "versionInfo": "3.3.0",
+      "downloadLocation": "https://github.com/msgpack/msgpack-c",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSL-1.0",
+      "licenseConcluded": "BSL-1.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional GPU — AMD (Dockerfile.amd)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-abseil-cpp-MIGraphX-source-parser-dependency-cc237b6a",
+      "name": "abseil-cpp (MIGraphX source parser dependency)",
+      "versionInfo": "20250512.0",
+      "downloadLocation": "https://github.com/abseil/abseil-cpp",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional GPU — AMD (Dockerfile.amd)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Protocol-Buffers-utf8-range-MIGraphX-source-par-ee409945",
+      "name": "Protocol Buffers + utf8_range (MIGraphX source parsers)",
+      "versionInfo": "30.0",
+      "downloadLocation": "https://github.com/protocolbuffers/protobuf",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause AND MIT",
+      "licenseConcluded": "BSD-3-Clause AND MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional GPU — AMD (Dockerfile.amd)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-rocmlirTriton-prepared-source-binary-closure-re-fa58106c",
+      "name": "rocmlirTriton (prepared source; binary closure review remains open)",
+      "versionInfo": "2.0.0",
+      "downloadLocation": "https://github.com/ROCm/rocmlirTriton.git",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 WITH LLVM-exception AND MIT AND NCSA",
+      "licenseConcluded": "Apache-2.0 WITH LLVM-exception AND MIT AND NCSA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional GPU — AMD (Dockerfile.amd)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-HailoRT-libhailort-hailortcli-6efa8649",
@@ -795,7 +886,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Flutter-SDK-36007425",
       "name": "Flutter SDK",
-      "versionInfo": "3.47.9",
+      "versionInfo": "3.50.1",
       "downloadLocation": "https://flutter.dev/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -866,6 +957,19 @@
       "supplier": "NOASSERTION",
       "licenseDeclared": "MIT",
       "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Runtime (Dockerfile.torch)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-NumPy-b40d0b64",
+      "name": "NumPy",
+      "versionInfo": "2.5.4",
+      "downloadLocation": "https://numpy.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Linux Images / Runtime (Dockerfile.torch)",
       "licenseComments": "Obligations: keep-notice, include-text"
@@ -1120,7 +1224,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-Flutter-SDK-0ac793ed",
       "name": "Flutter SDK",
-      "versionInfo": "3.47.9",
+      "versionInfo": "3.50.1",
       "downloadLocation": "https://flutter.dev/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -2503,6 +2607,41 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-pybind11-MIGraphX-source-build-Python-headers-2bb02aaf"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-rocm-cmake-MIGraphX-source-build-tools-7b072080"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Composable-Kernel-host-code-generator-MIGraphX--b67af378"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-msgpack-c-MIGraphX-source-headers-b69c9fea"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-abseil-cpp-MIGraphX-source-parser-dependency-cc237b6a"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Protocol-Buffers-utf8-range-MIGraphX-source-par-ee409945"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-rocmlirTriton-prepared-source-binary-closure-re-fa58106c"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Linux-Images-HailoRT-libhailort-hailortcli-6efa8649"
     },
     {
@@ -2574,6 +2713,11 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Linux-Images-OrchestrANT-945e3a1a"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-NumPy-b40d0b64"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

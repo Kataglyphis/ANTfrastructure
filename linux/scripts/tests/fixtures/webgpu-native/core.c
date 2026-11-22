@@ -80,4 +80,6 @@ const OrtApiBase *OrtGetApiBase(void) {
   static const OrtApiBase base = {get_api, version};
   return scenario("no-base") ? NULL : &base;
 }
+#ifndef WEBGPU_PROBE_LINKED_CORE
 __attribute__((destructor)) static void closed(void) { record("DLCLOSE"); }
+#endif

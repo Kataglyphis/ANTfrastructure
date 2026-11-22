@@ -76,7 +76,7 @@ t_case "the gate and its probe are wired into the smoke run, amd64-only"
 _smoke_src="$(cat "${SMOKE}")"
 _isa_src="$(cat "${ISA}")"
 t_assert_contains "${_smoke_src}" 'source "${_SCRIPT_DIR}/check-arch-isa.sh"'
-t_assert_contains "${_smoke_src}" 'check_amd64_isa "${image_tag}" "${target_arch}"' "an unwired gate is not a gate"
+t_assert_contains "${_isa_src}" 'check_amd64_isa "${image_tag}" "${target_arch}"' "an unwired gate is not a gate"
 t_assert_contains "${_smoke_src}" "  _probe_amd64_baseline" "a gate without its probe lines reads NONE"
 eval "$(t_fn_src "${TESTS_DIR}/../06-packaging/smoke-common.sh" _shipped_arch_gate)"
 eval "$(t_fn_src "${ISA}" check_amd64_isa)"

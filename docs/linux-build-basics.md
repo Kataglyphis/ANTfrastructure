@@ -372,6 +372,24 @@ Run against OmniAccelerANT's Flutter and ObservANT walkers and OxidANT's host-li
 bundles of `:latest`'s own libraries (2026-10-19), each call above produced the same files, byte for
 byte. Suite `tests/test-elf-closure.sh`; the `packaging.elf-closure-*` mutations prove it.
 
+### The ELF hardening gate
+
+`06-packaging/verify-elf-hardening.sh FILE[:executable|library][:fortify|no-fortify]...` reads each
+shipped ELF with `readelf` and requires PIE (an executable's type DYN with an INTERP segment), a
+`GNU_RELRO` segment, BIND_NOW, a `__stack_chk_fail` import and, unless the spec says `no-fortify`, a
+`__*_chk` import from `_FORTIFY_SOURCE`. It prints one `hardening ok:` line per file with what it
+found, one `hardening FAIL:` line per missing property, and exits 1 on any; 2 is a usage error.
+`Hardening.cmake` gives GCC and Clang on Linux the PIE and `-z relro -z now` half (CON294:
+BeschleunigerBallett had linked with neither, while AccelerANTgine had set them itself). A consumer
+extracts its packages and names the ELFs, as AccelerANTgine's `verify-package-hardening.sh` does;
+a binary that calls nothing `_FORTIFY_SOURCE` can bound, such as a small demo, takes `no-fortify`.
+`tests/test-verify-elf-hardening.sh` compiles a hardened fixture and one per missing property.
+Its PE twin is `Assert-PeHardening -Path <files> [-NoCfg <leaf names>]` in
+`windows/scripts/modules/WindowsPeHardening.Common.psm1`: it reads each file's DllCharacteristics
+and throws naming every PE without DYNAMIC_BASE, NX_COMPAT, HIGH_ENTROPY_VA (PE32+) or GUARD_CF,
+the bit BeschleunigerBallett's binaries lacked before CON290; `-NoCfg` waives CFG for a
+third-party DLL built without it. `windows/scripts/tests/PeHardening.Tests.ps1` holds it on synthetic PEs. Six refusal mutations check the required bits, header offset and fatal verdict; they do not inspect a real linked consumer binary.
+
 ### glibc travels, and a newer host glibc wins
 
 **glibc travels too, with `LOADER`** (2026-10-17). The image links against glibc 2.43, newer than
@@ -424,6 +442,25 @@ AppImage generator `patchelf-keep-glibc.sh`, because the generator patches every
 RUNPATH, and a patched loader segfaults. AccelerANTgine's `.deb`, tarball and AppImage start on
 Debian 13 (himbeere2) and Ubuntu 26.04 this way. Without `LOADER` the packages need glibc 2.43:
 Ubuntu 26.04 and newer.
+
+Native AMD packages load the CPU ORT core and carry `libmigraphx-ep.so` separately. Source
+`ort-runtime-bundle.sh` before `ort-package-proof.sh`, then call
+`ort_package_stage_amdgpu_licenses ROOT LIB_DIR NEW_LICENSE_DIR` after staging the module.
+An optional fourth `NEW_PROVENANCE_FILE` also stages the image's original `provenance.txt`.
+Keep this file outside the exact license tree, with an existing parent inside `ROOT`.
+Pass the same fourth path to `ort_package_verify_amdgpu` when checking finished payloads.
+Missing, empty or linked originals, changed or linked payloads, escaping parents and existing
+stage targets fail. Copy failures retain their raw status; staging is not atomic.
+The destination parent must already exist inside `ROOT`; stale destinations refuse. The helper
+copies the image's complete original license tree, preserving transitive texts, and requires its
+original plugin LICENSE before writing. Allocation and copy errors retain their raw statuses.
+
+Run `ort_package_verify_amdgpu ROOT LIB_DIR PLUGIN_LICENSE_DIR` on every extracted finished
+format. It refuses an escaping or different module, the legacy in-tree provider, missing or
+changed original texts and extra inventory entries. This supplements the CPU wheel's core/notice
+proof; it does not prove ELF architecture, runtime linkage, provider registration or GPU inference.
+Use `ort_package_require_program ROOT FILE` for required launchers and native companions;
+it checks regular executable files and containment, while callers bind their exact bytes separately.
 
 ### GStreamer loads from the package alone
 
@@ -494,3 +531,42 @@ The last three were invisible until the 2026-08-08 orphan sweep: useful, and ref
 no doc included. None of `lib/` ships in the images (no Dockerfile copies it): consumers source it
 from their submodule, and in this repo `preflight.sh` and `flutter_checks.sh` source
 `lib/code-quality.sh`.
+
+### Cargo release metadata
+
+`linux/scripts/02-toolchain/rust/cargo_release.sh` retains its whole-workspace
+release build followed by the explicit `kataglyphis_cli` build. Set both
+`CARGO_RELEASE_WORKSPACE_MESSAGES` and `CARGO_RELEASE_CLI_MESSAGES` to capture
+their individual `--message-format=json-render-diagnostics` stdout. Both unset
+or empty preserves ordinary console output and the original Cargo arguments.
+The script declares `ANT_CARGO_RELEASE_JSON_API=1` on its second line; callers
+that require these outputs must check that marker before invoking an older pin.
+
+The two paths must identify different regular files or new files. Canonical
+aliases and existing hardlinks to the same file refuse; directories and FIFOs
+refuse before opening either output. Parent allocation and truncation precede
+the normal shared Cargo wrapper, so failed wrapper setup cannot leave stale
+metadata behind. Wrapper and Cargo failures retain their raw status, and a
+failed workspace build cannot start the CLI phase.
+
+Cargo calls remain at their original source-level phase boundaries. Wrapper
+aliases, caller bindings and alias changes after the workspace call still
+apply to the CLI; capture does not move both calls into an early parsed function.
+
+Each file contains one unfiltered Cargo stdout stream; stderr and the driver's
+own messages stay outside it. Cargo's compiler-message JSON stays in the stream.
+Use the workspace stream for a root
+native-library artifact and the later CLI stream for its final executable;
+their build-script OUT_DIRs can differ. Do not concatenate the streams or weaken
+the native-helper stager's single successful build requirement. Capturing logs
+does not authenticate source, a build, linkage, runtime behavior or licences.
+The caller still binds the final module/helper bytes and verifies finished
+packages. Stub protocol fixtures do not establish an actual workspace release.
+
+### Cargo native helper staging
+
+`linux/scripts/06-packaging/stage-cargo-native-helper.py` selects one helper build script by exact Cargo package ID and requires one selected native artifact in the same successful JSON-lines build. Supply `--messages`, `--package-id`, `--module`, `--name-env`, `--path-env`, `--target` and an existing canonical `--destination`. The two environment keys name the helper basename and full path; the latter must equal that build script's exact `out_dir` plus basename. `cargo pkgid --locked -p PACKAGE` supplies the package ID without copying a version.
+
+Capture the actual `cargo build --message-format=json-render-diagnostics` stdout; a failed, incomplete, repeated or test-only build cannot identify a packaged module. The selected helper must be a regular executable, and both native headers must match the requested Linux target. The script copies and hashes the exact helper, publishes without replacing an existing file, and prints its basename. It does not scan old Cargo directories. A copied script carries `ort_census_probe.py`, which owns its ELF identity and streaming hash helpers.
+
+The JSON belongs to the caller: this is no authenticated build or linkage attestation, complete ELF validation, runtime test or finished-package proof. Packaging must place the helper beside the actual loaded module, preserve its loader/runtime closure and verify the final files. The shared source suite uses synthetic ELF headers for selection and copy controls; an actual Cargo build and target execution are separate evidence.

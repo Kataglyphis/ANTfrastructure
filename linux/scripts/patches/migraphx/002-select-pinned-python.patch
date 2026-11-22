@@ -1,0 +1,83 @@
+--- a/cmake/PythonModules.cmake
++++ b/cmake/PythonModules.cmake
+@@ -39,3 +39,10 @@
+ set(PYBIND11_NOPYTHON On)
+-find_package(pybind11 REQUIRED)
++if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
++    find_package(pybind11 REQUIRED)
++else()
++    if(NOT MIGRAPHX_REQUIRED_PYBIND11_VERSION)
++        message(FATAL_ERROR "Missing selected pybind11 version")
++    endif()
++    find_package(pybind11 ${MIGRAPHX_REQUIRED_PYBIND11_VERSION} EXACT CONFIG REQUIRED)
++endif()
+ if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+@@ -143,3 +150,61 @@
+ else()
+-    set(PYTHON_SEARCH_VERSIONS 3.6 3.7 3.8 3.9 3.10 3.11 3.12 3.13 3.14)
++    if(NOT Python_EXECUTABLE OR NOT MIGRAPHX_REQUIRED_PYTHON_VERSION)
++        message(FATAL_ERROR "Missing selected Python interpreter or version")
++    endif()
++    execute_process(
++        COMMAND "${Python_EXECUTABLE}" -c
++            "import json, os, platform, sys, sysconfig\nv = sysconfig.get_config_var('LDVERSION') or sysconfig.get_config_var('VERSION')\nprint(json.dumps({'version': platform.python_version(), 'abi': v, 'config': os.path.join(sysconfig.get_config_var('BINDIR'), 'python' + v + '-config'), 'prefix': os.path.realpath(sys.base_prefix), 'suffix': sysconfig.get_config_var('EXT_SUFFIX'), 'include': sysconfig.get_path('include'), 'platinclude': sysconfig.get_path('platinclude')}))"
++        RESULT_VARIABLE _selected_python_result
++        OUTPUT_VARIABLE _selected_python_json
++        ERROR_VARIABLE _selected_python_error)
++    if(NOT _selected_python_result STREQUAL "0")
++        message(FATAL_ERROR "Selected Python probe failed (${_selected_python_result}): ${_selected_python_error}")
++    endif()
++    string(JSON _selected_python_version GET "${_selected_python_json}" version)
++    string(JSON _selected_python_abi GET "${_selected_python_json}" abi)
++    string(JSON _selected_python_config GET "${_selected_python_json}" config)
++    string(JSON _selected_python_prefix GET "${_selected_python_json}" prefix)
++    string(JSON _selected_python_suffix GET "${_selected_python_json}" suffix)
++    if(NOT _selected_python_version STREQUAL MIGRAPHX_REQUIRED_PYTHON_VERSION)
++        message(FATAL_ERROR "Selected Python version differs from the required pin")
++    endif()
++    if(NOT IS_ABSOLUTE "${_selected_python_config}" OR NOT EXISTS "${_selected_python_config}")
++        message(FATAL_ERROR "Missing selected Python configuration tool")
++    endif()
++    execute_process(COMMAND "${_selected_python_config}" --prefix
++        OUTPUT_VARIABLE _config_prefix RESULT_VARIABLE _config_prefix_result)
++    execute_process(COMMAND "${_selected_python_config}" --extension-suffix
++        OUTPUT_VARIABLE _config_suffix RESULT_VARIABLE _config_suffix_result)
++    execute_process(COMMAND "${_selected_python_config}" --includes
++        OUTPUT_VARIABLE _config_includes RESULT_VARIABLE _config_includes_result)
++    if(NOT _config_prefix_result STREQUAL "0" OR NOT _config_suffix_result STREQUAL "0"
++       OR NOT _config_includes_result STREQUAL "0")
++        message(FATAL_ERROR "Selected Python configuration tool failed: ${_config_prefix_result}/${_config_suffix_result}/${_config_includes_result}")
++    endif()
++    string(STRIP "${_config_prefix}" _config_prefix)
++    get_filename_component(_config_prefix "${_config_prefix}" REALPATH)
++    string(STRIP "${_config_suffix}" _config_suffix)
++    string(STRIP "${_config_includes}" _config_includes)
++    if(NOT _config_prefix STREQUAL _selected_python_prefix OR NOT _config_suffix STREQUAL _selected_python_suffix
++       OR _config_includes STREQUAL "")
++        message(FATAL_ERROR "Selected Python configuration tool has a foreign prefix, ABI or empty headers")
++    endif()
++    string(JSON _selected_python_include GET "${_selected_python_json}" include)
++    string(JSON _selected_python_platinclude GET "${_selected_python_json}" platinclude)
++    get_filename_component(_selected_python_include "${_selected_python_include}" REALPATH)
++    get_filename_component(_selected_python_platinclude "${_selected_python_platinclude}" REALPATH)
++    separate_arguments(_selected_include_flags UNIX_COMMAND "${_config_includes}")
++    foreach(_selected_include_flag IN LISTS _selected_include_flags)
++        if(NOT _selected_include_flag MATCHES "^-I(.+)$")
++            message(FATAL_ERROR "Unexpected selected Python include flag")
++        endif()
++        get_filename_component(_selected_include_dir "${CMAKE_MATCH_1}" REALPATH)
++        if(NOT _selected_include_dir STREQUAL _selected_python_include
++           AND NOT _selected_include_dir STREQUAL _selected_python_platinclude)
++            message(FATAL_ERROR "Selected Python config includes foreign headers")
++        endif()
++    endforeach()
++    set(PYTHON_SEARCH_VERSIONS "${_selected_python_abi}")
++    set("PYTHON_CONFIG_${_selected_python_abi}" "${_selected_python_config}" CACHE FILEPATH "" FORCE)
++    set(MIGRAPHX_SELECTED_PYTHON_EXECUTABLE "${Python_EXECUTABLE}" CACHE INTERNAL "" FORCE)
+     foreach(PYTHON_DISABLE_VERSION ${PYTHON_DISABLE_VERSIONS})
+@@ -157,2 +222,5 @@
+     endforeach()
++    if(NOT TARGET "python${_selected_python_abi}::headers")
++        message(FATAL_ERROR "Selected Python headers were not configured")
++    endif()
+ endif()

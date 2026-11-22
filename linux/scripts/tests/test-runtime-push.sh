@@ -10,10 +10,11 @@ trap 'rm -rf "${WORK}"' EXIT
 _FNS="$(t_fn_src "${RBF}" _runtime_push_attempt)" || exit 1
 _FNS+=$'\n'"$(t_fn_src "${RBF}" runtime_push_tag)" || exit 1
 
-# The stub records its argv and prints what $PUSH_OUT holds; $PUSH_RC is its exit code.
+# The stub records its argv and prints what $PUSH_OUT holds; $PUSH_RC is its exit code, $CONVERT_RC the conversion's.
 cat > "${WORK}/nerdctl" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${ARGV_LOG}"
+[ "$1 $2" = "image convert" ] && exit "${CONVERT_RC:-0}"
 [ -z "${PUSH_OUT:-}" ] || printf '%s\n' "${PUSH_OUT}"
 exit "${PUSH_RC:-0}"
 EOF
@@ -27,12 +28,22 @@ _push() {
       runtime_push_tag ghcr.io/x/y:latest-amd64' _ "${_FNS}" 2>&1
 }
 
+convert='image convert --zstd --oci ghcr.io/x/y:latest-amd64 ghcr.io/x/y:latest-amd64'
+
 t_case "the push runs with --quiet by default, and with its progress on RUNTIME_PUSH_PROGRESS=1"
 out="$(_push)"
-t_assert_eq "push ghcr.io/x/y:latest-amd64 --quiet" "$(cat "${WORK}/argv")" "default argv"
+t_assert_eq "${convert}"$'\n'"push ghcr.io/x/y:latest-amd64 --quiet" "$(cat "${WORK}/argv")" "default argv"
 t_assert_contains "${out}" "LOG [push] ghcr.io/x/y:latest-amd64: rc=0 after "
 RUNTIME_PUSH_PROGRESS=1 _push >/dev/null
-t_assert_eq "push ghcr.io/x/y:latest-amd64" "$(cat "${WORK}/argv")" "RUNTIME_PUSH_PROGRESS=1 argv"
+t_assert_eq "${convert}"$'\n'"push ghcr.io/x/y:latest-amd64" "$(cat "${WORK}/argv")" "RUNTIME_PUSH_PROGRESS=1 argv"
+
+t_case "the layers become zstd before the push (CON99); CROSS_LAYER_COMPRESSION=gzip pushes them as built"
+CROSS_LAYER_COMPRESSION=gzip _push >/dev/null
+t_assert_eq "push ghcr.io/x/y:latest-amd64 --quiet" "$(cat "${WORK}/argv")" "gzip argv"
+t_case "a failed conversion pushes nothing and fails"
+rc=0; CONVERT_RC=1 _push >/dev/null || rc=$?
+t_assert_eq "${convert}" "$(cat "${WORK}/argv")" "no push after a failed conversion"
+t_assert_eq 1 "${rc}" "the conversion's failure is the push's"
 
 t_case "a failed quiet push still shows its error and its rc"
 out="$(PUSH_RC=1 PUSH_OUT='level=fatal msg="use of closed network connection"' _push)"

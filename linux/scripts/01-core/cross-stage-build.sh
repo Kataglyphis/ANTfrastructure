@@ -15,6 +15,8 @@ export CROSS_BUILD_PLATFORM
   && source "${_CROSS_STAGE_BUILD_SH_DIR}/disk-guard.sh"
 # shellcheck disable=SC1091
 source "${_CROSS_STAGE_BUILD_SH_DIR}/sccache-s3-level.sh"
+# shellcheck source=linux/scripts/01-core/context-management.sh
+source "${_CROSS_STAGE_BUILD_SH_DIR}/context-management.sh"
 
 # Log path for <label>, empty when LOG_DIR is unset (the caller then builds unlogged).
 cross_stage_log_redirect() {
@@ -533,6 +535,7 @@ cross_stage_run() {
   parent_pin="${_CROSS_STAGE_PARENT_PIN}"
 
   cross_stage_build_args build_args "${stage}" "${arch}"
+  append_script_closure_context build_args "${dockerfile}" || return
 
   # Explicit `|| return 1`: run_parallel_arch_loop's `if !` disables set -e for this call tree.
   if [ "${push_flag}" -eq 1 ]; then

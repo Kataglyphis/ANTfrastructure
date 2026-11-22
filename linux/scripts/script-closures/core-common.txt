@@ -1,0 +1,22 @@
+# Selected source -> image path; this is a staging plan, not build or runtime acceptance.
+01-core/arch-mapping.sh|core/arch-mapping.sh
+01-core/common.sh|core/common.sh
+01-core/compiler-cache-utils.sh|core/compiler-cache-utils.sh
+01-core/cross-active-fallback.sh|core/cross-active-fallback.sh
+01-core/cross-apt.sh|core/cross-apt.sh
+01-core/cross-env.sh|core/cross-env.sh
+01-core/cross-gcc.sh|core/cross-gcc.sh
+01-core/cross-meson.sh|core/cross-meson.sh
+01-core/cross-python.sh|core/cross-python.sh
+01-core/download-loader.sh|core/download-loader.sh
+01-core/downloads.sh|core/downloads.sh
+01-core/load-versions-env.sh|core/load-versions-env.sh
+01-core/logging.sh|core/logging.sh
+01-core/module-bootstrap.sh|core/module-bootstrap.sh
+01-core/modules.sh|core/modules.sh
+01-core/parallelism.sh|core/parallelism.sh
+01-core/path-helpers.sh|core/path-helpers.sh
+01-core/sccache-server-address.sh|core/sccache-server-address.sh
+01-core/sudo-policy.sh|core/sudo-policy.sh
+01-core/ubuntu-mirror.sh|core/ubuntu-mirror.sh
+01-core/versions.env|core/versions.env

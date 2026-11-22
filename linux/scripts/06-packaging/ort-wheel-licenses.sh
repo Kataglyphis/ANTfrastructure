@@ -15,8 +15,11 @@ stage_ort_wheel_licenses() {
   fi
   python3 "${_ORT_WHEEL_LICENSE_DIR}/stage-ort-wheel-licenses.py" \
     --wheel-dir "${ORT_CHAIN_WHEEL_DIR:-/opt/onnxruntime-wheels}" --destination "$bundle" \
-    --strip "${STRIP:-strip}" "${libraries[@]}"
+    --strip "${STRIP:-strip}" "${libraries[@]}" "${@:2}"
 }
+
+# Only byte-proved originals may replace native-prefix copies in a disposable package bundle.
+stage_ort_wheel_originals() { stage_ort_wheel_licenses "$1" --restore-unstripped; }
 
 verify_ort_wheel_package_licenses() {
   local artifact="${1:?artifact required}" bundle="${2:?bundle required}" prefix="${3:?package prefix required}"

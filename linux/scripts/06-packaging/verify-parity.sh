@@ -6,6 +6,8 @@ _CORE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" && pwd)"
 
 # shellcheck disable=SC1091
 source "${_CORE_DIR}/logging.sh"
+# shellcheck source=linux/scripts/lib/cli-value-options.sh
+source "${_CORE_DIR}/../lib/cli-value-options.sh"
 
 CONTAINER_BIN="${CONTAINER_BIN:-nerdctl}"
 NATIVE_IMAGE=""
@@ -381,19 +383,22 @@ _parity_usage() {
   usage
 }
 
+_parity_flag() {
+  local -n _parity_consumed="$1"
+  shift
+  case "$1" in
+    --verbose) VERBOSE=1; _parity_consumed=1 ;;
+    -h|--help) show_usage_and_exit _parity_usage "$@"; exit $? ;;
+    *) reject_unknown_option "$1" ;;
+  esac
+}
+
 verify_parity_parse_args() {
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --native)    NATIVE_IMAGE="$2"; shift 2 ;;
-      --cross)     CROSS_IMAGE="$2";  shift 2 ;;
-      --checks)    CHECKS="$2";       shift 2 ;;
-      --verbose)   VERBOSE=1;         shift ;;
-      --diff-tool) DIFF_TOOL="$2";    shift 2 ;;
-      # A stale logging owner must not let conditional help repeat the argument loop.
-      -h|--help)   show_usage_and_exit _parity_usage "$@"; exit $? ;;
-      *) reject_unknown_option "$1" ;;
-    esac
-  done
+  local -A _parity_values=(
+    [--native]=NATIVE_IMAGE [--cross]=CROSS_IMAGE [--checks]=CHECKS [--diff-tool]=DIFF_TOOL
+  )
+  local -a _parity_rest=()
+  parse_cli_value_options _parity_values _parity_rest +_parity_flag "$@"
   if [ -z "${NATIVE_IMAGE}" ] || [ -z "${CROSS_IMAGE}" ]; then
     err "Both --native and --cross are required"
   fi

@@ -1,0 +1,614 @@
+{
+  "scope": "Current session toolkit audit; historical evidence is not deleted or promoted into acceptance.",
+  "scripts": [
+    {
+      "name": "amd-source-profile-lineage.json",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "aab3f6079bf823c457f3f25d43a8f0d9973057793e05798e4b3a5d97e17a2dda"
+    },
+    {
+      "name": "apply-anchored-edits.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/apply-anchored-edits.py",
+      "original_sha256": "1a721bf8273271207f05962ae34af78e01fea09233d0369736ef515bc8ad55cd"
+    },
+    {
+      "name": "archive-changelog-date.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/archive-changelog-date.py",
+      "original_sha256": "39052c7e9361357ab251c67d8ef20d95aa42da9405464c86c5c01d4e9fba3f16"
+    },
+    {
+      "name": "audit-failed-source-check.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/audit-failed-source-check.py",
+      "original_sha256": "cd17549ce3519a2219dc544aebc741215a561af23db988c017677749fe588f3b"
+    },
+    {
+      "name": "cancel-superseded-preflight.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "82076f7151baa5ee198fd3042f1b32b9ec23e6fa4978aaa502f2ecf348d82109"
+    },
+    {
+      "name": "capture-compiler-cache-log.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/capture-compiler-cache-log.py",
+      "original_sha256": "1630863a066bcf7087e47360365d367a10c2d4955d769059ed4b4f0bd19f118b"
+    },
+    {
+      "name": "capture-live-sccache-log.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/capture-live-sccache-log.py",
+      "original_sha256": "6743b05c0209b0da3bf236d3b3115d45a8eece7271dac2aac92db637e405ef0d"
+    },
+    {
+      "name": "check-compiler-disk-admission.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/check-compiler-disk-admission.py",
+      "original_sha256": "d4bef49ac7fa5908e5c0a70ee183b1671efac4b9a2bd72919f06102a1a594cd8"
+    },
+    {
+      "name": "checkpoint-amd-path-followup.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "ce111c55315c4107df191532d8a267a524c4b9391f73ad750ab8059bef26e7c1"
+    },
+    {
+      "name": "checkpoint-native-clang-wrapper-proof.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "fd31395032f0fe1e2e242c2c1933e87daf8a3d413ad5d3157f1234914d7e0271"
+    },
+    {
+      "name": "compiler-image-qualification-v1.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "1203cd4730de8177bb915e69544157d187931ceaa6bc3d3f3f7b5cecdb2cc9fd"
+    },
+    {
+      "name": "compiler-image-qualification.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/compiler-image-qualification.py",
+      "original_sha256": "d197422c62a687fac60b9b76a8ca965d419df9990f0115a0cdc19e27b92d9c79"
+    },
+    {
+      "name": "compiler-launcher-v1-lineage.json",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "9ac07c91b4db33b6c52cb09afb471913c4360bcd13ab228a989befab24f57155"
+    },
+    {
+      "name": "complete-preflight-receipt.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/complete-preflight-receipt.py",
+      "original_sha256": "346163ad706effa4203ecdf593793228c0842e829e65abf29973fb397b13f41d"
+    },
+    {
+      "name": "docs-commit-profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/docs-commit-profile.py",
+      "original_sha256": "770db9bfbec8bbe0b0bc849e100ce19854464a6b1fd01d8a84a1205d11d3a5a8"
+    },
+    {
+      "name": "extract-buildkit-vertex.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/extract-buildkit-vertex.py",
+      "original_sha256": "31b067efc40e8d6975e5e22408df82270b9215960e8283d0d2ced19fa932e43f"
+    },
+    {
+      "name": "extract-preflight-mutator.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/extract-preflight-mutator.py",
+      "original_sha256": "5f9281b4e0b66299de64e05ceca7a27e688d1faef5b407b09202dae86f4d086d"
+    },
+    {
+      "name": "finalize-loader-blocked-handoff.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "00a5de55d9a2e5355467c34326e06fb190628ba5e75625e1d2fec51719cb134e"
+    },
+    {
+      "name": "full-preflight-observer-lineage.json",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "193aa4f4bfd986ba632f44fbe8caf431f021068dfce0cbfe809287b248088b34"
+    },
+    {
+      "name": "full-preflight-profile-v1-lineage.json",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "3c637638b7482fdcee0d044100eac90dcc22ec8b52bb6e294e8503ea9c6af610"
+    },
+    {
+      "name": "image-qualification-v1-lineage.json",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "015af3f44a31b91e0c57948caf6c67c3cc15e7cf7349d10dccb09665295c6068"
+    },
+    {
+      "name": "inspect-buildkit-cache-log.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/inspect-buildkit-cache-log.py",
+      "original_sha256": "0bc2a5cb896c12de109001e82751595f123d840f79e01cb3a284396958ec4c84"
+    },
+    {
+      "name": "inspect-preserved-roots.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/inspect-preserved-roots.py",
+      "original_sha256": "420567081715a0f2db117ae453bc8ffa579bf1f441f88f88406d810b4b4b4597"
+    },
+    {
+      "name": "launch-normal-compiler-plan-v1.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "2af1283e7bdb8b99cb6c59f97a41e1724bc1c8e0741ba55db0e3d304b1b6a17c"
+    },
+    {
+      "name": "launch-normal-compiler-plan.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/launch-normal-compiler-plan.py",
+      "original_sha256": "8a1a4ffc1fdaee9a7168df78da06fe56892ff619763cafe5487070d483b399f2"
+    },
+    {
+      "name": "launch-normal-sdk-v1.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "5a53e8a1e42cd69634edac7f43984bb510d6f28b143320f0f9f2cd121d655b14"
+    },
+    {
+      "name": "launch-normal-sdk.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/launch-normal-sdk.py",
+      "original_sha256": "3fb5baf805f80b2f8c682d880a710e76829607fc90a5a9761c3224564288d9c6"
+    },
+    {
+      "name": "launch-source-commit-before-amd-path.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "55c449fb19918cb6e82aecd57ce1ea214c298024309df5b18156ce9c004ac913"
+    },
+    {
+      "name": "launch-source-commit.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/launch-source-commit.py",
+      "original_sha256": "b6522acd3211f2a2d971b59447e01935109764fa788eb87b419f25b3cd05d6cb"
+    },
+    {
+      "name": "mutate-cross-image-probe.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/mutate-cross-image-probe.py",
+      "original_sha256": "eb06b5d188b8ccf1f7c504c6d772ff4b3c9d48d90a6f7ed3c5954d6047f58576"
+    },
+    {
+      "name": "mutate-native-oci-cross-qualification.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/mutate-native-oci-cross-qualification.py",
+      "original_sha256": "c70ff452639f7b3993e450498d688190201e6e269aac33a91f653d8781cf54bc"
+    },
+    {
+      "name": "native-oci-handoff-v1.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "6ac01ca0eb81385f4d36603013e7ffd11dd34a8665ea15f6ab6001d1b4e47428"
+    },
+    {
+      "name": "native-oci-handoff.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/native-oci-handoff.py",
+      "original_sha256": "0dbe441f8ab894eb82f76d4f956aa79542c87f7b546f66e4282a8b1e54360699"
+    },
+    {
+      "name": "native-wrapper-probe.c",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/native-wrapper-probe.c",
+      "original_sha256": "2540483716e25c1e9a849b31683180ca33ddad353c9129d231bf6f7655683132"
+    },
+    {
+      "name": "native-wrapper-probe.cc",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/native-wrapper-probe.cc",
+      "original_sha256": "83191db70bdb1f245f2a2fbf11ca3385047cb66492aa52649aac4ffbf1108415"
+    },
+    {
+      "name": "observe-build-unit.py",
+      "classification": "existing-canonical",
+      "canonical": "linux/scripts/watch-build-units.py",
+      "original_sha256": "aa2ca09dcb3ec9d91930384a050982b19c5b322e1ca8b8af12f867e6a235ddd7"
+    },
+    {
+      "name": "observe-full-preflight-v1.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "4006fc1f7b7455160a2d965cbb4a725b46e94adfda356f28a802afbb8b22e6b7"
+    },
+    {
+      "name": "observe-full-preflight.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/observe-full-preflight.py",
+      "original_sha256": "a3980a9e404fae15d72509c175f3b027308d341dffacbd15db6e8fe8af3f2c3e"
+    },
+    {
+      "name": "prepare-amd-path-edits.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "05b4247d674374d6e90ec0e358b32f6f4cf76bc206d10c3b144165cfe1d13b7a"
+    },
+    {
+      "name": "prepare-clang-installation-order.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "138878f1a0be26d2bf9a78f95c232730dcaea5b0d6c34e9390cea55e07a71562"
+    },
+    {
+      "name": "compiler_plan_profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/compiler_plan_profile.py",
+      "reason": "Required reviewed compiler-profile companion; preparation grants no build or acceptance."
+    },
+    {
+      "name": "prepare-next-compiler-plan.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
+      "original_sha256": "7fcb4e720fc5e7a9571d9938f4bf2f9797b9d2e70dd23ec7ab794116d6661a9e"
+    },
+    {
+      "name": "prepare-post-source-profile.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "dd9e8aa5b8d023fab22ae45b147953809cfaf9b2232ff5ed1f9cd0e1be2b99e7"
+    },
+    {
+      "name": "probe-cross-clang-image.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/probe-cross-clang-image.py",
+      "original_sha256": "76e67420d572a7d1d56771c0ab8e44f1731d8f87ae373cfb5587be61c54221dd"
+    },
+    {
+      "name": "promote-operational-tools.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "7ecb31e88fc5b673bdd3d6dadf922c0660a67a091356d8d98c82713b2768ab14"
+    },
+    {
+      "name": "prove-amd-path-env-v1.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "2db5c955a76e27955a9bde52db17eaa7dfdd38a4878dafd4e39d11a1d07e35d8"
+    },
+    {
+      "name": "prove-amd-path-env.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "68573213b3ef65c10e324eda7dda59d6ce0dd01ac866e07fe72d946c11847d3d"
+    },
+    {
+      "name": "qualify-compiler-image.sh",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/qualify-compiler-image.sh",
+      "original_sha256": "91ab256690ec6cec82909b8e81d60a0dba001e3700da0bc8435cd4ee7ad4bea1"
+    },
+    {
+      "name": "qualify-compiler-with-cross.sh",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/qualify-compiler-with-cross.sh",
+      "original_sha256": "7abb0967c68616a582649916639f45178b2bfc5719a3beeff7286a076f541de9"
+    },
+    {
+      "name": "replay-cross-clang-refusal.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/replay-cross-clang-refusal.py",
+      "original_sha256": "49e218fbe351fb80e1a7758e3fb2c8a9def633955264cbe96439c4139e9e374a"
+    },
+    {
+      "name": "replay-full-preflight-v1.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "0755e78dfd069f9bc0ab18e7500fc52cf7f2fd85645755f1ee26189d7d9c09c3"
+    },
+    {
+      "name": "replay-full-preflight.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/replay-full-preflight.py",
+      "original_sha256": "f820a27bd6cbf3a5a45cb32528546cc40128558f989a04827f9b7bcc70023952"
+    },
+    {
+      "name": "replay-native-clang-wrappers.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/replay-native-clang-wrappers.py",
+      "original_sha256": "d48192ccbed7fcab0f491148c7f337f4156ab9449e0ac44aac34cb08502334e6"
+    },
+    {
+      "name": "replay-native-clang-wrappers.sh",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/replay-native-clang-wrappers.sh",
+      "original_sha256": "872451fd2984ac7008749508f654bbcb17001ccb7d4829143684ffcc1d5e4b0f"
+    },
+    {
+      "name": "replay-native-llvm-loader-profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/replay-native-llvm-loader-profile.py",
+      "original_sha256": "fda1f834d7a9ab5df65a47860bec5aab306467c137bdce9a38e5f72f95492aa4"
+    },
+    {
+      "name": "replay-sccache-log-capture.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/replay-sccache-log-capture.py",
+      "original_sha256": "1fbaf3c1695df419912218d0b4c4259c1ed7ea66d2ce23a5dda2c66c6ea628fa"
+    },
+    {
+      "name": "replay-sdk-llvm-materialization.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/replay-sdk-llvm-materialization.py",
+      "original_sha256": "b601431b90e1b2b60a8ddadfde10328c3a10854ad3d3104e658c53c2ff998cb0"
+    },
+    {
+      "name": "replay-sdk-llvm-materialization.sh",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/replay-sdk-llvm-materialization.sh",
+      "original_sha256": "f7c0706f9ebc818e613ce76baa5589d5e2261b234f15407079247c4b7ef4e169"
+    },
+    {
+      "name": "sdk-launcher-lineage.json",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "b3f56d14d84308a81908a6707650704ef0bfaaa05a180fda4a8475f6c2b3787e"
+    },
+    {
+      "name": "seal-complete-preflight.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/seal-complete-preflight.py",
+      "original_sha256": "06fc8e34a65fdd9c030fd651151e2c203dbf82a6c3aa72158a12a3a94d3f4854"
+    },
+    {
+      "name": "seal-native-llvm-loader-replay.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/seal-native-llvm-loader-replay.py",
+      "original_sha256": "796afbae76b5acfdaebcce83b825400545bb1309977845a1328ff527bc32ccb3"
+    },
+    {
+      "name": "seal-sccache-log-capture.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/seal-sccache-log-capture.py",
+      "original_sha256": "364938cba0a846aea5be12b6641bd1cd56b074acd5074cb3053fac8ee7461b12"
+    },
+    {
+      "name": "seal-source-commit.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/seal-source-commit.py",
+      "original_sha256": "e8153f9b1a0e8ebd88a39954ee1bd46a107fe728ee3f92bc7d6d5f851fcb05d3"
+    },
+    {
+      "name": "seal-source-proof-before-amd-path.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "207a00fa2b4dfbd6945ed60b5692d35db007be98f341119aabbc2bb8ae2b8ddd"
+    },
+    {
+      "name": "seal-source-proof.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/seal-source-proof.py",
+      "original_sha256": "881ed0353652c95742f0d8c15ce728738aa69960ef0dce70bd2fc07ae8177307"
+    },
+    {
+      "name": "test-native-oci-cross-qualification.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/test-native-oci-cross-qualification.py",
+      "original_sha256": "8e2faa57a5103d2e41f33a00b19c2343e694dcb467b956ecc4f227ae95b248e2"
+    },
+    {
+      "name": "test-probe-cross-clang-image.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/test-probe-cross-clang-image.py",
+      "original_sha256": "5e55fd89a2c60ba938188e3cd5b4c46e36b26a418098a8b9c95490d78a0b130f"
+    },
+    {
+      "name": "update-live-preflight-handoff.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "e934d1b9cbbb28763335ff7e5ceb601849eadc4dee3e42ca06abf9f353ec38b4"
+    },
+    {
+      "name": "update-native-clang-wrapper-handoff.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "cea2123ebac7aa85f3058cdf21405fb45c1280bce4de6261d14e7cbce118b605"
+    },
+    {
+      "name": "update-native-host-smoke-handoff.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "5e4e19606c290451dd6cdbd2ed70add1758d5292df0089737cf4e023bc595536"
+    },
+    {
+      "name": "update-sdk-llvm-handoff.py",
+      "classification": "historical-evidence",
+      "reason": "Superseded version, run-specific checkpoint, migration or exact source-edit recipe; retained with its original receipts.",
+      "original_sha256": "1ddbafc81105221e7f42406ae3fd153c40a05d8424906ee1b522769c07215293"
+    },
+    {
+      "name": "verify-amd-parent-identity.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/verify-amd-parent-identity.py",
+      "original_sha256": "39ccdf05de498bb7d49dad991db6128407a2c7dfa503270e7e5cd94b5087e3eb"
+    },
+    {
+      "name": "autonomous-safe-prune.py",
+      "classification": "versioned",
+      "canonical": "linux/host-config/autonomous-safe-prune.py",
+      "original_sha256": "ce8994f698383cddd60912a8c501ff7d477fe2b89fe4c8cc8ae166968a7b5487"
+    },
+    {
+      "name": "complete-nerdctl-rootless-upgrade.py",
+      "classification": "historical-upgrade-receipt",
+      "canonical": "linux/host-config/install-nerdctl-full.sh",
+      "original_sha256": "38ab0e889d12d4083d8fdc9b34fea5a042037e44785b629f687cb8318634908f"
+    },
+    {
+      "name": "nerdctl-full-state.py",
+      "classification": "versioned",
+      "canonical": "linux/host-config/nerdctl-full-state.py",
+      "original_sha256": "3fbc22b03bc9085814b9f43f4a861b9d8476760d0e3363696b69d618ff509945"
+    },
+    {
+      "name": "verify-safe-prune.py",
+      "classification": "versioned",
+      "canonical": "linux/host-config/verify-safe-prune.py",
+      "original_sha256": "8ef37621094084b06ab22d44b5bf23994e956f6bc19020606b2de58f9f94aec8"
+    },
+    {
+      "name": "media-oci-handoff.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/media-oci-handoff.py",
+      "reason": "Exact native ROCm Media/GPU ancestry and ordinary Android handoff; no image or hardware acceptance."
+    },
+    {
+      "name": "media_handoff_profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/media_handoff_profile.py",
+      "reason": "Exact native ROCm Media/GPU ancestry and ordinary Android handoff; no image or hardware acceptance."
+    },
+    {
+      "name": "launch-normal-android.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/launch-normal-android.py",
+      "reason": "Exact native ROCm Media/GPU ancestry and ordinary Android handoff; no image or hardware acceptance."
+    },
+    {
+      "name": "stage_handoff_profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/stage_handoff_profile.py",
+      "reason": "Shared exact downstream source/native ancestry and explicit Android export; no source authentication or FINAL acceptance."
+    },
+    {
+      "name": "android_handoff_profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/android_handoff_profile.py",
+      "reason": "Shared exact downstream source/native ancestry and explicit Android export; no source authentication or FINAL acceptance."
+    },
+    {
+      "name": "android-oci-handoff.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/android-oci-handoff.py",
+      "reason": "Shared exact downstream source/native ancestry and explicit Android export; no source authentication or FINAL acceptance."
+    },
+    {
+      "name": "launch-local-final.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/launch-local-final.py",
+      "reason": "Complete canonical local FINAL plan in a bounded invocation-owned unit; stopped proof requires exact receipt and independent absence."
+    },
+    {
+      "name": "generate_require_mutations.py",
+      "classification": "versioned",
+      "canonical": "docs/scripts/generate_require_mutations.py",
+      "reason": "Preserved require-removal recipe preparation only; canonical merge, parsing and actual mutation tests remain mandatory."
+    },
+    {
+      "name": "runtime_storage_guard.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/runtime_storage_guard.py",
+      "reason": "One existing runtime bound by source, invocation and process identity; canonical regular-layer cleanup only, no acceptance."
+    },
+    {
+      "name": "launch-runtime-storage-guard.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/launch-runtime-storage-guard.py",
+      "reason": "Bounded storage guardian launch, raw worker status and stopped observation receipt."
+    },
+    {
+      "name": "runtime_launch_profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/runtime_launch_profile.py",
+      "reason": "Ordinary local runtime from exact native Android and app commit; no FINAL or hardware acceptance."
+    },
+    {
+      "name": "launch-normal-runtime.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/launch-normal-runtime.py",
+      "reason": "Bounded ordinary runtime launch with mandatory native ancestry and owned cleanup."
+    },
+    {
+      "name": "owned_nerdctl_args.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/owned_nerdctl_args.py",
+      "reason": "Reviewed engine creation arguments retain invocation ownership; pulls and builds remain unchanged."
+    },
+    {
+      "name": "owned-nerdctl.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/owned-nerdctl.py",
+      "reason": "Exec the actual engine with invocation labels and raw status; requires ownership and cleanup companions."
+    },
+    {
+      "name": "runtime_source_profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/runtime_source_profile.py",
+      "reason": "Exact reviewed alternate runtime source requires its own complete proof while original Android/native parent bindings remain distinct; no image or FINAL acceptance."
+    },
+    {
+      "name": "image-acceptance.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/image-acceptance.py",
+      "reason": "Shared complete consumer runner; explicit local schema2 remains separate from public registry promotion."
+    },
+    {
+      "name": "image_acceptance_local.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/image_acceptance_local.py",
+      "reason": "Bind completed runtime/source/parent/worker/cleanup evidence to immutable local FINAL identity; synthetic fixtures do not establish actual consumers or inference."
+    },
+    {
+      "name": "compiler_unique_profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/compiler_unique_profile.py",
+      "reason": "Exact GNU_UNIQUE source, original compiler6 fingerprints and narrow LLVM input review; no build or cache acceptance."
+    },
+    {
+      "name": "run-media-lane-controls.sh",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/run-media-lane-controls.sh",
+      "original_sha256": "ca568c8fa19fbd603f120d50a542168e3eb5b6e664f5e3906fb914d42250c44f"
+    },
+    {
+      "name": "webgpu_media_lanes.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/webgpu_media_lanes.py",
+      "original_sha256": "a9d904f490d35463ce185bae3e9ca16c36904bec9debc073324e917fa8f218e0"
+    },
+    {
+      "name": "relocate-quality-venv.py",
+      "classification": "versioned",
+      "canonical": "linux/host-config/relocate-quality-venv.py",
+      "original_sha256": "1714712d6428b52a6fedf1112695a9c4208a45be6c98402832ef9809720a7044"
+    }
+  ],
+  "new_canonical_files": [
+    "linux/scripts/local-proof/gpu-oci-handoff.py",
+    "linux/scripts/local-proof/gpu_handoff_profile.py",
+    "linux/scripts/local-proof/launch-normal-media.py",
+    "linux/scripts/local-proof/compiler-prefix-diagnostic.py",
+    "linux/scripts/local-proof/launch-cross-clang-link-probe.py",
+    "linux/scripts/local-proof/probe-cross-clang-link.py",
+    "linux/scripts/local-proof/probe-cross-clang-link.sh",
+    "linux/scripts/local-proof/cross-clang-link-minimal.c",
+    "linux/scripts/local-proof/checkpoint-proof-runs.py",
+    "linux/scripts/local-proof/probe-soname-load.py",
+    "linux/scripts/local-proof/proof_profiles.py",
+    "linux/scripts/local-proof/proof_commands.py",
+    "linux/scripts/local-proof/proof_types.py",
+    "linux/scripts/local-proof/proof_subject.py",
+    "linux/scripts/local-proof/sdk_profile_fixture.py",
+    "linux/scripts/local-proof/test-sdk-image-profile.py",
+    "linux/scripts/local-proof/native_oci_layout.py",
+    "linux/scripts/local-proof/native_oci_seed.py",
+    "linux/scripts/local-proof/snapshot-live-configure.py",
+    "linux/scripts/local-proof/cache_capture_profile.py",
+    "linux/scripts/local-proof/normal_stage_launch.py",
+    "linux/scripts/local-proof/launch-normal-gpu.py",
+    "linux/scripts/local-proof/buildcache_transfer.py",
+    "linux/scripts/local-proof/seed-buildkit-cache.py",
+    "linux/scripts/local-proof/gpu_source_profile.py"
+  ]
+}

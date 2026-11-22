@@ -101,6 +101,13 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | ROCm | 10.1 | [rocm.docs.amd.com](https://rocm.docs.amd.com/) | Apache 2.0 / MIT (varies by component) |
 | MIGraphX | 2.18.0 | [github.com/ROCm/AMDMIGraphX](https://github.com/ROCm/AMDMIGraphX) | MIT |
+| pybind11 (MIGraphX source-build Python headers) | 3.1.0 | [github.com/pybind/pybind11](https://github.com/pybind/pybind11) | BSD 3-Clause |
+| rocm-cmake (MIGraphX source-build tools) | 0.14.0 | [github.com/ROCm/rocm-cmake](https://github.com/ROCm/rocm-cmake) | MIT |
+| Composable Kernel host code generator (MIGraphX source dependency) | 1.0.0 | [github.com/ROCm/composable_kernel](https://github.com/ROCm/composable_kernel) | MIT |
+| msgpack-c (MIGraphX source headers) | 3.3.0 | [github.com/msgpack/msgpack-c](https://github.com/msgpack/msgpack-c) | Boost 1.0 (including bundled Boost Predef/Preprocessor) |
+| abseil-cpp (MIGraphX source parser dependency) | 20250512.0 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
+| Protocol Buffers + utf8_range (MIGraphX source parsers) | 30.0 | [github.com/protocolbuffers/protobuf](https://github.com/protocolbuffers/protobuf) | BSD 3-Clause + MIT (bundled utf8_range) |
+| rocmlirTriton (prepared source; binary closure review remains open) | 2.0.0 | [github.com/ROCm/rocmlirTriton](https://github.com/ROCm/rocmlirTriton) | Apache 2.0 with LLVM exception / MIT / legacy NCSA (primary texts) |
 
 ### Optional Accelerator — Hailo (`Dockerfile.torch`)
 
@@ -120,7 +127,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | PyTorch | v2.14.1 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
 | TorchVision | v0.29.1 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
-| Flutter SDK | 3.47.9 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.50.1 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### Test runtimes (`Dockerfile.package`)
 
@@ -136,6 +143,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | OrchestrANT | develop | [github.com/Kataglyphis/OrchestrANT](https://github.com/Kataglyphis/OrchestrANT) | MIT |
+| NumPy | 2.5.4 | [numpy.org](https://numpy.org/) | BSD 3-Clause |
 
 ### LLM Stack (`llm-stack/Dockerfile`)
 
@@ -181,7 +189,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Vulkan SDK | 1.4.363.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
-| Flutter SDK | 3.47.9 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.50.1 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### GPU Layer
 
@@ -589,6 +597,7 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 This project patches the following upstreams before redistributing them. Both the Apache-2.0 and the GPL families require that modification be stated.
 
+- **MIGraphX — Linux Images** — The prepared Linux source build preserves negative zero-padding semantics and selects the pinned interpreter, paired Python config and extension ABI. Patches: `linux/scripts/patches/migraphx/001-preserve-zero-pad-maxpool.patch`, `linux/scripts/patches/migraphx/002-select-pinned-python.patch`.
 - **GStreamer — Windows Image** — The Windows build patches a GES symbol rename, and carries upstream GStreamer commit 17d22abe89 in gst-plugins-bad's ext/dtls/gstdtlsconnection.c (an empty BIO read signals retry, not EOF) until GSTREAMER_VERSION moves past 1.29.2. Patches: `windows/scripts/patches/gstreamer/001-ges-commit-rename.patch`.
 - **FFmpeg — Windows Image** — The Windows build patches configure to allow MSYS2 builds. Patches: `windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch`.
 

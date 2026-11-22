@@ -186,6 +186,21 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=cache,target
     bash /opt/scripts/packaging/uv-cache-seed.sh verify /opt/uv-cache-seed
 ENV PYTHON_UV_CACHE_SEED=/opt/uv-cache-seed
 
+# Probe dependencies stay outside the exact twin-family store and never require a smoke-time fetch.
+COPY --chmod=755 linux/scripts/06-packaging/build-free-threaded-probe-deps.sh linux/scripts/06-packaging/free-threaded-probe-deps.py /opt/scripts/packaging/
+COPY linux/scripts/06-packaging/free-threaded-probe-deps.json /opt/scripts/packaging/free-threaded-probe-deps.json
+LABEL kataglyphis.step=free-threaded-probe-deps
+RUN --mount=type=secret,id=asset_mirror,required=false \
+    --mount=type=secret,id=sccache_s3,required=false \
+    --mount=type=cache,target=/var/cache/ft-probe-deps,sharing=locked,id=ft-probe-deps-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=bind,source=linux/scripts/01-core/sccache-s3-level.sh,target=/opt/scripts/core/sccache-s3-level.sh,ro \
+    set -euo pipefail; \
+    TARGETARCH="${TARGETARCH}" bash /opt/scripts/packaging/build-free-threaded-probe-deps.sh; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
+
 # WORKDIR is created root-owned, so chown it; drop the sudo shim and the real setuid sudo, pure attack surface at uid 1001.
 LABEL kataglyphis.step=runtime-user
 RUN id -u kataglyphis >/dev/null 2>&1 || useradd -m -l -u ${RUNTIME_UID} -s /bin/bash kataglyphis; \
