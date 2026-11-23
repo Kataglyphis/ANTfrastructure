@@ -1263,7 +1263,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **7404 entries** over **858 distinct test commands**; both digits are
+manifest holds **7407 entries** over **859 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -4594,6 +4594,7 @@ nobody:
 | a `permissions:` block | nowhere | included `jotrockenmitlocken`'s `web.yml` (then `dart.yml`), which consumes 14 distinct secrets and ran four FTP deploys on the repository default token until it declared `permissions: contents: read` on 2026-09-14 |
 | `if-no-files-found: error` | nowhere | includes the release-package uploads — the artifacts a tag actually ships, which is where an empty upload is worst |
 | `sha-pin`: every third-party `uses:` at a 40-hex commit SHA | the `# vX.Y.Z` comments beside the pins | a tag can be moved to code nobody reviewed; local `./` actions and `Kataglyphis/ANTfrastructure/...@develop` are exempt, and a `docker://` image needs an `@sha256:` digest |
+| `run-filter`: each `workflow_run.workflows` entry, read as GitHub's filter pattern, matches a workflow name in the tree | nowhere; the names were copied as plain text | every consumer's `retry-disk-refusal.yml` wrote `build + test`, where `+` repeats the space, so the retry never ran; armed from the start like the runner ban (2026-11-23) |
 
 The counts are deliberately not written here. They live once, as the CENSUS rows
 of `linux/scripts/workflow-conventions.allow`, where they are the gate's own

@@ -1751,6 +1751,10 @@
   "baseline": 19.3,
   "per_entry": 7.64
  },
+ "bash linux/scripts/tests/test-workflow-run-filters.sh": {
+  "baseline": 0.4,
+  "per_entry": 0.4
+ },
  "bash linux/scripts/tests/test-workflow-lint.sh": {
   "baseline": 11.16,
   "per_entry": 10.7

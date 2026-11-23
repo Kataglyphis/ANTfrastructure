@@ -1,5 +1,29 @@
 [
  {
+  "id": "workflow-lint.run-filter-plus-repeats",
+  "target": "linux/scripts/verify_workflow_conventions.py",
+  "find": "            out[-1] = f\"(?:{out[-1]}){ch}\"\n",
+  "replace": "            out.append(re.escape(ch))\n",
+  "test": "bash linux/scripts/tests/test-workflow-run-filters.sh",
+  "why": "GitHub reads '+' as a repeat, so a lint that took it literally passed filters that never trigger"
+ },
+ {
+  "id": "workflow-lint.run-filter-class-grammar",
+  "target": "linux/scripts/verify_workflow_conventions.py",
+  "find": "_FILTER_CLASS = re.compile(r\"\\[([A-Za-z0-9-]+)\\]\")",
+  "replace": "_FILTER_CLASS = re.compile(r\"\\[([^\\]]+)\\]\")",
+  "test": "bash linux/scripts/tests/test-workflow-run-filters.sh",
+  "why": "a '[ci <lane>]' filter is invalid on GitHub and starts a phantom run on every completed workflow"
+ },
+ {
+  "id": "workflow-lint.run-filter-must-match",
+  "target": "linux/scripts/verify_workflow_conventions.py",
+  "find": "        if not any(regex.fullmatch(name) for name in WORKFLOW_NAMES):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-workflow-run-filters.sh",
+  "why": "a filter that matches no workflow name never triggers, and the retry it guards silently never ran"
+ },
+ {
   "id": "packaging.ort-runtime-preflight",
   "target": "linux/scripts/06-packaging/ort-runtime-bundle.sh",
   "find": "    [ -f \"${ort_file}\" ] || { printf",
@@ -34123,8 +34147,8 @@
  {
   "id": "workflow-lint.sha-pin-composite",
   "target": "linux/scripts/verify_workflow_conventions.py",
-  "find": "if is_action and name in (\"job-timeout\", \"permissions\"):",
-  "replace": "if is_action and name in (\"job-timeout\", \"permissions\", \"sha-pin\"):",
+  "find": "if is_action and name in (\"job-timeout\", \"permissions\", \"run-filter\"):",
+  "replace": "if is_action and name in (\"job-timeout\", \"permissions\", \"run-filter\", \"sha-pin\"):",
   "test": "bash linux/scripts/tests/test-workflow-sha-pin.sh",
   "why": "the hub's composite actions run inside every consumer job, so their uses: lines need the same pin"
  },

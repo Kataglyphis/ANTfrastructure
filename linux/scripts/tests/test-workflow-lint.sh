@@ -414,7 +414,7 @@ t_assert_eq "1" "$(t_rc _conv "${d}")" \
   "unarmed is exactly when an unreadable workflow would otherwise pass as clean"
 _out="$(t_out _conv "${d}")"
 t_assert_contains "${_out}" "[parse]"
-t_assert_contains "${_out}" "NONE of the five conventions was graded over it"
+t_assert_contains "${_out}" "NONE of the six conventions was graded over it"
 
 t_case "a root with no .github refuses rather than reporting green over nothing"
 empty="$(mktemp -d "${_work}/empty.XXXXXX")"

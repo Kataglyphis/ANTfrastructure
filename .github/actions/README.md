@@ -25,7 +25,11 @@ re-runs one that carries exactly that title, through the one-job endpoint; each 
 completion handles the next refused job, up to `max-attempts` (default 4). Any other failure stays
 failed and is never re-run. `workflow_run` needs a file per repository and its lane names, because a
 hub token has no write access elsewhere: copy
-[`retry-disk-refusal.yml`](../workflows/retry-disk-refusal.yml) and name your lanes. Its token needs
+[`retry-disk-refusal.yml`](../workflows/retry-disk-refusal.yml) and name your lanes. The names are GitHub filter
+patterns, not literal text: escape `+ ? * [ ] ! \` with a backslash, single-quoted in YAML (`'Linux x64 · build \+
+test'`). An unescaped `+` repeats the character before it, so the filter never matched and the retry never ran; a
+`[` that opens no a-z, A-Z or 0-9 range is invalid and starts a phantom run on every completed workflow. The
+workflow lint's `run-filter` check fails both. Its token needs
 `actions: write` and `checks: read`. Limits: a job that `needs` a refused job and ran anyway re-runs
 with it, and a step that prints that exact annotation itself would count as a refusal. A new runner
 may be small again; past `max-attempts` the run stays red with a warning.

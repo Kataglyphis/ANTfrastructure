@@ -17,6 +17,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-23 — workflow_run filters are graded as GitHub patterns
+
+- `verify_workflow_conventions.py` gains its sixth check, `run-filter`, armed from the start: each
+  `on.workflow_run.workflows` entry is read with GitHub's filter grammar (`*`, `**`, `?` and `+` repeating the
+  character before them, `[...]` with only a-z, A-Z and 0-9 ranges, `\` escapes) and must match a workflow's name
+  in the tree. Every consumer's `retry-disk-refusal.yml` named its lanes as `"... build + test"`, where `+` repeats
+  the space, so the filter never matched and a disk refusal on those lanes was never retried; BeschleunigerBallett's
+  `[ci <lane>]` was no valid pattern and started a phantom run on every completed workflow (found by its CI track,
+  fixed there in e6832053). The hub's own `'Docs · build \+ publish'` is escaped; the consumers escape theirs at
+  their next pin (OxidANT 4, AccelerANTgine 3, OmniAccelerANT 4, OrchestrANT 3, WebDavClient 2 filters). The
+  README says the names are patterns. `test-workflow-run-filters.sh`, three mutations.
+
 ## 2026-11-23 — hardening's PIE reaches a target from any scope (CON297)
 
 - `myproject_enable_hardening` set `CMAKE_POSITION_INDEPENDENT_CODE` in the caller's scope: called from a function,
