@@ -93,12 +93,24 @@ class TinyGenaiModel(unittest.TestCase):
         cases = self.oracle["cases"]
         self.assertEqual(len({c["name"] for c in cases}), len(cases), "names are unique")
         kinds = {c["expect"].get("error") for c in cases} - {None}
-        self.assertEqual(kinds, {"invalid_options", "generation_failed"})
+        self.assertEqual(kinds, {"invalid_options", "generation_failed", "context_length_exceeded"})
         greedy = cases[0]["expect"]
         self.assertEqual((greedy["text"], greedy["ids"], greedy["finish"]),
                          (self.oracle["continuation"], self.oracle["continuation_ids"], "length"))
         for case in cases:
             self.assertTrue(("error" in case["expect"]) != ("text" in case["expect"]), case["name"])
+
+    def test_the_refusals_before_genai_hold_what_they_name(self) -> None:
+        by_name = {c["name"]: c for c in self.oracle["cases"]}
+        self.assertNotIn(by_name["a role outside the four"]["messages"][0]["role"],
+                         {"system", "user", "assistant", "tool"})
+        # JSON holds no NaN: the string stands for it, and each binding's replay turns it into one.
+        self.assertEqual(by_name["a NaN temperature"]["options"]["temperature"], "NaN")
+        over = by_name["the prompt and the budget over the context"]["options"]["max_new_tokens"]
+        context = self.config("genai_config.json")["model"]["context_length"]
+        self.assertGreater(len(self.oracle["prompt_ids"]) + over, context)
+        self.assertIn("\0", by_name["a NUL byte in a message"]["messages"][0]["content"])
+        self.assertEqual(by_name["a NUL byte in a stop string"]["options"]["stop"], ["\0"])
 
     def test_the_schema_case_names_an_answer_the_model_never_predicts(self) -> None:
         case = self.oracle["schema_case"]

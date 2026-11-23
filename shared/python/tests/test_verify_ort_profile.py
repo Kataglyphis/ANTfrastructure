@@ -2,6 +2,7 @@
 """Exercise the GPU proof against real ORT event shapes and misleading profiles."""
 
 import json
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -122,6 +123,22 @@ class ProfileTest(unittest.TestCase):
         self.assertEqual(self.run_profile(profile, "cpu").returncode, 0)
         self.assertNotEqual(self.run_profile(profile, "cuda").returncode, 0)
         self.assertNotEqual(self.run_profile(profile, "migraphx").returncode, 0)
+
+    def test_operator_counts_is_importable_and_counts_model_operators_only(self) -> None:
+        # OrchestrANT's bundle imports this rule instead of keeping a copy (CON289).
+        counts = runpy.run_path(str(SCRIPT))["operator_counts"]
+        events = [
+            profile_node(1, "CUDAExecutionProvider", "Conv"),
+            profile_node(2, "CUDAExecutionProvider", "MemcpyToHost"),
+            profile_node(3, "CPUExecutionProvider", "Relu"),
+            {"cat": "Node", "args": {"provider": "MIGraphX"}},
+            *profile_runs(),
+        ]
+        self.assertEqual(
+            counts(events), {"CUDAExecutionProvider": 1, "CPUExecutionProvider": 1}
+        )
+        with self.assertRaises(TypeError):
+            counts({"cat": "Node"})
 
     def test_wrong_top_level_and_empty_nodes_fail(self) -> None:
         self.assertNotEqual(self.run_profile({}, "cuda").returncode, 0)

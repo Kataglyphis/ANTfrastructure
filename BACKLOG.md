@@ -509,7 +509,10 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       (`scripts/verify-ort-gpu-profile.py`) and here (`shared/python/verify_ort_profile.py`, the only copy with mutation
       tests). OxidANT repoints its callers and deletes its copy (its own item). OrchestrANT needs an importable
       `operator_counts` that passes its lint, because its Cythonized wheel strips the `.py` files. Done when neither
-      consumer holds a copy.
+      consumer holds a copy. **In source since 2026-11-23:** `verify_ort_profile.py` exports `model_nodes` and
+      `operator_counts`, which its `main` uses, and a test imports the count. Owner decision 2026-11-23: OrchestrANT's
+      `setup.py` copies the module into the package at build time, where Cython compiles it with the rest, and the
+      source tree reads the same file; its own copy goes. Left: that step in OrchestrANT.
 
 ## Open — Flet clients for OrchestrANT's UIs
 
@@ -615,8 +618,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       descending score with ties to the lower row, score = objectness × the best class over every class column),
       two overlapping boxes with equal scores among them. Each binding replays the cases at its next pin.
       **In source since 2026-11-22:** (a), 11 D8 stream cases and `shared/contracts/openai-chat-answers.json` with 10
-      whole answers, one shape test over both and two recipes, and (d). Left: (b), (c), (e), and each binding's
-      replay of the new cases at its next pin (OxidANT, OrchestrANT, OmniAccelerANT).
+      whole answers, one shape test over both and two recipes, and (d). **Since 2026-11-23:** (b),
+      `shared/contracts/think-split.json` with 11 cases and `final` cut at a block that never closes (owner that day),
+      replayed by `test-think-split.sh` through a reference splitter; (c), the fixture's five refusals before GenAI
+      runs, the NaN temperature written as the string `"NaN"` (owner that day). Left: (e), and each binding's replay
+      of the new cases at its next pin; the D8 stream cases first, in OxidANT, OrchestrANT and OmniAccelerANT.
 ## Open — Linux image (all arches)
 
 - [ ] **CON238 — two test tools the images lack: cargo-mutants and pytest-timeout** [S, ★★]. Found by the audit

@@ -22,6 +22,28 @@ PROVIDERS = {
 }
 
 
+def model_nodes(events: object) -> list[dict]:
+    """The model Node events, each with its provider and operator; memcpy and other trace records prove nothing."""
+    if not isinstance(events, list):
+        raise TypeError("profile must be a list of events")
+    return [
+        event
+        for event in events
+        if isinstance(event, dict)
+        and event.get("cat") == "Node"
+        and isinstance(event.get("args"), dict)
+        and isinstance(event["args"].get("provider"), str)
+        and isinstance(event["args"].get("op_name"), str)
+        and event["args"]["op_name"].strip()
+        and not event["args"]["op_name"].strip().casefold().startswith("memcpy")
+    ]
+
+
+def operator_counts(events: object) -> collections.Counter[str]:
+    """Model operators by provider: the one counting rule, which OrchestrANT's bundle imports too (CON289)."""
+    return collections.Counter(event["args"]["provider"] for event in model_nodes(events))
+
+
 def interval(event: dict) -> tuple[int, float, float]:
     """Require a well-formed complete profiling interval and process identity."""
     pid, start, duration = event.get("pid"), event.get("ts"), event.get("dur")
@@ -87,24 +109,10 @@ def main() -> int:
         parser.error("--min-runs must be positive")
     try:
         events = json.loads(args.profile.read_text(encoding="utf-8"))
-        if not isinstance(events, list):
-            raise TypeError("profile must be a list of events")
-        model_nodes = [
-            event
-            for event in events
-            if isinstance(event, dict)
-            and event.get("cat") == "Node"
-            and isinstance(event.get("args"), dict)
-            and isinstance(event["args"].get("provider"), str)
-            and isinstance(event["args"].get("op_name"), str)
-            and event["args"]["op_name"].strip()
-            and not event["args"]["op_name"].strip().casefold().startswith("memcpy")
-        ]
-        counts = collections.Counter(event["args"]["provider"] for event in model_nodes)
+        nodes = model_nodes(events)
+        counts = collections.Counter(event["args"]["provider"] for event in nodes)
         if args.min_runs is not None:
-            require_profiled_runs(
-                events, model_nodes, PROVIDERS[args.device], args.min_runs
-            )
+            require_profiled_runs(events, nodes, PROVIDERS[args.device], args.min_runs)
     except (OSError, TypeError, ValueError, OverflowError, UnicodeError) as error:
         print(f"Invalid ORT profile: {error}", file=sys.stderr)
         return 1
