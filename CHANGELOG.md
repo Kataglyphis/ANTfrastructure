@@ -17,6 +17,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-23 — CON288 done: every contract case replays in its bindings
+
+- **CON288 is done.** Each shared case file the oxidation roadmap asked for exists and replays where it belongs: the
+  D8 stream cases and whole answers (OxidANT c10095f, OrchestrANT 9c3882b, OmniAccelerANT 20c940a), the think split
+  (OxidANT 5bf5639, OrchestrANT 3abd84e, OmniAccelerANT 2620136), the fixture's refusals (OxidANT 5bf5639, OrchestrANT
+  3abd84e, AccelerANTgine 5207eb7), and ModelANT's full-size frames by tensor digest and raw-head cases (ModelANT
+  b47ed40 and f845b60). All three detectors match the four frames bit for bit (OrchestrANT 2d82f87, OxidANT c881224,
+  AccelerANTgine cedb886); OrchestrANT and AccelerANTgine replay the raw heads, and AccelerANTgine's suppression now
+  sorts stably, so equal scores keep the lower candidate (D6). OxidANT decodes no raw head. AccelerANTgine's think
+  split rides its text pilot, OxidANT's roadmap step 4.
+
 ## 2026-11-23 — CON289 done; CON288's cases replayed in every binding
 
 - **CON289 is done:** no consumer keeps its own ORT-profile count. OxidANT dropped its copy earlier (56865c4), and
