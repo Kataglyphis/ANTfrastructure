@@ -17,6 +17,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-23 — IWYU's fatal errors are unread units
+
+- `code_quality_run_iwyu` counted only `: error:`, but IWYU writes `: fatal error:` for a missing header, so a
+  planted one stayed green in BeschleunigerBallett (found by its CI track). It counts both; one case, one mutation.
+  `failure-modes.md` explains why GCC still warns in a SYSTEM header at an LTO link (spdlog's 8
+  `-Wstringop-overflow` in BeschleunigerBallett's profiling job), and CON299 queues a shared check that refuses
+  build-time files in an install tree.
+
 ## 2026-11-23 — an IWYU report is green only when every unit was read (CON295 (a))
 
 - `code_quality_run_iwyu` read only the log's error lines, so a missing driver (status 127), a driver that stopped

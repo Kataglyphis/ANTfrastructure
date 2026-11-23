@@ -59368,11 +59368,19 @@
   "replace": ">\"${log}\" 2>&1"
  },
  {
+  "id": "lib.iwyu-fatal-error-is-red",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "grep -cE ': (fatal )?error:'",
+  "replace": "grep -cE ': error:'",
+  "test": "bash linux/scripts/tests/test-code-quality-iwyu.sh",
+  "why": "IWYU writes 'fatal error:' for a missing header, and a planted one stayed green in BeschleunigerBallett"
+ },
+ {
   "why": "grep -c exits 1 on a log without errors, which aborts a strict caller on the healthy path",
   "test": "bash linux/scripts/tests/test-code-quality-iwyu.sh",
   "id": "lib.iwyu-clean-log-is-not-an-abort",
   "target": "linux/scripts/lib/code-quality.sh",
-  "find": "errors=\"$(grep -c ': error:' \"${log}\" || true)\"",
-  "replace": "errors=\"$(grep -c ': error:' \"${log}\")\""
+  "find": "errors=\"$(grep -cE ': (fatal )?error:' \"${log}\" || true)\"",
+  "replace": "errors=\"$(grep -cE ': (fatal )?error:' \"${log}\")\""
  }
 ]

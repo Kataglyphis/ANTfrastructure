@@ -3526,6 +3526,18 @@ class 2, the `printf | grep -q` form).
 first export early and then writes 200 000 lines; the recipes `onnx-ep-amdgpu.exports-grep-reads-whole-table`
 and `onnx-ep-tensorrt.verify-exports-grep-reads-whole-table` prove the stand-in bites.
 
+### GCC warns in a SYSTEM header anyway: `-Wstringop-overflow` at the LTO link
+
+**Symptom.** A third-party library added as SYSTEM still shows warnings from its headers, but only in an LTO
+build: BeschleunigerBallett's profiling job logged 8 `spdlog/fmt/bundled/format.h:1209: -Wstringop-overflow=`
+after spdlog became a SYSTEM subdirectory, while its GCC test job logged none (2026-11-23).
+
+**Cause.** SYSTEM silences the front end's diagnostics. `-Wstringop-overflow` and its kin come from GCC's middle
+end, which at an LTO link runs again over the inlined code with no memory of which header it came from.
+
+**Fix.** Build that library with `INTERPROCEDURAL_OPTIMIZATION OFF` (BeschleunigerBallett does for spdlog), or
+count those warnings as the library's in a warning ratchet; do not drop SYSTEM.
+
 ## The docs lock check asks for setuptools
 
 **Symptom.** `docs/uv.lock is missing or stale`, right after `Failed to build sphinx-kataglyphis-theme`,

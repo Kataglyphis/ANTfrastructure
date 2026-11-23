@@ -369,7 +369,8 @@ code_quality_run_iwyu() {
   local status=0
   iwyu_tool -p "${db_dir}" "$@" -- "${CODE_QUALITY_IWYU_ARGS[@]}" >"${log}" 2>&1 || status=$?
   local errors changed units_read
-  errors="$(grep -c ': error:' "${log}" || true)"
+  # A missing header is "fatal error:", and that unit was read no further than an "error:" one.
+  errors="$(grep -cE ': (fatal )?error:' "${log}" || true)"
   changed="$({ grep -oE '^The full include-list for .*:$' "${log}" || true; } | sort -u | wc -l)"
   units_read="$(_code_quality_iwyu_units_read "${log}" "$@")"
   cat "${log}"

@@ -51,6 +51,11 @@ stub 0 'src/a.cpp:12:1: error: PCH file uses a newer PCH format that cannot be r
 run src/a.cpp >/dev/null
 t_assert_eq 1 "$?" "an unread unit must fail the gate"
 
+t_case "a missing header is a fatal error, and that unit is red too"
+stub 0 "src/a.cpp:3:10: fatal error: 'missing.h' file not found" '(src/a.cpp has correct #includes/fwd-decls)'
+run src/a.cpp >/dev/null
+t_assert_eq 1 "$?" "a fatal error must fail the gate, as IWYU read that unit no further"
+
 t_case "a driver that did not run, or stopped early, is red"
 stub 127
 t_assert_contains "$(run src/a.cpp)" "reported on 0 of 1 unit(s) (iwyu_tool exited 127)"
