@@ -53,31 +53,32 @@ _section_fallback() {
   t_assert_contains "${out}" "verified from file://${FORK}"
 }
 
+# <pins> <version> <primary> <dir> <message>: the fetch must refuse with status 1 and say why; REFUSED keeps the output.
+_refused() {
+  local rc=0
+  REFUSED="$(_fetch "$1" ort_source_fetch demo "$2" "$3" "$4")" || rc=$?
+  t_assert_eq 1 "${rc}" "refusal status for $4"
+  t_assert_contains "${REFUSED}" "$5"
+}
+
+_absent() { t_assert_eq absent "$([ -e "$1" ] && echo present || echo absent)" "no checkout left at $1"; }
+
 _section_moved_tag() {
   t_case "an upstream tag at another commit is fatal and never falls back"
-  local out rc=0
-  out="$(_fetch "demo|v9.9.9|${COMMIT_A}|file://${FORK}" ort_source_fetch demo v9.9.9 "file://${UPSTREAM}" "${ROOT}/moved")" || rc=$?
-  t_assert_eq 1 "${rc}" "moved tag status"
-  t_assert_contains "${out}" "not the pinned ${COMMIT_A}"
-  case "${out}" in *"falling back"*) t_assert_eq "no fallback" "fallback attempted" ;; *) t_assert_eq 1 1 ;; esac
+  _refused "demo|v9.9.9|${COMMIT_A}|file://${FORK}" v9.9.9 "file://${UPSTREAM}" "${ROOT}/moved" "not the pinned ${COMMIT_A}"
+  case "${REFUSED}" in *"falling back"*) t_assert_eq "no fallback" "fallback attempted" ;; *) t_assert_eq 1 1 ;; esac
 }
 
 _section_unavailable() {
   t_case "a commit absent everywhere fails and removes the partial checkout"
-  local out rc=0
-  out="$(_fetch "demo|v1.0.0|${MISSING}|file://${FORK}" ort_source_fetch demo v1.0.0 "file://${ROOT}/gone" "${ROOT}/missing")" || rc=$?
-  t_assert_eq 1 "${rc}" "unavailable status"
-  t_assert_contains "${out}" "is unavailable from"
-  t_assert_eq absent "$([ -e "${ROOT}/missing" ] && echo present || echo absent)" "partial checkout"
+  _refused "demo|v1.0.0|${MISSING}|file://${FORK}" v1.0.0 "file://${ROOT}/gone" "${ROOT}/missing" "is unavailable from"
+  _absent "${ROOT}/missing"
 }
 
 _section_stale_pin() {
   t_case "a version bump without a new pin fails before any fetch"
-  local out rc=0
-  out="$(_fetch "demo|v1.0.0|${COMMIT_A}|" ort_source_fetch demo v2.0.0 "file://${UPSTREAM}" "${ROOT}/stale")" || rc=$?
-  t_assert_eq 1 "${rc}" "stale pin status"
-  t_assert_contains "${out}" "pin is for v1.0.0 but the build asks for v2.0.0"
-  t_assert_eq absent "$([ -e "${ROOT}/stale" ] && echo present || echo absent)" "no checkout"
+  _refused "demo|v1.0.0|${COMMIT_A}|" v2.0.0 "file://${UPSTREAM}" "${ROOT}/stale" "pin is for v1.0.0 but the build asks for v2.0.0"
+  _absent "${ROOT}/stale"
 }
 
 _section_bad_pins() {
