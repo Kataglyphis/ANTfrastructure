@@ -17,6 +17,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-23 — IWYU reports on the units without modules (CON295 (a))
+
+- IWYU never ran: `myproject_apply_iwyu` set the property on the INTERFACE target `myproject_options`, which reaches
+  no compile, and the image's `include-what-you-use` 0.23 is built on clang 19, so it cannot load the clang 23
+  build's module files ("PCH file uses a newer PCH format"). The owner chose a report on the plain units:
+  `code_quality_find_iwyu_files` lists the units that neither declare nor import a module (5 of AccelerANTgine's 37,
+  35 of BeschleunigerBallett's 121), and `code_quality_run_iwyu` runs `iwyu_tool` over them and counts the files
+  with suggestions. Suggestions stay green; a unit IWYU could not read is red. `myproject_ENABLE_IWYU` is now OFF.
+  `test-code-quality-iwyu.sh` covers the selection and the verdict, with three mutations.
+
 ## 2026-11-23 — CON288 done: every contract case replays in its bindings
 
 - **CON288 is done.** Each shared case file the oxidation roadmap asked for exists and replays where it belongs: the

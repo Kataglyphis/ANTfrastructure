@@ -239,6 +239,10 @@
   "baseline": 2.29,
   "per_entry": 2.42
  },
+ "bash linux/scripts/tests/test-code-quality-iwyu.sh": {
+  "baseline": 0.3,
+  "per_entry": 0.3
+ },
  "bash linux/scripts/tests/test-code-quality-walk.sh": {
   "baseline": 0.23,
   "per_entry": 0.22

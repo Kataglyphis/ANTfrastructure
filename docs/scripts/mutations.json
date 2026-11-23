@@ -16476,6 +16476,30 @@
   "why": "the check would grade with PATH's clang-format after the pinned one was found, which is the drift the pin exists to stop"
  },
  {
+  "id": "lib.iwyu-skips-module-units",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "(module|import)[[:space:]]+[[:alnum:]_<\"]' \"${file}\" ||",
+  "replace": "(module)[[:space:]]+[[:alnum:]_<\"]' \"${file}\" ||",
+  "test": "bash linux/scripts/tests/test-code-quality-iwyu.sh",
+  "why": "a unit that imports a module would reach IWYU, whose older clang cannot load the build's module files"
+ },
+ {
+  "id": "lib.iwyu-suggestions-stay-a-report",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "  if [[ \"${errors}\" -gt 0 ]]; then",
+  "replace": "  if [[ \"${errors}\" -gt 0 || \"${changed}\" -gt 0 ]]; then",
+  "test": "bash linux/scripts/tests/test-code-quality-iwyu.sh",
+  "why": "the owner chose a report first: include suggestions must not turn the static lane red"
+ },
+ {
+  "id": "lib.iwyu-unread-unit-is-red",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "  if [[ \"${errors}\" -gt 0 ]]; then",
+  "replace": "  if [[ \"${errors}\" -gt 99 ]]; then",
+  "test": "bash linux/scripts/tests/test-code-quality-iwyu.sh",
+  "why": "a unit IWYU could not parse was graded by nothing, and a green report over it would claim a check that never ran"
+ },
+ {
   "id": "lib.walk-skips-node-modules",
   "target": "linux/scripts/lib/code-quality.sh",
   "find": "  '*/node_modules/*' '*/.pub-cache/*'",

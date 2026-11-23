@@ -168,6 +168,14 @@ code_quality_find_clang_tidy_files() {
   _code_quality_find_extension_sources CODE_QUALITY_CLANG_TIDY_EXTENSIONS 'c cc cpp cxx' "$@"
 }
 
+# IWYU's own clang cannot load the build's module files, so it reads only units that neither declare nor import one.
+code_quality_find_iwyu_files() {
+  local file
+  while IFS= read -r file; do
+    grep -qE '^[[:space:]]*(export[[:space:]]+)?(module|import)[[:space:]]+[[:alnum:]_<"]' "${file}" || printf '%s\n' "${file}"
+  done < <(code_quality_find_clang_tidy_files "$@")
+}
+
 # Tracked files, not `dart format .`: CI installs Flutter inside the workspace, and the walk would reformat it.
 code_quality_find_dart_files() {
   code_quality_find_tracked_files "${1:-.}" '*.dart'
@@ -325,6 +333,28 @@ code_quality_cleanup_compile_db() {
   if [[ -n "${CODE_QUALITY_COMPILE_DB_TEMP_DIR:-}" ]]; then
     rm -rf "${CODE_QUALITY_COMPILE_DB_TEMP_DIR}"
     CODE_QUALITY_COMPILE_DB_TEMP_DIR=""
+  fi
+}
+
+# IWYU, report only (owner, CON295 (a)): <compile-db-dir> <log> <file>...; red only when a file could not be read.
+code_quality_run_iwyu() {
+  local db_dir="$1" log="$2"
+  shift 2
+  if [[ $# -eq 0 ]]; then
+    info "IWYU: no unit without modules to read"
+    return 0
+  fi
+  mkdir -p "$(dirname "${log}")"
+  # Its exit status counts suggestions in some releases, so the log decides.
+  "${CODE_QUALITY_IWYU_TOOL:-iwyu_tool}" -p "${db_dir}" "$@" -- "${CODE_QUALITY_IWYU_ARGS[@]}" >"${log}" 2>&1
+  local errors changed
+  errors="$(grep -c ': error:' "${log}")"
+  changed="$(grep -oE '^The full include-list for .*:$' "${log}" | sort -u | wc -l)"
+  cat "${log}"
+  info "IWYU: ${changed} file(s) with include suggestions from $# unit(s) read; report only"
+  if [[ "${errors}" -gt 0 ]]; then
+    err "IWYU could not read some units (${errors} error line(s) in ${log}); it graded nothing there."
+    return 1
   fi
 }
 

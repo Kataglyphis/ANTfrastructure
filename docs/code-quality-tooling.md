@@ -348,7 +348,7 @@ first include.
   from `linux/scripts/lib/code-quality.sh` — a library your project's own quality
   script sources, exposing `code_quality_run_clang_format`,
   `code_quality_check_clang_format`, `code_quality_prepare_compile_db`,
-  `code_quality_run_clang_tidy` and `code_quality_run_cmake_format` as separate
+  `code_quality_run_clang_tidy`, `code_quality_run_iwyu` and `code_quality_run_cmake_format` as separate
   steps to call in whatever order it wants. It is not a command you run: it has
   no `main`. Inside this repo only the `cmake-format` preflight slug
   (`check_cmake_format` in `preflight.sh`) and
@@ -356,6 +356,17 @@ first include.
   tracked-file helpers; per
   [`shared/config/README.md`](../shared/config/README.md) the consumers of its
   C++ steps are the downstream C++ projects.
+
+### include-what-you-use, a report on the files without modules
+
+The image's `include-what-you-use` is built on an older clang than the build, so it cannot load the build's
+module files: a unit that declares or imports a module fails with "PCH file uses a newer PCH format". The
+`myproject_ENABLE_IWYU` option is OFF, as it only ever set the property on the INTERFACE target
+`myproject_options`, which reaches no compile. Instead `code_quality_find_iwyu_files <root>...` lists the units
+without a module declaration or import, and `code_quality_run_iwyu <compile-db-dir> <log> <file>...` runs
+`iwyu_tool` over them (`CODE_QUALITY_IWYU_TOOL`, `CODE_QUALITY_IWYU_ARGS`) and prints how many files have
+suggestions. It is a report: suggestions stay green, and only a unit IWYU could not read is red, as that unit was
+graded by nothing (owner, CON295 (a), 2026-11-23).
 
 ### The failure mode to watch for
 
@@ -391,6 +402,8 @@ the caller's shell options.
 | `CODE_QUALITY_CLANG_TIDY_EXTENSIONS` | extensions fed to clang-tidy (TUs only) | `c cc cpp cxx` |
 | `CODE_QUALITY_CLANG_TIDY_ARGS` | extra clang-tidy arguments, e.g. per-project `-checks=` | empty (see axis 4) |
 | `CODE_QUALITY_CLANG_TIDY_FIX` | `true` appends `-fix` | `false` |
+| `CODE_QUALITY_IWYU_TOOL` | the IWYU driver `code_quality_run_iwyu` calls | `iwyu_tool` |
+| `CODE_QUALITY_IWYU_ARGS` | arguments after `--`, passed to each IWYU run | empty |
 | `CODE_QUALITY_COMPILE_DB_HINT` | sentence appended to the "missing compile_commands.json" error | — |
 | `CODE_QUALITY_CONTAINER_WORKSPACE` | container mount point remapped in a compile DB, as a whole path token: after a quote, a separator (space, `=`, `:`, `,`) or a listed joined option such as `-I`; empty disables | `/workspace` |
 | `CODE_QUALITY_GCC_TOOLCHAIN_PROBE_DIR` | directory whose absence means the container GCC is unavailable locally; empty disables the flag stripping | empty |
@@ -1250,7 +1263,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **7398 entries** over **856 distinct test commands**; both digits are
+manifest holds **7401 entries** over **857 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -3525,7 +3538,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 1125 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1126 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

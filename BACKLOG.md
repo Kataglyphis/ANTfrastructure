@@ -2430,9 +2430,11 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       moves to `linux/scripts/06-packaging` with the binaries as arguments; `Hardening.cmake`'s Linux branch adds PIE
       and `-z relro -z now` (BeschleunigerBallett passes none: "Hardening Linker Flags:" is empty in job
       135983570303); a PE twin for a repo's own binaries sits beside `Read-PeLayout`.
-- [ ] **CON295 — analyzers that run, and warnings that count** [M, ★; owner D10, D11]. (a) IWYU never runs: the
-      property sits on the INTERFACE target `myproject_options`, which does not pass it on; run it on the real
-      targets, report-only first. (b) cppcheck: BeschleunigerBallett's default ON goes, as the image has no binary
+- [ ] **CON295 — analyzers that run, and warnings that count** [M, ★; owner D10, D11]. (a) Done 2026-11-23 in the
+      hub: the image's IWYU is built on an older clang and reads no unit that declares or imports a module, so the
+      owner chose a report on the plain units: `code_quality_find_iwyu_files` and `code_quality_run_iwyu`, red only
+      for a unit it could not read, and `myproject_ENABLE_IWYU` is OFF. Left: AccelerANTgine's and
+      BeschleunigerBallett's static lanes call it. (b) cppcheck: BeschleunigerBallett's default ON goes, as the image has no binary
       and a skipped check misleads (D10). (c) Warnings in three steps (D11): third-party includes as SYSTEM
       (BeschleunigerBallett's GCC log: 124 spdlog and 12 nlohmann warnings), then a per-repo warning-count ratchet,
       then `myproject_WARNINGS_AS_ERRORS` for the product targets only. (d) Done 2026-11-21: the pattern-limits doc
