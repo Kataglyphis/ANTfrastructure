@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Admit a Media source that changes nothing a compiler, SDK or ROCm GPU image reads; no build, cache-hit or acceptance proof."""
 
 from __future__ import annotations

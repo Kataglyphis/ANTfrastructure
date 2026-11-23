@@ -61688,7 +61688,7 @@
   "why": "the Android helper needs its pins beside it in the image"
  },
  {
-  "id": "media-source.upstream-inputs-refused",
+  "id": "handoff.media-source-upstream-inputs-refused",
   "target": "linux/scripts/local-proof/media_source_profile.py",
   "find": "    assert not differing, ",
   "replace": "    assert True, ",
@@ -61696,7 +61696,7 @@
   "why": "a Media source that changes a mounted compiler, SDK or GPU input must not reuse the old GPU parent"
  },
  {
-  "id": "media-source.closure-compared",
+  "id": "handoff.media-source-closure-compared",
   "target": "linux/scripts/local-proof/media_source_profile.py",
   "find": "    assert _closures(producer) == _closures(source), ",
   "replace": "    assert True, ",
@@ -61704,7 +61704,7 @@
   "why": "the SDK and GPU selected-script contexts are image inputs too"
  },
  {
-  "id": "media-source.expanded-prefix",
+  "id": "handoff.media-source-expanded-prefix",
   "target": "linux/scripts/local-proof/media_source_profile.py",
   "find": "    return head if head == path else head.rsplit('/', 1)[0]",
   "replace": "    return path",
@@ -61712,7 +61712,7 @@
   "why": "an ARG-expanded mount must be compared over every expansion, not as a literal that never exists"
  },
  {
-  "id": "media-source.copy-sources",
+  "id": "handoff.media-source-copy-sources",
   "target": "linux/scripts/local-proof/media_source_profile.py",
   "find": "        paths |= {_literal_prefix(word) for word in words[:-1] if not word.startswith('--')}",
   "replace": "        pass",
@@ -61720,7 +61720,7 @@
   "why": "COPY sources are image inputs as much as bind mounts"
  },
  {
-  "id": "media-source.dockerfiles-fixed",
+  "id": "handoff.media-source-dockerfiles-fixed",
   "target": "linux/scripts/local-proof/media_source_profile.py",
   "find": "FIXED_INPUTS = ('.dockerignore', 'linux/.dockerignore', *UPSTREAM_DOCKERFILES)",
   "replace": "FIXED_INPUTS = ('.dockerignore', 'linux/.dockerignore')",
@@ -61728,7 +61728,7 @@
   "why": "an upstream Dockerfile edit re-keys its stage even when no mounted script changes"
  },
  {
-  "id": "media-source.ancestry",
+  "id": "handoff.media-source-ancestry",
   "target": "linux/scripts/local-proof/media_source_profile.py",
   "find": "    checked_run(['git', '-C', str(source), 'merge-base', '--is-ancestor', parent, head])",
   "replace": "    None",
@@ -61736,7 +61736,7 @@
   "why": "a Media source with unrelated history has no reviewed delta from its GPU parent"
  },
  {
-  "id": "media-source.other-revision",
+  "id": "handoff.media-source-other-revision",
   "target": "linux/scripts/local-proof/media_source_profile.py",
   "find": "    assert head != parent, ",
   "replace": "    assert True, ",
@@ -61744,7 +61744,7 @@
   "why": "the unchanged source already has the normal inheritance path"
  },
  {
-  "id": "media-source.rocm-gpu-only",
+  "id": "handoff.media-source-rocm-gpu-only",
   "target": "linux/scripts/local-proof/media_source_profile.py",
   "find": "    assert gpu['variant'] == 'rocm' and gpu['stage'] == 'gpu', ",
   "replace": "    assert True, ",
@@ -61752,7 +61752,7 @@
   "why": "the reviewed input list covers the ROCm GPU chain only"
  },
  {
-  "id": "media-source.distinct",
+  "id": "handoff.media-source-distinct",
   "target": "linux/scripts/local-proof/media_source_profile.py",
   "find": "    assert source != producer, ",
   "replace": "    assert True, ",
@@ -61760,7 +61760,7 @@
   "why": "the GPU source itself is no alternate"
  },
  {
-  "id": "media-source.full-proof",
+  "id": "handoff.media-source-full-proof",
   "target": "linux/scripts/local-proof/media_source_profile.py",
   "find": "    full = full_source(source, proof_path, head)",
   "replace": "    full = {'actual_full_registry_mutations': 17}",
@@ -61768,7 +61768,7 @@
   "why": "the alternate source needs its own complete preflight proof"
  },
  {
-  "id": "media-source.handoff-review",
+  "id": "handoff.media-source-handoff-review",
   "target": "linux/scripts/local-proof/stage_handoff_profile.py",
   "find": "        assert actual == review and str(source)",
   "replace": "        assert str(source)",
@@ -61776,7 +61776,7 @@
   "why": "the Media export must recompute the review rather than trust the recorded copy"
  },
  {
-  "id": "media-source.handoff-proof",
+  "id": "handoff.media-source-handoff-proof",
   "target": "linux/scripts/local-proof/stage_handoff_profile.py",
   "find": "        assert sha(proof) == invocation['source_full_preflight_sha256'], ",
   "replace": "        assert True, ",
@@ -61784,7 +61784,7 @@
   "why": "a changed proof file after launch must refuse the export"
  },
  {
-  "id": "media-source.launcher-paired",
+  "id": "handoff.media-source-launcher-paired",
   "target": "linux/scripts/local-proof/launch-normal-media.py",
   "find": "    if (args.media_source is None) != (args.media_source_proof is None):",
   "replace": "    if False:",
@@ -61792,7 +61792,7 @@
   "why": "a source without its proof, or a proof without its source, must refuse before any work"
  },
  {
-  "id": "media-source.launcher-rocm",
+  "id": "handoff.media-source-launcher-rocm",
   "target": "linux/scripts/local-proof/launch-normal-media.py",
   "find": "        if args.media_source is not None:\n            parser.error('an alternate Media source is reviewed for ROCm only')",
   "replace": "        if False:\n            parser.error('an alternate Media source is reviewed for ROCm only')",
@@ -61800,7 +61800,7 @@
   "why": "the NVIDIA lane has no reviewed alternate-source profile"
  },
  {
-  "id": "media-source.launcher-record",
+  "id": "handoff.media-source-launcher-record",
   "target": "linux/scripts/local-proof/launch-normal-media.py",
   "find": "source_full_preflight_sha256=sha(proof), Media_source_review=review)",
   "replace": "source_full_preflight_sha256=sha(proof))",
