@@ -17,6 +17,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-23 — RustDesk on a Windows host: Chocolatey updates, direct IP access, the permanent password
+
+- `docs/windows-host-setup.md` gains Phase F, the Windows counterpart of the Linux page's RustDesk phase.
+  winget has no RustDesk package and Scoop's is the portable exe without a service, so
+  `Install-RustDesk.ps1` installs and updates Chocolatey's `rustdesk.install` (the official MSI) and
+  registers the weekly SYSTEM task `RustDesk Update (choco)`. It backs up both config directories first,
+  refuses while a session is open, and runs Chocolatey's installer only with a valid Chocolatey Software
+  signature. `Set-RustDeskDirectAccess.ps1` turns on direct IP access and proves a RustDesk listener on
+  the port; `Set-RustDeskPassword.ps1` sets the permanent password, which RustDesk never shows again.
+- `WindowsRustDesk.Common.psm1` holds the CLI calls: `rustdesk.exe` is a GUI-subsystem binary that
+  prints only into a pipe, `--option` reads every value back, and the missing-admin reply becomes an
+  error. `Host.RustDesk.Tests.ps1` adds ten cases against a fake CLI; nine mutations all go red. Proven
+  on one host: 1.4.6 → 1.5.3 kept its config, and 1.5.3 listened on `[::]:21118` without a restart.
+
 ## 2026-11-23 — an IWYU report is green only when every unit was read (CON295 (a))
 
 - `code_quality_run_iwyu` read only the log's error lines, so a missing driver (status 127), a driver that stopped
