@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-23 — refresh SDK fallback fonts for Flutter 3.50.1
+
+- Pin every Noto Color Emoji v39 and Noto Sans Symbols 2 v25 chunk requested by
+  the built Flutter SDK, with SHA-256 verified against the original font downloads.
+
 ## 2026-11-22 — continue the local NVIDIA Android export through runtime and FINAL
 
 - Launch the amd64 and arm64/SBSA runtime from the verified same-target Android

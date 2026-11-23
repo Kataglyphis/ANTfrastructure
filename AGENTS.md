@@ -584,6 +584,7 @@ Five of them are RULES and stay here:
   Direct-wrapper complete receipts use the original closed evidence and unchanged canonical suite discovery; never synthesize driver run.json, re-seal or repeat exclusive cleanup.
   Native worker source tests require Dart, C/C++, Rust and sccache; use `ensure-native-worker-test-tools.sh` and preserve mandatory VM coverage.
   Flutter `--keep-cache` is a test-runner opt-in; fresh image installs retain their default bare-SDK policy.
+  Check the [fallback-font lock](linux/webserver/README.md#fallback-fonts-from-the-site) against the exact pinned Flutter SDK when its engine changes.
   Parity CLI copies carry `lib/cli-value-options.sh` and logging companions; retain usage alias binding and complete remaining arguments.
   `+CALLBACK` CLI dispatch uses an output count and an unconditional invocation; do not swallow the caller's active errexit policy.
   Container transport fixtures accept the shared runner security and value flags before parsing
