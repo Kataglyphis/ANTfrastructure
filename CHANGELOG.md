@@ -17,6 +17,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-23 — CON289 done; CON288's cases replayed in every binding
+
+- **CON289 is done:** no consumer keeps its own ORT-profile count. OxidANT dropped its copy earlier (56865c4), and
+  OrchestrANT's `setup.py` now copies `shared/python/verify_ort_profile.py` into `orchestrant/_hub` at build time,
+  where Cython compiles it into the wheel, while a checkout reads the hub's file itself (OrchestrANT 3abd84e; ce48210
+  keeps the copy in a wheel built from the sdist, which carries no `third_party`). Its bundle's
+  `ort_profile.operator_counts` calls the hub's rule.
+- **CON288:** every binding replays the new cases of (a) to (c): the D8 stream cases in OxidANT, OrchestrANT and
+  OmniAccelerANT, the think split in all three, and the fixture's refusals in OxidANT, OrchestrANT and
+  AccelerANTgine, whose C ABI gains status 11 for `context_length_exceeded`. (e) is in ModelANT b47ed40:
+  four full-size frames compared by tensor digest and seven raw-head decode cases under D6.
+
 ## 2026-11-23 — the think split, the fixture's refusals and an importable ORT count (CON288 (b), (c); CON289)
 
 - `shared/contracts/think-split.json` maps a reply's text pieces to `shown`, `answer` (OxidANT's per-block rule),

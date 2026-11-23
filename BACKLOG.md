@@ -503,17 +503,6 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       guard it (CON273 done). Left: done when a Windows publish shows one run per consumer lane on the new
       digest, which needs that host's `gh` login and `python3` on Git Bash's `PATH`.
 
-- [ ] **CON289 — consumers take the hub's ORT-profile counter** [S, ★]. Owner 2026-11-21 (the oxidation review's D15:
-      logic that acts on a consumer's own ORT environment belongs to the hub, engines and algorithms to OxidANT). One
-      counting rule lives in OrchestrANT (`orchestrant/smoke/ort_profile.py`), OxidANT
-      (`scripts/verify-ort-gpu-profile.py`) and here (`shared/python/verify_ort_profile.py`, the only copy with mutation
-      tests). OxidANT repoints its callers and deletes its copy (its own item). OrchestrANT needs an importable
-      `operator_counts` that passes its lint, because its Cythonized wheel strips the `.py` files. Done when neither
-      consumer holds a copy. **In source since 2026-11-23:** `verify_ort_profile.py` exports `model_nodes` and
-      `operator_counts`, which its `main` uses, and a test imports the count. Owner decision 2026-11-23: OrchestrANT's
-      `setup.py` copies the module into the package at build time, where Cython compiles it with the rest, and the
-      source tree reads the same file; its own copy goes. Left: that step in OrchestrANT.
-
 ## Open — Flet clients for OrchestrANT's UIs
 
 Owner decisions 2026-10-19: OrchestrANT's UIs are Flet (OrchestrANT 2aa1da8, the benchmark viewer;
@@ -602,27 +591,33 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       review's D5, D7 and D8, as recommended): shared case files are the family's differential suite, and every split
       the review found lacks them. (a) `shared/contracts/openai-stream-lines.json`: an error object without a message,
       falsy error values, a JSON chunk that is not an object, finish reasons beyond stop and length with the raw value
-      kept, usage with `total_tokens` and `reasoning_tokens`, float token counts, a line after `[DONE]`. Outcomes (D8):
-      any non-null `error` fails the stream, so does a chunk that is not an object, reading stops at `[DONE]`,
+      kept, usage with `total_tokens` and `reasoning_tokens`, float token counts, a line after `[DONE]`. Outcomes
+      (D8): any non-null `error` fails the stream, so does a chunk that is not an object, reading stops at `[DONE]`,
       whole-number floats count and negative counts are missing; `test-openai-stream-lines.sh:23` allows raw finish
-      values, and a sibling file holds whole, non-streamed answers. (b) A new `shared/contracts/think-split.json` (D5):
-      pieces to the text shown (`answer`, OxidANT's per-block rule) and to `final` (the text after the last
+      values, and a sibling file holds whole, non-streamed answers. (b) A new `shared/contracts/think-split.json`
+      (D5): pieces to the text shown (`answer`, OxidANT's per-block rule) and to `final` (the text after the last
       `</think>`, the lab's rule), the thinking count and late closes; cases with several blocks, text before
       `<think>`, an unclosed block after an answer, a late close inside one piece. (c) The tiny-model fixture
       (`linux/scripts/lib/tiny-genai-model.py`): a role outside the four, a NaN temperature, prompt plus budget over
       the context, a NUL byte in a message and in a stop string. (d) D7: `context_length_exceeded` joins the
       text-contract failures in `docs/language-ai.md`, which orchestrant-serve answers with 400. (e) ModelANT, which
-      keeps no BACKLOG, `contracts/inference-v1.json` (D6 keeps the raw-head layouts): full-size preprocessing cases as
-      tensor digests (2304x1296 stretched and letterboxed, an odd width with 4-byte row padding, RGBA with a plane
+      keeps no BACKLOG, `contracts/inference-v1.json` (D6 keeps the raw-head layouts): full-size preprocessing cases
+      as tensor digests (2304x1296 stretched and letterboxed, an odd width with 4-byte row padding, RGBA with a plane
       offset) and raw-head decode cases under D6's rules (same-class IoU > 0.45 in model-input pixels, a stable
-      descending score with ties to the lower row, score = objectness × the best class over every class column),
-      two overlapping boxes with equal scores among them. Each binding replays the cases at its next pin.
-      **In source since 2026-11-22:** (a), 11 D8 stream cases and `shared/contracts/openai-chat-answers.json` with 10
-      whole answers, one shape test over both and two recipes, and (d). **Since 2026-11-23:** (b),
+      descending score with ties to the lower row, score = objectness × the best class over every class column), two
+      overlapping boxes with equal scores among them. Each binding replays the cases at its next pin. **In source
+      since 2026-11-22:** (a), 11 D8 stream cases and `shared/contracts/openai-chat-answers.json` with 10 whole
+      answers, one shape test over both and two recipes, and (d). **Since 2026-11-23:** (b),
       `shared/contracts/think-split.json` with 11 cases and `final` cut at a block that never closes (owner that day),
       replayed by `test-think-split.sh` through a reference splitter; (c), the fixture's five refusals before GenAI
-      runs, the NaN temperature written as the string `"NaN"` (owner that day). Left: (e), and each binding's replay
-      of the new cases at its next pin; the D8 stream cases first, in OxidANT, OrchestrANT and OmniAccelerANT.
+      runs, the NaN temperature written as the string `"NaN"` (owner that day). **Replayed since 2026-11-23:** the D8
+      cases in OxidANT (c10095f), OrchestrANT (9c3882b) and OmniAccelerANT (20c940a); the think split in OxidANT
+      (5bf5639, a late close hides its piece's text unless a stop string ends the reply first), OrchestrANT (3abd84e,
+      `final`) and OmniAccelerANT (2620136); the fixture's refusals in OxidANT (5bf5639, the new
+      `context_length_exceeded`), OrchestrANT (3abd84e) and AccelerANTgine (5207eb7, C status 11). (e) in ModelANT
+      b47ed40: `digest_cases`, four full-size frames by tensor digest, and `raw_decode`, seven raw-head cases under
+      D6. Left: each detector's replay of (e) at its next contract lock, and AccelerANTgine's think split with its
+      text pilot (OxidANT's roadmap step 4).
 ## Open — Linux image (all arches)
 
 - [ ] **CON238 — two test tools the images lack: cargo-mutants and pytest-timeout** [S, ★★]. Found by the audit
