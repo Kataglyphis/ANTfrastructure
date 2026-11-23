@@ -590,6 +590,8 @@ copied to `packages`. With `-RequireCompleteInstall` a DLL the closure has to ad
 the installers pack the install tree and would all lack it; AccelerANTgine wants that, and
 BeschleunigerBallett does not set it yet. `-Runner` takes the build's logged cmake call.
 
+`New-PortableBundle -ForbidBuildTimeFiles` refuses an install tree that ships headers, CMake or pkg-config packages or import and static libraries (`Assert-InstallTreeLayout`, with `-AllowBuildTimeFile` for an SDK's own); a bundle once carried 52 gtest and gmock files (CON299). `linux/scripts/06-packaging/check-install-tree.sh <root> [--allow <path>]` applies the same rule to a Linux package tree.
+
 **x64 packages carry the same closure** (owner decision 2026-09-25). A clean x64 PC lacks the
 media stack and may lack the VC++ runtime too. A CMake consumer whose packages come from CPack
 fills the closure into a directory it names at configure time as

@@ -1,5 +1,29 @@
 [
  {
+  "id": "packaging.install-tree-cmake-packages",
+  "target": "linux/scripts/06-packaging/check-install-tree.sh",
+  "find": "BUILD_TIME='^(usr/)?(include|lib[^/]*(/[^/]+)?/(cmake|pkgconfig)|share/pkgconfig)/|\\.(lib|a)$'",
+  "replace": "BUILD_TIME='^(usr/)?(include)/|\\.(lib|a)$'",
+  "test": "bash linux/scripts/tests/test-check-install-tree.sh",
+  "why": "a bundle shipped gtest's CMake package, which only a build can use"
+ },
+ {
+  "id": "packaging.install-tree-static-libraries",
+  "target": "linux/scripts/06-packaging/check-install-tree.sh",
+  "find": "|share/pkgconfig)/|\\.(lib|a)$'",
+  "replace": "|share/pkgconfig)/'",
+  "test": "bash linux/scripts/tests/test-check-install-tree.sh",
+  "why": "a static or import library in a shipped tree is a build input, 52 of which a bundle carried"
+ },
+ {
+  "id": "packaging.install-tree-allow",
+  "target": "linux/scripts/06-packaging/check-install-tree.sh",
+  "find": "[[ \"${kept}\" == 1 ]] || found+=(\"${rel}\")",
+  "replace": "found+=(\"${rel}\")",
+  "test": "bash linux/scripts/tests/test-check-install-tree.sh",
+  "why": "without --allow an SDK that ships its headers on purpose could not use the check at all"
+ },
+ {
   "id": "lib.warning-census-tidy-is-not-a-warning",
   "target": "linux/scripts/verify_warning_census.py",
   "find": "if match and (tag is None or tag.startswith(\"-W\")) else None",

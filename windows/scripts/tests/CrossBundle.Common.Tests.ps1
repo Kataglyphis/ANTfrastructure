@@ -175,3 +175,16 @@ Describe 'New-PortableBundle' {
         }
     }
 }
+
+Describe 'Assert-InstallTreeLayout' {
+    It 'refuses headers, CMake and pkg-config packages and libraries, naming the count, and passes a runtime-only tree' {
+        Invoke-InTestDir { param($dir)
+            # Three runtime files, then gtest's header, CMake package, pkg-config file and import library.
+            'bin\app.exe', 'bin\app.dll', 'licenses\app\LICENSE', 'include\gtest\gtest.h', 'lib\cmake\GTest\GTestConfig.cmake',
+            'lib\pkgconfig\gtest.pc', 'lib\gtest.lib' | ForEach-Object { New-Item -ItemType File -Force -Path "$dir\$_" } | Out-Null
+            Assert-Throws { Assert-InstallTreeLayout -Root $dir } -MessagePattern 'ships 4 build-time file'
+            Assert-Throws { Assert-InstallTreeLayout -Root $dir -Allow 'include' } -MessagePattern 'ships 3 build-time file'
+            Assert-InstallTreeLayout -Root $dir -Allow 'include', 'lib'
+        }
+    }
+}

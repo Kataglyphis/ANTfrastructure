@@ -17,6 +17,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-23 — an install tree refuses build-time files (CON299)
+
+- `Assert-InstallTreeLayout` (WindowsCrossBundle.Common.psm1) and `New-PortableBundle -ForbidBuildTimeFiles` refuse an
+  install tree with headers, CMake or pkg-config packages or import and static libraries in it, naming the count and
+  the first files; `-Allow`/`-AllowBuildTimeFile` except what a product ships on purpose. BeschleunigerBallett's
+  Windows bundle had shipped 52 gtest and gmock files (found by its CI track). `check-install-tree.sh` is the Linux
+  twin with the same rule. Opt-in, so no consumer turns red before it chooses; one Pester case, one shell suite, three
+  mutations.
+
 ## 2026-11-23 — the warning census (CON295 (c) step 2)
 
 - `linux/scripts/verify_warning_census.py` is the per-repo warning ratchet the owner chose today: it counts a

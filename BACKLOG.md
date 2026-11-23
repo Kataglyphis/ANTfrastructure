@@ -2445,11 +2445,6 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       `myproject_WARNINGS_AS_ERRORS` for the product targets only. (d) Done 2026-11-21: the pattern-limits doc holds
       the row for exception-free filesystem calls, which AccelerANTgine and BeschleunigerBallett bind; the first
       version read `current_path(ec)` as throwing and missed the iterator declaration, corrected the same day.
-- [ ] **CON299 — an install tree refuses build-time files** [S, ★★]. BeschleunigerBallett's Windows bundle shipped 52
-      gtest and gmock files (found by its CI track, 2026-11-23); it now has an inline "Bundle layout" step, and its
-      `check-deb-layout.sh` is the Linux twin. A shared check, `Assert-InstallTreeLayout` or a `-ForbidBuildTimeFiles`
-      switch on `New-PortableBundle`, refuses `include/`, `lib/cmake/`, `lib/pkgconfig/` and any `.lib` in a shipped
-      tree, with a Linux counterpart, so every consumer's package gets it.
 - [b] **CON296 — a bridge import helper for the first consumer bridge** [S-M; owner D4]. `kataglyphis_import_bridge_crate`
       beside `kataglyphis_configure_corrosion_target`: imports LOCKED, uses an unwinding profile outside Debug and
       checks that at configure time (a runtime test cannot, `cargo test` always unwinds), and lets a superproject
