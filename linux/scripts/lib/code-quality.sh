@@ -336,7 +336,27 @@ code_quality_cleanup_compile_db() {
   fi
 }
 
-# IWYU, report only (owner, CON295 (a)): <compile-db-dir> <log> <file>...; red only when a file could not be read.
+# <log> <file>...: prints how many requested units the IWYU log reports on, matched by path suffix.
+_code_quality_iwyu_units_read() {
+  local log="$1" unit path count=0
+  shift
+  local reported=()
+  mapfile -t reported < <(sed -nE -e 's/^The full include-list for (.*):$/\1/p' \
+    -e 's/^\((.*) has correct #includes\/fwd-decls\)$/\1/p' "${log}")
+  for unit in "$@"; do
+    unit="${unit#./}"
+    for path in "${reported[@]}"; do
+      path="${path#./}"
+      if [[ "${path}" == "${unit}" || "${path}" == */"${unit}" ]]; then
+        count=$((count + 1))
+        break
+      fi
+    done
+  done
+  printf '%s\n' "${count}"
+}
+
+# IWYU, report only (owner, CON295 (a)): <compile-db-dir> <log> <file>...; red when a unit was not read.
 code_quality_run_iwyu() {
   local db_dir="$1" log="$2"
   shift 2
@@ -345,15 +365,21 @@ code_quality_run_iwyu() {
     return 0
   fi
   mkdir -p "$(dirname "${log}")"
-  # Its exit status counts suggestions in some releases, so the log decides.
-  "${CODE_QUALITY_IWYU_TOOL:-iwyu_tool}" -p "${db_dir}" "$@" -- "${CODE_QUALITY_IWYU_ARGS[@]}" >"${log}" 2>&1
-  local errors changed
-  errors="$(grep -c ': error:' "${log}")"
-  changed="$(grep -oE '^The full include-list for .*:$' "${log}" | sort -u | wc -l)"
+  # Its exit status counts suggestions in some releases, so the per-unit report decides.
+  local status=0
+  iwyu_tool -p "${db_dir}" "$@" -- "${CODE_QUALITY_IWYU_ARGS[@]}" >"${log}" 2>&1 || status=$?
+  local errors changed units_read
+  errors="$(grep -c ': error:' "${log}" || true)"
+  changed="$({ grep -oE '^The full include-list for .*:$' "${log}" || true; } | sort -u | wc -l)"
+  units_read="$(_code_quality_iwyu_units_read "${log}" "$@")"
   cat "${log}"
-  info "IWYU: ${changed} file(s) with include suggestions from $# unit(s) read; report only"
+  info "IWYU: ${changed} file(s) with include suggestions from ${units_read} of $# unit(s) read; report only"
   if [[ "${errors}" -gt 0 ]]; then
     err "IWYU could not read some units (${errors} error line(s) in ${log}); it graded nothing there."
+    return 1
+  fi
+  if [[ "${units_read}" -lt $# ]]; then
+    err "IWYU reported on ${units_read} of $# unit(s) (iwyu_tool exited ${status}); the rest was graded by nothing."
     return 1
   fi
 }

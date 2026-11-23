@@ -17,6 +17,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-23 — an IWYU report is green only when every unit was read (CON295 (a))
+
+- `code_quality_run_iwyu` read only the log's error lines, so a missing driver (status 127), a driver that stopped
+  on a compile-DB failure, and a unit absent from the compile DB each reported green with every unit "read"
+  (found by the Windows session in issue #249, confirmed with the official IWYU 0.23 `iwyu_tool.py`: 0 of 1 and
+  1 of 2 units ran). Under `set -e` the same function aborted on the driver's suggestion status or on a log
+  without errors. Each requested unit must now appear in the log with an include list or as correct, matched by
+  path suffix; the driver status is captured and only reported. `CODE_QUALITY_IWYU_TOOL` and its `env-knobs`
+  allowlist entry are gone: the driver comes from `PATH`, as the fixture already supplied it. Five new cases in
+  `test-code-quality-iwyu.sh`, four mutations.
+
 ## 2026-11-23 — workflow_run filters are graded as GitHub patterns
 
 - `verify_workflow_conventions.py` gains its sixth check, `run-filter`, armed from the start: each

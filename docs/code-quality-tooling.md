@@ -364,9 +364,10 @@ module files: a unit that declares or imports a module fails with "PCH file uses
 `myproject_ENABLE_IWYU` option is OFF, as it only ever set the property on the INTERFACE target
 `myproject_options`, which reaches no compile. Instead `code_quality_find_iwyu_files <root>...` lists the units
 without a module declaration or import, and `code_quality_run_iwyu <compile-db-dir> <log> <file>...` runs
-`iwyu_tool` over them (`CODE_QUALITY_IWYU_TOOL`, `CODE_QUALITY_IWYU_ARGS`) and prints how many files have
-suggestions. It is a report: suggestions stay green, and only a unit IWYU could not read is red, as that unit was
-graded by nothing (owner, CON295 (a), 2026-11-23).
+`iwyu_tool` from `PATH` over them (`CODE_QUALITY_IWYU_ARGS`) and prints how many files have suggestions. It is a
+report: suggestions stay green, and only a unit IWYU did not grade is red (owner, CON295 (a), 2026-11-23). The
+driver's exit status cannot say which, so each requested unit must appear in the log with an include list or as
+correct; a missing driver, a driver that stopped early and a unit absent from the compile DB all fail that count.
 
 ### The failure mode to watch for
 
@@ -402,7 +403,6 @@ the caller's shell options.
 | `CODE_QUALITY_CLANG_TIDY_EXTENSIONS` | extensions fed to clang-tidy (TUs only) | `c cc cpp cxx` |
 | `CODE_QUALITY_CLANG_TIDY_ARGS` | extra clang-tidy arguments, e.g. per-project `-checks=` | empty (see axis 4) |
 | `CODE_QUALITY_CLANG_TIDY_FIX` | `true` appends `-fix` | `false` |
-| `CODE_QUALITY_IWYU_TOOL` | the IWYU driver `code_quality_run_iwyu` calls | `iwyu_tool` |
 | `CODE_QUALITY_IWYU_ARGS` | arguments after `--`, passed to each IWYU run | empty |
 | `CODE_QUALITY_COMPILE_DB_HINT` | sentence appended to the "missing compile_commands.json" error | — |
 | `CODE_QUALITY_CONTAINER_WORKSPACE` | container mount point remapped in a compile DB, as a whole path token: after a quote, a separator (space, `=`, `:`, `,`) or a listed joined option such as `-I`; empty disables | `/workspace` |
@@ -1263,7 +1263,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **7407 entries** over **859 distinct test commands**; both digits are
+manifest holds **7411 entries** over **859 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
