@@ -51,7 +51,8 @@ function(myproject_define_core_options)
   option(myproject_ENABLE_CPPCHECK "Enable cpp-check analysis" ${_MPCO_CPPCHECK_DEFAULT})
   option(myproject_ENABLE_PCH "Enable precompiled headers" OFF)
   option(myproject_ENABLE_CACHE "Enable ccache" ON)
-  option(myproject_ENABLE_IWYU "Enable IWYU" ON)
+  # OFF: on the INTERFACE target the property reached no compile; code_quality_run_iwyu reports instead (CON295 (a)).
+  option(myproject_ENABLE_IWYU "Enable IWYU" OFF)
 endfunction()
 
 # Hides the core options when built as a subproject; extra option names may be appended.

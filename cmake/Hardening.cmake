@@ -86,6 +86,17 @@ macro(
       if(_hardening_languages)
         check_pie_supported(LANGUAGES ${_hardening_languages})
       endif()
+      # The variable reaches only later targets in the caller's scope, so a real target gets the property (CON297).
+      get_target_property(_hardening_type ${target} TYPE)
+      if(NOT
+         _hardening_type
+         STREQUAL
+         "INTERFACE_LIBRARY")
+        set_property(TARGET ${target} PROPERTY POSITION_INDEPENDENT_CODE ON)
+      elseif(CMAKE_CURRENT_FUNCTION)
+        message(WARNING "myproject_enable_hardening(${target}) in ${CMAKE_CURRENT_FUNCTION}: its PIE stays in that "
+                        "function and reaches no target; call it at the project's scope (CON297)")
+      endif()
       set(CMAKE_POSITION_INDEPENDENT_CODE ON)
       list(
         APPEND

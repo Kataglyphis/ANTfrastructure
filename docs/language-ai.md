@@ -52,8 +52,26 @@ holds OpenAI chat stream lines with what a reader makes of them: text and thinki
 usage and whether `[DONE]` arrived, or the error. `data:` without a space, a usage-only chunk, keep-alives, a stream
 cut before `[DONE]`, reasoning under either name, an error object, a plain-text error, an `error:` line and a chunk
 that is no JSON are its cases. Owner decision 2026-11-19: a chunk that is no JSON fails the stream, and an `error:`
-line is the server's error. OxidANT's `endpoint.rs`, OrchestrANT's `answers.py` and OmniAccelerANT's
-`endpoint_reply.dart` replay every case.
+line is the server's error. Owner decision 2026-11-21 (D8, CON288): any non-null `error` fails the stream, `false`,
+`""` and `{}` among them, with the message when the error is or holds a non-empty string and with the error's JSON
+text otherwise; a chunk that is not an object fails it with its text; reading stops at `[DONE]`; the finish reason
+keeps its raw value (`content_filter`); usage counts prompt and completion alone, a whole-number float counts, and a
+negative count is missing, which leaves the usage null. Errors match as substrings.
+[`openai-chat-answers.json`](../shared/contracts/openai-chat-answers.json) holds whole, non-streamed answers under the
+same rules. OxidANT's `endpoint.rs`, OrchestrANT's `answers.py` and OmniAccelerANT's `endpoint_reply.dart` replay
+every stream case; the D8 cases (2026-11-22) fail a binding until its reader follows them at its next pin, and a
+binding with a non-streamed path replays the answers file there too.
+
+**The think split.** [`shared/contracts/think-split.json`](../shared/contracts/think-split.json) maps a reply's
+text pieces to five outputs (owner decision D5, 2026-11-21): `shown`, what a reader gives out while the pieces
+stream; `answer`, the visible answer by OxidANT's per-block rule (text outside `<think>` blocks, the white space
+right after a closing tag dropped, all answer before a late `</think>` turned into thinking); `final`, the text
+after the last `</think>` that the lab grades, which stops at a `<think>` opening after it that never closes
+(owner, 2026-11-23); the thinking count; and the late closes. Text before a late close in its own piece is never
+shown, as the web shows it, while what an earlier piece showed stays shown. Its cases hold several blocks, text
+before `<think>`, an unclosed block after an answer, a block that never closed and late closes in one piece and in
+a later one; `test-think-split.sh` replays them through a reference splitter, OmniAccelerANT's in Python, so the
+file cannot ask a binding for an outcome D5 does not give.
 
 | Call | Contract |
 |---|---|
@@ -74,8 +92,10 @@ OxidANT does this; a model directory without that output answers its own error, 
 
 Each failure has its own error and is never an empty answer: model not found, invalid model
 directory, execution provider unavailable, `json_schema` unsupported on this lane, endpoint
-unreachable, endpoint HTTP status. Greedy decoding (`temperature` 0) of one model on one
-execution provider yields the same tokens on every run; the tests rely on that.
+unreachable, endpoint HTTP status, and a prompt whose tokens plus the budget exceed the context
+(`context_length_exceeded`, owner D7 of 2026-11-21), which `orchestrant-serve` answers with HTTP
+400. Greedy decoding (`temperature` 0) of one model on one execution provider yields the same tokens
+on every run; the tests rely on that.
 
 ## Models and model packages
 
@@ -141,8 +161,12 @@ export, so today they reach an app through an endpoint only.
   requests (messages and options) with their answer (`text`, maybe `ids`, `finish`) or their error kind,
   `invalid_options` or `generation_failed` in the contract's words, each measured on the image's GenAI:
   greedy to the budget, the schema case, two schemas that are no object, one object the grammar compiler
-  refuses, no messages and no budget. AccelerANTgine (C++ and Python), OxidANT and OrchestrANT replay
-  every case; a binding maps the kind to its own error type.
+  refuses, no messages and no budget. Five more are refused before GenAI runs (CON288 (c), owner D7): a role
+  outside the four, a NaN temperature, the prompt and the budget over the context
+  (`context_length_exceeded`), and a NUL byte in a message and in a stop string. JSON holds no NaN, so the
+  file writes `"temperature": "NaN"` and each binding's replay turns it into a float NaN (owner,
+  2026-11-23). AccelerANTgine (C++ and Python), OxidANT and OrchestrANT replay every case; a binding maps
+  the kind to its own error type, and passes `temperature` and `stop` where a case sets them.
   A binding test reads it instead of retyping the numbers.
 - **The cache:** one layer whose `present` outputs concatenate the past with one embedding per
   token, so GenAI exercises its KV-cache loop exactly as with a real decoder.

@@ -348,7 +348,7 @@ first include.
   from `linux/scripts/lib/code-quality.sh` — a library your project's own quality
   script sources, exposing `code_quality_run_clang_format`,
   `code_quality_check_clang_format`, `code_quality_prepare_compile_db`,
-  `code_quality_run_clang_tidy` and `code_quality_run_cmake_format` as separate
+  `code_quality_run_clang_tidy`, `code_quality_run_iwyu` and `code_quality_run_cmake_format` as separate
   steps to call in whatever order it wants. It is not a command you run: it has
   no `main`. Inside this repo only the `cmake-format` preflight slug
   (`check_cmake_format` in `preflight.sh`) and
@@ -356,6 +356,18 @@ first include.
   tracked-file helpers; per
   [`shared/config/README.md`](../shared/config/README.md) the consumers of its
   C++ steps are the downstream C++ projects.
+
+### include-what-you-use, a report on the files without modules
+
+The image's `include-what-you-use` is built on an older clang than the build, so it cannot load the build's
+module files: a unit that declares or imports a module fails with "PCH file uses a newer PCH format". The
+`myproject_ENABLE_IWYU` option is OFF, as it only ever set the property on the INTERFACE target
+`myproject_options`, which reaches no compile. Instead `code_quality_find_iwyu_files <root>...` lists the units
+without a module declaration or import, and `code_quality_run_iwyu <compile-db-dir> <log> <file>...` runs
+`iwyu_tool` from `PATH` over them (`CODE_QUALITY_IWYU_ARGS`) and prints how many files have suggestions. It is a
+report: suggestions stay green, and only a unit IWYU did not grade is red (owner, CON295 (a), 2026-11-23). The
+driver's exit status cannot say which, so each requested unit must appear in the log with an include list or as
+correct; a missing driver, a driver that stopped early and a unit absent from the compile DB all fail that count.
 
 ### The failure mode to watch for
 
@@ -391,6 +403,7 @@ the caller's shell options.
 | `CODE_QUALITY_CLANG_TIDY_EXTENSIONS` | extensions fed to clang-tidy (TUs only) | `c cc cpp cxx` |
 | `CODE_QUALITY_CLANG_TIDY_ARGS` | extra clang-tidy arguments, e.g. per-project `-checks=` | empty (see axis 4) |
 | `CODE_QUALITY_CLANG_TIDY_FIX` | `true` appends `-fix` | `false` |
+| `CODE_QUALITY_IWYU_ARGS` | arguments after `--`, passed to each IWYU run | empty |
 | `CODE_QUALITY_COMPILE_DB_HINT` | sentence appended to the "missing compile_commands.json" error | — |
 | `CODE_QUALITY_CONTAINER_WORKSPACE` | container mount point remapped in a compile DB, as a whole path token: after a quote, a separator (space, `=`, `:`, `,`) or a listed joined option such as `-I`; empty disables | `/workspace` |
 | `CODE_QUALITY_GCC_TOOLCHAIN_PROBE_DIR` | directory whose absence means the container GCC is unavailable locally; empty disables the flag stripping | empty |
@@ -1250,7 +1263,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **7715 entries** over **887 distinct test commands**; both digits are
+manifest holds **7732 entries** over **891 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2211,11 +2224,6 @@ the hook; `make hooks` installs both.
 gate recording its argv, for the two abort paths and the flags, and once with the
 REAL gate over a planted manifest, so that a rotted entry is proven to stop a
 push rather than merely to print.
-
-The compiler-cache diagnostic fixture tests automatic defaults with deliberately inherited
-socket/port values, then proves an explicit caller socket remains visible. Only the fixture
-child clears defaults; the actual command capturer retains its private address and statistics.
-See [the failure and repair](failure-modes.md#cache-diagnostic-fixture-inherits-the-capture-socket).
 
 ## Doc numbers are derived
 
@@ -3530,7 +3538,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 1125 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1126 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -4586,6 +4594,7 @@ nobody:
 | a `permissions:` block | nowhere | included `jotrockenmitlocken`'s `web.yml` (then `dart.yml`), which consumes 14 distinct secrets and ran four FTP deploys on the repository default token until it declared `permissions: contents: read` on 2026-09-14 |
 | `if-no-files-found: error` | nowhere | includes the release-package uploads — the artifacts a tag actually ships, which is where an empty upload is worst |
 | `sha-pin`: every third-party `uses:` at a 40-hex commit SHA | the `# vX.Y.Z` comments beside the pins | a tag can be moved to code nobody reviewed; local `./` actions and `Kataglyphis/ANTfrastructure/...@develop` are exempt, and a `docker://` image needs an `@sha256:` digest |
+| `run-filter`: each `workflow_run.workflows` entry, read as GitHub's filter pattern, matches a workflow name in the tree | nowhere; the names were copied as plain text | every consumer's `retry-disk-refusal.yml` wrote `build + test`, where `+` repeats the space, so the retry never ran; armed from the start like the runner ban (2026-11-23) |
 
 The counts are deliberately not written here. They live once, as the CENSUS rows
 of `linux/scripts/workflow-conventions.allow`, where they are the gate's own

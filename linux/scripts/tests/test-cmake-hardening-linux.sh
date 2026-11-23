@@ -24,4 +24,31 @@ t_case "the global mode joins its flags with spaces: a semicolon would end the l
 t_assert_eq "LINK=[_o-NOTFOUND] PIC=[ON] EXE=[ -Wl,-z,relro -Wl,-z,now]" "$(_hardening Linux GNU ON)" \
   "the global flags must be one space-separated string"
 
+# _linux_gnu <cmake tail>: what cmake says for a GNU target on Linux with Hardening.cmake loaded.
+_linux_gnu() { cmake_fixture_output "set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_CXX_COMPILER_ID GNU)
+$(cmake_fixture_hardening_module)
+$1"; }
+# _scoped <add_library args>: a function hardens that one target (CON297).
+_scoped() { _linux_gnu "add_library($1)
+function(local_hardening target)
+  myproject_enable_hardening(\${target} OFF OFF)
+endfunction()
+local_hardening(t)
+get_target_property(_p t POSITION_INDEPENDENT_CODE)
+message(STATUS \"PROP=[\${_p}] PIC=[\${CMAKE_POSITION_INDEPENDENT_CODE}]\")"; }
+
+t_case "a real target hardened from a function is PIE itself, as the variable stays in that function"
+_out="$(_scoped 't STATIC x.c')"
+t_assert_contains "${_out}" "PROP=[ON] PIC=[]" "the target must carry POSITION_INDEPENDENT_CODE whatever the scope"
+t_assert_eq 0 "$(grep -c 'reaches no target' <<< "${_out}")" "a real target needs no warning"
+
+t_case "an INTERFACE target hardened from a function warns: its PIE reaches no target"
+t_assert_contains "$(_scoped 't INTERFACE')" "its PIE stays in that" "the lost PIE must be named, not silent"
+
+t_case "at the project's scope an INTERFACE target sets the variable and warns of nothing"
+_out="$(_linux_gnu "add_library(t INTERFACE)
+myproject_enable_hardening(t OFF OFF)")"
+t_assert_eq 0 "$(grep -c 'reaches no target' <<< "${_out}")" "the project scope keeps the variable"
+
 t_summary

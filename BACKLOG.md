@@ -503,14 +503,6 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       guard it (CON273 done). Left: done when a Windows publish shows one run per consumer lane on the new
       digest, which needs that host's `gh` login and `python3` on Git Bash's `PATH`.
 
-- [ ] **CON289 — consumers take the hub's ORT-profile counter** [S, ★]. Owner 2026-11-21 (the oxidation review's D15:
-      logic that acts on a consumer's own ORT environment belongs to the hub, engines and algorithms to OxidANT). One
-      counting rule lives in OrchestrANT (`orchestrant/smoke/ort_profile.py`), OxidANT
-      (`scripts/verify-ort-gpu-profile.py`) and here (`shared/python/verify_ort_profile.py`, the only copy with mutation
-      tests). OxidANT repoints its callers and deletes its copy (its own item). OrchestrANT needs an importable
-      `operator_counts` that passes its lint, because its Cythonized wheel strips the `.py` files. Done when neither
-      consumer holds a copy.
-
 ## Open — Flet clients for OrchestrANT's UIs
 
 Owner decisions 2026-10-19: OrchestrANT's UIs are Flet (OrchestrANT 2aa1da8, the benchmark viewer;
@@ -595,25 +587,16 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([`docs/language-ai.md` § Roadmap](docs/language-ai.md#roadmap)). ORT is built for Android
       (`03-media/build/onnxruntime/android/build-android.sh`, `Dockerfile.android:125`); GenAI is not. Left: build
       GenAI against that ORT in the android stage. Proving it needs a chain.
-- [ ] **CON288 — the contract cases the oxidation roadmap needs** [S each, ★★]. Owner 2026-11-21 (the oxidation
-      review's D5, D7 and D8, as recommended): shared case files are the family's differential suite, and every split
-      the review found lacks them. (a) `shared/contracts/openai-stream-lines.json`: an error object without a message,
-      falsy error values, a JSON chunk that is not an object, finish reasons beyond stop and length with the raw value
-      kept, usage with `total_tokens` and `reasoning_tokens`, float token counts, a line after `[DONE]`. Outcomes (D8):
-      any non-null `error` fails the stream, so does a chunk that is not an object, reading stops at `[DONE]`,
-      whole-number floats count and negative counts are missing; `test-openai-stream-lines.sh:23` allows raw finish
-      values, and a sibling file holds whole, non-streamed answers. (b) A new `shared/contracts/think-split.json` (D5):
-      pieces to the text shown (`answer`, OxidANT's per-block rule) and to `final` (the text after the last
-      `</think>`, the lab's rule), the thinking count and late closes; cases with several blocks, text before
-      `<think>`, an unclosed block after an answer, a late close inside one piece. (c) The tiny-model fixture
-      (`linux/scripts/lib/tiny-genai-model.py`): a role outside the four, a NaN temperature, prompt plus budget over
-      the context, a NUL byte in a message and in a stop string. (d) D7: `context_length_exceeded` joins the
-      text-contract failures in `docs/language-ai.md`, which orchestrant-serve answers with 400. (e) ModelANT, which
-      keeps no BACKLOG, `contracts/inference-v1.json` (D6 keeps the raw-head layouts): full-size preprocessing cases as
-      tensor digests (2304x1296 stretched and letterboxed, an odd width with 4-byte row padding, RGBA with a plane
-      offset) and raw-head decode cases under D6's rules (same-class IoU > 0.45 in model-input pixels, a stable
-      descending score with ties to the lower row, score = objectness × the best class over every class column),
-      two overlapping boxes with equal scores among them. Each binding replays the cases at its next pin.
+
+- [ ] **CON301 — ship GenieX in the ANTfrastructure ARM64 runtime images** [L, ★★]. Owner request
+      2026-11-22. Install the [Qualcomm GenieX CLI](https://github.com/qualcomm/GenieX) in the existing
+      Linux and Windows ARM64 image builds. Pin one release and the SHA256 of each platform's
+      artifact, and record its licence and shipped notices. Start `geniex serve` from the self-built
+      Linux ARM64 image in the [existing Compose stack](linux/llm-stack/docker-compose.gateway.yml)
+      and route APISIX to it. Done when both finished images pass an ARM64 CLI smoke, the Compose
+      endpoint returns a real model response, and any claimed NPU path is verified on supported
+      hardware. Test the Windows image under its Windows container engine and record its
+      Snapdragon device access separately. See [the current GenieX setup](docs/geniex-local-ai-setup.md).
 ## Open — Linux image (all arches)
 
 - [ ] **CON238 — two test tools the images lack: cargo-mutants and pytest-timeout** [S, ★★]. Found by the audit
@@ -2175,7 +2158,7 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
 
 ## Open — Windows `:winamd64`
 
-- [ ] **CON298 — fetch the Windows ORT and GenAI sources by pinned commit** [S, ★★★]. Found 2026-11-23:
+- [ ] **CON300 — fetch the Windows ORT and GenAI sources by pinned commit** [S, ★★★]. Found 2026-11-23:
       `github.com/microsoft/onnxruntime`, `onnxruntime-genai` and `onnxruntime-extensions` answer 404, so
       `Build-OnnxFromSource.ps1` and `Build-OnnxGenaiFromSource.ps1` cannot clone. Linux reads
       `03-media/build/onnxruntime/build/lib/source-pins.txt` and falls back to fork networks
@@ -2466,14 +2449,24 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       moves to `linux/scripts/06-packaging` with the binaries as arguments; `Hardening.cmake`'s Linux branch adds PIE
       and `-z relro -z now` (BeschleunigerBallett passes none: "Hardening Linker Flags:" is empty in job
       135983570303); a PE twin for a repo's own binaries sits beside `Read-PeLayout`.
-- [ ] **CON295 — analyzers that run, and warnings that count** [M, ★; owner D10, D11]. (a) IWYU never runs: the
-      property sits on the INTERFACE target `myproject_options`, which does not pass it on; run it on the real
-      targets, report-only first. (b) cppcheck: BeschleunigerBallett's default ON goes, as the image has no binary
-      and a skipped check misleads (D10). (c) Warnings in three steps (D11): third-party includes as SYSTEM
-      (BeschleunigerBallett's GCC log: 124 spdlog and 12 nlohmann warnings), then a per-repo warning-count ratchet,
-      then `myproject_WARNINGS_AS_ERRORS` for the product targets only. (d) Done 2026-11-21: the pattern-limits doc
-      holds the row for exception-free filesystem calls, which AccelerANTgine and BeschleunigerBallett bind; the
-      first version read `current_path(ec)` as throwing and missed the iterator declaration, corrected the same day.
+- [ ] **CON295 — analyzers that run, and warnings that count** [M, ★; owner D10, D11]. (a) Done 2026-11-23: the
+      image's IWYU is built on an older clang and reads no unit that declares or imports a module, so the owner chose
+      a report on the plain units: `code_quality_find_iwyu_files` and `code_quality_run_iwyu` (hub 486827f8), red only
+      for a unit it could not read, and `myproject_ENABLE_IWYU` is OFF. AccelerANTgine's static lane runs it (0126297:
+      7 units read, none refused, 6 with suggestions); left: BeschleunigerBallett wires it at its next hub pin. (b)
+      Done 2026-11-21 in BeschleunigerBallett (9dedc393): cppcheck's default is OFF, as the image has no binary and a
+      skipped check misleads (D10). (c) Warnings in three steps (D11). Step 1 in source 2026-11-23:
+      BeschleunigerBallett adds spdlog and nlohmann_json as SYSTEM subdirectories (a9333e7e), against the 124 and 12
+      header warnings of GCC job 135983570345; its next GCC job's count is the proof. Then a per-repo warning-count
+      ratchet, then `myproject_WARNINGS_AS_ERRORS` for the product targets only. (d) Done 2026-11-21: the
+      pattern-limits doc holds the row for exception-free filesystem calls, which AccelerANTgine and
+      BeschleunigerBallett bind; the first version read `current_path(ec)` as throwing and missed the iterator
+      declaration, corrected the same day.
+- [ ] **CON299 — an install tree refuses build-time files** [S, ★★]. BeschleunigerBallett's Windows bundle shipped 52
+      gtest and gmock files (found by its CI track, 2026-11-23); it now has an inline "Bundle layout" step, and its
+      `check-deb-layout.sh` is the Linux twin. A shared check, `Assert-InstallTreeLayout` or a `-ForbidBuildTimeFiles`
+      switch on `New-PortableBundle`, refuses `include/`, `lib/cmake/`, `lib/pkgconfig/` and any `.lib` in a shipped
+      tree, with a Linux counterpart, so every consumer's package gets it.
 - [b] **CON296 — a bridge import helper for the first consumer bridge** [S-M; owner D4]. `kataglyphis_import_bridge_crate`
       beside `kataglyphis_configure_corrosion_target`: imports LOCKED, uses an unwinding profile outside Debug and
       checks that at configure time (a runtime test cannot, `cargo test` always unwinds), and lets a superproject

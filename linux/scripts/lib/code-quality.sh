@@ -168,6 +168,14 @@ code_quality_find_clang_tidy_files() {
   _code_quality_find_extension_sources CODE_QUALITY_CLANG_TIDY_EXTENSIONS 'c cc cpp cxx' "$@"
 }
 
+# IWYU's own clang cannot load the build's module files, so it reads only units that neither declare nor import one.
+code_quality_find_iwyu_files() {
+  local file
+  while IFS= read -r file; do
+    grep -qE '^[[:space:]]*(export[[:space:]]+)?(module|import)[[:space:]]+[[:alnum:]_<"]' "${file}" || printf '%s\n' "${file}"
+  done < <(code_quality_find_clang_tidy_files "$@")
+}
+
 # Tracked files, not `dart format .`: CI installs Flutter inside the workspace, and the walk would reformat it.
 code_quality_find_dart_files() {
   code_quality_find_tracked_files "${1:-.}" '*.dart'
@@ -325,6 +333,55 @@ code_quality_cleanup_compile_db() {
   if [[ -n "${CODE_QUALITY_COMPILE_DB_TEMP_DIR:-}" ]]; then
     rm -rf "${CODE_QUALITY_COMPILE_DB_TEMP_DIR}"
     CODE_QUALITY_COMPILE_DB_TEMP_DIR=""
+  fi
+}
+
+# <log> <file>...: prints how many requested units the IWYU log reports on, matched by path suffix.
+_code_quality_iwyu_units_read() {
+  local log="$1" unit path count=0
+  shift
+  local reported=()
+  mapfile -t reported < <(sed -nE -e 's/^The full include-list for (.*):$/\1/p' \
+    -e 's/^\((.*) has correct #includes\/fwd-decls\)$/\1/p' "${log}")
+  for unit in "$@"; do
+    unit="${unit#./}"
+    for path in "${reported[@]}"; do
+      path="${path#./}"
+      if [[ "${path}" == "${unit}" || "${path}" == */"${unit}" ]]; then
+        count=$((count + 1))
+        break
+      fi
+    done
+  done
+  printf '%s\n' "${count}"
+}
+
+# IWYU, report only (owner, CON295 (a)): <compile-db-dir> <log> <file>...; red when a unit was not read.
+code_quality_run_iwyu() {
+  local db_dir="$1" log="$2"
+  shift 2
+  if [[ $# -eq 0 ]]; then
+    info "IWYU: no unit without modules to read"
+    return 0
+  fi
+  mkdir -p "$(dirname "${log}")"
+  # Its exit status counts suggestions in some releases, so the per-unit report decides.
+  local status=0
+  iwyu_tool -p "${db_dir}" "$@" -- "${CODE_QUALITY_IWYU_ARGS[@]}" >"${log}" 2>&1 || status=$?
+  local errors changed units_read
+  # A missing header is "fatal error:", and that unit was read no further than an "error:" one.
+  errors="$(grep -cE ': (fatal )?error:' "${log}" || true)"
+  changed="$({ grep -oE '^The full include-list for .*:$' "${log}" || true; } | sort -u | wc -l)"
+  units_read="$(_code_quality_iwyu_units_read "${log}" "$@")"
+  cat "${log}"
+  info "IWYU: ${changed} file(s) with include suggestions from ${units_read} of $# unit(s) read; report only"
+  if [[ "${errors}" -gt 0 ]]; then
+    err "IWYU could not read some units (${errors} error line(s) in ${log}); it graded nothing there."
+    return 1
+  fi
+  if [[ "${units_read}" -lt $# ]]; then
+    err "IWYU reported on ${units_read} of $# unit(s) (iwyu_tool exited ${status}); the rest was graded by nothing."
+    return 1
   fi
 }
 

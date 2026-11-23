@@ -146,6 +146,10 @@ def agents_drift(ctx: Context) -> Metric:
                        "the pinned hub has no verify_agents_drift.py yet")
     if not os.path.isfile(os.path.join(ctx.root, "AGENTS.md")):
         return missing("agents_drift_findings", "findings", LOWER, CODE, source, "no AGENTS.md")
+    # The check reads the docs table; without it a repo outside its scope is not collected, not broken (CON298).
+    docs = ctx.config.get("docs")
+    if not isinstance(docs, dict) or not docs.get("build_list") or not docs.get("source"):
+        return missing("agents_drift_findings", "findings", LOWER, CODE, source, "no [docs] build_list and source")
     rc, reason = run([sys.executable, os.path.join(ctx.tools, script), "--root", ctx.root,
                       "--json", out], ctx.root, os.path.join(ctx.work, "agents-drift.log"))
     try:

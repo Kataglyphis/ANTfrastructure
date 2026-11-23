@@ -1,5 +1,22 @@
 # Changelog
 
+> **Older entries** are archived, newest archive first:
+> [`2026-11-10 … 2026-11-17`](docs/changelog-archive-2026-11-17.md) ·
+> [`2026-11-06 … 2026-11-12`](docs/changelog-archive-2026-11-12.md) ·
+> [`2026-11-05`](docs/changelog-archive-2026-11-05.md) ·
+> [`2026-10-23 … 2026-11-04`](docs/changelog-archive-2026-11-04.md) ·
+> [`2026-10-20 … 2026-10-22`](docs/changelog-archive-2026-10-22.md) ·
+> [`2026-10-19`](docs/changelog-archive-2026-10-19.md) ·
+> [`2026-10-13 … 2026-10-18`](docs/changelog-archive-2026-10-18.md) ·
+> [`2026-10-08 … 2026-10-12`](docs/changelog-archive-2026-10-12.md) ·
+> [`2026-10-01 … 2026-10-07`](docs/changelog-archive-2026-10-07.md) ·
+> [`2026-09-22 … 2026-09-30`](docs/changelog-archive-2026-09-30.md) ·
+> [`2026-09-08 … 2026-09-21`](docs/changelog-archive-2026-09-21.md) ·
+> [`2026-08-29 … 2026-09-07`](docs/changelog-archive-2026-09-07.md) ·
+> [`2026-08-14 … 2026-08-28`](docs/changelog-archive-2026-08-28.md) ·
+> [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
+> Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
+
 ## 2026-11-23 — build ROCm Media from a reviewed newer source on the same GPU parent
 
 - `launch-normal-media.py --media-source/--media-source-proof` accepts a later commit when it
@@ -18,6 +35,121 @@
 
 - Pin every Noto Color Emoji v39 and Noto Sans Symbols 2 v25 chunk requested by
   the built Flutter SDK, with SHA-256 verified against the original font downloads.
+
+## 2026-11-23 — IWYU's fatal errors are unread units
+
+- `code_quality_run_iwyu` counted only `: error:`, but IWYU writes `: fatal error:` for a missing header, so a
+  planted one stayed green in BeschleunigerBallett (found by its CI track). It counts both; one case, one mutation.
+  `failure-modes.md` explains why GCC still warns in a SYSTEM header at an LTO link (spdlog's 8
+  `-Wstringop-overflow` in BeschleunigerBallett's profiling job), and CON299 queues a shared check that refuses
+  build-time files in an install tree.
+
+## 2026-11-23 — RustDesk on a Windows host: Chocolatey updates, direct IP access, the permanent password
+
+- `docs/windows-host-setup.md` gains Phase F, the Windows counterpart of the Linux page's RustDesk phase.
+  winget has no RustDesk package and Scoop's is the portable exe without a service, so
+  `Install-RustDesk.ps1` installs and updates Chocolatey's `rustdesk.install` (the official MSI) and
+  registers the weekly SYSTEM task `RustDesk Update (choco)`. It backs up both config directories first,
+  refuses while a session is open, and runs Chocolatey's installer only with a valid Chocolatey Software
+  signature. `Set-RustDeskDirectAccess.ps1` turns on direct IP access and proves a RustDesk listener on
+  the port; `Set-RustDeskPassword.ps1` sets the permanent password, which RustDesk never shows again.
+- `WindowsRustDesk.Common.psm1` holds the CLI calls: `rustdesk.exe` is a GUI-subsystem binary that
+  prints only into a pipe, `--option` reads every value back, and the missing-admin reply becomes an
+  error. `Host.RustDesk.Tests.ps1` adds ten cases against a fake CLI; nine mutations all go red. Proven
+  on one host: 1.4.6 → 1.5.3 kept its config, and 1.5.3 listened on `[::]:21118` without a restart.
+
+## 2026-11-23 — an IWYU report is green only when every unit was read (CON295 (a))
+
+- `code_quality_run_iwyu` read only the log's error lines, so a missing driver (status 127), a driver that stopped
+  on a compile-DB failure, and a unit absent from the compile DB each reported green with every unit "read"
+  (found by the Windows session in issue #249, confirmed with the official IWYU 0.23 `iwyu_tool.py`: 0 of 1 and
+  1 of 2 units ran). Under `set -e` the same function aborted on the driver's suggestion status or on a log
+  without errors. Each requested unit must now appear in the log with an include list or as correct, matched by
+  path suffix; the driver status is captured and only reported. `CODE_QUALITY_IWYU_TOOL` and its `env-knobs`
+  allowlist entry are gone: the driver comes from `PATH`, as the fixture already supplied it. Five new cases in
+  `test-code-quality-iwyu.sh`, four mutations.
+
+## 2026-11-23 — workflow_run filters are graded as GitHub patterns
+
+- `verify_workflow_conventions.py` gains its sixth check, `run-filter`, armed from the start: each
+  `on.workflow_run.workflows` entry is read with GitHub's filter grammar (`*`, `**`, `?` and `+` repeating the
+  character before them, `[...]` with only a-z, A-Z and 0-9 ranges, `\` escapes) and must match a workflow's name
+  in the tree. Every consumer's `retry-disk-refusal.yml` named its lanes as `"... build + test"`, where `+` repeats
+  the space, so the filter never matched and a disk refusal on those lanes was never retried; BeschleunigerBallett's
+  `[ci <lane>]` was no valid pattern and started a phantom run on every completed workflow (found by its CI track,
+  fixed there in e6832053). The hub's own `'Docs · build \+ publish'` is escaped; the consumers escape theirs at
+  their next pin (OxidANT 4, AccelerANTgine 3, OmniAccelerANT 4, OrchestrANT 3, WebDavClient 2 filters). The
+  README says the names are patterns. `test-workflow-run-filters.sh`, three mutations.
+
+## 2026-11-23 — hardening's PIE reaches a target from any scope (CON297)
+
+- `myproject_enable_hardening` set `CMAKE_POSITION_INDEPENDENT_CODE` in the caller's scope: called from a function,
+  such as BeschleunigerBallett's `myproject_enable_local_hardening`, it stayed in that function and reached no target,
+  so BeschleunigerBallett's executables were PIE only through clang's default (found by its CI track). A real target
+  now gets `POSITION_INDEPENDENT_CODE` itself, and an INTERFACE target hardened from a function warns that its PIE
+  reaches nothing; at the project's scope the variable is set as before. Three cases in
+  `test-cmake-hardening-linux.sh`, two mutations.
+
+## 2026-11-23 — the quality report skips agents-drift without a docs table (CON298)
+
+- `quality-report.sh` called a consumer without a `[docs]` table "incomplete": the `agents_drift` collector ran
+  `verify_agents_drift.py`, which refuses such a repo, and turned the refusal into a failed metric, so
+  `code-quality-report.yml` with `quality-report: true` failed though agents-drift is scoped to the AI consumers
+  (found by BeschleunigerBallett's CI track, which declared a table to get past it). The collector now reports the
+  metric as not collected, "no [docs] build_list and source", as it does for a repo without `AGENTS.md`; one test
+  and one mutation. CON295 records AccelerANTgine's IWYU wiring (0126297) and BeschleunigerBallett's SYSTEM
+  includes (a9333e7e); CON297 records that the hardening module's PIE reaches no target from a function.
+
+## 2026-11-23 — IWYU reports on the units without modules (CON295 (a))
+
+- IWYU never ran: `myproject_apply_iwyu` set the property on the INTERFACE target `myproject_options`, which reaches
+  no compile, and the image's `include-what-you-use` 0.23 is built on clang 19, so it cannot load the clang 23
+  build's module files ("PCH file uses a newer PCH format"). The owner chose a report on the plain units:
+  `code_quality_find_iwyu_files` lists the units that neither declare nor import a module (5 of AccelerANTgine's 37,
+  35 of BeschleunigerBallett's 121), and `code_quality_run_iwyu` runs `iwyu_tool` over them and counts the files
+  with suggestions. Suggestions stay green; a unit IWYU could not read is red. `myproject_ENABLE_IWYU` is now OFF.
+  `test-code-quality-iwyu.sh` covers the selection and the verdict, with three mutations.
+
+## 2026-11-23 — CON288 done: every contract case replays in its bindings
+
+- **CON288 is done.** Each shared case file the oxidation roadmap asked for exists and replays where it belongs: the
+  D8 stream cases and whole answers (OxidANT c10095f, OrchestrANT 9c3882b, OmniAccelerANT 20c940a), the think split
+  (OxidANT 5bf5639, OrchestrANT 3abd84e, OmniAccelerANT 2620136), the fixture's refusals (OxidANT 5bf5639, OrchestrANT
+  3abd84e, AccelerANTgine 5207eb7), and ModelANT's full-size frames by tensor digest and raw-head cases (ModelANT
+  b47ed40 and f845b60). All three detectors match the four frames bit for bit (OrchestrANT 2d82f87, OxidANT c881224,
+  AccelerANTgine cedb886); OrchestrANT and AccelerANTgine replay the raw heads, and AccelerANTgine's suppression now
+  sorts stably, so equal scores keep the lower candidate (D6). OxidANT decodes no raw head. AccelerANTgine's think
+  split rides its text pilot, OxidANT's roadmap step 4.
+
+## 2026-11-23 — CON289 done; CON288's cases replayed in every binding
+
+- **CON289 is done:** no consumer keeps its own ORT-profile count. OxidANT dropped its copy earlier (56865c4), and
+  OrchestrANT's `setup.py` now copies `shared/python/verify_ort_profile.py` into `orchestrant/_hub` at build time,
+  where Cython compiles it into the wheel, while a checkout reads the hub's file itself (OrchestrANT 3abd84e; ce48210
+  keeps the copy in a wheel built from the sdist, which carries no `third_party`). Its bundle's
+  `ort_profile.operator_counts` calls the hub's rule.
+- **CON288:** every binding replays the new cases of (a) to (c): the D8 stream cases in OxidANT, OrchestrANT and
+  OmniAccelerANT, the think split in all three, and the fixture's refusals in OxidANT, OrchestrANT and
+  AccelerANTgine, whose C ABI gains status 11 for `context_length_exceeded`. (e) is in ModelANT b47ed40:
+  four full-size frames compared by tensor digest and seven raw-head decode cases under D6.
+
+## 2026-11-23 — the think split, the fixture's refusals and an importable ORT count (CON288 (b), (c); CON289)
+
+- `shared/contracts/think-split.json` maps a reply's text pieces to `shown`, `answer` (OxidANT's per-block rule),
+  `final` (the lab's text after the last `</think>`), the thinking count and the late closes, owner decision D5.
+  `final` stops at a `<think>` that opens after the last close and never closes (owner, 2026-11-23): the lab graded
+  `X<think>b` for such a reply, against its own comment that an unclosed block holds no answer. A late close inside
+  one piece hides the text before it, as the web shows it. `test-think-split.sh` replays the 11 cases through a
+  reference splitter, and two recipes guard the cut and the hidden text.
+- The tiny-model fixture gains five cases refused before GenAI runs: a role outside the four, a NaN temperature, the
+  prompt and the budget over the context (`context_length_exceeded`, D7), and a NUL byte in a message and in a stop
+  string. JSON holds no NaN, so the case writes `"temperature": "NaN"` and each binding's replay turns it into a
+  float NaN (owner, 2026-11-23).
+- `shared/python/verify_ort_profile.py` exports `model_nodes` and `operator_counts` (CON289), which its `main` uses
+  and a test imports; `packaging.ort-profile-require-operator` points at the function's indentation.
+- **Consumers:** the bindings fail the new fixture cases and the think-split file at their next pin until they map
+  `context_length_exceeded`, pass `temperature` and `stop`, and follow the split; OrchestrANT copies the ORT count in
+  at build time (owner, 2026-11-23).
 
 ## 2026-11-22 — continue the local NVIDIA Android export through runtime and FINAL
 
@@ -120,6 +252,29 @@
 - Share bounded file validation and fresh writes with the GStreamer producer; retain its narrow Dockerfile companion mount and required API checks. Copy the two media smoke siblings together without increasing the frozen Dockerfile size.
 - Add synthetic transport/refusal and mutation controls. Actual rebuilt images, consumer integration, finished packages and complete native licences and corresponding sources remain open.
 
+## 2026-11-22 — the OpenAI contract cases of owner decisions D7 and D8 (CON288 (a), (d))
+
+- `shared/contracts/openai-stream-lines.json` gains 11 cases for D8: any non-null `error` fails the stream (`false`,
+  `""`, `{}` and an object without a message among them, matched by the error's JSON text), and so does a chunk that
+  is not an object; a `null` error is none; nothing after `[DONE]` is read; the finish reason keeps its raw value
+  (`content_filter`); usage counts prompt and completion alone, beside `total_tokens` and `reasoning_tokens`; a
+  whole-number float counts, and a negative count is missing, which leaves the usage null.
+- The sibling `shared/contracts/openai-chat-answers.json` holds 10 whole, non-streamed answers under the same rules:
+  content and reasoning under either name, a raw finish, usage, error objects, and bodies that are not an object or no
+  JSON. `test-openai-stream-lines.sh` checks the shape of both files and now allows a raw finish reason;
+  `lib.openai-stream-lines-shape` mutates a count negative instead, as its old `truncated` finish is legal now, and
+  `lib.openai-chat-answers-shape` drops an outcome field.
+- `docs/language-ai.md` states the D8 rules and lists `context_length_exceeded` among the text-contract failures
+  (D7), which `orchestrant-serve` answers with HTTP 400.
+- **Consumers:** OxidANT's `endpoint.rs`, OrchestrANT's `answers.py` and OmniAccelerANT's `endpoint_reply.dart`
+  replay every stream case, so the new ones fail each at its next pin until its reader follows D8.
+
+## 2026-11-22 — shared immutable native-helper packaging
+
+- Add explicit byte-preserving Linux helper launchers with private library paths on both loader branches, unchanged arguments and raw worker exit statuses. Refuse legacy RPATH, linked or escaping inputs, existing payloads and mismatched launcher policies.
+- CMake accepts installed-relative `IMMUTABLE_HELPERS`, protects their native payloads during ELF closure, checks their hashes after closure and composes helper and ORT protection in one AppImage patcher. Literal paths and unique basenames prevent ambiguous staging.
+- Real ELF, relocation, TGZ and DEB fixtures exercise the shared transport. Finished consumer packages, actual AppRun, hardware inference and complete licence closure retain their separate proof requirements.
+
 ## 2026-11-21 — preserve selected GStreamer source notices before cleanup
 
 - Retain distinct original monorepo and Rust-plugin notices, source commits, tracked patches and the GTK4 package's own version under the GStreamer prefix.
@@ -142,23 +297,6 @@
 - Add a dedicated owned launcher using the canonical default Media command and existing native SDK/OCI qualifier, exact source proof, compiler ancestry and shared bounded admission.
 - Retain both required Wasm modes, explicit accelerator flags and a 300 GiB durable-storage minimum, including stricter caller reserves. Bind SDK/source/parent and launcher bytes; reject optimized Python before shared parent assertions.
 - Add synthetic positive/refusal and mutation controls. Other foreign/NVIDIA profiles, actual Media builds, factory replay and FINAL acceptance remain open.
-
-> **Older entries** are archived, newest archive first:
-> [`2026-11-10 … 2026-11-17`](docs/changelog-archive-2026-11-17.md) ·
-> [`2026-11-06 … 2026-11-12`](docs/changelog-archive-2026-11-12.md) ·
-> [`2026-11-05`](docs/changelog-archive-2026-11-05.md) ·
-> [`2026-10-23 … 2026-11-04`](docs/changelog-archive-2026-11-04.md) ·
-> [`2026-10-20 … 2026-10-22`](docs/changelog-archive-2026-10-22.md) ·
-> [`2026-10-19`](docs/changelog-archive-2026-10-19.md) ·
-> [`2026-10-13 … 2026-10-18`](docs/changelog-archive-2026-10-18.md) ·
-> [`2026-10-08 … 2026-10-12`](docs/changelog-archive-2026-10-12.md) ·
-> [`2026-10-01 … 2026-10-07`](docs/changelog-archive-2026-10-07.md) ·
-> [`2026-09-22 … 2026-09-30`](docs/changelog-archive-2026-09-30.md) ·
-> [`2026-09-08 … 2026-09-21`](docs/changelog-archive-2026-09-21.md) ·
-> [`2026-08-29 … 2026-09-07`](docs/changelog-archive-2026-09-07.md) ·
-> [`2026-08-14 … 2026-08-28`](docs/changelog-archive-2026-08-28.md) ·
-> [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
-> Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 ## 2026-11-21 — isolate cache diagnostic defaults and derive gate counts
 
@@ -251,12 +389,6 @@
   skip list, gate annotations, Linux release hardening, analyzers and warnings, a bridge import helper); the consumer
   steps went into OxidANT's, AccelerANTgine's, OmniAccelerANT's and OrchestrANT's BACKLOGs.
 
-## 2026-11-22 — shared immutable native-helper packaging
-
-- Add explicit byte-preserving Linux helper launchers with private library paths on both loader branches, unchanged arguments and raw worker exit statuses. Refuse legacy RPATH, linked or escaping inputs, existing payloads and mismatched launcher policies.
-- CMake accepts installed-relative `IMMUTABLE_HELPERS`, protects their native payloads during ELF closure, checks their hashes after closure and composes helper and ORT protection in one AppImage patcher. Literal paths and unique basenames prevent ambiguous staging.
-- Real ELF, relocation, TGZ and DEB fixtures exercise the shared transport. Finished consumer packages, actual AppRun, hardware inference and complete licence closure retain their separate proof requirements.
-
 ## 2026-11-21 — required native cache setup propagates failures explicitly
 
 - Retain the required environment owner's raw status before resolving the native fixture compiler; validate its two exports explicitly. The hosted launcher-policy suite correctly rejected the new unguarded call after the original Rust/Dart suite passed again.
@@ -280,6 +412,7 @@
 - Share the native supervisor's monotonic-clock error boundary before launch and during its wait loop. Preserve nonzero errno and report `EIO` when a failing clock leaves errno zero, avoiding an unset elapsed value that GCC 16.2 rejects under `-O3 -Werror`.
 - Compile shared native fixture objects with optimization and fatal warnings. Add real child controls for initial/elapsed clock failures, exact error preservation and kill/reap behavior; retain the existing timeout, Rust and Dart ownership tests. These source controls do not establish finished consumer packages or GPU acceptance.
 - Normal commit hooks also exposed a missing logging-bootstrap import in the recently added host-red helper. Add its canonical import and a removal mutation; keep the existing unmutated library controls fatal and retain the original rejected commit attempt.
+
 ## 2026-11-20 — shared hook diagnostics load the canonical logger
 
 - Import `log-bootstrap.sh` from `hook-host-red.sh` so standalone library checks see the real logging API. The missing import made the hosted preflight fail three library assertions and invalidated twelve mutation baselines in run 44819008926.

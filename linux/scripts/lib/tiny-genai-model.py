@@ -48,6 +48,17 @@ def cases() -> list[dict[str, object]]:
          "expect": {"error": "invalid_options"}},
         {"name": "no budget", "messages": user, "options": {"max_new_tokens": 0},
          "expect": {"error": "invalid_options"}},
+        # Refused before GenAI runs (CON288 (c), owner D7): JSON holds no NaN, so a binding reads "NaN" as one.
+        {"name": "a role outside the four", "messages": [{"role": "robot", "content": PROMPT}],
+         "options": {"max_new_tokens": 1}, "expect": {"error": "invalid_options"}},
+        {"name": "a NaN temperature", "messages": user, "options": {"max_new_tokens": 1, "temperature": "NaN"},
+         "expect": {"error": "invalid_options"}},
+        {"name": "the prompt and the budget over the context", "messages": user,
+         "options": {"max_new_tokens": CONTEXT}, "expect": {"error": "context_length_exceeded"}},
+        {"name": "a NUL byte in a message", "messages": [{"role": "user", "content": "ab\u0000c"}],
+         "options": {"max_new_tokens": 1}, "expect": {"error": "invalid_options"}},
+        {"name": "a NUL byte in a stop string", "messages": user,
+         "options": {"max_new_tokens": 1, "stop": ["\u0000"]}, "expect": {"error": "invalid_options"}},
     ]
 CHAT_TEMPLATE = "{% for message in messages %}{{ message['content'] }}{% endfor %}"
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""Five fleet workflow conventions (runner-ban, job-timeout, permissions, artifact-error, sha-pin), asserted.
+"""Six fleet workflow conventions (runner-ban, job-timeout, permissions, artifact-error, sha-pin, run-filter), asserted.
 
 Usage: verify_workflow_conventions.py [<consumer root>]; see docs/code-quality-tooling.md#four-fleet-workflow-conventions-workflow-lint
 Not covered: what a pinned SHA contains, actions fetched inside run: blocks, and container image digests.
@@ -22,11 +22,11 @@ HUB_ROOT = HERE.parent.parent
 ALLOW = HERE / "workflow-conventions.allow"
 CONSUMERS = HUB_ROOT / ".github" / "consumers.json"
 
-CHECKS = ("runner-ban", "job-timeout", "permissions", "artifact-error", "sha-pin")
+CHECKS = ("runner-ban", "job-timeout", "permissions", "artifact-error", "sha-pin", "run-filter")
 # Pseudo-check for an unreadable file: never ramped, counted or excused, since nothing graded it.
 PARSE = "parse"
-# Armed with no knob: measured clean fleet-wide, so it can only catch a NEW one.
-ALWAYS_ARMED = frozenset({"runner-ban"})
+# Armed with no knob: the runner ban was measured clean, and a run filter that matches nothing silently never triggers.
+ALWAYS_ARMED = frozenset({"runner-ban", "run-filter"})
 # Advisory without a census row: armed only by the repositories measured clean of it.
 CENSUS_EXEMPT = frozenset({"sha-pin"})
 ARM_ENV = "WORKFLOW_CONVENTIONS_GATE"
@@ -444,12 +444,74 @@ def check_sha_pin(rel: str, doc: YamlDocument) -> list[Finding]:
             for uses, num in refs if isinstance(uses, str) and _unpinned(uses)]
 
 
+# GitHub's filter grammar: '?' and '+' repeat the character before them, '[...]' takes only a-z, A-Z and 0-9 ranges.
+_FILTER_CLASS = re.compile(r"\[([A-Za-z0-9-]+)\]")
+# The workflow names in the linted tree, which collect() fills before the checks run.
+WORKFLOW_NAMES: list[str] = []
+
+
+class FilterError(ValueError):
+    """A workflow_run filter GitHub cannot parse; it then starts a phantom run that ends in startup_failure."""
+
+
+def filter_regex(pattern: str) -> re.Pattern[str]:
+    """GitHub's filter pattern as a regex over the whole name: *, **, ?, +, [a-z0-9] ranges and \\ escapes."""
+    out, i = [], 0
+    while i < len(pattern):
+        ch = pattern[i]
+        if ch == "\\" and i + 1 < len(pattern):
+            out.append(re.escape(pattern[i + 1]))
+            i += 2
+        elif ch == "*":
+            double = pattern.startswith("**", i)
+            out.append(".*" if double else "[^/]*")
+            i += 2 if double else 1
+        elif ch in "?+":
+            if not out or out[-1][-1:] in ("*", "?", "+"):
+                raise FilterError(f"{ch!r} at {i} repeats nothing; escape it as '\\{ch}'")
+            out[-1] = f"(?:{out[-1]}){ch}"
+            i += 1
+        elif ch == "[":
+            found = _FILTER_CLASS.match(pattern, i)
+            if not found:
+                raise FilterError(f"'[' at {i} opens no a-z, A-Z or 0-9 range; escape it as '\\['")
+            out.append(found.group(0))
+            i = found.end()
+        else:
+            out.append(re.escape(ch))
+            i += 1
+    return re.compile("".join(out))
+
+
+def check_run_filter(rel: str, doc: YamlDocument) -> list[Finding]:
+    run = value(value(doc, "on"), "workflow_run")
+    filters = value(run, "workflows") if isinstance(run, dict) else None
+    if not isinstance(filters, list):
+        return []
+    out = []
+    for pattern in filters:
+        if not isinstance(pattern, str):
+            continue
+        num = line_of(run, "workflows")
+        try:
+            regex = filter_regex(pattern)
+        except FilterError as exc:
+            out.append((rel, "run-filter", pattern, num, (f"workflow_run filter {pattern!r} is no valid GitHub "
+                        f"filter pattern ({exc}); every completed run then starts a phantom workflow")))
+            continue
+        if not any(regex.fullmatch(name) for name in WORKFLOW_NAMES):
+            out.append((rel, "run-filter", pattern, num, (f"workflow_run filter {pattern!r} matches no workflow "
+                        "name here; it is a GitHub filter pattern, so escape + ? * [ ] ! with a backslash")))
+    return out
+
+
 CHECKERS: dict[str, Callable[[str, YamlDocument], list[Finding]]] = {
     "runner-ban": check_runner_ban,
     "job-timeout": check_job_timeout,
     "permissions": check_permissions,
     "artifact-error": check_artifact_error,
     "sha-pin": check_sha_pin,
+    "run-filter": check_run_filter,
 }
 
 
@@ -570,8 +632,24 @@ def yaml_files(root: Path) -> list[Path]:
     return found + sorted(gh.glob("actions/*/action.yml")) + sorted(gh.glob("actions/*/action.yaml"))
 
 
+def workflow_names(root: Path, files: list[Path]) -> list[str]:
+    """What GitHub calls each workflow: its top-level name, else its path."""
+    names = []
+    for path in files:
+        rel = path.relative_to(root).as_posix()
+        if not rel.startswith(".github/workflows/"):
+            continue
+        try:
+            name = value(load_yaml(path), "name")
+        except ParseError:
+            name = None
+        names.append(name if isinstance(name, str) else rel)
+    return names
+
+
 def collect(root: Path, files: list[Path]) -> list[Finding]:
     findings = []
+    WORKFLOW_NAMES[:] = workflow_names(root, files)
     for path in files:
         rel = path.relative_to(root).as_posix()
         try:
@@ -579,12 +657,12 @@ def collect(root: Path, files: list[Path]) -> list[Finding]:
         except ParseError as exc:
             findings.append((rel, PARSE, "-", 0,
                              (f"cannot be read by this gate ({exc}), so NONE of the "
-                              "five conventions was graded over it")))
+                              "six conventions was graded over it")))
             continue
-        # A composite action has no jobs or permissions, so only the step-shaped checks apply.
+        # A composite action has no jobs, permissions or triggers, so only the step-shaped checks apply.
         is_action = rel.startswith(".github/actions/")
         for name in CHECKS:
-            if is_action and name in ("job-timeout", "permissions"):
+            if is_action and name in ("job-timeout", "permissions", "run-filter"):
                 continue
             findings.extend(CHECKERS[name](rel, doc))
     return findings
