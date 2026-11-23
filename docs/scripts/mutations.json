@@ -62094,5 +62094,21 @@
   "target": "linux/scripts/lib/code-quality.sh",
   "find": "errors=\"$(grep -cE ': (fatal )?error:' \"${log}\" || true)\"",
   "replace": "errors=\"$(grep -cE ': (fatal )?error:' \"${log}\")\""
+ },
+ {
+  "why": "an approved notice must not ship a DRAFT line to every end user",
+  "id": "packaging.msvc-notice-no-draft",
+  "replace": "the DRAFT Microsoft Visual C++ runtime libraries",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msvc.RuntimeNotice.Tests.ps1 -ResultFile logs/code-quality/msvc-notice-mutation.json",
+  "target": "cmake/msvc-runtime-notice.txt",
+  "find": "the Microsoft Visual C++ runtime libraries"
+ },
+ {
+  "why": "the notice must link the license terms that govern the runtime, not only the file list",
+  "id": "packaging.msvc-notice-names-license-terms",
+  "replace": "https://example.invalid/",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msvc.RuntimeNotice.Tests.ps1 -ResultFile logs/code-quality/msvc-notice-mutation.json",
+  "target": "cmake/msvc-runtime-notice.txt",
+  "find": "https://visualstudio.microsoft.com/license-terms/"
  }
 ]

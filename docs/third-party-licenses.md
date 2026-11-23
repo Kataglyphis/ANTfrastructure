@@ -905,7 +905,11 @@ A Windows package that carries `msvcp140*.dll`, `vcruntime140*.dll`, `concrt140.
 notice in [`cmake/msvc-runtime-notice.txt`](../cmake/msvc-runtime-notice.txt). The owner accepts a
 link to the full terms: `https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution`,
 because `aka.ms/vs/18/redistribution.lic`, the link inside Redist.txt, reached Bing's start page on
-2026-11-05. **The notice's wording is a draft** until someone qualified has read it.
+2026-11-05. The owner approved the wording on 2026-11-23 (CON228): it names the Visual Studio
+license terms as the governing text, with Redist.txt as the file list. An MSI shows it on the licence
+page the user accepts; a ZIP or MSIX only carries it, and whether a carried notice meets the terms'
+"agree to terms" condition is not settled by Microsoft's text. Downloading the runtime at install time
+instead of shipping it avoids that question.
 
 - **CPack** (`cmake/CPackCommon.cmake`, `kataglyphis_install_msvc_runtime_notice`) installs both
   files when `InstallRequiredSystemLibraries` or `KATAGLYPHIS_PACKAGE_DLL_DIR` brings the runtime,

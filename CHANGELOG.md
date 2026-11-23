@@ -19,6 +19,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-23 — the MSVC runtime notice is final (CON228)
+
+- `cmake/msvc-runtime-notice.txt` loses its DRAFT line and names the Visual Studio license terms as the governing
+  text; it pointed at Redist.txt, which only lists the redistributable files. It now says the DLLs are unmodified,
+  that installing or using the package means agreeing to those terms, and links the license terms beside the
+  redistribution list. The owner approved the wording after a check against the Distributable Code conditions:
+  MIT projects meet the Excluded License condition and an MSI shows the notice on the accepted licence page; for a
+  ZIP or MSIX, which only carry it, Microsoft's text does not say whether that counts as agreeing
+  ([`third-party-licenses.md`](docs/third-party-licenses.md#the-msvc-runtime-notice)).
+
 ## 2026-11-23 — an install tree refuses build-time files (CON299)
 
 - `Assert-InstallTreeLayout` (WindowsCrossBundle.Common.psm1) and `New-PortableBundle -ForbidBuildTimeFiles` refuse an

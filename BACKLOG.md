@@ -2664,9 +2664,10 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
       Left separately, before a release: the installer's licence wording for the end-user terms.
-- [ ] **CON228 — the MSVC runtime notice's end-user paragraph is a draft** [S, ★]. The notice itself shipped
-      2026-11-06 ([`third-party-licenses.md` § The MSVC runtime notice](docs/third-party-licenses.md#the-msvc-runtime-notice));
-      the paragraph on the installers' licence page stays a draft until someone qualified has read it.
+- [x] **CON228 — the MSVC runtime notice's end-user paragraph is a draft** [S, ★]. The notice itself shipped
+      2026-11-06 ([`third-party-licenses.md` § The MSVC runtime notice](docs/third-party-licenses.md#the-msvc-runtime-notice)).
+      Done 2026-11-23: the owner approved the reviewed wording, which names the Visual Studio license terms
+      instead of Redist.txt and drops the DRAFT line; the ZIP/MSIX consent question stays documented there.
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
   Later measurement, 2026-11-15: the complete `d9f129af` CUDA repeat has 6,304
   primary hits, including 605 NVCC hits, zero misses/cache errors/compiler failures
