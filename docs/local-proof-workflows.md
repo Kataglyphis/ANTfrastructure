@@ -274,8 +274,21 @@ Keep the actual build and probe receipts for both flavors. Shared host admission
 collision, ambient-flag and fresh temporary-root checks. Media launch admission requires
 at least 300 GiB available and retains any stricter plan.
 
-Carry the existing `normal_stage_launch.py`, `gpu_source_profile.py`, native OCI/seed and
-proof helpers beside these entries. `test-gpu-handoff.sh` uses real synthetic OCI bytes and
+### A Media source newer than its GPU parent
+
+`launch-normal-media.py --media-source CLEAN_CHECKOUT --media-source-proof COMPLETE_PROOF`
+builds ROCm Media from a later commit while keeping the verified GPU parent. The
+`media_source_profile.py` review refuses unless the GPU source revision is an ancestor, the new
+commit has its own complete preflight proof, and every compiler, SDK and GPU input is
+byte-identical between the two revisions. Those inputs are the four upstream Dockerfiles,
+both `.dockerignore` files, every path those Dockerfiles mount or copy (an `${ARG}` path is
+compared up to its first variable) and the SDK and AMD selected-script closures. The Media
+export recomputes the review and requires the recorded one; Android and later stages inherit
+the Media source unchanged. The review proves that the upstream inputs are unchanged. It does
+not prove cache hits or a successful build. NVIDIA has no such profile.
+
+Carry the existing `normal_stage_launch.py`, `gpu_source_profile.py`, `media_source_profile.py`,
+native OCI/seed and proof helpers beside these entries. `test-gpu-handoff.sh` uses real synthetic OCI bytes and
 hardlinks with explicit engine/unit doubles; the standard native seed and stage suites
 retain their earlier compiler/SDK scopes. They do not establish actual image completion,
 full binary licences, native loader ABI, GPU parity or digest-specific FINAL acceptance.

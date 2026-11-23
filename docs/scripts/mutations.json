@@ -61686,5 +61686,125 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k wiring",
   "why": "the Android helper needs its pins beside it in the image"
+ },
+ {
+  "id": "media-source.upstream-inputs-refused",
+  "target": "linux/scripts/local-proof/media_source_profile.py",
+  "find": "    assert not differing, ",
+  "replace": "    assert True, ",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_mounted_file",
+  "why": "a Media source that changes a mounted compiler, SDK or GPU input must not reuse the old GPU parent"
+ },
+ {
+  "id": "media-source.closure-compared",
+  "target": "linux/scripts/local-proof/media_source_profile.py",
+  "find": "    assert _closures(producer) == _closures(source), ",
+  "replace": "    assert True, ",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_closure_member",
+  "why": "the SDK and GPU selected-script contexts are image inputs too"
+ },
+ {
+  "id": "media-source.expanded-prefix",
+  "target": "linux/scripts/local-proof/media_source_profile.py",
+  "find": "    return head if head == path else head.rsplit('/', 1)[0]",
+  "replace": "    return path",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_change_under_an_expanded",
+  "why": "an ARG-expanded mount must be compared over every expansion, not as a literal that never exists"
+ },
+ {
+  "id": "media-source.copy-sources",
+  "target": "linux/scripts/local-proof/media_source_profile.py",
+  "find": "        paths |= {_literal_prefix(word) for word in words[:-1] if not word.startswith('--')}",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_copied_directory",
+  "why": "COPY sources are image inputs as much as bind mounts"
+ },
+ {
+  "id": "media-source.dockerfiles-fixed",
+  "target": "linux/scripts/local-proof/media_source_profile.py",
+  "find": "FIXED_INPUTS = ('.dockerignore', 'linux/.dockerignore', *UPSTREAM_DOCKERFILES)",
+  "replace": "FIXED_INPUTS = ('.dockerignore', 'linux/.dockerignore')",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_upstream_dockerfile",
+  "why": "an upstream Dockerfile edit re-keys its stage even when no mounted script changes"
+ },
+ {
+  "id": "media-source.ancestry",
+  "target": "linux/scripts/local-proof/media_source_profile.py",
+  "find": "    checked_run(['git', '-C', str(source), 'merge-base', '--is-ancestor', parent, head])",
+  "replace": "    None",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_parent_source_must",
+  "why": "a Media source with unrelated history has no reviewed delta from its GPU parent"
+ },
+ {
+  "id": "media-source.other-revision",
+  "target": "linux/scripts/local-proof/media_source_profile.py",
+  "find": "    assert head != parent, ",
+  "replace": "    assert True, ",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_parent_source_must",
+  "why": "the unchanged source already has the normal inheritance path"
+ },
+ {
+  "id": "media-source.rocm-gpu-only",
+  "target": "linux/scripts/local-proof/media_source_profile.py",
+  "find": "    assert gpu['variant'] == 'rocm' and gpu['stage'] == 'gpu', ",
+  "replace": "    assert True, ",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_only_reviewed",
+  "why": "the reviewed input list covers the ROCm GPU chain only"
+ },
+ {
+  "id": "media-source.distinct",
+  "target": "linux/scripts/local-proof/media_source_profile.py",
+  "find": "    assert source != producer, ",
+  "replace": "    assert True, ",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_only_reviewed",
+  "why": "the GPU source itself is no alternate"
+ },
+ {
+  "id": "media-source.full-proof",
+  "target": "linux/scripts/local-proof/media_source_profile.py",
+  "find": "    full = full_source(source, proof_path, head)",
+  "replace": "    full = {'actual_full_registry_mutations': 17}",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_media_only_change",
+  "why": "the alternate source needs its own complete preflight proof"
+ },
+ {
+  "id": "media-source.handoff-review",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "        assert actual == review and str(source)",
+  "replace": "        assert str(source)",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_handoff_rechecks",
+  "why": "the Media export must recompute the review rather than trust the recorded copy"
+ },
+ {
+  "id": "media-source.handoff-proof",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "        assert sha(proof) == invocation['source_full_preflight_sha256'], ",
+  "replace": "        assert True, ",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_handoff_rechecks",
+  "why": "a changed proof file after launch must refuse the export"
+ },
+ {
+  "id": "media-source.launcher-paired",
+  "target": "linux/scripts/local-proof/launch-normal-media.py",
+  "find": "    if (args.media_source is None) != (args.media_source_proof is None):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_launcher_requires",
+  "why": "a source without its proof, or a proof without its source, must refuse before any work"
+ },
+ {
+  "id": "media-source.launcher-rocm",
+  "target": "linux/scripts/local-proof/launch-normal-media.py",
+  "find": "        if args.media_source is not None:\n            parser.error('an alternate Media source is reviewed for ROCm only')",
+  "replace": "        if False:\n            parser.error('an alternate Media source is reviewed for ROCm only')",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_launcher_requires",
+  "why": "the NVIDIA lane has no reviewed alternate-source profile"
+ },
+ {
+  "id": "media-source.launcher-record",
+  "target": "linux/scripts/local-proof/launch-normal-media.py",
+  "find": "source_full_preflight_sha256=sha(proof), Media_source_review=review)",
+  "replace": "source_full_preflight_sha256=sha(proof))",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_launcher_binds",
+  "why": "the recorded review is what the Media export rechecks"
  }
 ]

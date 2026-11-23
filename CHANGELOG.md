@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-23 — build ROCm Media from a reviewed newer source on the same GPU parent
+
+- `launch-normal-media.py --media-source/--media-source-proof` accepts a later commit when it
+  descends from the GPU source, has its own complete preflight and leaves every compiler, SDK
+  and GPU input byte-identical. The Media export recomputes that review.
+
 ## 2026-11-23 — fetch ONNX Runtime sources by verified commit with fork fallback
 
 - Microsoft's ONNX Runtime, GenAI and onnxruntime-extensions repositories return 404.

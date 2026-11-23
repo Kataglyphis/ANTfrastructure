@@ -7,6 +7,7 @@ from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from media_source_profile import select_media_source
 from native_oci_layout import layer_ancestry, sha
 from native_oci_seed import parent_layout
 from normal_stage_launch import validate_stage_invocation
@@ -57,8 +58,15 @@ def validate_inherited_source(invocation: Json, parent: Json, previous: Json,
 
 
 def validate_source_fields(invocation: Json, previous: Json) -> None:
-    for field in ('source', 'source_revision', 'source_full_preflight_proof', 'source_full_preflight_sha256'):
-        assert invocation[field] == previous[field], 'Downstream must retain its exact proven parent source'
+    review = invocation.get('Media_source_review')
+    if review is not None:
+        source, revision, proof, actual = select_media_source(previous, Path(invocation['source']),
+                                                              Path(invocation['source_full_preflight_proof']))
+        assert actual == review and str(source) == invocation['source'] and revision == invocation['source_revision'], 'Reviewed Media source differs'
+        assert sha(proof) == invocation['source_full_preflight_sha256'], 'Reviewed Media source proof changed'
+    else:
+        for field in ('source', 'source_revision', 'source_full_preflight_proof', 'source_full_preflight_sha256'):
+            assert invocation[field] == previous[field], 'Downstream must retain its exact proven parent source'
     assert invocation['parent_source_revision'] == previous['source_revision'], 'Downstream parent source differs'
 
 
