@@ -2430,16 +2430,26 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       moves to `linux/scripts/06-packaging` with the binaries as arguments; `Hardening.cmake`'s Linux branch adds PIE
       and `-z relro -z now` (BeschleunigerBallett passes none: "Hardening Linker Flags:" is empty in job
       135983570303); a PE twin for a repo's own binaries sits beside `Read-PeLayout`.
-- [ ] **CON295 — analyzers that run, and warnings that count** [M, ★; owner D10, D11]. (a) Done 2026-11-23 in the
-      hub: the image's IWYU is built on an older clang and reads no unit that declares or imports a module, so the
-      owner chose a report on the plain units: `code_quality_find_iwyu_files` and `code_quality_run_iwyu`, red only
-      for a unit it could not read, and `myproject_ENABLE_IWYU` is OFF. Left: AccelerANTgine's and
-      BeschleunigerBallett's static lanes call it. (b) cppcheck: BeschleunigerBallett's default ON goes, as the image has no binary
-      and a skipped check misleads (D10). (c) Warnings in three steps (D11): third-party includes as SYSTEM
-      (BeschleunigerBallett's GCC log: 124 spdlog and 12 nlohmann warnings), then a per-repo warning-count ratchet,
-      then `myproject_WARNINGS_AS_ERRORS` for the product targets only. (d) Done 2026-11-21: the pattern-limits doc
-      holds the row for exception-free filesystem calls, which AccelerANTgine and BeschleunigerBallett bind; the
-      first version read `current_path(ec)` as throwing and missed the iterator declaration, corrected the same day.
+- [ ] **CON295 — analyzers that run, and warnings that count** [M, ★; owner D10, D11]. (a) Done 2026-11-23: the
+      image's IWYU is built on an older clang and reads no unit that declares or imports a module, so the owner chose
+      a report on the plain units: `code_quality_find_iwyu_files` and `code_quality_run_iwyu` (hub 486827f8), red only
+      for a unit it could not read, and `myproject_ENABLE_IWYU` is OFF. AccelerANTgine's static lane runs it (0126297:
+      7 units read, none refused, 6 with suggestions); left: BeschleunigerBallett wires it at its next hub pin. (b)
+      Done 2026-11-21 in BeschleunigerBallett (9dedc393): cppcheck's default is OFF, as the image has no binary and a
+      skipped check misleads (D10). (c) Warnings in three steps (D11). Step 1 in source 2026-11-23:
+      BeschleunigerBallett adds spdlog and nlohmann_json as SYSTEM subdirectories (a9333e7e), against the 124 and 12
+      header warnings of GCC job 135983570345; its next GCC job's count is the proof. Then a per-repo warning-count
+      ratchet, then `myproject_WARNINGS_AS_ERRORS` for the product targets only. (d) Done 2026-11-21: the
+      pattern-limits doc holds the row for exception-free filesystem calls, which AccelerANTgine and
+      BeschleunigerBallett bind; the first version read `current_path(ec)` as throwing and missed the iterator
+      declaration, corrected the same day.
+- [ ] **CON297 — PIE from `myproject_enable_hardening` reaches no target** [S, ★]. `cmake/Hardening.cmake` sets
+      `CMAKE_POSITION_INDEPENDENT_CODE ON` inside the macro; called from a function such as BeschleunigerBallett's
+      `myproject_enable_local_hardening`, the variable stays in that function's scope, and it only ever applies to
+      targets created after it. BeschleunigerBallett's executables are PIE through clang's default alone, which its
+      ELF gate confirms (found by its CI track, 2026-11-23). Either the module adds `-fPIE`/`-pie` through the
+      target's INTERFACE options, with a generator expression on the consumer's TYPE so a shared library keeps
+      `-fPIC`, or its doc names the limit and the consumers set the property on their own targets.
 - [b] **CON296 — a bridge import helper for the first consumer bridge** [S-M; owner D4]. `kataglyphis_import_bridge_crate`
       beside `kataglyphis_configure_corrosion_target`: imports LOCKED, uses an unwinding profile outside Debug and
       checks that at configure time (a runtime test cannot, `cargo test` always unwinds), and lets a superproject

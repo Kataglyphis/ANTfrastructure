@@ -17,6 +17,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-23 — the quality report skips agents-drift without a docs table (CON298)
+
+- `quality-report.sh` called a consumer without a `[docs]` table "incomplete": the `agents_drift` collector ran
+  `verify_agents_drift.py`, which refuses such a repo, and turned the refusal into a failed metric, so
+  `code-quality-report.yml` with `quality-report: true` failed though agents-drift is scoped to the AI consumers
+  (found by BeschleunigerBallett's CI track, which declared a table to get past it). The collector now reports the
+  metric as not collected, "no [docs] build_list and source", as it does for a repo without `AGENTS.md`; one test
+  and one mutation. CON295 records AccelerANTgine's IWYU wiring (0126297) and BeschleunigerBallett's SYSTEM
+  includes (a9333e7e); CON297 records that the hardening module's PIE reaches no target from a function.
+
 ## 2026-11-23 — IWYU reports on the units without modules (CON295 (a))
 
 - IWYU never ran: `myproject_apply_iwyu` set the property on the INTERFACE target `myproject_options`, which reaches

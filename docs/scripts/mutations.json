@@ -35145,6 +35145,14 @@
   "why": "the input must reach the aggregator"
  },
  {
+  "id": "lib.quality-report-drift-needs-docs",
+  "target": "linux/scripts/quality_report_text.py",
+  "find": "if not isinstance(docs, dict) or not docs.get(\"build_list\") or not docs.get(\"source\"):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-quality-report.sh -k test_agents_drift_without_a_docs_table_is_not_collected",
+  "why": "a consumer without a docs table would fail the report as incomplete over a check outside its scope"
+ },
+ {
   "id": "quality-report.agents-drift-no-agents-md",
   "target": "linux/scripts/quality_report_text.py",
   "find": "        return missing(\"agents_drift_findings\", \"findings\", LOWER, CODE, source, \"no AGENTS.md\")\n",
