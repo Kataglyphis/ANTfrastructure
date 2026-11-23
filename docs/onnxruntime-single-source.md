@@ -626,6 +626,39 @@ the first run is still the real test. The likeliest first reds, all fail-closed:
 - A PyPI ORT that an earlier build left in a Linux uv or pip cache mount, now
   that G2 grades those mounts.
 
+## Source pins and fork fallback
+
+Since about 2026-11-17, `github.com/microsoft/onnxruntime`, `onnxruntime-genai` and
+`onnxruntime-extensions` answer 404 without an announcement. The Linux Media and Android
+builds therefore fetch every ORT-family source through
+`03-media/build/onnxruntime/build/lib/source-fetch.sh`, which reads one row per source from
+`source-pins.txt` beside it: name, tag, full commit and fallback repositories.
+
+- **The commit is the identity.** Each checkout must sit at the pinned commit, whichever
+  repository served it. A Git commit hash covers the whole tree, so a fork that returns that
+  commit returns Microsoft's bytes.
+- **Microsoft first, forks second.** The upstream tag is tried three times. Only when it
+  cannot be fetched at all does the helper fetch the pinned commit by hash from each fallback
+  and recreate the tag name locally. An upstream tag that resolves to another commit is fatal
+  and never falls back.
+- **A version bump needs a new pin.** A tag in `versions.env` that differs from its pin fails
+  before any fetch. Take the new commit from a trusted record (Software Heritage's snapshot of
+  `https://github.com/microsoft/onnxruntime`, or the restored upstream), never from a fork.
+- **GenAI's extensions dependency is pinned too.** GenAI's own `cmake/deps.txt` must name the
+  pinned `onnxruntime-extensions` commit. `20-fetch.sh` fetches it beside the GenAI tree and
+  `60-build-genai.sh` points `FETCHCONTENT_SOURCE_DIR_ONNXRUNTIME_EXTENSIONS` at it.
+- **Why not `versions.env`.** `Dockerfile.base` mounts `versions.env`, so a pin there re-keys
+  the whole chain. The pins stay beside the Media scripts until the next full rebuild moves
+  them (owner decision 2026-11-23); `test-ort-source-fetch.sh` holds each tag to its
+  `versions.env` pin.
+
+The 2026-11-23 pins were taken from Software Heritage's 2026-11-14 snapshot, before the
+outage: ORT `v1.31.1` = `6af1a932…`, GenAI `v0.19.0` = `d01b2441…`, and the extensions commit
+GenAI's `deps.txt` names. The Windows lane still clones the Microsoft URLs
+(`Build-OnnxFromSource.ps1`, `Build-OnnxGenaiFromSource.ps1`) and fails until it adopts the
+same pins. The fixture suites prove selection and verification with local repositories; they
+do not prove that a fork keeps the commit.
+
 ## Failure messages
 
 | You see | Where | Meaning |

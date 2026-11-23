@@ -21,7 +21,12 @@ apt-get update && apt-get install -y --no-install-recommends \
 
 PARALLEL_JOBS="$(media_jobs)"
 
-android_clone_shallow "https://github.com/microsoft/onnxruntime.git" "${ORT_VERSION}" onnxruntime-android
+_ort_source_fetch_lib=/opt/scripts/03-media/onnxruntime/source-fetch.sh
+[ -f "${_ort_source_fetch_lib}" ] || _ort_source_fetch_lib="$(dirname "${BASH_SOURCE[0]}")/../build/lib/source-fetch.sh"
+# shellcheck disable=SC1090
+source "${_ort_source_fetch_lib}"
+ort_source_fetch onnxruntime "${ORT_VERSION}" "https://github.com/microsoft/onnxruntime.git" /opt/onnxruntime-android
+cd /opt/onnxruntime-android
 
 # Patch Android Gradle Plugin 7.4.2 -> 8.3.1 (JDK 21) and re-enable buildConfig
 android_apply_patch \

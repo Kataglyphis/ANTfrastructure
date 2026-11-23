@@ -2175,6 +2175,14 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
 
 ## Open — Windows `:winamd64`
 
+- [ ] **CON298 — fetch the Windows ORT and GenAI sources by pinned commit** [S, ★★★]. Found 2026-11-23:
+      `github.com/microsoft/onnxruntime`, `onnxruntime-genai` and `onnxruntime-extensions` answer 404, so
+      `Build-OnnxFromSource.ps1` and `Build-OnnxGenaiFromSource.ps1` cannot clone. Linux reads
+      `03-media/build/onnxruntime/build/lib/source-pins.txt` and falls back to fork networks
+      ([source pins](docs/onnxruntime-single-source.md#source-pins-and-fork-fallback)). Done when the Windows lane
+      reads the same pins, verifies each commit and builds from a fork while upstream is down. Separately, move the
+      Linux pins into `versions.env` at the next planned full rebuild, since that re-keys the whole chain.
+
 - [ ] **CON93 — the torch venv's sdists compile with VS's `cl` and cannot link against the in-tree CPython**
       **In source 2026-11-04.** `WindowsSdistCompiler.Common.psm1` shares the shim, and a sync fails on a distribution uv built with MSVC's Rich header. Proved in a
       throwaway `:winamd64` on 3.14 with import libs staged by hand: psutil and markupsafe, the gate red on a VS build, and OrchestrANT's wheel with 64 `.pyd` files and none

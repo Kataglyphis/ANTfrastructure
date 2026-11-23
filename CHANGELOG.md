@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-23 — fetch ONNX Runtime sources by verified commit with fork fallback
+
+- Microsoft's ONNX Runtime, GenAI and onnxruntime-extensions repositories return 404.
+  Linux Media and Android now fetch each source through `source-fetch.sh`: the upstream tag
+  first, then the pinned commit from fork networks, and every checkout must match its pin.
+- GenAI builds against the verified extensions checkout instead of cloning it in CMake.
+  The Windows lane still clones the Microsoft URLs and remains blocked.
+
 ## 2026-11-23 — refresh SDK fallback fonts for Flutter 3.50.1
 
 - Pin every Noto Color Emoji v39 and Noto Sans Symbols 2 v25 chunk requested by

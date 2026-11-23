@@ -1,0 +1,4 @@
+# name|tag|commit|fallback repositories; see docs/onnxruntime-single-source.md § Source pins and fork fallback
+onnxruntime|v1.31.1|6af1a932e2286d5c58166085d24c68783033edee|https://github.com/ROCm/onnxruntime.git https://github.com/intel/onnxruntime.git
+onnxruntime-genai|v0.19.0|d01b2441a72d4e3223415b9b08474c6e65fbc028|https://github.com/Liquid4All/onnxruntime-genai.git
+onnxruntime-extensions|-|e2e119c08b4379d038bcb5c75d9111328a9b86c1|https://github.com/Liquid4All/onnxruntime-extensions.git

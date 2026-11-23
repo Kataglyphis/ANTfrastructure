@@ -3,6 +3,6 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
-t_case "ORT and GenAI fetch preserve all twelve offline command receipts"
+t_case "ORT and GenAI fetch preserve all sixteen offline command receipts"
 t_assert_ok python3 "${TESTS_DIR}/onnx_fetch_receipt_tests.py" "${1:-${TESTS_DIR}/../03-media/build/onnxruntime/build/20-fetch.sh}"
 t_summary

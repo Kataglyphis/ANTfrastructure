@@ -5,6 +5,17 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## ONNX Runtime clone asks for a GitHub username
+
+`fatal: could not read Username for 'https://github.com': No such device or address` while
+cloning ONNX Runtime, GenAI or onnxruntime-extensions means GitHub answers 404 for the
+repository; an anonymous clone of a missing repository asks for credentials. Since about
+2026-11-17 Microsoft's three repositories are offline. Do not add credentials or retry. The
+Media and Android fetch now verify the pinned commit and fall back to fork networks
+([source pins](onnxruntime-single-source.md#source-pins-and-fork-fallback)); `[ort-source]`
+lines name the source that served each commit. A refusal naming a stale pin means a version
+bump needs a new commit in `source-pins.txt`.
+
 ## Consumer pattern limits flag the native plugin header's status helper
 
 The conservative `throwing_filesystem_calls` consumer scan can flag the file-status overload

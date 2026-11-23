@@ -148,6 +148,9 @@ GENAI_BASE_ARGS=(
   --cmake_extra_defines
   "CMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM}"
 )
+_genai_extensions_src="$(genai_extensions_src_dir)"
+[ -d "${_genai_extensions_src}/.git" ] || err "verified onnxruntime-extensions source missing at ${_genai_extensions_src}; run 20-fetch.sh first"
+GENAI_BASE_ARGS+=(--cmake_extra_defines "FETCHCONTENT_SOURCE_DIR_ONNXRUNTIME_EXTENSIONS=${_genai_extensions_src}")
 
 append_onnx_lld_build_args GENAI_BASE_ARGS
 append_onnx_ccache_build_args GENAI_BASE_ARGS

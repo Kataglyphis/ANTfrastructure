@@ -1470,6 +1470,10 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
     library path to the bundle census: `check-ort-provenance.sh --library-path DIR[:DIR...] <bundle>`, entries
     relative to the bundle. Never patch a RUNPATH into the module, exempt the finding or hand the probe a host path
     ([contract](docs/consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime)).
+  - Linux ORT, GenAI and onnxruntime-extensions sources come through `source-fetch.sh` and its
+    `source-pins.txt`: every checkout must match its pinned commit, a moved upstream tag never falls
+    back to a fork, and a version bump needs a new pin
+    ([source pins](docs/onnxruntime-single-source.md#source-pins-and-fork-fallback)).
   - The image census (SHIPPED-TRUTH E) and `verify-critical-fixes.sh` fix11 enforce it. Every
     consumer, guard and gap: [`onnxruntime-single-source.md`](docs/onnxruntime-single-source.md);
     the Windows rule:

@@ -5,22 +5,24 @@ IFS=$'\n\t'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/lib/common.sh"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib/source-fetch.sh"
 
 _fetch_clone_if_missing() {
-  local label="$1" version="$2" repository="$3" directory="$4" existing_message="${5:-}"
+  local label="$1" pin="$2" version="$3" repository="$4" directory="$5" existing_message="${6:-}"
   if [ -d "$directory" ]; then
     [ -z "$existing_message" ] || info "$existing_message"
     return 0
   fi
   info "Cloning $label $version into $directory"
-  retry 3 10 "$label git clone" git clone --branch "$version" --depth 1 "$repository" "$directory"
+  ort_source_fetch "$pin" "$version" "$repository" "$directory" || err "$label source fetch failed"
 }
 
 parse_common_args "$@"
 detect_jobs
 
 # ONNX Runtime source
-_fetch_clone_if_missing "ONNX Runtime" "${ORT_VERSION}" "${ORT_REPO}" "${ORT_SRC_DIR}"
+_fetch_clone_if_missing "ONNX Runtime" onnxruntime "${ORT_VERSION}" "${ORT_REPO}" "${ORT_SRC_DIR}"
 
 cd "${ORT_SRC_DIR}"
 
@@ -29,12 +31,16 @@ retry 3 10 "ONNX Runtime submodule update" git submodule update --init --recursi
 
 # GenAI source
 if [[ "${BUILD_GENAI}" == "true" ]]; then
-  _fetch_clone_if_missing "ONNX Runtime GenAI" "${GENAI_VERSION}" "${GENAI_REPO}" "${GENAI_SRC_DIR}" \
+  _fetch_clone_if_missing "ONNX Runtime GenAI" onnxruntime-genai "${GENAI_VERSION}" "${GENAI_REPO}" "${GENAI_SRC_DIR}" \
     "GenAI source directory exists at ${GENAI_SRC_DIR}"
 
   cd "${GENAI_SRC_DIR}"
   git submodule sync --recursive || true
   git submodule update --init --recursive
+  # GenAI's FetchContent would clone this from Microsoft; 60-build-genai.sh points it at the verified copy.
+  _genai_extensions_url="$(ort_source_dep_url "${GENAI_SRC_DIR}/cmake/deps.txt" onnxruntime_extensions onnxruntime-extensions)" \
+    || err "GenAI deps.txt disagrees with the onnxruntime-extensions pin"
+  _fetch_clone_if_missing "ONNX Runtime Extensions" onnxruntime-extensions - "${_genai_extensions_url}" "$(genai_extensions_src_dir)"
   cd "${ORT_SRC_DIR}"
 fi
 

@@ -22653,26 +22653,26 @@
  },
  {
   "id": "lib.onnx-fetch-clone-ref",
-  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
-  "find": "--branch \"$version\"",
-  "replace": "--branch wrong-ref",
-  "test": "bash linux/scripts/tests/test-onnx-fetch-receipts.sh",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/source-fetch.sh",
+  "find": "--branch \"$tag\" \"$primary\" \"$dir\"",
+  "replace": "--branch main \"$primary\" \"$dir\"",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k primary",
   "why": "each caller must retain its distinct requested source ref"
  },
  {
   "id": "lib.onnx-fetch-clone-repository",
-  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
-  "find": "--depth 1 \"$repository\" \"$directory\"",
-  "replace": "--depth 1 \"$directory\" \"$repository\"",
-  "test": "bash linux/scripts/tests/test-onnx-fetch-receipts.sh",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/source-fetch.sh",
+  "find": "git clone -q --depth 1 --branch \"$tag\" \"$primary\" \"$dir\" && fetched=1",
+  "replace": "git clone -q --depth 1 --branch \"$tag\" \"file:///nonexistent\" \"$dir\" && fetched=1",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k primary",
   "why": "the clone repository and destination must retain their argument positions"
  },
  {
   "id": "lib.onnx-fetch-retry-policy",
-  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
-  "find": "retry 3 10 \"$label git clone\"",
-  "replace": "retry 1 1 \"$label git clone\"",
-  "test": "bash linux/scripts/tests/test-onnx-fetch-receipts.sh",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/source-fetch.sh",
+  "find": "for attempt in 1 2 3; do",
+  "replace": "for attempt in 1; do",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k fallback",
   "why": "both clone operations retain three attempts, ten seconds and caller-specific diagnostics"
  },
  {
@@ -22718,10 +22718,10 @@
  {
   "id": "lib.onnx-fetch-clone-failure-fatal",
   "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
-  "find": "retry 3 10 \"$label git clone\" git clone --branch \"$version\" --depth 1 \"$repository\" \"$directory\"",
-  "replace": "retry 3 10 \"$label git clone\" git clone --branch \"$version\" --depth 1 \"$repository\" \"$directory\" || true",
+  "find": "|| err \"$label source fetch failed\"",
+  "replace": "|| true",
   "test": "bash linux/scripts/tests/test-onnx-fetch-receipts.sh",
-  "why": "a failed clone must retain its status before any checkout-specific operation runs"
+  "why": "a failed source fetch must stop before any checkout-specific operation runs"
  },
  {
   "id": "lib.runtime-needed-empty-lines",
@@ -61558,5 +61558,133 @@
   "replace": "for path in workers()",
   "test": "bash linux/scripts/tests/test-local-final-launch.sh",
   "why": "The bounded FINAL invocation retains worker hashes for the observed NVIDIA variant."
+ },
+ {
+  "id": "lib.ort-source-verify-head",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/source-fetch.sh",
+  "find": "if [ \"$head\" != \"$commit\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k moved_tag",
+  "why": "a fetched checkout must sit at the pinned commit, whatever source served it"
+ },
+ {
+  "id": "lib.ort-source-moved-tag-no-fallback",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/source-fetch.sh",
+  "find": "_ort_source_verified \"$name\" \"$commit\" \"$dir\" \"$primary\"\n    return $?",
+  "replace": "_ort_source_verified \"$name\" \"$commit\" \"$dir\" \"$primary\" && return 0",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k moved_tag",
+  "why": "an upstream tag at another commit is a supply-chain alarm, not a reason to try forks"
+ },
+ {
+  "id": "lib.ort-source-stale-pin",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/source-fetch.sh",
+  "find": "if [ \"$tag\" != \"$version\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k stale_pin",
+  "why": "a version bump without a new pinned commit must fail before any fetch"
+ },
+ {
+  "id": "lib.ort-source-single-pin",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/source-fetch.sh",
+  "find": "if [ \"$count\" -ne 1 ]; then",
+  "replace": "if [ \"$count\" -lt 1 ]; then",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k bad_pins",
+  "why": "a duplicated pin name is ambiguous and must be refused"
+ },
+ {
+  "id": "lib.ort-source-full-commit",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/source-fetch.sh",
+  "find": "^[0-9a-f]{40}\\|",
+  "replace": "^[0-9a-f]+\\|",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k bad_pins",
+  "why": "a short commit is not a content hash and must be refused"
+ },
+ {
+  "id": "lib.ort-source-dep-commit",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/source-fetch.sh",
+  "find": "if [ \"$dep_commit\" != \"$commit\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k deps",
+  "why": "GenAI's own deps.txt commit must equal the extensions pin it is replaced by"
+ },
+ {
+  "id": "lib.ort-source-fallback-tag",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/source-fetch.sh",
+  "find": "git -C \"$dir\" tag \"$tag\" HEAD || return 1",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k fallback",
+  "why": "a fork checkout keeps the upstream tag name so later tag reads resolve"
+ },
+ {
+  "id": "lib.ort-source-commit-only-flag",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/source-fetch.sh",
+  "find": "_ort_source_by_commit \"$primary\" \"$commit\" \"$dir\" \"$tag\" && fetched=1",
+  "replace": "_ort_source_by_commit \"$primary\" \"$commit\" \"$dir\" \"$tag\"; [ -d \"$dir/.git\" ] && fetched=1",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k commit_only",
+  "why": "a failed commit-only primary leaves an empty repository that must not count as fetched"
+ },
+ {
+  "id": "lib.ort-source-partial-cleanup",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/source-fetch.sh",
+  "find": "  rm -rf \"$dir\"\n  _ort_source_say \"$name $commit is unavailable",
+  "replace": "  _ort_source_say \"$name $commit is unavailable",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k unavailable",
+  "why": "an unavailable commit must not leave a half-initialised checkout for a later existing-tree skip"
+ },
+ {
+  "id": "lib.ort-source-fallback-loop",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/source-fetch.sh",
+  "find": "    if _ort_source_by_commit \"$url\" \"$commit\" \"$dir\" \"$tag\"; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k fallback",
+  "why": "the pinned commit must be fetched from the fallback repositories when the primary is gone"
+ },
+ {
+  "id": "lib.onnx-fetch-helper-source",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
+  "find": "source \"${SCRIPT_DIR}/lib/source-fetch.sh\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k wiring",
+  "why": "the Media fetch must use the verified source helper"
+ },
+ {
+  "id": "lib.onnx-fetch-extensions-pinned",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
+  "find": "onnxruntime-extensions - \"${_genai_extensions_url}\" \"$(genai_extensions_src_dir)\"",
+  "replace": "onnxruntime-extensions - \"${_genai_extensions_url}\" \"/tmp/elsewhere\"",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k wiring",
+  "why": "GenAI's extensions dependency is fetched where 60-build-genai.sh points FetchContent"
+ },
+ {
+  "id": "lib.genai-extensions-source-define",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh",
+  "find": "GENAI_BASE_ARGS+=(--cmake_extra_defines \"FETCHCONTENT_SOURCE_DIR_ONNXRUNTIME_EXTENSIONS=${_genai_extensions_src}\")",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k wiring",
+  "why": "without the define GenAI's FetchContent clones the removed Microsoft repository"
+ },
+ {
+  "id": "lib.genai-extensions-source-required",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh",
+  "find": "[ -d \"${_genai_extensions_src}/.git\" ] || err",
+  "replace": "[ -d \"${_genai_extensions_src}/.git\" ] || true",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k wiring",
+  "why": "a missing verified extensions checkout must stop the GenAI build"
+ },
+ {
+  "id": "lib.android-ort-verified-fetch",
+  "target": "linux/scripts/03-media/build/onnxruntime/android/build-android.sh",
+  "find": "ort_source_fetch onnxruntime \"${ORT_VERSION}\" \"https://github.com/microsoft/onnxruntime.git\" /opt/onnxruntime-android",
+  "replace": "android_clone_shallow \"https://github.com/microsoft/onnxruntime.git\" \"${ORT_VERSION}\" onnxruntime-android",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k wiring",
+  "why": "the Android ORT build must use the same pinned, verified source"
+ },
+ {
+  "id": "lib.android-ort-source-copy",
+  "target": "linux/Dockerfile.android",
+  "find": "COPY --chmod=644 linux/scripts/03-media/build/onnxruntime/build/lib/source-pins.txt /opt/scripts/03-media/onnxruntime/source-pins.txt\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-source-fetch.sh -k wiring",
+  "why": "the Android helper needs its pins beside it in the image"
  }
 ]
