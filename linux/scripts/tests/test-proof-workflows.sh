@@ -20,6 +20,7 @@ t_git_commit "${fixture}" || exit 1
 printf 'dirty\n' > "${fixture}/marker"
 t_case "persistent proof tools preserve sources, raw results and owned-container boundaries"
 t_needs "POSIX fixture executables" t_posix_python
+proof_output='' proof_status=0
 t_capture_command proof_output proof_status python3 "${TESTS_DIR}/proof_workflow_tests.py" "${TESTS_DIR}/.." "${fixture}" "${revision}"
 # A CI-only failure is undiagnosable without the unittest report.
 [ "${proof_status}" -eq 0 ] || printf '%s\n' "${proof_output}" >&2

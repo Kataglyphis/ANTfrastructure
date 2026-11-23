@@ -62110,5 +62110,13 @@
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msvc.RuntimeNotice.Tests.ps1 -ResultFile logs/code-quality/msvc-notice-mutation.json",
   "target": "cmake/msvc-runtime-notice.txt",
   "find": "https://visualstudio.microsoft.com/license-terms/"
+ },
+ {
+  "id": "host.proof-ft-fixture-clears-selection",
+  "target": "linux/scripts/tests/proof_workflow_ft_tests.py",
+  "find": "            PREFLIGHT_SKIP=\"\",\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "CI runs preflight with PREFLIGHT_SKIP set; a fixture that inherits it makes the worker refuse before the FT probe"
  }
 ]

@@ -8,6 +8,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 class FreeThreadedBootstrapChecks(unittest.TestCase):
@@ -52,8 +53,18 @@ class FreeThreadedBootstrapChecks(unittest.TestCase):
             FT_EXECUTABLE=str(directory / "ft-python"),
             ISOLATED_PREFLIGHT_REVISION="f" * 40,
             ISOLATED_PREFLIGHT_JOBS="4",
+            PREFLIGHT_ONLY="",
+            PREFLIGHT_SKIP="",
+            PREFLIGHT_MUTATION_SHARD="",
         )
         return directory, trace, environment
+
+    def test_ft_fixture_clears_inherited_preflight_selection(self) -> None:
+        inherited = {"PREFLIGHT_ONLY": "docs", "PREFLIGHT_SKIP": "mutations", "PREFLIGHT_MUTATION_SHARD": "6/8"}
+        with patch.dict(os.environ, inherited):
+            _, _, environment = self.ft_tools()
+        for name in inherited:
+            self.assertEqual(environment[name], "", name)
 
     def test_ft_bootstrap_installs_the_source_pin_and_preserves_raw_failures(
         self,
