@@ -74,6 +74,14 @@ today is the device runtime every Windows consumer needs.
 | Smoke section 24 + the `HAILO_ROOT`/`HAILO_BIN` pointers | `windows/scripts/build/Test-Container.ps1` |
 | Payload layout | `C:\runtime\hailo\{bin,lib,include}` (`libhailort.dll`, `hailopp.dll`, `hailortcli.exe`) |
 
+The direct Windows stage owns its compiler-cache lifecycle: the shared session
+starts before CMake, including nested protobuf compiles; advanced counters go to
+stderr after Ninja, then the shared epilogue drains uploads and stops the server
+before success cleanup. It does not rely on `Build-MediaCoreAll.ps1` to close a
+stage that bypasses that driver. Statistics remain best-effort; unavailable
+counters are unknown, and the wiring fixture does not establish cache hits or
+device execution. See [cache evidence](windows-build-resources.md#persistent-compile-cache-sccache).
+
 Same shape as the Linux lane, with two Windows-specific facts:
 
 - **Offline externals, pinned 1:1.** Upstream's `prepare_externals` clones ten

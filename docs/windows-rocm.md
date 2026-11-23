@@ -828,6 +828,22 @@ It never calls `torch.cuda`, and `torch.cuda.is_available()` is False in the con
 
 Tests: `windows/scripts/tests/Torch.Rocm.Tests.ps1` and, for the source build's pure parts, `Torch.RocmSourceBuild.Tests.ps1`.
 
+### Torchvision host compiler cache
+
+The torchvision build venv applies the required `pytorch/001-torchvision-host-sccache.patch`
+before publishing its environment. `TORCHVISION_CXX_COMPILER_LAUNCHER` supplies one
+explicit sccache executable to the pinned Ninja host-CXX rule; compiler ABI probes
+still receive the original CC/CXX paths. HIP compilation, link rules and the shipped
+Torch wheel are unchanged. Missing sccache retains the existing uncached route;
+present sccache requires a clean or already-applied patch, so upstream drift fails.
+The patch is mounted only in the torchvision RUN to preserve the torch layer's key.
+
+The torchvision entry declares its own canonical `$scriptAssetRoot` before
+dot-sourcing the Torch builder. Its patch lookup follows the same checkout and
+flat-mount resolver contract. The unchanged native Windows parity suite checks
+the declaration's presence and source form; it does not run a wheel build or
+prove compiler-cache hits.
+
 ## llama.cpp HIP and Vulkan (`Dockerfile.rocm-llama`, rocm lane only)
 
 The stage installs two builds of the same llama.cpp tag, each in its own directory: the HIP
@@ -928,6 +944,74 @@ It never calls `ggml_backend_init`, because that creates a VkInstance. `--list-d
 
 ## MIGraphX and the ORT plugin EP (rocm lane, spike)
 
+### Private 737 producer and AMD device scope
+
+The 2026-11-15 private `737eb44f` producer passes its documented three-request
+sequence with retained raw exits 1/1/0 and all 18 required labels. It verifies
+2,496 physical source blobs before/after and all descriptor/diffID ancestry:
+Media47 -> MIGraphX49 -> Llama51 -> Torch56 -> Final62. Final manifest is
+`3bc9fc481a5f8295345c8026f286c767916aa7caa6ce8b00b0a08baad81bb6ca`.
+Its smoke summary is exactly 286 passed, zero failed, two skipped. The additional
+HIP-load skip is outside that summary because ServerCore lacks OPENGL32.dll.
+Neither count accepts physical AMD inference.
+
+Four private exports completed successfully: full runtime, positive native probe,
+own ORT wheel and negative Pad/MaxPool native probe. Their provenance reconciles
+12,132 source files, 12,134 exported payload files and 12,135 checked files including
+the runtime manifest. The own wheel's ORT/DirectML DLL hashes match the chain.
+Both programs pass local CPU controls, five sequential runs in one session each.
+A prepared replay verifies every runtime file before/after and also passes its
+local CPU mode. These ignored local preparation files are not an installed tool
+or a portable feature supplied by a clean clone.
+
+The RX 9070 XT machine is still booted into Linux. Actual Windows HIP loading,
+MIGraphX positive/negative inference and DirectML remain open; no reboot is implied.
+The future GPU check must preserve default MIGraphX passes, disable CPU fallback,
+prove provider operators in each run and retain raw failures and native provenance.
+The local CPU checks, vendor enumeration and compiled kernels cannot replace it.
+ARM device22, current digest-specific promotion and final-source hosted CI remain
+separate. [Issue249](https://github.com/Kataglyphis/ANTfrastructure/issues/249#issuecomment-6886786046)
+and `logs/g5-results.md` bind the dated private receipts.
+
+The same run measures zero sccache requests for torchvision despite 23 captured
+direct clang-cl commands. The pinned PyTorch `_wrap_compiler` explicitly declines
+automatic wrappers on Windows and HIP; isolated execution of its helpers confirms
+that an inline `CXX="sccache clang-cl"` prefix is quoted as one executable. A separate narrow build correction now selects only host CXX through the
+reviewed `pytorch/001-torchvision-host-sccache.patch` in the disposable build venv.
+One real SDK C++ compile/repeat in the737 image proves one miss then one hit,
+with unchanged object bytes and no cache/compiler errors. That small diagnostic
+does not qualify a complete torchvision wheel or replace the retained737 gap. Keep the zero-request
+gap and PyTorch's unclassified cache errors visible; do not treat them as hits.
+
+**Open correctness evidence, 2026-11-12.** The pinned MIGraphX commit
+`95672916ed289d4be9d230a9be732e1bbad97e8c` has a reported explicit-zero
+Pad/MaxPool error on Linux: input `[[-1,-2],[-3,-4]]`, one zero row/column added
+at the bottom/right, then 2x2 MaxPool with stride 1 must produce `[[-1,0],[0,0]]`.
+Keep the padded tensor as a second graph output. The
+[Linux reproduction](https://github.com/Kataglyphis/ANTfrastructure/issues/249#issuecomment-6821149263)
+finds the default result wrong and the disabled `eliminate_pad` pass diagnostic
+correct. That pass override is not a shipping fix. Windows CPU and NVIDIA
+controls prove the shared graph/oracle, not Windows MIGraphX behavior. The
+Windows source builder now requires the reviewed correction described below;
+coordinated source publication, corrected-image builds and the actual Windows AMD
+test remain open.
+At that same upstream pin, the real reference-only C++ unit now rejects the
+original and guard-reverted implementations and passes all seven cases with the
+proposed correction; an overbroad refusal fails the LP-norm positive control.
+This supplies source-level red/green evidence, separate from Windows compilation
+and GPU execution. The coordinated shipping correction is still open.
+
+The frozen `5bd443ea` producer now completes through documented continuations:
+the original full run stops before TVM at 30.3 GiB against the normal 40 GiB
+floor; the media-through-final run completes Torch and stops before Final; the
+Final-only run passes. Their original raw results remain 1/1/0. Final manifest
+`fa4bc369a67ea33182e33b42c00e243f71a2c3faf372754fbe14494fcaf5b309`
+has 286 passed smoke assertions, two retained skips and a separate HIP-load skip.
+The ordinary ROCm checks compile a gfx1201 kernel and pass, but neither compilation
+nor GPU-less plugin loading proves AMD inference. The independent producer audit
+binds 21 digest handoffs and the raw parent/final image layers; corrected-source
+and Windows AMD/ARM device acceptance remain separate.
+
 `-Variant rocm` builds `windows/Dockerfile.rocm-migraphx` (target `built`) on the merged rocm media, before the llama stage. `-NoRocmSpikes` skips it. cpu and nvidia never solve it, and no other Dockerfile or media build-arg map carries its pins.
 
 What it produces:
@@ -946,10 +1030,75 @@ How it is built (`Build-MigraphxFromSource.ps1`, `Build-OrtAmdgpuEpFromSource.ps
 - **Configuration no upstream CI builds.** rocMLIR is not in the TheRock tarball, so `MIGRAPHX_ENABLE_MLIR=OFF`. That costs the rocMLIR fusions (performance, not correctness). Also used: `BUILD_DEV=OFF` (hiprtc JIT), composable_kernel off, CMake 4.4.3, TheRock 10.1. Upstream's only Windows CI is build-only: gfx942, `BUILD_DEV=On`, ROCm 7.13.
 - **CRT.** MIGraphX and its deps are `/MD`. The EP is `/MT`, as upstream forces it; it talks to ORT and MIGraphX only through C APIs.
 - **Plugin lifetime.** The pinned `58afd43b` SDK deletes a nonvirtual `OrtNodeComputeInfo` base and retains a borrowed kernel-registry pointer. Windows consumes the same two patches owned by `linux/scripts/03-media/build/onnxruntime/build/patches/`: typed virtual node cleanup with all six C-base callback adjustments, then an owned registry serialized by a mutex and destroyed before data transfer. `Invoke-OrtAmdgpuEpSourcePatch` requires both before dependency setup/configure; missing or stale patches fail. The EP RUN mounts each file separately and passes `-PatchDir C:\bkmnt\ort-amdgpu-patches`; direct repository invocation defaults to the canonical Linux patch directory. These mounts do not re-key the earlier MIGraphX compilation. Native Windows Clang 23.1.5 controls reproduce the original ASan type mismatch and registry ownership failure, then pass 11 node and 41 registry checks with the unchanged patches ([recorded evidence](https://github.com/Kataglyphis/ANTfrastructure/issues/249#issuecomment-6793737641)). Those source-extracted C ABI/fake-registry controls do not prove the full SDK, production module or GPU inference. The final image and hardware acceptance remain required.
-- **Supply chain.** Every archive is SHA256-pinned in `versions.env` (`MIGRAPHX_WINDOWS_*`, `ORT_AMDGPU_EP_*`). The EP declares 8 FetchContent URLs (11 with DirectML) with no `URL_HASH`. Each one is pre-seeded through `FETCHCONTENT_SOURCE_DIR_*` from a verified archive, and so is the abseil that protobuf v34.1 fetches. The build refuses when the pinned commit declares a URL no pin rebuilds byte-for-byte, and `FETCHCONTENT_FULLY_DISCONNECTED` with CMP0170 turns any other fetch into a configure error. rocm-cmake is the one dependency with no archive pin. MIGraphX `rocm-10.0` calls `rocm_add_version_resource` (rocm-cmake 33541cd51f), and TheRock's rocm-cmake predates it by four commits: `Unknown CMake command`, 2026-09-25. So phase 2 reads the commit that MIGraphX's own `requirements.txt` pins, from the SHA256-pinned MIGraphX tree (`Get-MigraphxRocmCmakeCommit`, 40-hex only). It fetches exactly that commit with git, which verifies every object against the id (`Save-GitCommitSource`), and installs it into the deps prefix, which precedes TheRock on `CMAKE_PREFIX_PATH`. A MIGraphX bump carries its own rocm-cmake, with nothing to re-derive in `versions.env`. nlohmann_json stays TheRock's, through a two-file package shim in the deps prefix (`Write-NlohmannJsonConfigShim`). TheRock's copy was installed by an MSVC-style build, so its exported target lists `<prefix>/nlohmann_json.natvis` as an interface source, and TheRock's dist does not ship that file (`Cannot find source file`, 2026-09-25). The shim includes TheRock's config and clears that property. Until 2026-10-11 HIP sources compiled with a two-header overlay ([§ HIP compiles against MSVC 14.51](#hip-compiles-against-msvc-1451)), at first passed by MIGraphX's own `-isystem` (`Write-HipMsvcCmathOverlay`). Under clang, MSVC 14.51's `<cmath>` defines `isgreater`, `isgreaterequal`, `isless`, `islessequal`, `islessgreater` and `isunordered` as `constexpr` builtin wrappers, which HIP makes `__host__ __device__`. clang's `__clang_cuda_math_forward_declares.h` and `__clang_hip_cmath.h` then cannot declare their `__device__` versions (114 errors, 2026-09-25). Each overlay header renamed those six names around an `#include_next` of the untouched original, so device code used MSVC's versions; TheRock 10.1 needs none of it. `-Xclang -fno-cuda-host-device-constexpr` fixes these errors but breaks device code, because `std::integral_constant`'s conversion becomes host-only. A VS 2022 toolset was declined in favour of the image's own toolchain. MIGraphX builds unpatched since 2.18.0: the pin carries upstream 5a80dc91ba. At `rocm-10.0` an MLIR-off build left `is_module_fusible`, `adjust_param_shapes`, `dump_mlir_to_file` and `dump_mlir_to_mxr` undefined, and `migraphx_gpu.dll` failed to link (2026-09-25); `patches\migraphx\001-mlir-off-stubs.patch` backported the fix until 2026-10-07. Every pinned archive is extracted by `Expand-PinnedArchive`, which skips the symlinks that 7-Zip 25+ refuses as dangerous: any link whose target climbs with `..`, even one that stays inside the tree. The flatbuffers seed carries nine (Java test dirs, `ts/package.json`), and no CMake file reads them. Any other 7-Zip error still fails the stage (2026-09-25). It also deletes the intermediate `.tar` of a `.tar.gz`. The EP's own source leaves `onnxruntime-ep-amdgpu.tar`, which is an ONNX Runtime archive by G2's name rule, so the EP's verify phase refused it.
+- **Supply chain.** Every archive is SHA256-pinned in `versions.env` (`MIGRAPHX_WINDOWS_*`, `ORT_AMDGPU_EP_*`). The EP declares 8 FetchContent URLs (11 with DirectML) with no `URL_HASH`. Each one is pre-seeded through `FETCHCONTENT_SOURCE_DIR_*` from a verified archive, and so is the abseil that protobuf v34.1 fetches. The build refuses when the pinned commit declares a URL no pin rebuilds byte-for-byte, and `FETCHCONTENT_FULLY_DISCONNECTED` with CMP0170 turns any other fetch into a configure error. rocm-cmake is the one dependency with no archive pin. MIGraphX `rocm-10.0` calls `rocm_add_version_resource` (rocm-cmake 33541cd51f), and TheRock's rocm-cmake predates it by four commits: `Unknown CMake command`, 2026-09-25. So phase 2 reads the commit that MIGraphX's own `requirements.txt` pins, from the SHA256-pinned MIGraphX tree (`Get-MigraphxRocmCmakeCommit`, 40-hex only). It fetches exactly that commit with git, which verifies every object against the id (`Save-GitCommitSource`), and installs it into the deps prefix, which precedes TheRock on `CMAKE_PREFIX_PATH`. A MIGraphX bump carries its own rocm-cmake, with nothing to re-derive in `versions.env`. nlohmann_json stays TheRock's, through a two-file package shim in the deps prefix (`Write-NlohmannJsonConfigShim`). TheRock's copy was installed by an MSVC-style build, so its exported target lists `<prefix>/nlohmann_json.natvis` as an interface source, and TheRock's dist does not ship that file (`Cannot find source file`, 2026-09-25). The shim includes TheRock's config and clears that property. Until 2026-10-11 HIP sources compiled with a two-header overlay ([§ HIP compiles against MSVC 14.51](#hip-compiles-against-msvc-1451)), at first passed by MIGraphX's own `-isystem` (`Write-HipMsvcCmathOverlay`). Under clang, MSVC 14.51's `<cmath>` defines `isgreater`, `isgreaterequal`, `isless`, `islessequal`, `islessgreater` and `isunordered` as `constexpr` builtin wrappers, which HIP makes `__host__ __device__`. clang's `__clang_cuda_math_forward_declares.h` and `__clang_hip_cmath.h` then cannot declare their `__device__` versions (114 errors, 2026-09-25). Each overlay header renamed those six names around an `#include_next` of the untouched original, so device code used MSVC's versions; TheRock 10.1 needs none of it. `-Xclang -fno-cuda-host-device-constexpr` fixes these errors but breaks device code, because `std::integral_constant`'s conversion becomes host-only. A VS 2022 toolset was declined in favour of the image's own toolchain. MIGraphX 2.18.0 needs no MLIR-off stub patch: the pin carries upstream 5a80dc91ba. The separate zero-pad correction below remains required. At `rocm-10.0` an MLIR-off build left `is_module_fusible`, `adjust_param_shapes`, `dump_mlir_to_file` and `dump_mlir_to_mxr` undefined, and `migraphx_gpu.dll` failed to link (2026-09-25); `patches\migraphx\001-mlir-off-stubs.patch` backported the fix until 2026-10-07. Every pinned archive is extracted by `Expand-PinnedArchive`, which skips the symlinks that 7-Zip 25+ refuses as dangerous: any link whose target climbs with `..`, even one that stays inside the tree. The flatbuffers seed carries nine (Java test dirs, `ts/package.json`), and no CMake file reads them. Any other 7-Zip error still fails the stage (2026-09-25). It also deletes the intermediate `.tar` of a `.tar.gz`. The EP's own source leaves `onnxruntime-ep-amdgpu.tar`, which is an ONNX Runtime archive by G2's name rule, so the EP's verify phase refused it.
 - **Isolation.** The deps configure with the rocm-lane `CMAKE_IGNORE_PREFIX_PATH`. MIGraphX and the EP pass `-AllowRocmPrefix`, because they need hip, MIOpen, rocBLAS, hipBLASLt and hiprtc from TheRock.
 - **Chain ORT only.** The EP build ends in the ORT build gate (`Assert-ChainOrtOnly -Consumer amdgpu-ep`, phase 5), which reads its configure log, `CMakeCache.txt` and `build.ninja` and writes the stamp the image census requires ([`onnxruntime-single-source.md`](onnxruntime-single-source.md)).
 - **Measured 2026-10-07, 2.18.0 on TheRock 10.1.0**, in a `:winamd64` container with the tarball installed by `Install-Rocm.ps1`: the build ran in 58 min (host deps 128.5 s, configure 76 s, build and install 3260 s), and `migraphx_gpu.dll` linked unpatched with MLIR off. `src/targets/gpu/prefuse_ops.cpp`, a host-only file unchanged since `rocm-10.0`, took about 50 min of that on one core at `-O3` with AMD clang 24.0.0git, so it is the stage's critical path. At `-O0` it still ran past 11 min, so the cost is in the front end, not the optimizer. The EP then built against it in 7 min 19 s, and `rocm-checks\MIGraphX.ps1` found nothing: `migraphx-ep.dll` loads GPU-less and exports `CreateEpFactories`.
+
+The private runtime transport of this ordinary image is now complete. The
+original local-directory client disappeared across a host reboot without a final
+exit receipt; its partial output is retained. A new request used the same three
+hash-verified context files and immutable image, exported a tar in 76.8 seconds with
+raw exit 0, then verified all 12,134 payload files and 12,132 source records on the host.
+The archive contains 12,135 regular files including its metadata, and has SHA256
+`c33960be1b9dc55c293ae86bb879195f57eb902c3775f1e88b76549cf667ad72`.
+Twelve invalid-evidence and seven unsafe-path controls fail as intended. This
+proves complete selected bytes; native loading and execution require separate
+evidence. Detailed receipts remain in `logs/g5-results.md`.
+
+The private host probe then compiled against this image's actual ORT API 31 and
+HIP headers, using the SDK's typed properties and R0600 export alias. Its AMD64
+PE, six source hashes and three header hashes match; all 16 invalid-evidence
+controls reject. It loaded the exported chain ORT 1.31.1 core and completed five
+sequential CPU runs against independent negative-input Pad/MaxPool expectations.
+The separate profile validator confirms CPU operators in every run. Five bad
+models and three invalid policy/provider settings refuse. The AMD invocation
+fails during plugin registration with HIP 100, no ROCm-capable device detected.
+That refusal supplies no AMD inference or physical adapter-binding proof. Neither
+the host CPU control nor the SDK compilation proves a corrected MIGraphX binary.
+
+### Explicit zero padding before MaxPool
+
+The pinned `95672916ed289d4be9d230a9be732e1bbad97e8c` optimization
+`eliminate_pad` can fold explicit zero padding into MaxPool's implicit padding.
+For a negative input window, the explicit zero can win the maximum; removing it
+changes the result. Keep explicit pads before both average and max pooling while
+retaining the existing LP-norm fold. Convolution handling stays unchanged.
+
+`Build-MigraphxFromSource.ps1 -PadPoolingPatchFile` applies
+[`0001-preserve-zero-pad-maxpool.patch`](../shared/upstream/migraphx/patches/0001-preserve-zero-pad-maxpool.patch)
+with `Invoke-RequiredSourcePatch` after reading the pinned tree's version and
+before dependency configuration. Missing files, drift or a failed apply stop the
+build; a reverse check accepts an already-applied patch. Direct repository calls
+default to that same file. `Dockerfile.rocm-migraphx` mounts only this patch in
+the MIGraphX build RUN and forwards its exact mounted path. Patch edits therefore
+invalidate that compile without invalidating the toolchain or coupling the
+separate EP RUN's source pins to it. The upstream archive checksum stays intact.
+
+The auto-discovered `Rocm.MigraphxPadPooling.Tests.ps1` extracts immutable source
+specimens and their original MIT license from a hash-bound ZIP, applies the real
+patch twice, checks both resulting source files and exercises required failures.
+Its AST and Dockerfile checks cover argument forwarding, call order and the narrow
+mount. Mutation recipes remove those protections and change the max/LP conditions
+and upstream test assertions. These fixtures do not compile Windows native code
+or execute a GPU.
+
+When `MIGRAPHX_WINDOWS_COMMIT` changes, regenerate the ZIP from that official
+commit's original two source files and `LICENSE`, update its JSON hashes and
+re-diff the patch. The fixture refuses a source-pin mismatch until that review.
+
+The shared call and Dockerfile fixture modules also serve the existing module-root,
+Python-default and EP-lifetime suites. Their parameter-default and build-mount
+assertions preserve caller-specific values and filename-wide mount exclusivity.
+
+The real upstream C++ target `test_eliminate_pad_test` was independently built
+against that exact source pin: all seven corrected cases passed, the original
+guard failed the new negative-input case, and a refusal for every pooling mode
+failed the LP-norm control. The restored candidate passed all seven again.
+That reference-target proof establishes the optimization behavior; the corrected
+Windows image and real AMD device inference still require their own acceptance.
+Linux's packaged MIGraphX also needs a separately coordinated source-build path.
+See the [upstream patch register](upstream-windows-patches.md#migraphx-explicit-zero-padding-before-maxpool).
 
 Smoke (`windows/scripts/build/rocm-checks/MIGraphX.ps1`, GPU-less) checks:
 

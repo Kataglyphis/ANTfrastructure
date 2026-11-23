@@ -18,14 +18,6 @@ function Get-MgxVersionTable {
     return $t
 }
 
-# ARG name -> default, backtick continuations joined; BASE_IMAGE and sccache ARGs are lane-shaped.
-function Get-MgxDockerfileArg {
-    $table = [ordered]@{}
-    Select-String -LiteralPath $script:MgxDockerfile -Pattern '^ARG\s+([A-Z][A-Z0-9_]*)=(\S*)' |
-        ForEach-Object { $g = $_.Matches[0].Groups; $table[$g[1].Value] = $g[2].Value.Trim('"') }
-    return $table
-}
-
 Describe 'WindowsMigraphx.Common: lane guard' {
     It 'returns the ROCm root on the rocm lane' {
         $root = Assert-MigraphxRocmLane -GpuEnvironment @{ GpuType = 'rocm'; HasRocm = $true; RocmRoot = 'C:\TheRock\build\' }
@@ -579,7 +571,7 @@ Describe 'Dockerfile.rocm-migraphx' {
     function Assert-MgxDockerfilePinDefaults {
         $table = Get-MgxVersionTable
         $forwarded = Get-MediaBranchVersionArg -Branch 'rocm-migraphx' -VersionTable $table
-        $declared = Get-MgxDockerfileArg
+        $declared = Get-TestDockerfileArgDefault -Path $script:MgxDockerfile
         $pins = @($declared.Keys | Where-Object { $_ -ne 'BASE_IMAGE' -and $_ -notlike 'SCCACHE_*' })
         Assert-Equal (@($forwarded.Keys | Sort-Object) -join ',') (@($pins | Sort-Object) -join ',') 'forwarded keys = declared pin ARGs'
         foreach ($k in $pins) { Assert-Equal "$($table[$k])" $declared[$k] "ARG $k default" }

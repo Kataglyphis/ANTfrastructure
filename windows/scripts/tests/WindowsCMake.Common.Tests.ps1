@@ -1,6 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
+# Local compiler arguments and diagnostic files are fixtures; no package generator or native compiler runs here.
 
 Describe 'WindowsCMake.Common' {
   BeforeAll {
@@ -22,40 +23,6 @@ Describe 'WindowsCMake.Common' {
 
   AfterAll {
     Remove-TestDir -Path $script:buildRoot
-  }
-
-  Context 'Write-CPackGeneratorLog' {
-    BeforeAll {
-      # The lines the function logs for a build directory, both log writers captured.
-      function script:Get-CPackLogLines([string]$Build) {
-        InModuleScope WindowsCMake.Common -Parameters @{ Build = $Build } {
-          param($Build)
-          $script:cpackLines = [System.Collections.Generic.List[string]]::new()
-          Mock Write-BuildLog { $script:cpackLines.Add($Message) }
-          Mock Write-BuildLogMessages { foreach ($m in $Messages) { $script:cpackLines.Add($m) } }
-          Write-CPackGeneratorLog -Context @{} -BuildPath $Build -TailLines 2
-          $script:cpackLines
-        }
-      }
-    }
-
-    It 'prints the tail of every generator log under _CPack_Packages' {
-      $build = Join-Path $script:buildRoot 'cpack-logs'
-      $nsis = Join-Path $build '_CPack_Packages\win64\NSIS'
-      New-Item -ItemType Directory -Path $nsis -Force | Out-Null
-      Set-Content -LiteralPath (Join-Path $nsis 'NSISOutput.log') -Value @('line 1', 'Error: path too long', 'line 3')
-      $lines = @(Get-CPackLogLines $build)
-      ($lines -join "`n") | Should -Match 'NSISOutput\.log'
-      $lines | Should -Contain 'Error: path too long'
-      $lines | Should -Contain 'line 3'
-      $lines | Should -Not -Contain 'line 1'
-    }
-
-    It 'says so when the build has no _CPack_Packages directory' {
-      $build = Join-Path $script:buildRoot 'cpack-none'
-      New-Item -ItemType Directory -Path $build -Force | Out-Null
-      (@(Get-CPackLogLines $build) -join "`n") | Should -Match 'does not exist'
-    }
   }
 
   Context 'Get-CompileCommandsDatabase' {

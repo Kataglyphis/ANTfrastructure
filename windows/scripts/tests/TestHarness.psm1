@@ -154,11 +154,11 @@ function New-TestDir {
 
 # Zeroes $LASTEXITCODE so cases that inspect native exit codes are isolated from earlier runs.
 function Invoke-InTestDir {
-    param([Parameter(Mandatory)][scriptblock]$Body, [Collections.IDictionary]$Files, [Alias('Prefix')][string]$DirectoryPrefix = 'wbt-')
+    param([Parameter(Mandatory)][scriptblock]$Body, [Collections.IDictionary]$Files, [Alias('Prefix')][string]$DirectoryPrefix = 'wbt-', [object[]]$FixtureArgumentList = @())
     $global:LASTEXITCODE = 0
     $d = New-TestDir -Prefix $DirectoryPrefix -Files $Files
     try {
-        & $Body $d
+        & $Body $d @FixtureArgumentList
     }
     finally { Remove-TestDir -Path $d }
 }
@@ -590,6 +590,32 @@ function Get-TestScriptCommands {
     param([string]$ScriptPath, [string]$Name)
     Get-TestAstCommands -Ast (Get-TestScriptAst -ScriptPath $ScriptPath) -Name $Name
 }
+
+function Get-TestScriptCommandMap {
+    # Original nodes retain ancestry and offsets for the caller's scope and order policies.
+    param([Parameter(Mandatory)][string]$ScriptPath, [Parameter(Mandatory)][string[]]$Name,
+        [hashtable]$TextContains = @{}, [string[]]$Order = @(), [hashtable]$UnconditionalText = @{},
+        [string]$CountReason = 'one call matching {0}')
+    $scriptAst = Get-TestScriptAst -ScriptPath $ScriptPath
+    $commandMap = @{}
+    foreach ($commandName in $Name) {
+        $selectedCommands = @(Get-TestAstCommands -Ast $scriptAst -Name $commandName)
+        if ($TextContains.ContainsKey($commandName)) {
+            $selectedCommands = @($selectedCommands | Where-Object { $_.Extent.Text.Contains($TextContains[$commandName]) })
+        }
+        Assert-Equal 1 $selectedCommands.Count ($CountReason -f $commandName)
+        $commandMap[$commandName] = $selectedCommands[0]
+    }
+    for ($mapOrderIndex = 1; $mapOrderIndex -lt $Order.Count; $mapOrderIndex++) {
+        Assert-TestAstOrder -Before $commandMap[$Order[$mapOrderIndex - 1]] -After $commandMap[$Order[$mapOrderIndex]]
+    }
+    foreach ($commandName in $UnconditionalText.Keys) {
+        Assert-TestAstCommand -Command @($commandMap[$commandName]) -Text $UnconditionalText[$commandName] -Unconditional
+    }
+    return $commandMap
+}
+
+Export-ModuleMember -Function Get-TestScriptCommandMap
 
 function Get-TestSourceCopyLoopText {
     param([Parameter(Mandatory)][string]$ScriptPath,
@@ -1052,3 +1078,18 @@ function ConvertTo-TestDiagnosticText {
 }
 
 Export-ModuleMember -Function ConvertTo-TestDiagnosticText
+
+function Get-TestMediaPinContext {
+    # Share the real version/branch/merge view so pin suites cannot drift onto different fixture tables.
+    param([Parameter(Mandatory)][string]$Branch)
+    foreach ($name in @('WindowsScripts.Shared.psm1', 'WindowsBuildDriver.Common.psm1')) {
+        Import-Module ([IO.Path]::Combine((Get-RepoRoot), 'windows', 'scripts', 'modules', $name)) -DisableNameChecking -ErrorAction Stop
+    }
+    $versions = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux/scripts/01-core/versions.env')
+    return [pscustomobject]@{
+        Versions = $versions
+        Branch = (Get-MediaBranchVersionArg -Branch $Branch -VersionTable $versions)
+        Merge = (Get-MediaMergeVersionArg -VersionTable $versions)
+    }
+}
+Export-ModuleMember -Function Get-TestMediaPinContext

@@ -37,6 +37,7 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 
 # The shared module closure; mount it with source=/bkmods (see docs/windows-build-invariants.md § In `RUN --mount=...,from=<stage>` the SOURCE path is Unix-style).
 FROM ${BASE_IMAGE} AS buildmods
+ARG WINDOWS_TARGET_ARCH=amd64
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
@@ -45,6 +46,8 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsTargetArch.Common.psm1 `
      windows\scripts\modules\WindowsPythonWheel.Common.psm1 `
      C:\bkmods\
+# The view keeps copied module files readable through Windows bind mounts.
+RUN cmd /c exit 0
 
 # Owner 2026-10-21: the ORT build compiles against the TensorRT SDK through a mount, so no layer the image inherits holds it.
 FROM ${TENSORRT_SDK_IMAGE} AS trt-sdk
@@ -55,6 +58,8 @@ RUN if (-not (Test-Path C:\tensorrt)) { $null = New-Item -ItemType Directory -Pa
 # TVM-private closure, so a TVM edit never re-keys ONNX; mount it from media-tvm-built only (ModuleClosure tests enforce it).
 FROM buildmods AS tvmmods
 COPY windows\scripts\modules\WindowsTvm.Common.psm1 C:\bkmods\
+# The private COPY needs its own readable view after the shared closure.
+RUN cmd /c exit 0
 
 # media-litert version env
 FROM common AS media-litert-env
@@ -109,6 +114,7 @@ ENV TVM_REF="${TVM_REF}" `
 # Each compile stage declares only its own version keys; ENV so CUDA_ARCHITECTURES/PYTHON_VERSION reach the downstream stages.
 FROM common AS media-core-built-onnx
 ARG ONNXRUNTIME_VERSION=v1.31.1
+ARG ONNXRUNTIME_WINDOWS_SOURCE_COMMIT
 ARG CUDA_ARCHITECTURES="75;86;87;89;120"
 ARG PYTHON_VERSION=3.15.2
 # Declared in every stage that mounts windows/qnn-sdk, or that stage extracts the zip unverified; empty = no EP.
@@ -118,6 +124,7 @@ ARG QNN_SDK_VERSION="2.51.1.261002"
 # Qualcomm's QNN plugin EP fork, built after ORT in this RUN (Build-OrtQnnEpFromSource.ps1).
 ARG ORT_QNN_EP_VERSION="2.7.0"
 ARG ORT_QNN_EP_SOURCE_SHA256="c389a1ea8aa0009b4781525c9168bd8d3d30ef21ca21e422206a46431981d8a3"
+ARG ORT_QNN_EP_CORE_COMMIT
 # The TensorRT plugin EP and its four FetchContent seeds, built after ORT in this RUN (Build-OrtTensorRtEpFromSource.ps1).
 ARG ORT_TENSORRT_EP_COMMIT="6403f3cefe22c78313df90eca6b01fde54afa1ed"
 ARG ORT_TENSORRT_EP_SOURCE_SHA256="42087b512d6823cad1c81679f7e25e19a2fcecaccfb2109eba39261f1d686be4"
@@ -130,12 +137,14 @@ ARG ORT_TENSORRT_EP_GSL_SHA256="f0e32cb10654fea91ad56bde89170d78cfbf4363ee0b01d8
 ARG ORT_TENSORRT_EP_FLATBUFFERS_VERSION="23.5.26"
 ARG ORT_TENSORRT_EP_FLATBUFFERS_SHA256="1cce06b17cddd896b6d73cc047e36a254fb8df4d7ea18a46acf16c4c0cd3f3f3"
 ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
+    ONNXRUNTIME_WINDOWS_SOURCE_COMMIT="${ONNXRUNTIME_WINDOWS_SOURCE_COMMIT}" `
     CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" `
     PYTHON_VERSION="${PYTHON_VERSION}" `
     QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}" `
     QNN_SDK_VERSION="${QNN_SDK_VERSION}" `
     ORT_QNN_EP_VERSION="${ORT_QNN_EP_VERSION}" `
     ORT_QNN_EP_SOURCE_SHA256="${ORT_QNN_EP_SOURCE_SHA256}" `
+    ORT_QNN_EP_CORE_COMMIT="${ORT_QNN_EP_CORE_COMMIT}" `
     ORT_TENSORRT_EP_COMMIT="${ORT_TENSORRT_EP_COMMIT}" `
     ORT_TENSORRT_EP_SOURCE_SHA256="${ORT_TENSORRT_EP_SOURCE_SHA256}" `
     ORT_TENSORRT_EP_PROTOBUF_VERSION="${ORT_TENSORRT_EP_PROTOBUF_VERSION}" `
@@ -177,7 +186,13 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-TargetCpython.ps1,target=C:\bkmnt\Build-TargetCpython.ps1 `
     --mount=type=bind,source=windows/scripts/build/cpython-Directory.Build.props,target=C:\bkmnt\cpython-Directory.Build.props `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsPythonWheel.Common.psm1,target=C:\bkmnt\modules\WindowsPythonWheel.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
     --mount=type=bind,source=windows/scripts/patches/onnxruntime,target=C:\bkmnt\patches\onnxruntime `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk --mount=type=cache,target=C:\qnn-sdk-cache,id=qnn-sdk-winamd64,sharing=shared `
     --mount=type=bind,from=trt-sdk,source=/tensorrt,target=C:\tensorrt-sdk `
@@ -232,7 +247,13 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-FfmpegCodecs.ps1,target=C:\bkmnt\Build-FfmpegCodecs.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsPythonWheel.Common.psm1,target=C:\bkmnt\modules\WindowsPythonWheel.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
     --mount=type=bind,source=windows/scripts/patches/ffmpeg,target=C:\bkmnt\patches\ffmpeg `
     & 'C:\bkmnt\Build-MediaCoreAll.ps1' -ResumeFrom 'FFmpeg' -Until 'FFmpeg' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
@@ -264,7 +285,13 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-OpencvFromSource.ps1,target=C:\bkmnt\Build-OpencvFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsPythonWheel.Common.psm1,target=C:\bkmnt\modules\WindowsPythonWheel.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
     --mount=type=bind,source=windows/scripts/patches/opencv,target=C:\bkmnt\patches\opencv `
     --mount=type=bind,source=windows/scripts/patches/opencv_contrib,target=C:\bkmnt\patches\opencv_contrib `
     $env:SCCACHE_CUDA_LAUNCHER = $env:OPENCV_CUDA_LAUNCHER; `
@@ -290,7 +317,13 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-HailortFromSource.ps1,target=C:\bkmnt\Build-HailortFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsPythonWheel.Common.psm1,target=C:\bkmnt\modules\WindowsPythonWheel.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
     --mount=type=bind,source=windows/scripts/patches/hailo,target=C:\bkmnt\patches\hailo `
     & 'C:\bkmnt\Build-HailortFromSource.ps1' -SourceDir 'C:\temp\hailort-src' -BuildDir 'C:\temp\hailort-build' -InstallDir 'C:\runtime\hailo'
 
@@ -300,7 +333,9 @@ ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 # The genai key lives here, so a GenAI bump re-runs this stage alone.
 ARG ONNXRUNTIME_GENAI_VERSION=v0.19.0
-ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
+ARG ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT
+ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
+    ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT="${ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT}"
 # Every stage that mounts windows/qnn-sdk declares this, or Resolve-QnnSdk extracts unverified.
 ARG QNN_SDK_ZIP_SHA256="510b0067481c22d283a2db10cd520f0251df4aeea77a5afe4ff6428a4e40a7bc"
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
@@ -320,11 +355,17 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/modules/WindowsRustToolchain.Common.psm1,target=C:\bkmnt\rustmods\WindowsRustToolchain.Common.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\rustmods\WindowsScripts.Shared.psm1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsPythonWheel.Common.psm1,target=C:\bkmnt\modules\WindowsPythonWheel.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk --mount=type=cache,target=C:\qnn-sdk-cache,id=qnn-sdk-winamd64,sharing=shared `
     & 'C:\bkmnt\Build-MediaCoreAll.ps1' -ResumeFrom 'ONNX GenAI' -Until 'ONNX GenAI' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
-# litert: direct solve (bazel — never trips the defect), same mount pattern.
+# Direct module files avoid unreadable cached views without widening the closure.
 FROM media-litert-env AS media-litert-built
 # Every stage that mounts windows/qnn-sdk declares this, or Resolve-QnnSdk extracts unverified.
 ARG QNN_SDK_ZIP_SHA256="510b0067481c22d283a2db10cd520f0251df4aeea77a5afe4ff6428a4e40a7bc"
@@ -348,7 +389,13 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Export-LitertLmBridge.ps1,target=C:\bkmnt\Export-LitertLmBridge.ps1 `
     --mount=type=bind,source=windows/scripts/build/Debug-LitertlmLink.ps1,target=C:\bkmnt\Debug-LitertlmLink.ps1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsPythonWheel.Common.psm1,target=C:\bkmnt\modules\WindowsPythonWheel.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk --mount=type=cache,target=C:\qnn-sdk-cache,id=qnn-sdk-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/shims,target=C:\bkmnt\shims `
     --mount=type=bind,source=windows/scripts/patches/litert-lm,target=C:\bkmnt\patches\litert-lm `
@@ -375,7 +422,13 @@ RUN --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,shari
     --mount=type=bind,source=windows/scripts/build/Build-LitertWheelBazel.ps1,target=C:\bkmnt\Build-LitertWheelBazel.ps1 `
     --mount=type=bind,source=windows/scripts/build/litert-wheel-smoke.py,target=C:\bkmnt\litert-wheel-smoke.py `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsPythonWheel.Common.psm1,target=C:\bkmnt\modules\WindowsPythonWheel.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsBazel.Common.psm1,target=C:\bkmnt\bazelmods\WindowsBazel.Common.psm1 `
     --mount=type=bind,source=windows/scripts/patches/litert,target=C:\bkmnt\patches\litert `
     $env:UV_CACHE_DIR = 'C:\lw\ty-uv-cache'; $env:UV_TOOL_DIR = 'C:\lw\ty-uv-tools'; `
@@ -407,7 +460,14 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=C:\bkmnt\free-threaded-wheel.py `
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=C:\bkmnt\free-threaded-twins.txt `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
-    --mount=type=bind,from=tvmmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsPythonWheel.Common.psm1,target=C:\bkmnt\modules\WindowsPythonWheel.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTvm.Common.psm1,target=C:\bkmnt\modules\WindowsTvm.Common.psm1 `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk --mount=type=cache,target=C:\qnn-sdk-cache,id=qnn-sdk-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/patches/iree,target=C:\bkmnt\patches\iree `
     & 'C:\bkmnt\Build-MediaTvmAll.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter

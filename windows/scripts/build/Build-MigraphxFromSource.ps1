@@ -17,7 +17,8 @@
 param(
     [string]$InstallDir = 'C:\runtime\lib\migraphx',
     [string]$WorkDir = 'C:\temp\migraphx-work',
-    [string]$BuildType = 'Release'
+    [string]$BuildType = 'Release',
+    [string]$PadPoolingPatchFile = (Join-Path $PSScriptRoot '..\..\..\shared\upstream\migraphx\patches\0001-preserve-zero-pad-maxpool.patch')
 )
 
 Set-StrictMode -Version Latest
@@ -140,6 +141,8 @@ try {
     $sourceRoot = Save-MigraphxPrimarySource -Component Migraphx -WorkDir $WorkDir
     $treeVersion = Get-MigraphxTreeFact -Fact MigraphxVersion -CMakeText ([System.IO.File]::ReadAllText((Join-Path $sourceRoot 'CMakeLists.txt')))
     if ($treeVersion -ne $migraphxVersion) { throw "MIGRAPHX_WINDOWS_COMMIT is MIGraphX $treeVersion, but MIGRAPHX_VERSION is $migraphxVersion" }
+
+    Invoke-RequiredSourcePatch -PatchFile $PadPoolingPatchFile -SourceDir $sourceRoot
 
     Switch-BuildPhase '2. host deps (clang-cl)'
     $depsPrefix = Join-Path $WorkDir 'deps'

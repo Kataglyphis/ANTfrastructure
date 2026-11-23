@@ -19,6 +19,10 @@ Describe 'Harness Git fixture operations' {
             Assert-Equal 'first fixture commit' (& git -C $path log -1 --format=%s)
             Assert-Equal 0 @(& git -C $path status --porcelain).Count 'all fixture files are committed'
             Assert-Equal 'empty.txt|nested [dir]/file.txt' ((& git -C $path ls-files) -join '|') 'no setup files are invented'
+            $commitResult = @(Add-TestGitCommit -Path $path -Files @{ 'optional.txt' = 'committed' } -PassThru)
+            Assert-Equal 1 $commitResult.Count 'one optional commit result'
+            Assert-Match '^[0-9a-f]{40}$' $commitResult[0] 'full immutable identity'
+            Assert-Equal (& git -C $path rev-parse HEAD) $commitResult[0] 'new commit, not its parent'
         }
     }
 

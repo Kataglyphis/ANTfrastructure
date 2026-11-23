@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-# NOT covered: mounts outside C:\temp\scripts, and stages FROM another stage than base (graded against base's files only).
+# Stub checks grade only base-stage C:\temp\scripts paths; module delivery and view structure prove neither mounted reads nor compiled architecture.
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -DisableNameChecking
 
@@ -57,5 +57,44 @@ Describe 'BuildKit bind-mount targets' {
         Assert-Equal 'stub: C:\temp\scripts\modules\B.psm1' (@(Get-MountStubViolation -BaseText $fixtureBase -Dockerfiles @{ stub = $stub }) -join "`n") 'a copy in another stage does not count'
         $copied = "FROM y`nCOPY windows\scripts C:\temp\scripts`nRUN --mount=type=bind,source=m/B.psm1,target=C:\temp\scripts\modules\B.psm1 x"
         Assert-Equal 0 @(Get-MountStubViolation -BaseText $fixtureBase -Dockerfiles @{ copied = $copied }).Count 'a directory copy covers the files below it'
+    }
+}
+
+Describe 'BuildKit copied-module source views' {
+    It 'gives every copied module closure a final readable view layer' {
+        $checked = 0
+        foreach ($name in @('Dockerfile.media-builder', 'Dockerfile.media-merge-builder', 'Dockerfile.rocm-migraphx', 'Dockerfile.rocm-llama')) {
+            $docker = Get-TestDockerfileStagesFromPath -Path (Join-Path (Get-RepoRoot) ('windows/' + $name)) `
+                -JoinContinuations -IgnoreComments -TrimLines -StrictFromHeader
+            foreach ($stage in $docker.Stages) {
+                if (-not @($stage.Lines | Where-Object { $_ -match '^COPY .*bkmods' }).Count) { continue }
+                if ($stage.From -match '^\$\{') {
+                    Assert-Equal 1 @($stage.Lines | Where-Object { $_ -match '^ARG\s+WINDOWS_TARGET_ARCH(?:=|$)' }).Count "$name/$($stage.Name) must redeclare the target architecture before its view RUN"
+                }
+                Assert-Equal 1 @($stage.Lines | Where-Object { $_ -ceq 'RUN cmd /c exit 0' }).Count "$name/$($stage.Name) needs its own readable bind-mount view"
+                Assert-Equal 'RUN cmd /c exit 0' $stage.Lines[-1] 'every module COPY must precede the view layer'
+                $checked++
+            }
+        }
+        Assert-Equal 5 $checked 'shared, TVM-private, merge and both ROCm module closures must be checked'
+    }
+}
+
+Describe 'Media direct module delivery' {
+    It 'mounts the complete narrow closure per file in every media build RUN' {
+        $path = Join-Path (Get-RepoRoot) 'windows/Dockerfile.media-builder'
+        $stages = Get-TestDockerfileStageFacts -Path $path
+        $modules = @($stages['buildmods'].MountedModules)
+        $runs = @(Get-TestDockerfileRun -Path $path -Stage 'media-litert-built')
+        Assert-TestDockerfileDirectModuleClosure -Runs $runs -Modules $modules -ExpectedModuleCount 7 -ExpectedRunCount 2
+        $coreStages = @('media-core-built-onnx', 'media-core-built-ffmpeg', 'media-core-built-opencv', 'media-core-built-hailo', 'media-core-built')
+        Assert-Equal 5 $coreStages.Count 'all five media-core consumers must be scanned'
+        foreach ($stage in $coreStages) {
+            $coreRuns = @(Get-TestDockerfileRun -Path $path -Stage $stage)
+            Assert-TestDockerfileDirectModuleClosure -Runs $coreRuns -Modules $modules -ExpectedModuleCount 7 -ExpectedRunCount 1
+        }
+        $tvmModules = @($modules) + @($stages['tvmmods'].MountedModules)
+        $tvmRuns = @(Get-TestDockerfileRun -Path $path -Stage 'media-tvm-built')
+        Assert-TestDockerfileDirectModuleClosure -Runs $tvmRuns -Modules $tvmModules -ExpectedModuleCount 8 -ExpectedRunCount 1 -CachedStage tvmmods
     }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The real manifest decision must keep the public tag behind acceptance.
+# Stubbed calls isolate publication boundaries; live permissions and consumer execution remain unproved.
 set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -33,6 +33,16 @@ scenario() (
   create_manifest
 )
 
+assert_stopped_before() {
+  local command="$1" status out pattern
+  shift
+  t_capture_command out status "${command}"
+  t_assert_eq 1 "${status}"
+  for pattern in "$@"; do
+    t_assert_eq 0 "$(printf '%s\n' "${out}" | grep -c "${pattern}" || true)"
+  done
+}
+
 t_case "candidate is published before acceptance, then the public tag is promoted"
 out="$(scenario)"
 t_assert_contains "${out}" 'manifest create ghcr.io/kataglyphis/example:candidate-test-run wrapper:amd64 wrapper:arm64 wrapper:riscv64'
@@ -42,17 +52,17 @@ t_assert_contains "${out}" 'PROMOTE ghcr.io/kataglyphis/example:latest'
 t_assert_eq 0 "$(printf '%s\n' "${out}" | grep -c 'manifest .*example:latest' || true)"
 
 t_case "failed acceptance fails publication and never promotes"
-status=0
-out="$(FAIL_ACCEPTANCE=1 scenario)" || status=$?
-t_assert_eq 1 "${status}"
-t_assert_eq 0 "$(printf '%s\n' "${out}" | grep -c PROMOTE || true)"
+FAIL_ACCEPTANCE=1 assert_stopped_before scenario PROMOTE
 
 acceptance_route() (
   eval "$(t_fn_src "${SUBJECT}" _manifest_accept_and_promote)"
   python3() {
     case "$2" in
       resolve) printf 'ghcr.io/kataglyphis/example@sha256:abc' ;;
-      check|promote) printf '%s\n' "$*" ;;
+      check|promote)
+        printf '%s\n' "$*"
+        [ "$2" != promote ] || return "${FAIL_PROMOTE:-0}"
+        ;;
     esac
   }
   bash() { printf 'DISPATCH %s\n' "$*"; return "${FAIL_DISPATCH:-0}"; }
@@ -71,9 +81,11 @@ t_case "after the promotion the consumers' lanes for that tag are dispatched"
 t_assert_contains "${out}" 'DISPATCH /fixture/linux/scripts/dispatch-consumer-lanes.sh --tag latest'
 t_assert_eq 1 "$(printf '%s\n' "${out}" | tail -n 1 | grep -c '^DISPATCH ' || true)"
 
+t_case "a failed promotion blocks consumer dispatch under a conditional caller"
+FAIL_PROMOTE=7 assert_stopped_before acceptance_route '^DISPATCH ' '^WARN '
+
 t_case "a refused dispatch warns and leaves the promotion standing"
-status=0
-out="$(FAIL_DISPATCH=1 acceptance_route)" || status=$?
+FAIL_DISPATCH=1 t_capture_command out status acceptance_route
 t_assert_eq 0 "${status}"
 t_assert_contains "${out}" 'WARN some consumer lanes were not dispatched'
 t_summary

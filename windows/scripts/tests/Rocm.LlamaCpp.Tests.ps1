@@ -1,4 +1,7 @@
 #requires -Version 7.0
+# NOT covered: a completed image or real GPU inference.
+
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -DisableNameChecking
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsNative.Common.psm1') -DisableNameChecking
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsTargetArch.Common.psm1') -DisableNameChecking
@@ -791,23 +794,10 @@ Describe 'Dockerfile.rocm-llama: rocm-only stage, two layers off PATH, closure m
         Assert-Match 'LLAMA_CPP_VULKAN_HOME="C:\\runtime\\opt\\llama\.cpp-vulkan"' $code 'Vulkan home is exposed by ENV'
     }
 
-    function Assert-LlamaModuleClosure {
-        # Closed under imports, so it holds the transitive closure without walking it.
-        $copy = [regex]::Match($code, '(?s)FROM \$\{BASE_IMAGE\} AS llamamods\nCOPY (.+?) C:\\bkmods\\').Groups[1].Value
-        $mounted = @([regex]::Matches($copy, 'windows\\scripts\\modules\\([\w.]+)\.psm1') | ForEach-Object { $_.Groups[1].Value })
-        $needed = @{}
-        foreach ($s in $script:LlamaInstall, $script:LlamaCheck, $script:LlamaBuild) {
-            foreach ($m in [regex]::Matches((Get-Content -Raw (Join-Path $root $s)), 'modules\\([\w.]+)\.psm1')) { $needed[$m.Groups[1].Value] = $s }
-        }
-        foreach ($m in $mounted) {
-            foreach ($sib in [regex]::Matches((Get-Content -Raw (Join-Path $root "windows\scripts\modules\$m.psm1")), "PSScriptRoot\s+'([\w.]+)\.psm1'")) { $needed[$sib.Groups[1].Value] = "$m.psm1" }
-        }
-        Assert-True ($needed.Count -ge 4) "the scan found $($needed.Count) needed module(s)"
-        foreach ($m in $needed.Keys) { Assert-True ($mounted -contains $m) "$m (imported by $($needed[$m])) is not in the llamamods closure" }
-        Assert-Equal 2 @([regex]::Matches($code, 'from=llamamods,source=/bkmods,target=C:\\bkmnt\\modules')).Count 'both RUNs mount the closure'
+    It 'mounts a closed module set: what every script imports, and what every mounted module imports' {
+        Assert-TestDockerfileModuleClosure -Path (Join-Path $root 'windows/Dockerfile.rocm-llama') -Stage llamamods `
+            -ScriptPath @($script:LlamaInstall, $script:LlamaCheck, $script:LlamaBuild) -Root $root -MinimumNeeded 4 -ExpectedMountCount 2
     }
-
-    It 'mounts a closed module set: what every script imports, and what every mounted module imports' { Assert-LlamaModuleClosure }
 
     It 'builds, installs and checks HIP in one RUN and Vulkan in another, failing the stage on any finding' {
         $runs = @([regex]::Matches($code, '(?s)RUN --mount.*?throw \(.*?\)\s*\}') | ForEach-Object { $_.Value })

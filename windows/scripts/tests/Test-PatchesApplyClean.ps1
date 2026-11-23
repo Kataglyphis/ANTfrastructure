@@ -15,7 +15,7 @@
     Root of the patch tree (default: windows/scripts/patches).
 
 .PARAMETER Versions
-    Hashtable overriding the pinned ref per repo key; MIGRAPHX takes a 40-hex commit.
+    Hashtable overriding pinned refs; ONNXRUNTIME_SOURCE_COMMIT must match an overridden ONNXRUNTIME release.
 
 .PARAMETER WorkDir
     Scratch dir for the clones (default: a temp dir, removed afterwards).
@@ -39,25 +39,26 @@ if (-not $WorkDir) { $WorkDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pa
 
 # Refs come from versions.env; these literals are only the fallback when it is missing.
 Import-Module (Join-Path $PSScriptRoot 'TestHarness.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSourceBuild.Common.psm1') -ErrorAction Stop
 $versionsFile = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
-$defaultRefs = @{
-    ONNXRUNTIME = 'v1.27.0'
-    OPENCV      = '5.x'
-    FFMPEG      = 'master'
-    GSTREAMER   = '1.29.2'
-    LLVM        = 'llvmorg-23.1.0'
-    HAILORT     = 'v5.4.0'
-    MIGRAPHX    = '95672916ed289d4be9d230a9be732e1bbad97e8c'
-    LITERT      = 'v2.3.0'
-    LIBVPX      = '5ad3f2a5a9e0e39ac991dea9a8ec4681bad6010f'
-}
-if (Test-Path $versionsFile) {
-    Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1') -Force
-    $fileVersions = ConvertFrom-VersionsEnv -Path $versionsFile
-    $toolPins = Join-Path (Split-Path $versionsFile -Parent) 'tool-pins.env'
-    if (Test-Path -LiteralPath $toolPins) { $pins = ConvertFrom-VersionsEnv -Path $toolPins; foreach ($k in $pins.Keys) { $fileVersions[$k] = $pins[$k] } }
+function Get-PatchRefs {
+    param([hashtable]$FileVersions = @{}, [hashtable]$Versions = @{})
+    $refs = @{
+        ONNXRUNTIME = 'v1.27.0'
+        ONNXRUNTIME_SOURCE_COMMIT = ''
+        OPENCV      = '5.x'
+        FFMPEG      = 'master'
+        GSTREAMER   = '1.29.2'
+        LLVM        = 'llvmorg-23.1.0'
+        HAILORT     = 'v5.4.0'
+        MIGRAPHX    = '95672916ed289d4be9d230a9be732e1bbad97e8c'
+        LITERT      = 'v2.3.0'
+        LIBVPX      = '5ad3f2a5a9e0e39ac991dea9a8ec4681bad6010f'
+        PYTORCH     = 'v2.14.1'
+    }
     foreach ($entry in @(
             @{ Ref = 'ONNXRUNTIME'; Key = 'ONNXRUNTIME_VERSION' },
+            @{ Ref = 'ONNXRUNTIME_SOURCE_COMMIT'; Key = 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT' },
             @{ Ref = 'OPENCV';      Key = 'OPENCV_VERSION' },
             @{ Ref = 'FFMPEG';      Key = 'FFMPEG_VERSION' },
             @{ Ref = 'GSTREAMER';   Key = 'GSTREAMER_VERSION' },
@@ -69,30 +70,46 @@ if (Test-Path $versionsFile) {
             # The tag Build-LitertWheelBazel.ps1 clones; its patches feed the ai-edge-litert wheel.
             @{ Ref = 'LITERT';      Key = 'LITERT_VERSION' },
             # The meson port commit GStreamer's vpx.wrap names; its patch lives beside GStreamer's because the wrap applies it.
-            @{ Ref = 'LIBVPX';      Key = 'LIBVPX_MESON_COMMIT' }
+            @{ Ref = 'LIBVPX';      Key = 'LIBVPX_MESON_COMMIT' },
+            @{ Ref = 'PYTORCH';     Key = 'PYTORCH_VERSION' }
         )) {
         if ($fileVersions.Contains($entry.Key)) {
             $val = $fileVersions[$entry.Key]
             if ($entry.Contains('Fmt')) { $val = $entry.Fmt -f $val }
-            $defaultRefs[$entry.Ref] = $val
+            $refs[$entry.Ref] = $val
         }
     }
+    foreach ($k in $Versions.Keys) { $refs[$k] = $Versions[$k] }
+    return $refs
 }
-foreach ($k in $Versions.Keys) { $defaultRefs[$k] = $Versions[$k] }
 
-$repoMap = @{
-    'onnxruntime'    = @{ Url = 'https://github.com/microsoft/onnxruntime.git';   Ref = $defaultRefs.ONNXRUNTIME }
-    'opencv'         = @{ Url = 'https://github.com/opencv/opencv.git';           Ref = $defaultRefs.OPENCV }
-    'opencv_contrib' = @{ Url = 'https://github.com/opencv/opencv_contrib.git';   Ref = $defaultRefs.OPENCV }
-    'ffmpeg'         = @{ Url = 'https://github.com/FFmpeg/FFmpeg.git';           Ref = $defaultRefs.FFMPEG }
-    'gstreamer'      = @{ Url = 'https://github.com/gstreamer/gstreamer.git';     Ref = $defaultRefs.GSTREAMER }
-    'llvm'           = @{ Url = 'https://github.com/llvm/llvm-project.git';       Ref = $defaultRefs.LLVM }
-    'hailo'          = @{ Url = 'https://github.com/hailo-ai/hailort.git';        Ref = $defaultRefs.HAILORT }
-    'migraphx'       = @{ Url = 'https://github.com/ROCm/AMDMIGraphX.git';        Ref = $defaultRefs.MIGRAPHX }
-    'litert'         = @{ Url = 'https://github.com/google-ai-edge/LiteRT.git';   Ref = $defaultRefs.LITERT }
-    # Meson applies this patch to the wrap's port, though it sits with its consumer's patches.
-    'libvpx'         = @{ Url = 'https://gitlab.freedesktop.org/gstreamer/meson-ports/libvpx.git'; Ref = $defaultRefs.LIBVPX; Patches = @('002-libvpx-clangcl-simd-flags.patch') }
+function Get-PatchRepoMap {
+    param([Parameter(Mandatory)][hashtable]$Refs)
+    return @{
+        'onnxruntime'    = @{ Url = 'https://github.com/microsoft/onnxruntime.git'; Ref = $Refs.ONNXRUNTIME; ExpectedCommit = $Refs.ONNXRUNTIME_SOURCE_COMMIT; FallbackUrl = 'https://github.com/ROCm/onnxruntime.git' }
+        'opencv'         = @{ Url = 'https://github.com/opencv/opencv.git';           Ref = $Refs.OPENCV }
+        'opencv_contrib' = @{ Url = 'https://github.com/opencv/opencv_contrib.git';   Ref = $Refs.OPENCV }
+        'ffmpeg'         = @{ Url = 'https://github.com/FFmpeg/FFmpeg.git';           Ref = $Refs.FFMPEG }
+        'gstreamer'      = @{ Url = 'https://github.com/gstreamer/gstreamer.git';     Ref = $Refs.GSTREAMER }
+        'llvm'           = @{ Url = 'https://github.com/llvm/llvm-project.git';       Ref = $Refs.LLVM }
+        'hailo'          = @{ Url = 'https://github.com/hailo-ai/hailort.git';        Ref = $Refs.HAILORT }
+        'migraphx'       = @{ Url = 'https://github.com/ROCm/AMDMIGraphX.git';        Ref = $Refs.MIGRAPHX }
+        'litert'         = @{ Url = 'https://github.com/google-ai-edge/LiteRT.git';   Ref = $Refs.LITERT }
+        'pytorch'        = @{ Url = 'https://github.com/pytorch/pytorch.git';        Ref = $Refs.PYTORCH }
+        # Meson applies this patch to the wrap's port, though it sits with its consumer's patches.
+        'libvpx'         = @{ Url = 'https://gitlab.freedesktop.org/gstreamer/meson-ports/libvpx.git'; Ref = $Refs.LIBVPX; Patches = @('002-libvpx-clangcl-simd-flags.patch') }
+    }
 }
+
+$fileVersions = @{}
+if (Test-Path $versionsFile) {
+    Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1') -Force
+    $fileVersions = ConvertFrom-VersionsEnv -Path $versionsFile
+    $toolPins = Join-Path (Split-Path $versionsFile -Parent) 'tool-pins.env'
+    if (Test-Path -LiteralPath $toolPins) { $pins = ConvertFrom-VersionsEnv -Path $toolPins; foreach ($k in $pins.Keys) { $fileVersions[$k] = $pins[$k] } }
+}
+$defaultRefs = Get-PatchRefs -FileVersions $fileVersions -Versions $Versions
+$repoMap = Get-PatchRepoMap -Refs $defaultRefs
 
 function Get-PatchTargetPaths {
     param([string]$PatchFile)
@@ -120,6 +137,35 @@ function Resolve-GnuPatchExe {
     throw "no GNU patch.exe found (tried: $($candidates -join ', ')): Invoke-SourcePatch applies tarball patches with it, so this gate must too."
 }
 
+function Get-PatchCheckout {
+    param([hashtable]$Spec, [string]$Clone)
+    $refArgs = @(if ($Spec.Ref -match '^[0-9a-f]{40}$') { "--revision=$($Spec.Ref)" } else { '--branch', $Spec.Ref })
+    & git clone --config core.autocrlf=false --depth 1 @refArgs --filter=blob:none --sparse $Spec.Url $Clone 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        $failure = if (Test-UpstreamGone -Url $Spec.Url) { 'NOT CHECKED (upstream answers 404)' } else { 'FAIL (clone)' }
+        return [pscustomobject]@{ Path = ''; Error = $failure }
+    }
+    return [pscustomobject]@{ Path = $Clone; Error = '' }
+}
+
+function Get-OrtPatchCheckout {
+    param([hashtable]$Spec, [string]$Clone)
+    try {
+        $version = $Spec.Ref -replace '^v', ''
+        Assert-OrtSourcePin -Version $version -ExpectedCommit $Spec.ExpectedCommit
+        $result = Get-PatchCheckout -Spec $Spec -Clone $Clone
+        if ($result.Error) {
+            Write-Warning "Primary ONNX patch source failed; fetching the pinned commit from $($Spec.FallbackUrl)."
+            Reset-SourceBuildDirectory -Path $Clone
+            $fallback = @{ Url = $Spec.FallbackUrl; Ref = $Spec.ExpectedCommit }
+            $result = Get-PatchCheckout -Spec $fallback -Clone $Clone
+        }
+        if ($result.Error) { return $result }
+        Assert-OrtSourceIdentity -SourceDir $Clone -Version $version -ExpectedCommit $Spec.ExpectedCommit
+        return $result
+    } catch { return [pscustomobject]@{ Path = ''; Error = "FAIL (verified ONNX clone: $($_.Exception.Message))" } }
+}
+
 # A clone that failed because the upstream repository answers 404 (CON280: microsoft/onnxruntime since 2026-11-17).
 function Test-UpstreamGone {
     param([string]$Url)
@@ -136,15 +182,11 @@ function Get-PatchClone {
     if ($Clones[$cacheKey]) { return [pscustomobject]@{ Path = $Clones[$cacheKey]; Error = '' } }
     $clone = Join-Path $WorkDir $cacheKey.Replace('|', '_').Replace('/', '_')
     Write-Host "  clone $RepoKey @ $($Spec.Ref) (sparse)..." -ForegroundColor DarkGray
-    $refArgs = @(if ($Spec.Ref -match '^[0-9a-f]{40}$') { "--revision=$($Spec.Ref)" } else { '--branch', $Spec.Ref })
-    & git clone --config core.autocrlf=false --depth 1 @refArgs --filter=blob:none --sparse $Spec.Url $clone 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        # A vanished upstream proves nothing about the patch; a reachable one that refuses the ref still fails (owner 2026-11-18).
-        if (Test-UpstreamGone -Url $Spec.Url) { return [pscustomobject]@{ Path = ''; Error = 'NOT CHECKED (upstream answers 404)' } }
-        return [pscustomobject]@{ Path = ''; Error = 'FAIL (clone)' }
-    }
+    $result = if ($RepoKey -eq 'onnxruntime') { Get-OrtPatchCheckout -Spec $Spec -Clone $clone }
+    else { Get-PatchCheckout -Spec $Spec -Clone $clone }
+    if ($result.Error) { return $result }
     $Clones[$cacheKey] = $clone
-    return [pscustomobject]@{ Path = $clone; Error = '' }
+    return $result
 }
 
 function Get-PatchApplyStatus {
@@ -185,13 +227,14 @@ function Get-StaticPatchResult {
     return [pscustomobject]@{ Patch = $Patch.Name; Repo = $repoKey; Ref = $spec.Ref; Status = $status }
 }
 
-# The exit code: a FAIL fails; a patch whose upstream answers 404 only warns (CON280).
+# Missing patch evidence must keep the required gate red, including an unavailable upstream.
 function Get-PatchDriftExitCode {
     param([object[]]$Results)
     $byKind = $Results | Group-Object { ($_.Status -split ' ')[0] } -AsHashTable
     if ($byKind -and $byKind.ContainsKey('NOT')) {
         $repos = @($byKind['NOT'] | ForEach-Object Repo | Sort-Object -Unique) -join ', '
-        Write-Host "::warning::$(@($byKind['NOT']).Count) patch(es) not checked: their upstream answers 404 ($repos); BACKLOG CON280"
+        Write-Host "::error::$(@($byKind['NOT']).Count) patch(es) not checked: their upstream answers 404 ($repos); BACKLOG CON280"
+        return 1
     }
     if ($byKind -and $byKind.ContainsKey('FAIL')) {
         Write-Host "$(@($byKind['FAIL']).Count) patch(es) FAILED to apply -- regenerate them against the new pinned upstream." -ForegroundColor Red

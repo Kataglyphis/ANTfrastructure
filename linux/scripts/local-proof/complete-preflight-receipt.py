@@ -80,7 +80,8 @@ extraction = read(out / "mutator-extraction.json")
 assert extraction["source_sha256"] == hashlib.sha256(raw).hexdigest()
 assert raw[extraction["start_byte"]:extraction["end_byte_exclusive"]] == mutations.read_bytes()
 assert digest(mutations) == extraction["mutation_job_sha256"]
-cleanup_commands = [value.split("=", 1)[1] for value in invocation["command"] if value.startswith("ExecStopPost=")]
+cleanup_commands = [value.split("ExecStopPost=", 1)[1] for value in invocation["command"]
+                    if re.match(r"^(?:--property=|-p)?ExecStopPost=", value)]
 assert len(cleanup_commands) == 1
 cleanup_argv = shlex.split(cleanup_commands[0])
 assert cleanup_argv[cleanup_argv.index("--run-id") + 1] == record["owner_run_id"]

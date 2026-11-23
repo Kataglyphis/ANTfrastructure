@@ -185,7 +185,69 @@ function Get-HostMaintenanceBuildCtlPath {
     return $null
 }
 
+function Open-ExclusiveFile {
+    param([Parameter(Mandatory)][string]$LiteralPath, [IO.FileMode]$Mode = [IO.FileMode]::Open)
+    return [IO.File]::Open($LiteralPath, $Mode, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+}
+
+function Get-HostNonReparseItem {
+    param([Parameter(Mandatory)][string]$Path)
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Reparse point refused: $Path" }
+    return $item
+}
+
+function Assert-HostIdentityPairs {
+    param([string[]]$Values, [string[]]$ExpectedIds, [string]$Kind)
+    if ($Values.Count -ne $ExpectedIds.Count) { throw "Each $Kind needs one expected image ID." }
+    $seen = @{}
+    foreach ($value in $Values) {
+        if ($seen.ContainsKey($value)) { throw "Duplicate ${Kind}: $value" }
+        $seen[$value] = $true
+    }
+}
+
+function Get-HostDisposableContainerLabel {
+    return 'org.kataglyphis.antfrastructure.disposable'
+}
+
+function Assert-HostTaskAbsentState {
+    param($State)
+    foreach ($name in @('Running', 'Paused', 'Restarting')) {
+        if ($State.$name -isnot [bool] -or $State.$name) { throw 'Container task absence is unknown.' }
+    }
+    foreach ($name in @('Pid', 'ExitCode')) {
+        if (($State.$name -isnot [int] -and $State.$name -isnot [long]) -or $State.$name -ne 0) { throw 'Container task absence is unknown.' }
+    }
+    foreach ($name in @('Error', 'StartedAt', 'FinishedAt')) {
+        if ($State.$name -isnot [string] -or $State.$name -cne '') { throw 'Container task absence is unknown.' }
+    }
+}
+
+function Get-HostContainerStatus {
+    param($State)
+    if ($State.Status -isnot [string]) { throw 'Container status is unknown.' }
+    $status = $State.Status
+    if ($status -ceq '') {
+        Assert-HostTaskAbsentState $State
+        $status = 'created'
+    }
+    if ($status -cnotin @('created', 'exited', 'stopped', 'dead', 'running', 'paused', 'restarting')) { throw 'Container status is unknown.' }
+    return $status
+}
+
+function ConvertTo-HostContainerRecord {
+    param([Parameter(Mandatory)]$Container)
+    if ($Container.Id -cnotmatch '^[0-9a-f]{64}$' -or $Container.Image -cnotmatch '^sha256:[0-9a-f]{64}$') { throw 'Container identity is unknown.' }
+    if ($Container.State.Running -isnot [bool]) { throw 'Container running state is unknown.' }
+    $status = Get-HostContainerStatus $Container.State
+    $label = if ($null -ne $Container.Config.Labels) { $Container.Config.Labels.PSObject.Properties[(Get-HostDisposableContainerLabel)] } else { $null }
+    [pscustomobject]@{ Id = $Container.Id; Image = $Container.Image; Status = $status;
+        Running = $Container.State.Running; Disposable = ($null -ne $label -and $label.Name -ceq (Get-HostDisposableContainerLabel) -and $label.Value -ceq 'true') }
+}
+
 Export-ModuleMember -Function @(
+    'Open-ExclusiveFile', 'Get-HostNonReparseItem', 'Assert-HostIdentityPairs', 'Get-HostDisposableContainerLabel', 'ConvertTo-HostContainerRecord',
     'New-HostMaintenanceLog',
     'Write-HostStep',
     'Write-HostMaintenanceMessage',

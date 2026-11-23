@@ -1,5 +1,5 @@
 #requires -Version 7.0
-# Cross-build configure args and the DLL closure over synthetic PE import tables; real binaries are the arch gate's job.
+# Windows configure, PE traversal and native batch install fixtures; portable package callbacks have their own suite.
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsCrossBundle.Common.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'WindowsSourceBuild.GraphFixture.psm1') -ErrorAction Stop
@@ -108,31 +108,14 @@ Describe 'Copy-PeImportClosure' {
 }
 
 Describe 'New-PortableBundle' {
-    # The fixture's app.exe as the install tree's binary, plus -Extra installed beside it; records the cmake argv.
-    function script:New-FakeInstall([string]$Dir, [string[]]$Extra = @()) {
-        $fixture = $Dir
-        $extraNames = $Extra
-        return {
-            param($File, [string[]]$Arguments)
-            Set-Content -LiteralPath (Join-Path $fixture 'install.log') -Value "$File $($Arguments -join ' ')"
-            $bin = Join-Path $Arguments[$Arguments.IndexOf('--prefix') + 1] 'bin'
-            $null = New-Item -ItemType Directory -Force -Path $bin
-            Copy-Item -LiteralPath "$fixture\app\app.exe" -Destination $bin
-            foreach ($name in $extraNames) { Copy-Item -LiteralPath "$fixture\runtime\bin\$name" -Destination $bin }
-        }.GetNewClosure()
-    }
-
     It 'installs, adds the imported DLLs, and copies the .msi, .zip and their NSIS .exe but no test binary' {
         Invoke-InTestDir { param($dir)
             $search = New-ClosureFixture -Dir $dir
-            $build = Join-Path $dir 'build'
-            foreach ($f in 'app.msi', 'app.zip', 'app.exe', 'unit_tests.exe') { $null = New-Item -ItemType File -Force -Path (Join-Path $build $f) }
-            $checked = [System.Collections.Generic.List[string]]::new()
-            $check = { param($Path, $RedistText) $checked.Add((Split-Path $Path -Leaf)) }.GetNewClosure()
-            $bundleArgs = @{ BuildDir = $build; DistDir = "$dir\dist"; Arch = 'arm64'; SearchDirectory = $search; Runner = (New-FakeInstall $dir); PackageCheck = $check }
+            $fixture = New-CrossBundlePackageFixture -Dir $dir -SearchDirectory $search -InstallerName 'app.msi', 'app.zip', 'app.exe', 'unit_tests.exe'
+            $bundleArgs = $fixture.Options
             $r = New-PortableBundle @bundleArgs
-            Assert-Equal "cmake --install $build --prefix $dir\dist\bundle --config Release" (Get-Content -LiteralPath "$dir\install.log")
-            Assert-Equal 'app.msi,app.zip' (@($checked | Sort-Object) -join ',') 'every CPack MSI and ZIP is checked for the MSVC runtime notice'
+            Assert-Equal "cmake --install $($bundleArgs.BuildDir) --prefix $dir\dist\bundle --config Release" (Get-Content -LiteralPath "$dir\install.log")
+            Assert-Equal 'app.msi,app.zip' (@($fixture.Checked | Sort-Object) -join ',') 'every CPack MSI and ZIP is checked for the MSVC runtime notice'
             Assert-Equal 'a.dll,B.DLL,c.dll,d.dll' (@($r.Added | Sort-Object) -join ',') 'the closure of app.exe'
             Assert-True (Test-Path -LiteralPath "$dir\dist\bundle\bin\d.dll") 'beside the binary'
             Assert-Equal 'app.exe,app.msi,app.zip' (@(Get-ChildItem -LiteralPath "$dir\dist\packages" -Name | Sort-Object) -join ',')
@@ -149,7 +132,7 @@ Describe 'New-PortableBundle' {
             Assert-Equal 1 $r.Count 'the default runner: one object, no cmake line'
             Assert-Equal "$dir\dist\bundle" $r[0].Bundle
             Assert-Equal 4 @($r[0].Added).Count 'the fake cmake installed app.exe, and its closure followed'
-            $install = New-FakeInstall $dir
+            $install = New-CrossBundleInstallFixture $dir
             $chatty = { param($File, [string[]]$Arguments) '-- Installing: a line a logged runner returns'; & $install $File $Arguments }.GetNewClosure()
             $r = @(New-PortableBundle @bundleArgs -Runner $chatty)
             Assert-Equal 1 $r.Count 'a passed runner''s output does not join the result either'
@@ -166,11 +149,11 @@ Describe 'New-PortableBundle' {
         Invoke-InTestDir { param($dir)
             $search = New-ClosureFixture -Dir $dir
             $null = New-Item -ItemType Directory -Force -Path "$dir\build"
-            Assert-Throws { New-PortableBundle -BuildDir "$dir\build" -DistDir "$dir\dist" -Arch arm64 -SearchDirectory $search -Runner (New-FakeInstall $dir) -RequireCompleteInstall } `
+            Assert-Throws { New-PortableBundle -BuildDir "$dir\build" -DistDir "$dir\dist" -Arch arm64 -SearchDirectory $search -Runner (New-CrossBundleInstallFixture $dir) -RequireCompleteInstall } `
                 -MessagePattern 'The install tree lacks a\.dll, B\.DLL, c\.dll, d\.dll, which its binaries import'
             Copy-Item -LiteralPath "$dir\ort\bin\B.DLL" -Destination "$dir\runtime\bin\B.DLL"
             $r = New-PortableBundle -BuildDir "$dir\build" -DistDir "$dir\dist" -Arch arm64 -SearchDirectory $search -RequireCompleteInstall `
-                -Runner (New-FakeInstall $dir -Extra 'a.dll', 'B.DLL', 'c.dll', 'd.dll')
+                -Runner (New-CrossBundleInstallFixture $dir -Extra 'a.dll', 'B.DLL', 'c.dll', 'd.dll')
             Assert-Equal 0 $r.Added.Count 'nothing missing'
         }
     }

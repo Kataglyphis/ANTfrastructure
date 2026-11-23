@@ -35,6 +35,26 @@ function Clear-IreeBuildMount {
     if (Test-Path -LiteralPath $script:IreeBuildMount -PathType Container) { Reset-SourceBuildDirectory -Path $script:IreeBuildMount }
 }
 
+# clang-cl's forwarded baseline -march overrides /arch; only the dispatched AVX512 kernels get explicit feature flags.
+function Set-IreeX86KernelCmakeFlags {
+    param([Parameter(Mandatory)][string]$SourceDir)
+    $path = Join-Path $SourceDir 'runtime/src/iree/builtins/ukernel/arch/x86_64/CMakeLists.txt'
+    $header = '(?m)^(iree_select_compiler_opts\(IREE_UK_COPTS_X86_64_AVX512_BASE\r?\n)'
+    $features = @('f', 'vl', 'cd', 'bw', 'dq')
+    $flags = @($features | ForEach-Object { '    "/clang:-mavx512{0}"' -f $_ })
+    $block = "  CLANG_CL`n" + ($flags -join "`n") + "`n"
+    $tail = '  CLANG_OR_GCC\r?\n' +
+        (($features | ForEach-Object { '    "-mavx512' + $_ + '"\r?\n' }) -join '') +
+        '  MSVC_OR_CLANG_CL\r?\n    "/arch:AVX512"\r?\n\)'
+    $ready = $header + '  CLANG_CL\r?\n' +
+        (($flags | ForEach-Object { [regex]::Escape($_) + '\r?\n' }) -join '') + $tail
+    if (-not (Invoke-InlineRegexPatch -Path $path -Pattern ($header + '(?=' + $tail + ')') `
+                -Replacement ('${1}' + $block) -SkipIfMatch $ready -Require -Quiet `
+                -Description 'IREE dispatched AVX512 base: explicit clang-cl feature flags')) {
+        throw 'IREE AVX512 base options layout changed; explicit clang-cl kernel flags were not applied.'
+    }
+}
+
 # rocm lane only: HIP HAL driver + rocm compiler target. @() on cpu/nvidia/cross keeps their configure unchanged.
 function Get-IreeRocmCmakeArgs {
     param([Parameter(Mandatory)][hashtable]$GpuEnv, [bool]$Cross)
@@ -476,6 +496,7 @@ if (-not (Test-Path (Join-Path $SourceDir 'third_party\llvm-project\llvm\CMakeLi
 }
 
 $ireeMasm = Install-IreeSourcePatches -SourceDir $SourceDir
+Set-IreeX86KernelCmakeFlags -SourceDir $SourceDir
 
 # Also copies pyconfig.h into Include\, where FindPython looks; in-tree CPython keeps it in PC\.
 $py = Initialize-ToolchainPythonEnvironment

@@ -1,11 +1,11 @@
 #requires -Version 7.0
 # Flat-mounted installers receive their module root because the mount cannot bootstrap its own import.
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.CallAssertions.psm1') -ErrorAction Stop
+
 function Assert-MountedModuleRootContract {
     param([Parameter(Mandatory)][System.Management.Automation.Language.Ast]$Ast)
-    $moduleRoot = @($Ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'ModuleRoot' })
-    Assert-Equal 1 $moduleRoot.Count 'one ModuleRoot parameter'
-    Assert-Equal '(Split-Path $PSScriptRoot -Parent)' $moduleRoot[0].DefaultValue.Extent.Text 'checkout module-root default'
+    Assert-TestScriptParameterDefault -Ast $Ast -Name 'ModuleRoot' -Text '(Split-Path $PSScriptRoot -Parent)' -Message 'checkout module-root default'
     Assert-Match 'Join-Path \$ModuleRoot' $Ast.Extent.Text 'module lookup uses the caller root'
     Assert-Match 'modules\\' $Ast.Extent.Text 'module lookup stays under modules'
     Assert-False ($Ast.Extent.Text -match '\$scriptAssetRoot') 'the flat mount is not rediscovered'

@@ -1,8 +1,10 @@
 # Changelog
 
 > **Older entries** are archived, newest archive first:
-> [`2026-11-10 … 2026-11-17`](docs/changelog-archive-2026-11-17.md) ·
-> [`2026-11-06 … 2026-11-12`](docs/changelog-archive-2026-11-12.md) ·
+> [`2026-11-15 … 2026-11-17`](docs/changelog-archive-2026-11-17.md) ·
+> [`2026-11-13 … 2026-11-14`](docs/changelog-archive-2026-11-14.md) ·
+> [`2026-11-07 … 2026-11-12`](docs/changelog-archive-2026-11-12.md) ·
+> [`2026-11-05 … 2026-11-06`](docs/changelog-archive-2026-11-06.md) ·
 > [`2026-11-05`](docs/changelog-archive-2026-11-05.md) ·
 > [`2026-10-23 … 2026-11-04`](docs/changelog-archive-2026-11-04.md) ·
 > [`2026-10-20 … 2026-10-22`](docs/changelog-archive-2026-10-22.md) ·
@@ -149,6 +151,25 @@
   `context_length_exceeded`, pass `temperature` and `stop`, and follow the split; OrchestrANT copies the ORT count in
   at build time (owner, 2026-11-23).
 
+## 2026-11-22 — read equivalent systemd cleanup arguments
+
+- Accept joined and separated systemd `ExecStopPost` arguments when assembling a complete-preflight receipt. Require exactly one across all forms; keep the executed argv unchanged and retain every source, mutation, owner, cleanup and engine-query check.
+- Add end-to-end synthetic CLI regression controls and parse-valid mutations. Preserve the original successful 753e source run and failed receipt assembly separately; tooling replay does not qualify a new production commit.
+
+## 2026-11-22 — retain complete isolated preflight transcripts
+
+- Save the worker's own stdout and stderr through the existing evidence bind before container cleanup. Keep the attach stream separately; a missing or linked transcript fails even after engine exit zero. Preserve raw command/cleanup statuses and every existing full-source acceptance gate.
+- Retain the original f715 command/cleanup zeros, outer extraction failure and incomplete attach log. Its 7,714 mutation cases are byte-verified; missing outer groups/footer and failed later cleanup still prevent full qualification. Add transport/status fixtures and semantic mutations; a new exact-source full run remains required.
+
+## 2026-11-22 — integrate exact-source Windows evidence with develop
+
+- Document the existing Ninja generator prerequisite for compiler-less CMake checks in Windows Git Bash when nmake is unavailable; preserve every assertion and mutation gate.
+- Split free-threaded bootstrap and owned-container fixtures into shared companions while retaining every test and the original selected source/fixture lifetime; keep the unchanged file-size gate.
+- Preserve both source histories, every mutation ID from both histories and the Windows harness's existing closure while adding upstream PE hardening fixtures. Keep strict exact-commit patch acceptance and both Git fixture environment protections. Add six actual refusal mutations for the incoming PE-hardening gate; synthetic PE tests do not prove real linker output.
+- Record the complete local `79e41b6b` NVIDIA producer and separate CUDA repeat: 6,304 primary hits, including 605 NVCC hits, zero misses/cache/compiler errors at that point. Its two original smoke skips have separate exact-image CPU/CUDA/TensorRT/DirectML and negative Pad/MaxPool receipts; they do not qualify another source.
+- Preserve CPU raw outcomes `[1,1]`: TVM/IREE exported successfully, but the unchanged 45-GiB guard stopped before Media-Merge at 29.5 GiB. The completed non-admin cleanup freed about 66 GiB, kept all 22 image identities and six compiler caches, and still missed the 100-GiB full-build target.
+- Keep GStreamer's measured 102 cache errors and 32 failed compiler requests unclassified. Final-source quality, four whole lanes, physical AMD/ARM64 checks, hosted CI and digest-specific ARM64 acceptance remain open; CON228 stays OPEN/DRAFT. Git integration and unused worktree retirement are separate operations.
+
 ## 2026-11-22 — the OpenAI contract cases of owner decisions D7 and D8 (CON288 (a), (d))
 
 - `shared/contracts/openai-stream-lines.json` gains 11 cases for D8: any non-null `error` fails the stream (`false`,
@@ -165,6 +186,11 @@
   (D7), which `orchestrant-serve` answers with HTTP 400.
 - **Consumers:** OxidANT's `endpoint.rs`, OrchestrANT's `answers.py` and OmniAccelerANT's `endpoint_reply.dart`
   replay every stream case, so the new ones fail each at its next pin until its reader follows D8.
+
+## 2026-11-21 — recognize quiet task-absent Stevedore containers
+
+- Accept nerdctl's complete typed empty process state through the shared container parser; keep raw fields, stopped/disposable selection and all image/cache protection rules.
+- Refuse native stderr in the canonical per-removal query as well as delegated inventory, since a failed task lookup can otherwise resemble task absence. Add regression and mutation controls; installation and real host acceptance remain separate.
 
 ## 2026-11-21 — the PE twin of the ELF hardening gate (CON294)
 
@@ -254,6 +280,80 @@
 - Retain optimized/fatal-warning C compilation, ASAN C++ flags, raw import/resolver/compiler failures and command/cache statistics. Real compiler errors remain fatal; the canonical launcher owns cache retries and direct fallback.
 - Add fake cache-infrastructure controls for both real compiler paths and mutation guards for imports, exports, parent environment, resolver and status propagation. Real clock, Rust/Dart, hosted CI and finished consumer checks retain their separate scope.
 
+## 2026-11-20 — preserve Stevedore image names and hidden task identity
+
+- Preserve raw nerdctl JSON names and inspect each distinct manifest to bind
+  configuration identities, including digest-qualified aliases. Keep empty
+  successful output logged; refuse native diagnostics and incomplete identities.
+- Resolve the hidden SYSTEM worker by exact task path and GUID. Require Ready
+  state for completion and share queued/running/unknown refusal for overlap and
+  revocation. Keep original raw failures, regression controls and mutations;
+  corrected protected setup and real normal-user acceptance remain required.
+
+## 2026-11-20 — complete isolated preflight's free-threading prerequisites
+
+- Install managed free-threaded CPython from the existing source pin, keep its
+  path through the clean worker environment and refuse wrong versions, enabled
+  GILs or missing headers before any gate. Preserve the real extension/GIL test;
+  fixture controls and mutations cover provisioning, forwarding and raw refusals.
+
+## 2026-11-20 — isolate consumer-hook fixture ancestry
+
+- Bound Git discovery above empty-directory cases, using Git's native root
+  spelling and an owned parent repository even when TMPDIR is inside a checkout.
+  Retain all hook assertions and prove the isolation with a ceiling-removal mutation.
+  Use the same native spelling for the image-runner configuration diagnostic.
+
+## 2026-11-20 — stabilize QNN query receipt fixtures
+
+- Order the fixture's captured `find` output under the C locale while retaining
+  its original arguments, raw status and injected failures. Keep all 120 frozen
+  receipts byte-identical. A reverse-enumeration control and valid sort-removal
+  mutation cover the rootless overlay discrepancy; real SDK/EP acceptance is separate.
+
+## 2026-11-20 — version bounded Stevedore delegation
+
+- Add host-specific one-time SYSTEM task setup, ordinary-user preview/Apply/status,
+  protected payload/runtime hashes, read/execute-only delegation and revocation
+  with archived logs. No timer or automatic service restart is installed.
+- Retire only allowed completed media branches with a merged image and no
+  retained container reference, plus explicitly disposable stopped containers.
+  Canonical cleanup rechecks exact IDs and idle state; no force or volume removal.
+  Preserve all other tags and compiler mounts, keep the 100-GiB target, and report
+  target attainment separately from worker/scheduler success. Document setup,
+  updates, scope and required independent acceptance on another host.
+- Keep the exclusive maintenance lock in the host module so the shared module
+  copied into build images remains byte-identical to the preceding source.
+- Split reclaim options, runtime readiness, manifest policy, task definitions and
+  fresh completion reads to meet the strict PowerShell complexity gate. Retain
+  every refusal and raw status; test stale/foreign receipts and scheduler mismatch.
+- Document private public-registry client configuration for rootless preflight;
+  credential-helper failures cannot be ignored just because an image is public.
+
+## 2026-11-20 — the chain names an absent asset mirror; stale GPU texts fixed (CON153, CON256 h, CON260)
+
+- `append_asset_mirror_secret` prints `[INFO] asset mirror: none (<file> is missing)` once per chain: a missing env file
+  was silent and hid an absent mirror for two rounds (CON153 closed). `test-asset-mirror.sh` holds the once-only line.
+- CON256 (h): the accelerator page names `/usr/local/lib/onnxruntime-gpu` instead of the undefined `${ORT_GPU_DIR}` and
+  the runtime gate's real plugin-EP checks instead of a provider list; the consumer contract sends only NVIDIA consumers
+  to `onnxruntime-gpu/lib`; `AGENTS.md` says which gate fails which in-tree provider.
+- CON260: the FFmpeg OpenVINO probe drops its stale `2026.2.1` literal and takes the passed pin.
+- `test-deepstream.sh` and `test-gpu-variant.sh` pin the amd64 target and build host their fixtures model; on an arm64
+  host they failed unmutated (8 assertions), which turned the commit hook's mutation sample vacuous there.
+
+## 2026-11-20 — CON237 closed: every binding replays the shared text cases
+
+- `fixture.json`'s `cases` are replayed by AccelerANTgine 7f8cb17 (C++ and Python), OxidANT 9e0f589 and OrchestrANT
+  585f40c, which now names a schema object llguidance cannot compile `generation_failed` as C++ and Rust do. The stream
+  lines reach Dart too: OmniAccelerANT e6b1898's `endpoint_reply.dart` replays them and fails on an `error:` line.
+
+## 2026-11-20 — the test model's `fixture.json` lists its cases (CON237 item 4)
+
+- `tiny-genai-model.py` writes `cases`: seven requests with their answer or their error kind (`invalid_options`,
+  `generation_failed`), measured on the image's GenAI: greedy to the budget (`defg`, `length`), the schema case
+  (`7`, `stop`), a schema that is an array or a number, an object the grammar compiler refuses, no messages and no
+  budget. Owner decision 2026-11-20: all three bindings replay it.
+
 ## 2026-11-20 — preserve separate Cargo release metadata for native helpers
 
 - Add paired optional JSON outputs to the shared Rust release driver, retaining its full-workspace build and explicit CLI build. Each file records one complete unfiltered Cargo call, suitable for the existing strict native-helper selector; no extra release builds or combined-message exception are introduced.
@@ -265,6 +365,7 @@
 - Share the native supervisor's monotonic-clock error boundary before launch and during its wait loop. Preserve nonzero errno and report `EIO` when a failing clock leaves errno zero, avoiding an unset elapsed value that GCC 16.2 rejects under `-O3 -Werror`.
 - Compile shared native fixture objects with optimization and fatal warnings. Add real child controls for initial/elapsed clock failures, exact error preservation and kill/reap behavior; retain the existing timeout, Rust and Dart ownership tests. These source controls do not establish finished consumer packages or GPU acceptance.
 - Normal commit hooks also exposed a missing logging-bootstrap import in the recently added host-red helper. Add its canonical import and a removal mutation; keep the existing unmutated library controls fatal and retain the original rejected commit attempt.
+
 ## 2026-11-20 — shared hook diagnostics load the canonical logger
 
 - Import `log-bootstrap.sh` from `hook-host-red.sh` so standalone library checks see the real logging API. The missing import made the hosted preflight fail three library assertions and invalidated twelve mutation baselines in run 44819008926.
@@ -359,34 +460,26 @@
   build replaces `build/web`, then the dev domain), with the URLs from the owner's new `DEV_WASM_SITE_URL` and
   `DEV_SITE_URL` secrets; run 44716391170 passed both checks.
 
-## 2026-11-20 — the chain names an absent asset mirror; stale GPU texts fixed (CON153, CON256 h, CON260)
+## 2026-11-19 — keep media module reads independent of cached directory views
 
-- `append_asset_mirror_secret` prints `[INFO] asset mirror: none (<file> is missing)` once per chain: a missing env file
-  was silent and hid an absent mirror for two rounds (CON153 closed). `test-asset-mirror.sh` holds the once-only line.
-- CON256 (h): the accelerator page names `/usr/local/lib/onnxruntime-gpu` instead of the undefined `${ORT_GPU_DIR}` and
-  the runtime gate's real plugin-EP checks instead of a provider list; the consumer contract sends only NVIDIA consumers
-  to `onnxruntime-gpu/lib`; `AGENTS.md` says which gate fails which in-tree provider.
-- CON260: the FFmpeg OpenVINO probe drops its stale `2026.2.1` literal and takes the passed pin.
-- `test-deepstream.sh` and `test-gpu-variant.sh` pin the amd64 target and build host their fixtures model; on an arm64
-  host they failed unmutated (8 assertions), which turned the commit hook's mutation sample vacuous there.
+- Extend the existing narrow per-file delivery to the five media-core RUNs and TVM, preserving the same seven shared modules plus TVM's private leaf. The current NVIDIA CUDA repeat reproduced an unreadable cached view before ONNX compilation; isolated direct mounts read, hash and import those seven bytes correctly.
+- Share the structural closure assertion across all eight media RUNs and mutation-test missing modules, cached-directory regressions and scan coverage. Keep all copied source views, product parents, compiler caches and stage gates.
+- Preserve the successful `2c40a98d` NVIDIA producer and physical CUDA/TensorRT/DirectML evidence as exact-source results; its failed diagnostic repeat proves no CUDA cache hits. The successor still requires full qualification and current-source acceptance. CON228 remains OPEN/DRAFT.
 
-## 2026-11-20 — CON237 closed: every binding replays the shared text cases
+## 2026-11-19 — deliver LiteRT modules through direct file mounts
 
-- `fixture.json`'s `cases` are replayed by AccelerANTgine 7f8cb17 (C++ and Python), OxidANT 9e0f589 and OrchestrANT
-  585f40c, which now names a schema object llguidance cannot compile `generation_failed` as C++ and Rust do. The stream
-  lines reach Dart too: OmniAccelerANT e6b1898's `endpoint_reply.dart` replays them and fails on an `error:` line.
+- Preserve the same seven-module closure in both LiteRT build RUNs while avoiding a cached module view that the actual NVIDIA toolchain could list but not read. Other source views and compiler caches remain intact.
+- Add portable closure checks and mutation proofs for both RUNs and every module. Actual engine controls prove reads and imports, including an inherited RUN; full new-source quality and four-lane acceptance remain required.
 
-## 2026-11-20 — the test model's `fixture.json` lists its cases (CON237 item 4)
+## 2026-11-19 — preserve IREE dispatched AVX512 under the Windows ISA floor
 
-- `tiny-genai-model.py` writes `cases`: seven requests with their answer or their error kind (`invalid_options`,
-  `generation_failed`), measured on the image's GenAI: greedy to the budget (`defg`, `length`), the schema case
-  (`7`, `stop`), a schema that is an array or a number, an object the grammar compiler refuses, no messages and no
-  budget. Owner decision 2026-11-20: all three bindings replay it.
+- Give IREE's AVX512-base clang-cl branch explicit feature flags: a forwarded global `-march=x86-64-v3` overrides `/arch:AVX512`. GNU/MSVC options and the global baseline stay intact.
+- Apply before native and cross-host configuration, reject unknown source layouts and test idempotence, scope and failure paths. Compiler controls reproduce the conflict; full new-source quality and all lane/device/CI acceptance remain required.
 
-## 2026-11-19 — remove approved unused QA environments reproducibly
+## 2026-11-19 — retain GenAI extensions when the primary source is unavailable
 
-- Preserve a default-preview cleanup helper for explicitly reviewed ignored QA virtualenvs under the owner's standing authorization. Reuse canonical environment/inode validation, require fresh usage observations and exact source/input snapshots, and retain empty mountpoints and per-path receipts.
-- Preserve sources, caches, images, packages, archives, logs and the current shared QA environment. Add disposable-tree and fake-host regressions and actual refusal mutations; supplied authorization is not authenticated and usage observations do not lock concurrent writers or establish build/runtime acceptance.
+- Fetch GenAI's exact upstream extensions commit before CMake, retaining primary retries, recursive checkout and fatal commit checks through the shared clone implementation.
+- Route FetchContent to that verified tree; metadata and disposable Git regressions cover refusal paths. Full final-source quality, producer and device acceptance remain required.
 
 ## 2026-11-19 — `ctest-run.sh --fail-on-skipped REGEX`: a skip is not a pass (BeschleunigerBallett X2)
 
@@ -537,6 +630,11 @@
   `run-lint-gates.sh` runs it in the full gates (git's `w/` column) and in the staged checks (`i/`, the bytes the
   commit carries). Every consumer passed on 2026-11-19.
 
+## 2026-11-19 — remove approved unused QA environments reproducibly
+
+- Preserve a default-preview cleanup helper for explicitly reviewed ignored QA virtualenvs under the owner's standing authorization. Reuse canonical environment/inode validation, require fresh usage observations and exact source/input snapshots, and retain empty mountpoints and per-path receipts.
+- Preserve sources, caches, images, packages, archives, logs and the current shared QA environment. Add disposable-tree and fake-host regressions and actual refusal mutations; supplied authorization is not authenticated and usage observations do not lock concurrent writers or establish build/runtime acceptance.
+
 ## 2026-11-19 — retain ORT loader identity with internal HIP probes
 
 - Accept unrelated fork-child runtime records in a profiled process's loader trace. The current Rust CLI's internal HIP probe produces these records before the parent loads the MIGraphX plugin.
@@ -567,6 +665,39 @@
 - Add independent controller/file fixtures and mutations, including concurrent suffixes, symlinks, hardlinks, short writes and failed proof writes. Expand strict Python coverage by all four new Python files and retain positive and negative scope controls. The helper does not authenticate writers or provide a crash-atomic transaction; it grants no build, GPU or goal acceptance.
 - Include shared Python test siblings in the type checker's search roots. Extend the independent import chain and prove removal fails, retaining every existing root and file scope.
 - Reverify both saved snapshots after writing as well as before it. An independent red control showed the first version accepted either post-write corruption; two mutations remove the separate checks. The memory prefix remains preserved when a later snapshot check fails.
+
+## 2026-11-18 — preserve CPython zlib-ng ISA dispatch under ClangCL
+
+- Apply CPython instruction floors after MSBuild per-file metadata: ordinary x64 stays v3; existing AVX-512 files use v4 and retain VNNI/VPCLMUL options. ARM64 is unchanged.
+- Add a portable XML-wiring regression and mutation recipes. A native MSBuild/ClangCL probe reproduces the old feature-loss failure and compiles all four corrected cases; complete lane acceptance remains separate.
+
+## 2026-11-18 — prove CPack diagnostics without Pester
+
+- Move the four CPack diagnostic cases to a portable harness; retain the remaining CMake Pester cases.
+- Retarget their mutation recipes and prove the real exported entry, preserving the Linux no-Pester guard.
+
+## 2026-11-18 — preserve strict patch evidence and shared package diagnostics during integration
+
+- Merge both source-identity protections and upstream-availability diagnostics; required patch acceptance
+  rejects unchecked sources after the original-commit fallback. Preserve all existing mutation recipes.
+- Route CPack generator messages through the canonical batch logger and share parameterized file fixtures;
+  no duplication allowances or gate thresholds are increased. Regression fixtures cover sorted tails,
+  unrelated files, and missing versus empty directories; upstream application and real packaging remain separate.
+
+## 2026-11-18 — retain ONNX source identity when the primary repository is unavailable
+
+- Recover the unchanged GenAI 0.19.0 original commit from CodeLinaro only after primary clone failure; share commit checks with explicit VERSION_INFO and keep the pin in its own compile stage.
+
+- Use the same original commit and release checks in sparse ONNX patch-drift CI, retaining Git and GNU patch dry runs and a tagless exact-commit fallback.
+
+- Run the eight source-pin declaration and routing mutations through the portable source-archive harness, retaining exact ONNX stage checks without requiring Pester or Windows CIM on Linux workers.
+
+- Windows QNN preserves its separate original ONNX header commit and all upstream CMake patches while recovering unavailable source downloads through a verified local archive.
+
+- Pin the Windows ONNX core to its full original 1.31.1 commit. Keep the primary tag clone first; after its bounded retries, fetch that exact commit from the AMD-maintained fork with shallow recursive submodules.
+- Reject commit or VERSION_NUMBER mismatches and any failed fetch, checkout or submodule command before source patches or compilation. Existing non-ONNX clone behavior is unchanged.
+- Share required AST command selection, argument identity, scope and order checks across the affected wiring suites, preserving the existing call-assertion diagnostics and mutation cases.
+- Producer, hardware and hosted-CI requalification remain required for this changed source closure; earlier 0b552573 results retain their original attribution.
 
 ## 2026-11-18 — the large-files gate grades the index, not the working tree (CON269 item 4)
 
@@ -624,7 +755,8 @@
 ## 2026-11-18 — the patch-drift gate tells a vanished upstream from a drifted patch (CON280)
 
 - `Test-PatchesApplyClean.ps1`: when a clone fails and the upstream page answers 404, the patch is `NOT CHECKED
-  (upstream answers 404)` and the job prints a warning naming the repos, instead of failing; a reachable upstream
+  (upstream answers 404)`. The original warning-only change distinguished availability from drift; required
+  acceptance now fails if exact-commit recovery still leaves any patch unchecked. A reachable upstream
   that refuses the clone, and every patch that does not apply, still fail. Since 2026-11-17 22:20Z
   `github.com/microsoft/onnxruntime` answers 404, which turned every hub commit's Windows lane red (owner decision
   2026-11-18). `Patches.ApplyClean.Tests.ps1` covers both cases.

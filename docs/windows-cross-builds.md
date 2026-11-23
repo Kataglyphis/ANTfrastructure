@@ -202,7 +202,8 @@ The one-time cost is a single base rebuild for the VS ARM64 component + the Vulk
 **Batch them**, and see the sequencing warning below.
 
 **An ARG does not cross a `FROM` boundary**, so every stage whose `FROM` is a `${...}` image
-reference and that RUNs a build script redeclares `ARG WINDOWS_TARGET_ARCH`; without it the stage
+reference and that RUNs a build script redeclares `ARG WINDOWS_TARGET_ARCH`; this also
+applies to empty module-view `RUN`s. Without it the stage
 silently builds amd64 on top of an arm64 parent. The arch is never a `versions.env` key either:
 `Import-Versions.ps1` would overwrite the build-arg in inherited stages.
 `TargetArch.Common.Tests.ps1` gates both.
@@ -338,6 +339,22 @@ host-portable `Build.ExportArm64Modules.Tests.ps1` runs the parsed production co
 imports its exported module in a fresh PowerShell process for Linux mutation CI. ZIP checks remain in the
 Windows bundle suite. These prove module transport, not execution of the ARM64 payload.
 
+**Actual local export, 2026-11-12.** Source `5bd443ea`'s accepted private ARM
+image `cada63a7de6578861efb37aac9eee8faf5dade814bbe3dc36881b994280fef1e`
+ran the unchanged canonical exporter successfully. Its 1,886,754,260-byte ZIP is
+SHA256 `e66ed26a7c16fc84decf61eccef02f36ec40a4ae9dcfe3af57c55617c1f4b540`,
+with 14,621 unique case-insensitive Windows paths. The original chain core,
+provider bridge and DirectML DLL each match the added `bin/` copy exactly;
+source chain bytes and original placement remain preserved. All six exported
+module imports succeed in separate fresh PowerShell processes. Canonical static
+PE checks identify those three DLLs, Python and gst-launch as ARM64; the core
+exports `OrtGetApiBase`. Five ZIP controls and three semantic mutants prove the
+new path/byte auditor's refusals. This selected transport check does not CRC-scan
+every member, load an ARM DLL, execute onnxinference, bind a trusted CI attempt
+or permit tag promotion. The actual device22 gate is still required. Operator
+receipt: `arm64-cada63a7-real-export-evidence-20261112.json` under the dated
+Windows-goal results; the local export is not an `image-receipt.json`.
+
 The export also stages the chain core, provider bridge and DirectML DLL beside the
 executables in the ZIP's `bin/`. Windows searches System32 before PATH, so registering
 `ONNX_ROOT/bin` in `BUNDLE-ENV` alone lets the device's older Windows ML ORT win.
@@ -411,6 +428,19 @@ public-tag [run 42583681115](https://github.com/Kataglyphis/ANTfrastructure/acti
 also passed 22/22 at the same source, resolving the tag to that exact manifest and
 config. Its verified receipt artifact is `13659636973`, upload digest
 `sha256:bf5221b75606f5d71c69d35210a25af3f0a37bc7a13bf0a19452d71377b01d1e`.
+
+The later scheduled [run 43154553839](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/43154553839)
+at gate source `d66d3909` again resolves that same public manifest/config and
+passes 22/22 on native Windows ARM64, including real `onnxinference` frames.
+Receipt artifact 13916167851 has upload digest
+`sha256:18b3988789108410704bfdc64007fdee70e634d41d187736760c640cf56dd244`;
+its actual archive hash and CI/image bindings were checked, with 12 invalid-evidence
+controls. The reported bundle hash is
+`02e92b3c5937b1294e766d1e9999aa86fc284fed4070bf26499f9aa650048336`.
+This replay downloaded the small receipt only and trusted the workflow's bundle
+hash check. DirectML logs NoAdapter, so its conditional PASS does not prove the
+shape check or GPU inference. The newer private `5bd443ea` image and final
+integrated source still need their own device receipt and approved promotion.
 
 
 Consumer lanes hosted it
@@ -591,6 +621,22 @@ the installers pack the install tree and would all lack it; AccelerANTgine wants
 BeschleunigerBallett does not set it yet. `-Runner` takes the build's logged cmake call.
 
 `New-PortableBundle -ForbidBuildTimeFiles` refuses an install tree that ships headers, CMake or pkg-config packages or import and static libraries (`Assert-InstallTreeLayout`, with `-AllowBuildTimeFile` for an SDK's own); a bundle once carried 52 gtest and gmock files (CON299). `linux/scripts/06-packaging/check-install-tree.sh <root> [--allow <path>]` applies the same rule to a Linux package tree.
+
+`-PackageCheck` validates every finished MSI and ZIP before it is copied. Both callbacks
+write their success output to the host log; the function returns exactly one object with
+`Bundle`, `Packages`, `Added` and `Installers`. Checker exceptions still fail the bundle.
+`CrossBundle.PackageCheck.Tests.ps1` checks chatty callbacks and rejected packages through
+a cold harness on Linux and Windows. It shares the install fixture with the Windows-only
+`CrossBundle.Common.Tests.ps1`, whose CMake/batch cases remain in full Windows discovery.
+The package licence suites validate real archive contents separately.
+
+When a package generator fails, `Write-CPackGeneratorLog` in `WindowsCMake.Common`
+collects each `*.log` below `_CPack_Packages`, in path order, and sends its heading
+and selected tail through the existing `Write-BuildLogMessages` logger. Missing and
+empty generator directories have distinct diagnostics. The portable
+`CMake.CPackDiagnostics.Tests.ps1` harness checks the exported entry, selection, order and
+tails without Pester; it runs no NSIS, WiX or native compiler. Other CMake Pester cases
+remain in the complete Windows run.
 
 **x64 packages carry the same closure** (owner decision 2026-09-25). A clean x64 PC lacks the
 media stack and may lack the VC++ runtime too. A CMake consumer whose packages come from CPack
@@ -1152,6 +1198,19 @@ no plugin, with one notice, as before.
   `Copy-OrtQnnEpHeader` lays the fork's `_deps\ort_core-src` public headers flat into
   `ort-home\include`. It loads into the chain's ORT through the plugin ABI. Leave the fork's
   `ort_core` pin alone: Qualcomm validated the plugin against it.
+  `ORT_QNN_EP_CORE_COMMIT` binds that separate release to its full original Git
+  commit. The archive command fixes host autocrlf/eol settings for canonical
+  export bytes and retains repository attributes. The shared source clone verifies its version and recursively pinned
+  submodules. `git archive` packages only committed bytes; the builder replaces
+  exactly one original `ort_core` URL/hash with this local ZIP and its computed
+  SHA256. The matching CMake URL_HASH declaration changes to SHA256; its
+  six patch commands remain unchanged. Its path retains `refs/tags/v<version>.zip` for the fork's version parser.
+  CMake still extracts the archive and applies all six original patches in their
+  original order. No `FETCHCONTENT_SOURCE_DIR_ORT_CORE` override bypasses them.
+  Missing archives, drifted/duplicate dependency entries and failed archive
+  commands refuse. This proves transport only, not plugin compilation or NPU use.
+  The original 1.29.0 commit mapping is recorded in the historical
+  [Apache OpenNLP update](https://github.com/apache/opennlp/pull/1216).
 - The fork inherits ORT's MSVC-only `/experimental:external` and its warnings-as-errors; clang-cl reports the switch as
   unused and `-WX` makes that fatal. The ORT build's own fix runs on the fork's `build.ninja` too
   (`Update-NinjaFile -OrtMsvcOnlyFlags`), found by the first arm64 chain of 2026-11-08.

@@ -8,7 +8,7 @@ t_private_tmpdir
 HUB="${TESTS_DIR%/linux/scripts/tests}"
 HOOKS_REL=third_party/ANTfrastructure/shared/linux/templates/git-hooks
 # A hook or a CI runner that starts this suite must not hand its own git or CI state to the fixtures.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT CI
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT CI
 # Sourced for the gate lists and the notice function; the hooks run the copy inside each fixture.
 # shellcheck source=../run-lint-gates.sh
 source "${HUB}/linux/scripts/run-lint-gates.sh"
@@ -17,6 +17,10 @@ _work="$(t_mktemp -d)"
 # A developer's global core.hooksPath or signing key must not decide what a fixture's git does.
 : > "${_work}/gitconfig"
 export GIT_CONFIG_GLOBAL="${_work}/gitconfig" GIT_CONFIG_NOSYSTEM=1
+# An owned ancestor proves empty fixtures cannot inherit the checkout that owns TMPDIR.
+git -C "${_work}" init -q -b fixture || exit 1
+GIT_CEILING_DIRECTORIES="$(git -C "${_work}" rev-parse --show-toplevel)" || exit 1
+export GIT_CEILING_DIRECTORIES
 # Every stub appends here: a shell stub its name, a Python stub its arguments.
 export HOOK_TEST_ARGV="${_work}/calls.log" HOOK_TEST_GATE_RC=0 HOOK_TEST_STALE_RC=0
 _REAL=(shared/linux/templates/git-hooks/pre-commit shared/linux/templates/git-hooks/pre-push
@@ -71,6 +75,10 @@ _hub_copy() {
 }
 
 _tip() { git -C "$1.git" rev-parse develop; }
+
+# Native Git can spell a fixture root differently from Bash's temporary path.
+_git_root() { git -C "$1" rev-parse --show-toplevel; }
+
 # <dir> <git args...>: one git command over a fresh call log; output in _out, status in _rc.
 _run() {
   : > "${HOOK_TEST_ARGV}"
@@ -209,7 +217,7 @@ _section_commit() {
   git -C "${bare}" add blob.bin
   _run "${bare}" commit -q -m blob
   t_assert_eq 0 "${_rc}" "the large-file check is opt-in with --ratchets, which only a wrapper passes: ${_out}"
-  t_assert_contains "${_out}" "linux/scripts/run-lint-gates.sh ${bare} --staged"
+  t_assert_contains "${_out}" "linux/scripts/run-lint-gates.sh $(_git_root "${bare}") --staged"
   t_assert_contains "${_out}" "STAGED CHECKS OK (2 gate(s))"
   _stage "${bare}" conf/app.txt "token = ${_TOKEN}"
   _run "${bare}" commit -q -m leak
@@ -276,7 +284,7 @@ _section_push() {
   t_case "without a wrapper the push runs the bare aggregator, staleness included and no ratchet"
   bare="$(_consumer bare)"
   _push "${bare}" 0 README.md "more"
-  t_assert_contains "${_out}" "linux/scripts/run-lint-gates.sh ${bare}"
+  t_assert_contains "${_out}" "linux/scripts/run-lint-gates.sh $(_git_root "${bare}")"
   t_assert_contains "${_out}" "LINT GATES OK (10 gate(s))"
   t_assert_no_grep "${HOOK_TEST_ARGV}" '^--against-hub'
   _push "${bare}" 1 scripts/linux/subject.sh "GUARD=renamed"
@@ -325,7 +333,7 @@ EXTENSION
 
 _section_image_runner() {
   local d runner
-  runner="${_work}/image-runner"
+  runner="$(_git_root "${_work}")/image-runner"
   cat > "${runner}" <<RUNNER
 #!/usr/bin/env bash
 printf 'runner %s\n' "\$*" >> "\${HOOK_TEST_ARGV}"

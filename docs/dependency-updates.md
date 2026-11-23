@@ -2005,9 +2005,14 @@ Every consumer tracks `.github/renovate.json`, a thin wrapper at
 `scripts/linux/renovate-local.sh` or `scripts/renovate-local.sh`, and a caller of
 the shared read-only `renovate-entrypoint.yml` workflow. The hub's
 `verify_renovate_entrypoint.py <repo-root>` checks those tracked files and invokes
-the wrapper's `--help` with a hub checkout to prove delegation without running a
-dependency lookup. CI runs the same gate on push and pull request; it never
-applies dependency updates.
+the wrapper's `--help` with a hub checkout to prove delegation. Syntax and
+static delegation errors refuse the wrapper before that invocation: a wrapper
+which drops arguments could otherwise turn `--help` into a real dependency
+lookup. Valid wrappers still require the help probe. This ordering check does
+not sandbox arbitrary wrapper code or prove live datasource access. The
+regression fixture records execution with a local marker; it never bootstraps
+Renovate merely to test missing forwarding. CI runs the same gate on push and
+pull request; it never applies dependency updates.
 
 ### The fleet is found, not written down
 

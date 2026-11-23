@@ -102,9 +102,9 @@ case "${_out}" in
   *)       t_assert_ok true ;;
 esac
 
-# The same gate believing it runs under Git Bash, so the host-skip arms are proven on Linux too.
+# Force only the host-skip fact, so native Windows parser and executable lookup keep their real platform.
 _gate_as_gitbash() {
-  TMPDIR="${_tmp}" "${PY}" -c 'import os, runpy, sys; sys.platform = "msys"; sys.argv = sys.argv[1:]; sys.path.insert(0, os.path.dirname(sys.argv[0])); runpy.run_path(sys.argv[0], run_name="__main__")' \
+  TMPDIR="${_tmp}" "${PY}" -c 'import os, runpy, sys; sys.argv = sys.argv[1:]; sys.path.insert(0, os.path.dirname(sys.argv[0])); state = runpy.run_path(sys.argv[0], run_name="host_skip_fixture"); main = state["main"]; main.__globals__["HOST_MAY_SKIP"] = True; raise SystemExit(main())' \
     "${GATE}" --manifest "${_work}/m.json" --root "${_work}" --in-place
 }
 
