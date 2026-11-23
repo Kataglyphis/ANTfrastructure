@@ -33683,8 +33683,8 @@
  {
   "id": "workflow-lint.sha-pin-composite",
   "target": "linux/scripts/verify_workflow_conventions.py",
-  "find": "if is_action and name in (\"job-timeout\", \"permissions\"):",
-  "replace": "if is_action and name in (\"job-timeout\", \"permissions\", \"sha-pin\"):",
+  "find": "if is_action and name in (\"job-timeout\", \"permissions\", \"run-filter\"):",
+  "replace": "if is_action and name in (\"job-timeout\", \"permissions\", \"run-filter\", \"sha-pin\"):",
   "test": "bash linux/scripts/tests/test-workflow-sha-pin.sh",
   "why": "the hub's composite actions run inside every consumer job, so their uses: lines need the same pin"
  },
@@ -61910,5 +61910,117 @@
   "replace": "\"expect\": {\"shown\": \"abcdef\", \"answer\": \"def\", \"final\": \"def\", \"thinking\": 11",
   "test": "bash linux/scripts/tests/test-think-split.sh",
   "why": "owner D5: text before a late close in its own piece is never shown, so no binding may flash thinking as answer"
+ },
+ {
+  "id": "workflow-lint.run-filter-plus-repeats",
+  "target": "linux/scripts/verify_workflow_conventions.py",
+  "find": "            out[-1] = f\"(?:{out[-1]}){ch}\"\n",
+  "replace": "            out.append(re.escape(ch))\n",
+  "test": "bash linux/scripts/tests/test-workflow-run-filters.sh",
+  "why": "GitHub reads '+' as a repeat, so a lint that took it literally passed filters that never trigger"
+ },
+ {
+  "id": "workflow-lint.run-filter-class-grammar",
+  "target": "linux/scripts/verify_workflow_conventions.py",
+  "find": "_FILTER_CLASS = re.compile(r\"\\[([A-Za-z0-9-]+)\\]\")",
+  "replace": "_FILTER_CLASS = re.compile(r\"\\[([^\\]]+)\\]\")",
+  "test": "bash linux/scripts/tests/test-workflow-run-filters.sh",
+  "why": "a '[ci <lane>]' filter is invalid on GitHub and starts a phantom run on every completed workflow"
+ },
+ {
+  "id": "workflow-lint.run-filter-must-match",
+  "target": "linux/scripts/verify_workflow_conventions.py",
+  "find": "        if not any(regex.fullmatch(name) for name in WORKFLOW_NAMES):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-workflow-run-filters.sh",
+  "why": "a filter that matches no workflow name never triggers, and the retry it guards silently never ran"
+ },
+ {
+  "id": "lib.iwyu-skips-module-units",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "(module|import)[[:space:]]+[[:alnum:]_<\"]' \"${file}\" ||",
+  "replace": "(module)[[:space:]]+[[:alnum:]_<\"]' \"${file}\" ||",
+  "test": "bash linux/scripts/tests/test-code-quality-iwyu.sh",
+  "why": "a unit that imports a module would reach IWYU, whose older clang cannot load the build's module files"
+ },
+ {
+  "id": "lib.iwyu-suggestions-stay-a-report",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "  if [[ \"${errors}\" -gt 0 ]]; then",
+  "replace": "  if [[ \"${errors}\" -gt 0 || \"${changed}\" -gt 0 ]]; then",
+  "test": "bash linux/scripts/tests/test-code-quality-iwyu.sh",
+  "why": "the owner chose a report first: include suggestions must not turn the static lane red"
+ },
+ {
+  "id": "lib.iwyu-unread-unit-is-red",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "  if [[ \"${errors}\" -gt 0 ]]; then",
+  "replace": "  if [[ \"${errors}\" -gt 99 ]]; then",
+  "test": "bash linux/scripts/tests/test-code-quality-iwyu.sh",
+  "why": "a unit IWYU could not parse was graded by nothing, and a green report over it would claim a check that never ran"
+ },
+ {
+  "id": "lib.quality-report-drift-needs-docs",
+  "target": "linux/scripts/quality_report_text.py",
+  "find": "if not isinstance(docs, dict) or not docs.get(\"build_list\") or not docs.get(\"source\"):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-quality-report.sh -k test_agents_drift_without_a_docs_table_is_not_collected",
+  "why": "a consumer without a docs table would fail the report as incomplete over a check outside its scope"
+ },
+ {
+  "id": "cmake-arch.linux-pie-on-the-target",
+  "target": "cmake/Hardening.cmake",
+  "find": "        set_property(TARGET ${target} PROPERTY POSITION_INDEPENDENT_CODE ON)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cmake-hardening-linux.sh",
+  "why": "hardened from a function, a real target got no PIE: the variable never left that function"
+ },
+ {
+  "id": "cmake-arch.linux-lost-pie-warns",
+  "target": "cmake/Hardening.cmake",
+  "find": "      elseif(CMAKE_CURRENT_FUNCTION)\n",
+  "replace": "      elseif(FALSE)\n",
+  "test": "bash linux/scripts/tests/test-cmake-hardening-linux.sh",
+  "why": "an INTERFACE target hardened from a function loses its PIE, and nothing said so"
+ },
+ {
+  "why": "a missing or failed driver, or a unit absent from the compile DB, was graded by nothing and must not report green",
+  "test": "bash linux/scripts/tests/test-code-quality-iwyu.sh",
+  "id": "lib.iwyu-every-unit-is-read",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "  if [[ \"${units_read}\" -lt $# ]]; then",
+  "replace": "  if [[ \"${units_read}\" -lt 0 ]]; then"
+ },
+ {
+  "why": "one reported unit must not stand in for another one IWYU never read",
+  "test": "bash linux/scripts/tests/test-code-quality-iwyu.sh",
+  "id": "lib.iwyu-units-match-by-path",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "if [[ \"${path}\" == \"${unit}\" || \"${path}\" == */\"${unit}\" ]]; then",
+  "replace": "if [[ -n \"${path}\" ]]; then"
+ },
+ {
+  "why": "a strict caller aborts on the driver status, which counts suggestions in some releases",
+  "test": "bash linux/scripts/tests/test-code-quality-iwyu.sh",
+  "id": "lib.iwyu-driver-status-is-captured",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": ">\"${log}\" 2>&1 || status=$?",
+  "replace": ">\"${log}\" 2>&1"
+ },
+ {
+  "id": "lib.iwyu-fatal-error-is-red",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "grep -cE ': (fatal )?error:'",
+  "replace": "grep -cE ': error:'",
+  "test": "bash linux/scripts/tests/test-code-quality-iwyu.sh",
+  "why": "IWYU writes 'fatal error:' for a missing header, and a planted one stayed green in BeschleunigerBallett"
+ },
+ {
+  "why": "grep -c exits 1 on a log without errors, which aborts a strict caller on the healthy path",
+  "test": "bash linux/scripts/tests/test-code-quality-iwyu.sh",
+  "id": "lib.iwyu-clean-log-is-not-an-abort",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "errors=\"$(grep -cE ': (fatal )?error:' \"${log}\" || true)\"",
+  "replace": "errors=\"$(grep -cE ': (fatal )?error:' \"${log}\")\""
  }
 ]

@@ -19,6 +19,103 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-23 — IWYU's fatal errors are unread units
+
+- `code_quality_run_iwyu` counted only `: error:`, but IWYU writes `: fatal error:` for a missing header, so a
+  planted one stayed green in BeschleunigerBallett (found by its CI track). It counts both; one case, one mutation.
+  `failure-modes.md` explains why GCC still warns in a SYSTEM header at an LTO link (spdlog's 8
+  `-Wstringop-overflow` in BeschleunigerBallett's profiling job), and CON299 queues a shared check that refuses
+  build-time files in an install tree.
+
+## 2026-11-23 — RustDesk on a Windows host: Chocolatey updates, direct IP access, the permanent password
+
+- `docs/windows-host-setup.md` gains Phase F, the Windows counterpart of the Linux page's RustDesk phase.
+  winget has no RustDesk package and Scoop's is the portable exe without a service, so
+  `Install-RustDesk.ps1` installs and updates Chocolatey's `rustdesk.install` (the official MSI) and
+  registers the weekly SYSTEM task `RustDesk Update (choco)`. It backs up both config directories first,
+  refuses while a session is open, and runs Chocolatey's installer only with a valid Chocolatey Software
+  signature. `Set-RustDeskDirectAccess.ps1` turns on direct IP access and proves a RustDesk listener on
+  the port; `Set-RustDeskPassword.ps1` sets the permanent password, which RustDesk never shows again.
+- `WindowsRustDesk.Common.psm1` holds the CLI calls: `rustdesk.exe` is a GUI-subsystem binary that
+  prints only into a pipe, `--option` reads every value back, and the missing-admin reply becomes an
+  error. `Host.RustDesk.Tests.ps1` adds ten cases against a fake CLI; nine mutations all go red. Proven
+  on one host: 1.4.6 → 1.5.3 kept its config, and 1.5.3 listened on `[::]:21118` without a restart.
+
+## 2026-11-23 — an IWYU report is green only when every unit was read (CON295 (a))
+
+- `code_quality_run_iwyu` read only the log's error lines, so a missing driver (status 127), a driver that stopped
+  on a compile-DB failure, and a unit absent from the compile DB each reported green with every unit "read"
+  (found by the Windows session in issue #249, confirmed with the official IWYU 0.23 `iwyu_tool.py`: 0 of 1 and
+  1 of 2 units ran). Under `set -e` the same function aborted on the driver's suggestion status or on a log
+  without errors. Each requested unit must now appear in the log with an include list or as correct, matched by
+  path suffix; the driver status is captured and only reported. `CODE_QUALITY_IWYU_TOOL` and its `env-knobs`
+  allowlist entry are gone: the driver comes from `PATH`, as the fixture already supplied it. Five new cases in
+  `test-code-quality-iwyu.sh`, four mutations.
+
+## 2026-11-23 — workflow_run filters are graded as GitHub patterns
+
+- `verify_workflow_conventions.py` gains its sixth check, `run-filter`, armed from the start: each
+  `on.workflow_run.workflows` entry is read with GitHub's filter grammar (`*`, `**`, `?` and `+` repeating the
+  character before them, `[...]` with only a-z, A-Z and 0-9 ranges, `\` escapes) and must match a workflow's name
+  in the tree. Every consumer's `retry-disk-refusal.yml` named its lanes as `"... build + test"`, where `+` repeats
+  the space, so the filter never matched and a disk refusal on those lanes was never retried; BeschleunigerBallett's
+  `[ci <lane>]` was no valid pattern and started a phantom run on every completed workflow (found by its CI track,
+  fixed there in e6832053). The hub's own `'Docs · build \+ publish'` is escaped; the consumers escape theirs at
+  their next pin (OxidANT 4, AccelerANTgine 3, OmniAccelerANT 4, OrchestrANT 3, WebDavClient 2 filters). The
+  README says the names are patterns. `test-workflow-run-filters.sh`, three mutations.
+
+## 2026-11-23 — hardening's PIE reaches a target from any scope (CON297)
+
+- `myproject_enable_hardening` set `CMAKE_POSITION_INDEPENDENT_CODE` in the caller's scope: called from a function,
+  such as BeschleunigerBallett's `myproject_enable_local_hardening`, it stayed in that function and reached no target,
+  so BeschleunigerBallett's executables were PIE only through clang's default (found by its CI track). A real target
+  now gets `POSITION_INDEPENDENT_CODE` itself, and an INTERFACE target hardened from a function warns that its PIE
+  reaches nothing; at the project's scope the variable is set as before. Three cases in
+  `test-cmake-hardening-linux.sh`, two mutations.
+
+## 2026-11-23 — the quality report skips agents-drift without a docs table (CON298)
+
+- `quality-report.sh` called a consumer without a `[docs]` table "incomplete": the `agents_drift` collector ran
+  `verify_agents_drift.py`, which refuses such a repo, and turned the refusal into a failed metric, so
+  `code-quality-report.yml` with `quality-report: true` failed though agents-drift is scoped to the AI consumers
+  (found by BeschleunigerBallett's CI track, which declared a table to get past it). The collector now reports the
+  metric as not collected, "no [docs] build_list and source", as it does for a repo without `AGENTS.md`; one test
+  and one mutation. CON295 records AccelerANTgine's IWYU wiring (0126297) and BeschleunigerBallett's SYSTEM
+  includes (a9333e7e); CON297 records that the hardening module's PIE reaches no target from a function.
+
+## 2026-11-23 — IWYU reports on the units without modules (CON295 (a))
+
+- IWYU never ran: `myproject_apply_iwyu` set the property on the INTERFACE target `myproject_options`, which reaches
+  no compile, and the image's `include-what-you-use` 0.23 is built on clang 19, so it cannot load the clang 23
+  build's module files ("PCH file uses a newer PCH format"). The owner chose a report on the plain units:
+  `code_quality_find_iwyu_files` lists the units that neither declare nor import a module (5 of AccelerANTgine's 37,
+  35 of BeschleunigerBallett's 121), and `code_quality_run_iwyu` runs `iwyu_tool` over them and counts the files
+  with suggestions. Suggestions stay green; a unit IWYU could not read is red. `myproject_ENABLE_IWYU` is now OFF.
+  `test-code-quality-iwyu.sh` covers the selection and the verdict, with three mutations.
+
+## 2026-11-23 — CON288 done: every contract case replays in its bindings
+
+- **CON288 is done.** Each shared case file the oxidation roadmap asked for exists and replays where it belongs: the
+  D8 stream cases and whole answers (OxidANT c10095f, OrchestrANT 9c3882b, OmniAccelerANT 20c940a), the think split
+  (OxidANT 5bf5639, OrchestrANT 3abd84e, OmniAccelerANT 2620136), the fixture's refusals (OxidANT 5bf5639, OrchestrANT
+  3abd84e, AccelerANTgine 5207eb7), and ModelANT's full-size frames by tensor digest and raw-head cases (ModelANT
+  b47ed40 and f845b60). All three detectors match the four frames bit for bit (OrchestrANT 2d82f87, OxidANT c881224,
+  AccelerANTgine cedb886); OrchestrANT and AccelerANTgine replay the raw heads, and AccelerANTgine's suppression now
+  sorts stably, so equal scores keep the lower candidate (D6). OxidANT decodes no raw head. AccelerANTgine's think
+  split rides its text pilot, OxidANT's roadmap step 4.
+
+## 2026-11-23 — CON289 done; CON288's cases replayed in every binding
+
+- **CON289 is done:** no consumer keeps its own ORT-profile count. OxidANT dropped its copy earlier (56865c4), and
+  OrchestrANT's `setup.py` now copies `shared/python/verify_ort_profile.py` into `orchestrant/_hub` at build time,
+  where Cython compiles it into the wheel, while a checkout reads the hub's file itself (OrchestrANT 3abd84e; ce48210
+  keeps the copy in a wheel built from the sdist, which carries no `third_party`). Its bundle's
+  `ort_profile.operator_counts` calls the hub's rule.
+- **CON288:** every binding replays the new cases of (a) to (c): the D8 stream cases in OxidANT, OrchestrANT and
+  OmniAccelerANT, the think split in all three, and the fixture's refusals in OxidANT, OrchestrANT and
+  AccelerANTgine, whose C ABI gains status 11 for `context_length_exceeded`. (e) is in ModelANT b47ed40:
+  four full-size frames compared by tensor digest and seven raw-head decode cases under D6.
+
 ## 2026-11-23 — the think split, the fixture's refusals and an importable ORT count (CON288 (b), (c); CON289)
 
 - `shared/contracts/think-split.json` maps a reply's text pieces to `shown`, `answer` (OxidANT's per-block rule),

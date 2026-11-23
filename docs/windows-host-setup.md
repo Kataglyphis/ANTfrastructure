@@ -52,6 +52,7 @@ Phases:
 - **C** — build-service tuning **[admin]** (debug flags, log limit, GC policy, Defender, sccache/dufs, TIME_WAIT)
 - **D** — per-boot / per-run checks
 - **E** — first build + verification
+- **F** — remote access with RustDesk **[admin]** (Chocolatey updates, direct IP access, the permanent password)
 - **R** — recovering after a Stevedore reinstall / repair **[admin]**
 
 > **Fast path for Phase A5 + C: `Install-NewHost.ps1`.** Once the interactive
@@ -973,6 +974,140 @@ higher count is growth, not a regression.
 
 Each variant pushes only to its own tag (`-Gpu` is `-Variant nvidia`); a variant run that
 names another lane's tag stops before it builds.
+
+---
+
+## Phase F — Remote access (RustDesk) [admin]
+
+Goal: reach this host from another machine on the LAN by its IP address, with no rendezvous or
+relay server in the connection, and keep RustDesk current with nobody touching it. The Linux
+counterpart is [`linux-host-setup.md` § Phase F](linux-host-setup.md#phase-f--remote-access-rustdesk).
+
+| Process | Started by | Its job |
+|---|---|---|
+| `rustdesk.exe --service` (service `RustDesk`) | the SCM, LocalSystem, automatic | starts `--server`, so sessions are accepted before any login |
+| `rustdesk.exe --server` | the service | captures the screen and serves the session |
+| `rustdesk.exe --tray` | the desktop logon | tray icon and settings window |
+| `rustdesk.exe --cm` | an incoming session | the connection manager; it runs only while a session is open |
+
+The service's config lives in `C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\`:
+options in `RustDesk2.toml` (`[options]`), the ID key and the encrypted permanent password in
+`RustDesk.toml`. `%APPDATA%\RustDesk\config\` is the desktop user's copy. Change options with
+`rustdesk.exe --option` or in the GUI, never in the files.
+
+**`rustdesk.exe` answers only into a pipe.** It is a GUI-subsystem binary: PowerShell waits for it
+and shows its output only when that output is piped. `rustdesk.exe --get-id` returns at once and
+prints nothing; `rustdesk.exe --get-id | Out-String` prints the ID. `--option` and `--password` also
+need an elevated shell and the installed build; otherwise they print `Installation and administrative
+privileges required!` and change nothing. The scripts below call it through
+`windows/scripts/modules/WindowsRustDesk.Common.psm1`, which pipes the call, turns that reply into an
+error and reads every option back after setting it.
+
+### F1. Install and update through Chocolatey
+
+Package sources, checked 2026-11-23:
+
+| Source | Package | Verdict |
+|---|---|---|
+| winget | none: `winget search rustdesk` finds nothing, `manifests/r/RustDesk` is gone from winget-pkgs | not usable |
+| Scoop `extras` | `rustdesk`, the portable exe | no service, so nothing accepts a session before login |
+| Chocolatey | `rustdesk.install`, the official MSI pinned by SHA256 | used here |
+
+`rustdesk.install` removes the installed MSI through its `QuietUninstallString`, then installs the new
+one with `/qn`. The config survived the 1.4.6 → 1.5.3 upgrade on this host (2026-11-23); the script
+backs it up anyway.
+
+```pwsh
+pwsh -File windows\scripts\host\Install-RustDesk.ps1                # install, or update to the newest package
+pwsh -File windows\scripts\host\Install-RustDesk.ps1 -NoUpdateTask  # without the weekly task
+```
+
+In order, it:
+
+1. refuses while a `--cm` process runs: the upgrade reinstalls the service and drops the session
+   (`-Force` overrides);
+2. copies both config directories to `%USERPROFILE%\RustDesk-Backup\<timestamp>\{service,user}`; they
+   hold the ID key and the password material, so the copy stays in the user profile;
+3. installs Chocolatey when `C:\ProgramData\chocolatey\bin\choco.exe` is missing. It downloads
+   `install.ps1`, requires a valid Authenticode signature with `O="Chocolatey Software, Inc"`, and runs
+   it under Windows PowerShell, the shell Chocolatey supports for its installer;
+4. runs `choco upgrade rustdesk.install -y`, which installs the package when it is absent. Exit 3010 is
+   success that needs a reboot;
+5. registers the task `RustDesk Update (choco)`: the same upgrade, weekly on Sunday at 04:00 as SYSTEM
+   (`-UpdateDay`, `-UpdateTime`). `StartWhenAvailable` lets a host that was off catch up at its next
+   start. A session open at that hour is dropped.
+
+Verify:
+
+```pwsh
+choco list rustdesk.install                                 # rustdesk.install 1.5.3
+Get-ScheduledTaskInfo -TaskName 'RustDesk Update (choco)'   # NextRunTime; LastTaskResult 0 after a run
+```
+
+Leave RustDesk's own updater (the `allow-auto-update` option) off, so the installed version stays
+the one Chocolatey records. To restore a backup:
+
+```pwsh
+Stop-Service RustDesk
+Copy-Item <backup>\service\* C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\ -Force
+Start-Service RustDesk
+```
+
+### F2. Direct IP access on the LAN
+
+```pwsh
+pwsh -File windows\scripts\host\Set-RustDeskDirectAccess.ps1              # on, TCP 21118
+pwsh -File windows\scripts\host\Set-RustDeskDirectAccess.ps1 -Port 21120  # moves it (direct-access-port)
+pwsh -File windows\scripts\host\Set-RustDeskDirectAccess.ps1 -Disable
+```
+
+It sets `direct-server = 'Y'` and reads it back, then waits up to 15 s for a RustDesk process to
+listen on the port. It restarts the service once if none does and fails if the
+port stays closed. On this host 1.5.3 listened on `[::]:21118` within 5 s, no restart needed
+(2026-11-23). Last, it prints the IPv4 addresses of the interfaces that have a default gateway; the
+`vEthernet` adapters of WSL and Hyper-V have none, so only the LAN address remains.
+
+On the client, type that address into the ID field (`<ip>:<port>` for a moved port) and log in with
+the permanent password (F3). The client connects to the port itself; no rendezvous or relay server
+takes part. The host still registers its ID with the public server, so connecting by ID keeps working.
+
+- **Firewall:** the MSI's inbound rule `RustDesk Service` allows `RustDesk.exe` on any port and
+  profile. No port rule is needed.
+- **From outside the LAN:** connect a VPN into the LAN first. Do not forward 21118 on the router; the
+  port would face the internet with only the password in front of it.
+- **A stable address:** give the host a DHCP reservation in the router.
+
+Verify:
+
+```pwsh
+Get-NetTCPConnection -State Listen -LocalPort 21118 | Select-Object LocalAddress, OwningProcess
+Test-NetConnection <host-ip> -Port 21118   # on the client: TcpTestSucceeded : True
+```
+
+### F3. The permanent password
+
+With `verification-method = 'use-permanent-password'` (Settings → Security) only the permanent
+password opens a session; the one-time password in the window is refused. RustDesk stores it
+encrypted and never shows it again; the GUI only says that one is set. A forgotten password cannot
+be read back, so set a new one:
+
+```pwsh
+pwsh -File windows\scripts\host\Set-RustDeskPassword.ps1   # asks twice, echoes nothing
+```
+
+It runs `rustdesk.exe --password` and accepts only the reply `Done!`; `Changing permanent password
+is disabled!` means a deployment setting locks the password. The password is a command-line argument
+while the call runs, so it is briefly visible in the process list. The script then warns if
+`verification-method` is `use-temporary-password`, which would still refuse the new password.
+
+### F4. Troubleshooting
+
+- **The client times out on the address.** If `Get-NetTCPConnection -State Listen -LocalPort 21118`
+  is empty, direct IP access is off: run F2. If the port listens and `Test-NetConnection` from the
+  client fails, the path between the two is the problem: another subnet, a guest Wi-Fi, a VPN that
+  does not route the LAN.
+- **A script stops with `Installation and administrative privileges required!`.** The shell is not
+  elevated, or `C:\Program Files\RustDesk\rustdesk.exe` is not the installed build.
 
 ---
 

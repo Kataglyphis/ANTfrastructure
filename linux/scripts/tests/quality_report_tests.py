@@ -217,6 +217,12 @@ class Checkouts(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         self.assertIn("not-collected: agents_drift_findings (no AGENTS.md)", out)
 
+    def test_agents_drift_without_a_docs_table_is_not_collected(self) -> None:
+        root = repo(self.tmp, "c", {"AGENTS.md": "# AGENTS.md\n", "tools/a.sh": "a() {\n  :\n}\n"})
+        rc, out = run(root, self.hub)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("not-collected: agents_drift_findings (no [docs] build_list and source)", out)
+
     def test_malformed_compare_is_incomplete(self) -> None:
         root = repo(self.tmp, "c", {"tools/a.sh": "a() {\n  :\n}\n"})
         (self.tmp / "bad.json").write_text("{not json")
