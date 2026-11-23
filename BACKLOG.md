@@ -2438,11 +2438,13 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       Done 2026-11-21 in BeschleunigerBallett (9dedc393): cppcheck's default is OFF, as the image has no binary and a
       skipped check misleads (D10). (c) Warnings in three steps (D11). Step 1 in source 2026-11-23:
       BeschleunigerBallett adds spdlog and nlohmann_json as SYSTEM subdirectories (a9333e7e), against the 124 and 12
-      header warnings of GCC job 135983570345; its next GCC job's count is the proof. Then a per-repo warning-count
-      ratchet, then `myproject_WARNINGS_AS_ERRORS` for the product targets only. (d) Done 2026-11-21: the
-      pattern-limits doc holds the row for exception-free filesystem calls, which AccelerANTgine and
-      BeschleunigerBallett bind; the first version read `current_path(ec)` as throwing and missed the iterator
-      declaration, corrected the same day.
+      header warnings of GCC job 135983570345; proven in GCC job 137728645203: 0 spdlog and 0 nlohmann warnings, 339
+      warning lines down to 203. Step 2 in the hub 2026-11-23, as the owner chose that day: `verify_warning_census.py`
+      holds each lane's own warnings at a committed count per flag, red on growth and on an unlowered drop; left:
+      AccelerANTgine's and BeschleunigerBallett's GCC and clang lanes call it with their census files. Then
+      `myproject_WARNINGS_AS_ERRORS` for the product targets only. (d) Done 2026-11-21: the pattern-limits doc holds
+      the row for exception-free filesystem calls, which AccelerANTgine and BeschleunigerBallett bind; the first
+      version read `current_path(ec)` as throwing and missed the iterator declaration, corrected the same day.
 - [ ] **CON299 — an install tree refuses build-time files** [S, ★★]. BeschleunigerBallett's Windows bundle shipped 52
       gtest and gmock files (found by its CI track, 2026-11-23); it now has an inline "Bundle layout" step, and its
       `check-deb-layout.sh` is the Linux twin. A shared check, `Assert-InstallTreeLayout` or a `-ForbidBuildTimeFiles`

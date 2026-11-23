@@ -17,6 +17,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-23 — the warning census (CON295 (c) step 2)
+
+- `linux/scripts/verify_warning_census.py` is the per-repo warning ratchet the owner chose today: it counts a
+  lane's GCC and clang warnings in the repository's own code, each `path:line:flag` once, and holds them at the
+  `<lane> | <flag> | <count>` rows of a committed census file. Growth fails, and so does a drop until the row is
+  lowered in the same commit; a log that compiled nothing fails rather than read as zero. BeschleunigerBallett's GCC
+  job reads 37 own warnings over six flags. `test-warning-census.sh`, six mutations; clang-tidy findings, which name a check and no -W flag, do not count. The consumers wire it next.
+
 ## 2026-11-23 — IWYU's fatal errors are unread units
 
 - `code_quality_run_iwyu` counted only `: error:`, but IWYU writes `: fatal error:` for a missing header, so a

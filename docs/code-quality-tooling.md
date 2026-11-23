@@ -1263,7 +1263,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **7412 entries** over **859 distinct test commands**; both digits are
+manifest holds **7418 entries** over **860 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -4575,6 +4575,21 @@ name does not resolve it silently disables the rule and still reports clean. So
 `lint-workflows.sh` resolves shellcheck through `lint-shell.sh --print-bin`,
 refuses to grade when it cannot, and requires actionlint to report a planted
 SC1010 before it trusts a clean verdict.
+
+### The warning census (`warning-census`)
+
+`linux/scripts/verify_warning_census.py --lane <name> --census <file> <build log>...` holds a C/C++ lane's
+compiler warnings at a committed count per flag, the ratchet the owner put between the SYSTEM includes and
+warnings as errors (CON295 (c), D11). It reads GCC and clang `path:line:col: warning: ... [-Wflag]` lines,
+counts each `path:line:flag` once, as a header's warning repeats in every unit that includes it, and counts only
+the repository's own code: `third_party/`, `_deps/`, `external/`, `vendor/` and absolute toolchain paths are
+foreign, and a container's `/workspace/` prefix is stripped. A warning with no flag (GCC's "X redefined")
+counts under `-W(unnamed)`; a clang-tidy or analyzer finding, tagged with its check instead of a `-W` flag, does not count. The census file holds `<lane> | <flag> | <count>` rows, one lane per CI job that
+compiles. A flag above its row fails the lane, and so does one below it until the row is lowered in the same
+commit, so a fixed warning cannot make room for a new one. A log with no compile line fails too, since an
+incremental build that compiled nothing would read as zero. `--write` rewrites the lane's rows from the logs and
+keeps the other lanes'. Suite `linux/scripts/tests/test-warning-census.sh`; BeschleunigerBallett's GCC job
+137728645203 reads 37 own warnings over six flags, where its log shows 203 warning lines.
 
 ### Four fleet workflow conventions (`workflow-lint`)
 

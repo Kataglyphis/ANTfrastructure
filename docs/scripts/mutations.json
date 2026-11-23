@@ -1,5 +1,53 @@
 [
  {
+  "id": "lib.warning-census-tidy-is-not-a-warning",
+  "target": "linux/scripts/verify_warning_census.py",
+  "find": "if match and (tag is None or tag.startswith(\"-W\")) else None",
+  "replace": "if match else None",
+  "test": "bash linux/scripts/tests/test-warning-census.sh",
+  "why": "a clang lane also runs clang-tidy, whose findings would fill the compiler's census with 352 non-warnings"
+ },
+ {
+  "id": "lib.warning-census-foreign-code",
+  "target": "linux/scripts/verify_warning_census.py",
+  "find": "    if FOREIGN.search(path) or path.startswith(\"/\"):",
+  "replace": "    if path.startswith(\"/\"):",
+  "test": "bash linux/scripts/tests/test-warning-census.sh",
+  "why": "a vendored library's header warnings would count as the repository's own and bury its real count"
+ },
+ {
+  "id": "lib.warning-census-workspace-relative",
+  "target": "linux/scripts/verify_warning_census.py",
+  "find": "    path = WORKSPACE.sub(\"\", raw.replace(\"\\\\\", \"/\"))",
+  "replace": "    path = raw.replace(\"\\\\\", \"/\")",
+  "test": "bash linux/scripts/tests/test-warning-census.sh",
+  "why": "a container build logs /workspace paths; without the strip every own warning reads as foreign and the count is 0"
+ },
+ {
+  "id": "lib.warning-census-growth-fails",
+  "target": "linux/scripts/verify_warning_census.py",
+  "find": "        if now > was:",
+  "replace": "        if now > was + 99:",
+  "test": "bash linux/scripts/tests/test-warning-census.sh",
+  "why": "a new warning that does not fail the lane is the warning-as-error step the owner put after the ratchet, skipped"
+ },
+ {
+  "id": "lib.warning-census-drop-fails",
+  "target": "linux/scripts/verify_warning_census.py",
+  "find": "        elif now < was:",
+  "replace": "        elif False:",
+  "test": "bash linux/scripts/tests/test-warning-census.sh",
+  "why": "a fixed warning left in the census lets a later one take its place unseen"
+ },
+ {
+  "id": "lib.warning-census-empty-build",
+  "target": "linux/scripts/verify_warning_census.py",
+  "find": "        if not compiled:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-warning-census.sh",
+  "why": "an incremental build that compiled nothing would pass as zero warnings and lower nothing"
+ },
+ {
   "id": "workflow-lint.run-filter-plus-repeats",
   "target": "linux/scripts/verify_workflow_conventions.py",
   "find": "            out[-1] = f\"(?:{out[-1]}){ch}\"\n",
