@@ -2443,13 +2443,6 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       pattern-limits doc holds the row for exception-free filesystem calls, which AccelerANTgine and
       BeschleunigerBallett bind; the first version read `current_path(ec)` as throwing and missed the iterator
       declaration, corrected the same day.
-- [ ] **CON297 — PIE from `myproject_enable_hardening` reaches no target** [S, ★]. `cmake/Hardening.cmake` sets
-      `CMAKE_POSITION_INDEPENDENT_CODE ON` inside the macro; called from a function such as BeschleunigerBallett's
-      `myproject_enable_local_hardening`, the variable stays in that function's scope, and it only ever applies to
-      targets created after it. BeschleunigerBallett's executables are PIE through clang's default alone, which its
-      ELF gate confirms (found by its CI track, 2026-11-23). Either the module adds `-fPIE`/`-pie` through the
-      target's INTERFACE options, with a generator expression on the consumer's TYPE so a shared library keeps
-      `-fPIC`, or its doc names the limit and the consumers set the property on their own targets.
 - [b] **CON296 — a bridge import helper for the first consumer bridge** [S-M; owner D4]. `kataglyphis_import_bridge_crate`
       beside `kataglyphis_configure_corrosion_target`: imports LOCKED, uses an unwinding profile outside Debug and
       checks that at configure time (a runtime test cannot, `cargo test` always unwinds), and lets a superproject

@@ -59224,6 +59224,22 @@
   "why": "an unescaped : in a gate name cuts the annotation's title short"
  },
  {
+  "id": "cmake-arch.linux-pie-on-the-target",
+  "target": "cmake/Hardening.cmake",
+  "find": "        set_property(TARGET ${target} PROPERTY POSITION_INDEPENDENT_CODE ON)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cmake-hardening-linux.sh",
+  "why": "hardened from a function, a real target got no PIE: the variable never left that function"
+ },
+ {
+  "id": "cmake-arch.linux-lost-pie-warns",
+  "target": "cmake/Hardening.cmake",
+  "find": "      elseif(CMAKE_CURRENT_FUNCTION)\n",
+  "replace": "      elseif(FALSE)\n",
+  "test": "bash linux/scripts/tests/test-cmake-hardening-linux.sh",
+  "why": "an INTERFACE target hardened from a function loses its PIE, and nothing said so"
+ },
+ {
   "id": "cmake-arch.linux-relro-now-linked",
   "target": "cmake/Hardening.cmake",
   "find": "        -Wl,-z,relro\n        -Wl,-z,now)",

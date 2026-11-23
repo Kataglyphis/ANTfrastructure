@@ -17,6 +17,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-23 — hardening's PIE reaches a target from any scope (CON297)
+
+- `myproject_enable_hardening` set `CMAKE_POSITION_INDEPENDENT_CODE` in the caller's scope: called from a function,
+  such as BeschleunigerBallett's `myproject_enable_local_hardening`, it stayed in that function and reached no target,
+  so BeschleunigerBallett's executables were PIE only through clang's default (found by its CI track). A real target
+  now gets `POSITION_INDEPENDENT_CODE` itself, and an INTERFACE target hardened from a function warns that its PIE
+  reaches nothing; at the project's scope the variable is set as before. Three cases in
+  `test-cmake-hardening-linux.sh`, two mutations.
+
 ## 2026-11-23 — the quality report skips agents-drift without a docs table (CON298)
 
 - `quality-report.sh` called a consumer without a `[docs]` table "incomplete": the `agents_drift` collector ran
