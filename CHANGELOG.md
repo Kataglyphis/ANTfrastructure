@@ -19,6 +19,24 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-23 — the think split, the fixture's refusals and an importable ORT count (CON288 (b), (c); CON289)
+
+- `shared/contracts/think-split.json` maps a reply's text pieces to `shown`, `answer` (OxidANT's per-block rule),
+  `final` (the lab's text after the last `</think>`), the thinking count and the late closes, owner decision D5.
+  `final` stops at a `<think>` that opens after the last close and never closes (owner, 2026-11-23): the lab graded
+  `X<think>b` for such a reply, against its own comment that an unclosed block holds no answer. A late close inside
+  one piece hides the text before it, as the web shows it. `test-think-split.sh` replays the 11 cases through a
+  reference splitter, and two recipes guard the cut and the hidden text.
+- The tiny-model fixture gains five cases refused before GenAI runs: a role outside the four, a NaN temperature, the
+  prompt and the budget over the context (`context_length_exceeded`, D7), and a NUL byte in a message and in a stop
+  string. JSON holds no NaN, so the case writes `"temperature": "NaN"` and each binding's replay turns it into a
+  float NaN (owner, 2026-11-23).
+- `shared/python/verify_ort_profile.py` exports `model_nodes` and `operator_counts` (CON289), which its `main` uses
+  and a test imports; `packaging.ort-profile-require-operator` points at the function's indentation.
+- **Consumers:** the bindings fail the new fixture cases and the think-split file at their next pin until they map
+  `context_length_exceeded`, pass `temperature` and `stop`, and follow the split; OrchestrANT copies the ORT count in
+  at build time (owner, 2026-11-23).
+
 ## 2026-11-22 — read equivalent systemd cleanup arguments
 
 - Accept joined and separated systemd `ExecStopPost` arguments when assembling a complete-preflight receipt. Require exactly one across all forms; keep the executed argv unchanged and retain every source, mutation, owner, cleanup and engine-query check.

@@ -33019,7 +33019,7 @@
  {
   "id": "packaging.ort-profile-require-operator",
   "target": "shared/python/verify_ort_profile.py",
-  "find": "and isinstance(event[\"args\"].get(\"op_name\"), str)\n            and event[\"args\"][\"op_name\"].strip()\n            and not event[\"args\"][\"op_name\"].strip().casefold().startswith(\"memcpy\")",
+  "find": "and isinstance(event[\"args\"].get(\"op_name\"), str)\n        and event[\"args\"][\"op_name\"].strip()\n        and not event[\"args\"][\"op_name\"].strip().casefold().startswith(\"memcpy\")",
   "replace": "and True",
   "test": "python3 shared/python/tests/test_verify_ort_profile.py",
   "why": "provider events without an identified model operator cannot prove accelerated inference"
@@ -61894,5 +61894,21 @@
   "replace": "assert cleanup[\"exit_status\"] == 0",
   "test": "bash linux/scripts/tests/test-complete-preflight-receipt.sh",
   "why": "Synthetic CLI controls require all supported property argument forms, exactly one cleanup, the original owner and raw cleanup success. They do not execute systemd, authenticate receipts or prove image acceptance."
+ },
+ {
+  "id": "lib.think-split-final-cut",
+  "target": "shared/contracts/think-split.json",
+  "find": "\"expect\": {\"shown\": \"X\", \"answer\": \"X\", \"final\": \"X\", \"thinking\": 24",
+  "replace": "\"expect\": {\"shown\": \"X\", \"answer\": \"X\", \"final\": \"X<think>b\", \"thinking\": 24",
+  "test": "bash linux/scripts/tests/test-think-split.sh",
+  "why": "final stops at a block that never closes (owner, 2026-11-23); graded with it, its intermediate values read as answers"
+ },
+ {
+  "id": "lib.think-split-late-close-hidden",
+  "target": "shared/contracts/think-split.json",
+  "find": "\"expect\": {\"shown\": \"def\", \"answer\": \"def\", \"final\": \"def\", \"thinking\": 11",
+  "replace": "\"expect\": {\"shown\": \"abcdef\", \"answer\": \"def\", \"final\": \"def\", \"thinking\": 11",
+  "test": "bash linux/scripts/tests/test-think-split.sh",
+  "why": "owner D5: text before a late close in its own piece is never shown, so no binding may flash thinking as answer"
  }
 ]
