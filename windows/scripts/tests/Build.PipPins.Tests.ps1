@@ -16,6 +16,9 @@ Describe 'Get-PipPin and the chain''s pip installs (CON89)' {
         $pins = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
         $bare = [System.Collections.Generic.List[string]]::new()
         $pinned = [System.Collections.Generic.List[string]]::new()
+        $unpinnedDeps = [System.Collections.Generic.List[string]]::new()
+        # A branch without the dependency yet resolves it to the newest release, and the media merge refuses mixed versions.
+        $toolDeps = @{ 'scikit-build-core' = 'packaging'; 'setuptools-scm' = 'packaging' }
         foreach ($script in Get-Item -Path (Join-Path (Get-RepoRoot) 'windows\scripts\build\*.ps1')) {
             $ast = Get-TestScriptAst -ScriptPath $script.FullName
             foreach ($call in Get-TestAstCommands -Ast $ast -Name 'Invoke-CpythonPip') {
@@ -28,12 +31,17 @@ Describe 'Get-PipPin and the chain''s pip installs (CON89)' {
             }
             foreach ($install in Get-TestAstCommands -Ast $ast -Name 'Install-CpythonPipPin') {
                 $names = (Get-TestCommandArguments -Command $install -AsAst).Name
-                foreach ($name in @($names.FindAll({ param($n) $n -is [System.Management.Automation.Language.StringConstantExpressionAst] }, $true) | ForEach-Object Value)) {
+                $callNames = @($names.FindAll({ param($n) $n -is [System.Management.Automation.Language.StringConstantExpressionAst] }, $true) | ForEach-Object Value)
+                foreach ($name in $callNames) {
                     $pinned.Add($name)
+                    foreach ($dep in @($toolDeps[$name])) {
+                        if ($dep -and $dep -cnotin $callNames) { $unpinnedDeps.Add("$($script.Name):$($install.Extent.StartLineNumber) $name needs $dep") }
+                    }
                 }
             }
         }
         Assert-Equal '' ($bare -join '; ') 'install names a bare package; install it through Install-CpythonPipPin'
+        Assert-Equal '' ($unpinnedDeps -join '; ') 'a build tool''s dependency floats; pin it in the same Install-CpythonPipPin call'
         Assert-True ($pinned.Count -ge 10) "the scan sees the Install-CpythonPipPin calls ($($pinned.Count))"
         foreach ($name in $pinned | Sort-Object -Unique) {
             $key = 'PY_{0}_VERSION' -f ($name.ToUpperInvariant() -replace '[-.]', '_')

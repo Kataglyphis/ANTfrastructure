@@ -5,6 +5,19 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## Windows media merge: `a merge would leave a mixed install; pin one version`
+
+**Symptom.** `Dockerfile.media-merge-builder:built` fails in seconds with `packaging is 26.3 in
+...\media-core but 26.4 in ...\media-tvm` (2026-11-24), although `PY_PACKAGING_VERSION` pins 26.3.
+
+**Cause.** The branches were built hours apart. TVM's branch installed `scikit-build-core` and
+`setuptools-scm` before it had `packaging`, so pip resolved their dependency to the newest release,
+which came out between the two builds. The merge gate is right to refuse.
+
+**Fix.** Name the dependency in the same `Install-CpythonPipPin` call, so its pin applies.
+`Build.PipPins.Tests.ps1` fails a call that installs either tool without `packaging`; extend its
+`$toolDeps` map when another build tool pulls an unpinned dependency.
+
 ## Local Docker-loaded GPU image does not resolve by repository@digest
 
 **Symptom.** The 2026-11-14 GPU4 image is loaded and visible under its local tag,

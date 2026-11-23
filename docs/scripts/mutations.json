@@ -62118,5 +62118,13 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "CI runs preflight with PREFLIGHT_SKIP set; a fixture that inherits it makes the worker refuse before the FT probe"
+ },
+ {
+  "target": "windows/scripts/build/Build-TvmFromSource.ps1",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.PipPins.Tests.ps1 -ResultFile logs/code-quality/tvm-packaging-pin-mutation.json",
+  "replace": "-Name scikit-build-core, setuptools-scm, wheel, cython",
+  "find": "-Name packaging, scikit-build-core, setuptools-scm, wheel, cython",
+  "id": "windows-lane.tvm-build-tools-pin-packaging",
+  "why": "scikit-build-core and setuptools-scm pull packaging; unpinned, the TVM branch takes the newest release and the media merge refuses the mixed install"
  }
 ]

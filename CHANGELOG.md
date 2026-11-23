@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — the TVM branch pins packaging with its build tools
+
+- The Windows media merge refused `packaging` 26.3 from media-core beside 26.4 from TVM: TVM's branch
+  installed `scikit-build-core` and `setuptools-scm` before it had `packaging`, so pip took the release that
+  appeared between the two builds. `Build-TvmFromSource.ps1` now names `packaging` in that pinned install, and
+  `Build.PipPins.Tests.ps1` fails a call that installs either tool without it; one mutation
+  ([failure mode](docs/failure-modes.md#windows-media-merge-a-merge-would-leave-a-mixed-install-pin-one-version)).
+
 ## 2026-11-23 — the MSVC runtime notice is final (CON228)
 
 - `cmake/msvc-runtime-notice.txt` loses its DRAFT line and names the Visual Studio license terms as the governing

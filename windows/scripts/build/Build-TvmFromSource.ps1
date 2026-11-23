@@ -323,7 +323,7 @@ function Install-TvmNativePythonWheel {
     # 64-bit platform tag BEFORE any pip resolution (clang-built CPython self-reports win32).
     Initialize-PythonPlatformTag | Out-Null
     # cython: tvm_ffi's core.pyx is transpiled by a CMake step shelling out to `python -m cython`.
-    Install-CpythonPipPin -Python $py -Name scikit-build-core, setuptools-scm, wheel, cython
+    Install-CpythonPipPin -Python $py -Name packaging, scikit-build-core, setuptools-scm, wheel, cython
     # The clone may lack tags, so pin the scm version; restored after, since stages run in-process.
     $prevScmPretendVersion = $env:SETUPTOOLS_SCM_PRETEND_VERSION
     # A commit hash is not PEP 440, so the pretend version falls back to TVM_REF's tag.
