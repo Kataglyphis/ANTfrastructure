@@ -92,6 +92,7 @@ The two halves of one topic often split:
 | **`git@github.com` auth on Windows** — two OpenSSH agents, why `ssh-add` reaches the wrong one, and the two causes behind one `Permission denied (publickey)` | [`windows-host-setup.md`](windows-host-setup.md#b0-ssh-agent--one-passphrase-then-never-again) |
 | The agentic loop's PowerShell module and its API | [`windows-agentic-loop.md`](windows-agentic-loop.md) |
 | **ghcr.io login failing on Windows** (`--password-stdin`, `credsStore`), `--network=host`, `host.docker.internal` | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md#docker-on-windows-registry-auth-networking-service-recovery) |
+| **Remote access to a Windows host with RustDesk** — Chocolatey's MSI package and its weekly update task (winget has none, Scoop's is portable), direct IP access on TCP 21118 with no server in the path, the permanent password, why `rustdesk.exe` prints only into a pipe | [`windows-host-setup.md`](windows-host-setup.md#phase-f--remote-access-rustdesk-admin) |
 | Defender performance mode, `ExecutionPolicy`, PATH reload, VS/winget updates, `bcdedit` one-time boot | [`windows-host-setup.md`](windows-host-setup.md#appendix--host-odds-and-ends) |
 | **General Windows / PowerShell commands** — disk, exe debugging, SSH server, WoL, media capture. Not repo-specific | [`windows-reference.md`](windows-reference.md) |
 | Build matrix and sanitizer env for the loop | [`agentic-loop-build-matrix.md`](agentic-loop-build-matrix.md) |
