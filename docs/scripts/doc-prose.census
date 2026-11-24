@@ -286,7 +286,7 @@ docs/windows-container-build-performance.md | ids-per-k | 2.6
 docs/windows-container-build-performance.md | bold-per-k | 13.5
 docs/windows-cross-builds.md | avg-sentence | 22.4
 docs/windows-cross-builds.md | long-share | 22.9
-docs/windows-cross-builds.md | ids-per-k | 8.0
+docs/windows-cross-builds.md | ids-per-k | 7.9
 docs/windows-cross-builds.md | bold-per-k | 15.1
 docs/windows-host-setup.md | avg-sentence | 19.9
 docs/windows-host-setup.md | long-share | 17.1

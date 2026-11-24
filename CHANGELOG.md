@@ -45,8 +45,10 @@
 - `linux/scripts/local-proof/windows-arm64-acceptance.py` replaces five ignored handoff scripts. It uploads
   the graded `bk-winarm64` image by digest, checks a device run's receipt and log, and moves `:winarm64` only
   with `--apply`. A device run on a later `develop` commit counts only when no path between the image source
-  and that commit lies in the Windows build closure. `windows_arm64_acceptance_tests.py` and three mutations
-  cover the refusals ([procedure](docs/windows-cross-builds.md#accept-an-arm64-image-before-moving-its-tag)).
+  and that commit lies in the Windows build closure. The tool derives that closure from the Windows
+  Dockerfiles' context copies and bind mounts, plus `windows/`, the host-read pin files and `.dockerignore`;
+  a coarse prefix list first blocked Linux-only commits. `windows_arm64_acceptance_tests.py` and four
+  mutations cover the refusals ([procedure](docs/windows-cross-builds.md#accept-an-arm64-image-before-moving-its-tag)).
 
 ## 2026-11-24 — the docs match the tree again, and name no host
 

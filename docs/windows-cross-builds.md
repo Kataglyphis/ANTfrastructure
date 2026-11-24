@@ -403,10 +403,11 @@ python linux/scripts/local-proof/windows-arm64-acceptance.py promote --run-id <r
 ```
 
 The gate source may be a later `develop` commit than the image source. The tool accepts it only
-when no path between the two lies in the Windows build closure: `windows/`, the shared pins and
-media inputs under `linux/scripts/`, `shared/upstream/`, `cmake/` and `.dockerignore`. The same
-rule applies to every required CI run and to the `develop` tip at promotion. A changed closure
-path means a rebuild. `linux/scripts/tests/windows_arm64_acceptance_tests.py` covers the
+when no path between the two lies in the Windows build closure. That closure is `windows/`, the two
+pin files the driver reads on the host (`versions.env`, `tool-pins.env`), `.dockerignore`, and every
+context path a Windows Dockerfile copies or bind-mounts, read from both commits. A whole-context or
+variable mount makes every change count. The same rule applies to every required CI run and to the
+`develop` tip at promotion. A changed closure path means a rebuild. `linux/scripts/tests/windows_arm64_acceptance_tests.py` covers the
 refusals without a registry, GitHub or device.
 
 Omitting the input retains `Get-CiImageReference -Windows -TargetArch arm64`.

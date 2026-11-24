@@ -24,9 +24,8 @@ TAG = 'winarm64'
 WORKFLOW = '.github/workflows/windows-arm64.yml'
 DIGEST = re.compile(r'sha256:[0-9a-f]{64}')
 COMMIT = re.compile(r'[0-9a-f]{40}')
-# Conservative: any change under these prefixes can alter a Windows image, so the build must be redone.
-CLOSURE_PREFIXES = ('windows/', 'linux/scripts/01-core/', 'linux/scripts/02-toolchain/python/',
-                    'linux/scripts/03-media/', 'shared/upstream/', 'cmake/', '.dockerignore')
+# Build-Buildkit.ps1 reads these on the host; everything else outside windows/ reaches a RUN only through a named mount.
+HOST_INPUTS = ('linux/scripts/01-core/versions.env', 'linux/scripts/01-core/tool-pins.env', '.dockerignore')
 
 
 def transport() -> ModuleType:
@@ -67,6 +66,59 @@ def git(*args: str, cwd: Path = ROOT) -> str:
     return subprocess.run(['git', '-C', str(cwd), *args], capture_output=True, text=True, check=True, timeout=120).stdout
 
 
+def instructions(text: str) -> list[str]:
+    """Join a Dockerfile's continued lines into instructions, honouring its escape directive."""
+    escape = '`' if re.match(r'#\s*escape\s*=\s*`', text) else '\\'
+    joined, current = [], ''
+    for line in text.splitlines():
+        if not current and line.lstrip().startswith('#'):
+            continue
+        current += ' ' + line.rstrip()
+        if current.endswith(escape):
+            current = current[:-1]
+            continue
+        joined.append(current.strip())
+        current = ''
+    return joined + ([current.strip()] if current.strip() else [])
+
+
+def instruction_sources(instruction: str) -> list[str]:
+    """Build-context paths a COPY/ADD or a RUN bind mount reads; other stages and images are not context."""
+    words = instruction.split()
+    op = words[0].upper() if words else ''
+    if op in ('COPY', 'ADD'):
+        if any(word.startswith('--from') for word in words[1:]):
+            return []
+        return [word for word in words[1:] if not word.startswith('--')][:-1]
+    sources = []
+    for word in words if op == 'RUN' else []:
+        if word.startswith('--mount='):
+            spec = dict(part.split('=', 1) for part in word[len('--mount='):].split(',') if '=' in part)
+            if spec.get('type', 'bind') == 'bind' and 'from' not in spec:
+                sources.append(spec.get('source', spec.get('src', '.')))
+    return sources
+
+
+def dockerfile_inputs(commit: str, cwd: Path = ROOT) -> set[str]:
+    """Context paths outside windows/ that a Windows Dockerfile copies or mounts; '*' means the whole context."""
+    names = [name for name in git('ls-tree', '-r', '--name-only', commit, 'windows', cwd=cwd).splitlines()
+             if Path(name).name.startswith('Dockerfile')]
+    if not names:
+        raise ValueError(f'{commit} has no Windows Dockerfile to derive the build closure from')
+    found: set[str] = set()
+    for name in names:
+        for instruction in instructions(git('show', f'{commit}:{name}', cwd=cwd)):
+            for source in instruction_sources(instruction):
+                path = source.strip('"\'').replace('\\', '/').removeprefix('./').rstrip('/')
+                found.add('*' if path in ('', '.') or '$' in path or '*' in path else path)
+    return {path for path in found if not path.startswith('windows/')}
+
+
+def in_closure(path: str, inputs: set[str]) -> bool:
+    return '*' in inputs or path.startswith('windows/') or path in HOST_INPUTS \
+        or any(path == item or path.startswith(item + '/') for item in inputs)
+
+
 def closure_changes(image_source: str, later: str, cwd: Path = ROOT) -> list[str]:
     """Return the changed paths that bind the image to its own source; empty when a later commit reuses it."""
     for commit in (image_source, later):
@@ -75,8 +127,9 @@ def closure_changes(image_source: str, later: str, cwd: Path = ROOT) -> list[str
     if subprocess.run(['git', '-C', str(cwd), 'merge-base', '--is-ancestor', image_source, later],
                       capture_output=True, check=False, timeout=120).returncode != 0:
         raise ValueError(f'{later} does not descend from the image source {image_source}')
+    inputs = dockerfile_inputs(image_source, cwd) | dockerfile_inputs(later, cwd)
     changed = git('diff', '--name-only', image_source, later, cwd=cwd).splitlines()
-    return [path for path in changed if path.startswith(CLOSURE_PREFIXES)]
+    return [path for path in changed if in_closure(path, inputs)]
 
 
 def require_reuse(image_source: str, later: str, cwd: Path = ROOT) -> None:
