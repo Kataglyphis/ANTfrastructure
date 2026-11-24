@@ -913,7 +913,7 @@ pages rather than merely adding to them:
   formulas apply to the PyTorch models only. Also: the 2.93 GiB HTP budget is
   per **context binary**, not per model, and a Qwen3-VL-8B w4a16 bundle for
   X Elite exists — the QAIRT VLM catalogue is four models, not two.
-- **`summy-server` is this laptop itself** (mirrored networking); there is no
+- **`win-1` is this laptop itself** (mirrored networking); there is no
   LAN box, and `backends.json`'s `ollama-lan` **and `control`** both point
   back here at a port where nothing listens — the calibration backend is
   dead. The host has **31.6 GiB** RAM, not ~16.

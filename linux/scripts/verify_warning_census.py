@@ -4,7 +4,7 @@
 """Hold a lane's compiler warnings in the repository's own code at a committed count per flag (CON295 (c), owner D11).
 
 Usage: verify_warning_census.py --lane <name> --census <file> [--write] <build log>...
-docs/code-quality-tooling.md#the-warning-census-warning-census
+docs/code-quality-tooling.md#the-warning-census
 """
 from __future__ import annotations
 

@@ -1334,13 +1334,13 @@ afterwards.
 
 ## Version bumping, as AGENTS.md carried it
 
-Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading, the relative links, the ONNX Runtime and Vulkan/llama.cpp notes added on 2026-09-23 and the 2026-09-25 corrections. The RULES stayed there; this is the reference behind them.
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading, the relative links, the ONNX Runtime and Vulkan/llama.cpp notes added on 2026-09-23 and later corrections. The RULES stayed there; this is the reference behind them.
 
 **Single source of truth: `linux/scripts/01-core/versions.env`.** Update it first.
 
-**Renovate detects, this script finishes (2026-09-11).** Every `# renovate:`-annotated key in versions.env is reported by Renovate's customManager (89 of 99 tracked; locally `renovate-local.sh --managers custom.regex`), and that same CLI's `--apply` writes the self-contained keys its file-scoped allowlist clears. `bump_versions.py` shrinks to the part no datasource can do: the paired `*_SHA256`/`*_COMMIT` refresh, the keys with no feed, the two registry digests, and the SLAVED PROTOC derivation. What is annotated and what is not (with reasons): [`docs/dependency-updates.md`](dependency-updates.md#what-is-still-not-annotated-and-why).
+**Renovate detects, this script finishes.** Every `# renovate:`-annotated key in `versions.env` and `tool-pins.env` is reported by Renovate's customManager (locally `renovate-local.sh --managers custom.regex`), and that same CLI's `--apply` writes the self-contained keys its file-scoped allowlist clears. `bump_versions.py` shrinks to the part no datasource can do: the paired `*_SHA256`/`*_COMMIT` refresh, the keys with no feed, the two registry digests, and the SLAVED PROTOC derivation. What is annotated and what is not (with reasons): [`docs/dependency-updates.md`](dependency-updates.md#what-is-still-not-annotated-and-why).
 
-**Automated sweep: `python3 docs/scripts/bump_versions.py`** (report), `--write` (safe tier), `--write-all` (report tier + paired checksum extras — extras MUST be applied together with the version, see the CUDA-hash incident note in the script). Three tiers: SAFE / REPORT / MANUAL, plus a self-audit for unclassified keys — a key counts as classified when it is in a tier, carries a `# renovate:` annotation, or matches the non-version filter.
+**Automated sweep: `python3 docs/scripts/bump_versions.py`** (report), `--write` (safe tier), `--write-all` (report tier + paired checksum extras — extras MUST be applied together with the version, see the CUDA-hash incident note in the script). `--only KEY[,KEY]` limits `--write` to those safe keys, for a bump of one tool. Three tiers: SAFE / REPORT / MANUAL, plus a self-audit for unclassified keys — a key counts as classified when it is in a tier, carries a `# renovate:` annotation, or matches the non-version filter.
 
 `bump_fetch.py` keeps checksum fallbacks limited to expected failures: an unavailable sums file advances to the next candidate, and an unavailable or invalid-JSON release digest response falls back to hashing the asset. Unexpected Python errors propagate; they must not look like missing metadata or start a large fallback download.
 
@@ -1377,14 +1377,17 @@ After changing versions:
    ARGs BEFORE regenerating the snapshot — no second pass needed; `--check` to verify)
 2. (step 1 already runs `docs/scripts/generate-website-licenses.py --write`, the
    website /openSourceLicenses page; run it alone only when nothing else changed)
-3. **Refresh the matching `*_SHA256` pins in versions.env** (pwsh zip / git installer /
-   nuget / CUDA / cuDNN / ollama / binaryen / hadolint / actionlint — each key's comment
-   documents its fetch command; GitHub releases expose per-asset digests on
-   `https://api.github.com/repos/<owner>/<repo>/releases/tags/<tag>`) — then re-run
-   step 1: several of these pins are also Dockerfile ARG defaults
+3. **Refresh the matching `*_SHA256` pins** in `versions.env` (pwsh zip / git installer /
+   nuget / CUDA / cuDNN / ollama) or in `tool-pins.env` for host tools (binaryen / hadolint /
+   actionlint). Each key's comment documents its fetch command; GitHub releases expose
+   per-asset digests on `https://api.github.com/repos/<owner>/<repo>/releases/tags/<tag>`.
+   Then re-run step 1: several of these pins are also Dockerfile ARG defaults
    (`PWSH_ZIP_SHA256`, `GIT_WINDOWS_INSTALLER_SHA256` in `windows/Dockerfile.base`),
    and `--check` fails until they match.
-4. Update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`, and `AGENTS.md`
+4. Leave marked version numbers in the docs alone: step 1 rewrites every inline version marker
+   under `docs/`, in `README.md` and in `AGENTS.md`. Its `--check` names a stale gcc or clang
+   literal in `linux-cross-builds.md`, `linux-build-basics.md` or `AGENTS.md`; fix that line by
+   hand, or name the key instead of the number.
 5. Verify ARG consistency: `bash linux/scripts/01-core/verify-arg-consistency.sh`
    (also enforces that every versions.env-named ARG has a safety-net default in its file)
 6. Rebuild affected stages (base→tooling, compiler→sdk, media→libs, android→SDK/NDK)

@@ -80,11 +80,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
   qualification of the resulting commit, including the isolated consumer-hook
   fixtures; no predecessor result transfers to that merged source.
 
-- [x] Add the versioned bounded installer, normal-user preview/Apply/status,
-  fixed protected policy, explicit disposable-container marker and canonical
-  selected removal. Retain current final images, SDKs/toolchains, all unrelated
-  tags, volumes and compiler caches. Setup derives host identity and paths;
-  its configured policy is not writable by the agent. See [the runbook](docs/windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts).
 - [ ] Accept the versioned delegation on the current host: actual UAC setup,
   ordinary-user preview and Apply, scheduler/ACL readback, retained identities
   and measured free bytes. The earlier local pilot does not prove v2 acceptance.
@@ -540,7 +535,7 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       `clean-host-package-check` action on `ubuntu-26.04`; linux-build-basics.md § Linux packages
       that run outside the image): the packages start on the image's base and newer. The image's
       loader and glibc travel with `LOADER` since 2026-10-17: AccelerANTgine's `.deb`, tarball and
-      AppImage start on himbeere2's Debian 13, and so does OmniAccelerANT's app through
+      AppImage start on the Pi's Debian 13, and so does OmniAccelerANT's app through
       `bundle-loader.sh --beside` (a window drawn on Debian 13, its flatpak started by the lane),
       OrchestrANT's Python app packages, whose interpreter carries the launcher (2026-10-18,
       their clean hosts start them), and BeschleunigerBallett's 1.5.2 tarball, through its bundled
@@ -548,7 +543,7 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       `dc8ba245`, 2026-10-18). Left: AccelerANTgine's `kataglyphis_inference` wheels, the
       same closure through auditwheel.
 
-      Done when those wheels install and import on himbeere2's Debian 13 and in the clean-host job.
+      Done when those wheels install and import on the Pi's Debian 13 and in the clean-host job.
 
 - [ ] **CON79 — the cp314t chain twins reach the published images, and phase 2** [L, ★★]. Linux native
       **arm64 twin, 2026-11-05:** chain `20261105-024512` failed `Assert-NinjaFreeThreadedDefine`, because ORT's CMake only prints that it enables free-threading and a cross configure got no define.
@@ -2475,7 +2470,7 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
         the first-touch deps - ships in the wheel store since 2026-10-03, SHA-
         pinned; upstream builds no cp314 wheel the bundle's own interpreter
         could use), Flutter, classic TensorRT, TAPPAS.
-      - The bundle EXECUTES on hardware since 2026-10-03 (Snapdragon X, summy-server; the
+      - The bundle EXECUTES on hardware since 2026-10-03 (Snapdragon X, win-1; the
         gate is `windows/scripts/build/Test-Arm64Bundle.ps1`, nine steps then, eighteen and floor eighteen since 2026-10-12):
         HailoRT-CLI 5.4.0, GStreamer 1.29.2 (`gst-inspect` + a videotestsrc->fakesink
         pipeline), `iree-run-module`, and the bundle's own Python 3.14.7 importing
@@ -2670,10 +2665,6 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
       Left separately, before a release: the installer's licence wording for the end-user terms.
-- [x] **CON228 — the MSVC runtime notice's end-user paragraph is a draft** [S, ★]. The notice itself shipped
-      2026-11-06 ([`third-party-licenses.md` § The MSVC runtime notice](docs/third-party-licenses.md#the-msvc-runtime-notice)).
-      Done 2026-11-23: the owner approved the reviewed wording, which names the Visual Studio license terms
-      instead of Redist.txt and drops the DRAFT line; the ZIP/MSIX consent question stays documented there.
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
   Later measurement, 2026-11-15: the complete `d9f129af` CUDA repeat has 6,304
   primary hits, including 605 NVCC hits, zero misses/cache errors/compiler failures

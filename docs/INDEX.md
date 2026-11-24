@@ -67,7 +67,7 @@ The two halves of one topic often split:
 | The image itself: what is installed, entrypoint, known traps | [`windows-builds.md`](windows-builds.md) |
 | **ROCm on Windows** (`-Variant rocm`): the layer in the sdk slot, `-rocm` tags, what each media component enables, redistribution | [`windows-rocm.md`](windows-rocm.md) |
 | **NVIDIA runtime evidence** — cached Windows image DLLs, SDK provenance and remaining verification | [`windows-nvidia-runtime-evidence-2026-10-30.md`](windows-nvidia-runtime-evidence-2026-10-30.md) |
-| **Rules you must not regress** when editing the Windows chain (49, grouped) | [`windows-build-invariants.md`](windows-build-invariants.md) |
+| **Rules you must not regress** when editing the Windows chain, grouped | [`windows-build-invariants.md`](windows-build-invariants.md) |
 | **Which lane to build on**: BuildKit, nerdctl, the removed classic docker lane; isolation policy, preflight gates, RDNA4 A/B history | [`windows-build-lanes.md`](windows-build-lanes.md) |
 | CPU/memory envelope, the sccache wiring, GPU in containers, vendor-specific DXGI selection, the 125-layer budget | [`windows-build-resources.md`](windows-build-resources.md) |
 | **sccache across build hosts**: the host's WebDAV as level 0, a shared S3 bucket as level 1, the key as BuildKit secrets, the upload drain, the client scripts | [`windows-build-resources.md` § Two cache levels](windows-build-resources.md#two-cache-levels) |
@@ -288,9 +288,9 @@ them.
 
 - **Pre-commit hooks:** run **`make hooks`** once after clone; it points `core.hooksPath` at
   `linux/host-config/git-hooks`. What they run: [`AGENTS.md`](../AGENTS.md) § Validation.
-- **Four gates guard the docs; none is optional.** They exist because this tree lost a licence
+- **These gates guard the docs; none is optional.** They exist because this tree lost a licence
   page, a doc index and ~50 cross-references to silent drift on a single day. Run them with
-  `PREFLIGHT_ONLY=doc-links,doc-dupes,sbom,version-snapshot bash linux/scripts/preflight.sh`.
+  `PREFLIGHT_ONLY=doc-links,doc-dupes,sbom,version-snapshot,readme-length bash linux/scripts/preflight.sh`.
   - `doc-links` — every relative link, deep-link anchor, `file.md § Heading` prose reference,
     and index coverage against BOTH `docs/INDEX.md` and the Sphinx toctree. **Rename a heading
     and this fails**, which is the point.
@@ -300,6 +300,7 @@ them.
     the passage one owner and link to it. `docs/INDEX.md` decides which page owns what.
   - `sbom` / `version-snapshot` — the generated licence pages and the curated SBOM must match
     `deps.json` + `versions.env`.
+  - `readme-length` — a root README over 100 lines fails.
 - **Adding a dependency is a docs change.** A new component needs an entry in
   `docs/deps/deps.json` with an `spdx` id and, if that licence is copyleft, a `source` block, or
   the build fails; a component this repo patches also needs a `modified` marker. Procedure,

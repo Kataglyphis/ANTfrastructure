@@ -1,4 +1,4 @@
-# One-time summy-server OpenSSH setup: DefaultShell + ACL fix. Run via SSH.
+# One-time win-1 OpenSSH setup: DefaultShell + ACL fix. Run via SSH.
 $ErrorActionPreference = 'Stop'
 
 # Default shell for OpenSSH sessions -> PowerShell (cmd breaks ansible module serialization).

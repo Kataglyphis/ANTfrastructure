@@ -440,7 +440,7 @@ suites exercise these behaviors, but do not establish GPU compatibility or runti
 `libc6 (<< 2.44)`), so `DEBIAN_DEPENDS` names what the system still brings; it also hands CPack's
 AppImage generator `patchelf-keep-glibc.sh`, because the generator patches every library without a
 RUNPATH, and a patched loader segfaults. AccelerANTgine's `.deb`, tarball and AppImage start on
-Debian 13 (himbeere2) and Ubuntu 26.04 this way. Without `LOADER` the packages need glibc 2.43:
+Debian 13 (a Raspberry Pi 5) and Ubuntu 26.04 this way. Without `LOADER` the packages need glibc 2.43:
 Ubuntu 26.04 and newer.
 
 Native AMD packages load the CPU ORT core and carry `libmigraphx-ep.so` separately. Source

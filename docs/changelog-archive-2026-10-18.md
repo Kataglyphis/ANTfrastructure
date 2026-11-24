@@ -55,7 +55,7 @@ rewording: relative links are re-based on this directory.
   `test-linux-closure-install.sh`'s runner now calls `waitpid(-1, WNOHANG)` and fails on a child.
 - **`git-adopt-rewritten-history.sh` names the local refs that keep the old blobs.** A branch
   without an upstream that holds commits origin lacks, and `refs/original/`, survive the gc with
-  every old blob they reach; on himbeere2 such refs kept OmniAccelerANT's pack at 166 MiB.
+  every old blob they reach; on the Pi such refs kept OmniAccelerANT's pack at 166 MiB.
   Each is now named with the way out (bundle, then delete); the suite plants one.
 - **`git-adopt-rewritten-history.sh` saw no rewrite in a long history.** Its twin check ended in
   `| grep -q`, which stops at the first match; under `pipefail` awk's SIGPIPE then read as "no
@@ -249,7 +249,7 @@ rewording: relative links are re-based on this directory.
 - **`bundle-loader.sh --beside`** keeps the program in its directory as `<name>.bin` with the loader
   next to it: under the launcher `/proc/self/exe` names the loader, and a Flutter runner finds
   `data/` from that directory. OmniAccelerANT's October 12 bundle, wrapped this way, held its
-  20 s launch smoke under Xvfb in the image and reached GTK on himbeere2's Debian 13. A second run
+  20 s launch smoke under Xvfb in the image and reached GTK on the Pi's Debian 13. A second run
   finds its own launcher and changes nothing. GStreamer then scans plugins in-process, since its
   external scanner is handed `/proc/self/exe`.
 - **The Flutter flatpak installs the bundle whole** under `/app/lib/<package>/`, with
@@ -261,7 +261,7 @@ rewording: relative links are re-based on this directory.
 
 - **`kataglyphis_install_linux_closure(LOADER ...)`** ships the image's loader and glibc:
   `06-packaging/bundle-loader.sh` moves each executable beside them in `lib/<PRIVATE_DIR>` and
-  leaves a launcher that starts it through that loader. Measured on himbeere2 (Debian 13, glibc
+  leaves a launcher that starts it through that loader. Measured on a Raspberry Pi 5 (Debian 13, glibc
   2.41, GStreamer 1.26) with AccelerANTgine: the tarball, the unpacked `.deb` and the AppImage
   start with `LD_BIND_NOW=1`, and `apt-get install --simulate` takes the `.deb`.
 - **Two traps on the way, both handled in `LOADER`:** CPack's AppImage generator patches every

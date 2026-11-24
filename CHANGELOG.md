@@ -19,6 +19,23 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — the docs match the tree again, and name no host
+
+- The build host's name is gone from every tracked file; the Home Assistant notes write the MQTT broker as
+  `<mqtt-host>:1883`.
+- No home host name or LAN address is left in the tree (owner decision): the fleet's hosts are `catcam-2`,
+  `sbc-1` and `win-1` in the inventory, the README tables and the LLM registry, `setup-summy-server.sh` is
+  `setup-win-1.sh`, and addresses are placeholders. On a control node, rename `host_vars/<old>.yml` to the new
+  key and make `win-1` resolve for `backends.json`. Home Assistant ids that hold `mintberry` stay, since a new
+  `unique_id` would start the cam's long-term statistics from zero.
+- `code-quality-tooling.md` carried an older second copy of its mutation-gate sections behind a broken heading.
+  The copy is gone, `## Doc numbers are derived` is whole again, and the pre-push section names the image-runner
+  retry. The warning census section says how a consumer's CI runs it; it is not a preflight slug.
+- Stale facts fixed against the tree: `jq` is in the Linux image, the action, reusable-workflow and consumer
+  counts, the `#requires` exceptions, the hook suite paths, the doc gates, where host-tool checksums live, what
+  `sync_versions.py` rewrites in the docs, the `01-core` count and two contradictions in `failure-modes.md`. The
+  adoption checklist now lists `.github/consumers.json`, and two done backlog items are pruned.
+
 ## 2026-11-24 — CON295 (c) is done in AccelerANTgine
 
 - AccelerANTgine went through all three warning steps: its x64 lanes hold their own warnings with

@@ -159,7 +159,7 @@ rest:
         unique_id: catcam_online
         device_class: connectivity
         value_template: "{{ value_json.ok }}"
-  # The second cat cam, at the feeding trough (tabblscatcam); its address stays in secrets.yaml.
+  # The second cat cam, at the feeding trough (catcam-2); its address stays in secrets.yaml.
   - resource: !secret catcam_futtertrog_healthz_url
     scan_interval: 30
     timeout: 10
@@ -225,7 +225,7 @@ rest:
         unique_id: catcam_futtertrog_online
         device_class: connectivity
         value_template: "{{ value_json.ok }}"
-  # The third cat cam, in the living room (mintberrycrunch, riscv64); its address stays in secrets.yaml.
+  # The third cat cam, in the living room (sbc-1, riscv64); its address stays in secrets.yaml.
   - resource: !secret catcam_mintberry_healthz_url
     scan_interval: 30
     timeout: 10

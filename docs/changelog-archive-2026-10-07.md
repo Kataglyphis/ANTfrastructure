@@ -1177,16 +1177,16 @@ rewording: relative links are re-based on this directory.
 
 ## 2026-10-03 — the Ansible fleet-update lane goes live
 
-* **The cat cam joined as the third Pi**: `tabblscatcam` (Raspberry Pi 5,
-  Debian 13) — found via mDNS, bootstrapped via `setup-fleet-host.sh tabblscatcam` (values
+* **The cat cam joined as the third Pi**: `catcam-2` (Raspberry Pi 5,
+  Debian 13) — found via mDNS, bootstrapped via `setup-fleet-host.sh catcam-2` (values
   from gitignored host_vars, like every host). Its FIRST run was real:
   apt updates applied, a pending bootloader EEPROM update staged, and the
   inline reboot+wait flashed it — `BOOTLOADER: up to date` after, second
   run idempotent. This closes the discovery question: the fleet is three
-  Pis (pi-1, pi-2, tabblscatcam), one SpacemiT SBC and one Windows host.
+  Pis (pi-1, pi-2, catcam-2), one SpacemiT SBC and one Windows host.
   `ping.yml` learned a second play: the builtin ping cannot run on Windows,
   so the lane proof splits `fleet` (ping) from `windows` (win_ping) —
-  summy-server had been failing the lane proof since it joined.
+  win-1 had been failing the lane proof since it joined.
 
 * **The microcontroller updates are now REAL, gated, and in the Sunday run**
   (owner directive): `update_tasmota.yml` flashes the stock plugs ONLY when
@@ -1205,7 +1205,7 @@ rewording: relative links are re-based on this directory.
   bitShake and Windows lanes. Fixed (run from `linux/ansible/`) and
   proven by fresh execution: the winget log carries the run's timestamp.
 
-* **summy-server (Windows 11 ARM Pro) joined the fleet**: managed over
+* **win-1 (Windows 11 ARM Pro) joined the fleet**: managed over
   OpenSSH with `ansible_shell_type: powershell` — WinRM stays closed. Three
   one-time traps, all encoded in `scripts/setup-openssh-ansible.ps1` (run
   once via SSH): the deploy key must go into

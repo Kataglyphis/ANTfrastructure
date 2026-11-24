@@ -25,8 +25,9 @@ git submodule update --init --recursive
 ```
 
 Everything below assumes that path. Consumers pin a commit like any other submodule; bump the pin
-and the consuming change in the same commit, and push ANTfrastructure `develop` **before** the
-consumer, because CI resolves composite actions at `@develop` (§ 6 says why not `@main`).
+and the consuming change in the same commit. Push ANTfrastructure `develop` **before** the
+consumer and wait until its CI is green, because CI resolves composite actions at `@develop`
+(§ 6 says why not `@main`).
 
 ### Submodule URLs are https, never `git@`
 
@@ -340,9 +341,10 @@ Three constraints:
   `CARGO_HOME` and `CARGO_TARGET_DIR`). The image's own `CARGO_HOME` is writable
   ([`consumer-image-contract.md`](consumer-image-contract.md), promise 2), but it lives in the
   container and dies with it.
-- **Never assume a tool is present because it is on your dev box.** `jq` is *not* in the Linux
-  image; `python3` is. A hard `jq` dependency silently broke shader precompilation and left CI
-  with no artifacts.
+- **Never assume a tool is present because it is on your dev box.** Check
+  [`consumer-image-contract.md`](consumer-image-contract.md) first. `jq` and `python3` are in the
+  current Linux image, but older images lacked `jq`: a hard `jq` dependency once broke shader
+  precompilation there and left CI with no artifacts.
 
 Prefer `linux/scripts/01-core/` helpers (logging, retry, downloads with SHA verification,
 uv/python env, parallelism) over new implementations.
@@ -412,10 +414,10 @@ tags were deleted on 2026-09-29, so an action at `@main` fails at `docker pull`.
 applies to the reusable workflows below, and a consumer workflow change that depends on a hub
 change needs the hub push first (§ 0).
 
-All fifteen, with every input and output, are listed once in
-[`.github/actions/README.md`](../.github/actions/README.md); this page keeps no second copy. They
-replace hand-rolled `docker run` blocks (twenty-plus copies across two workflows in the reference
-consumer) and include `deploy-over-ftp`, the family's one FTP publish policy
+Each action's `action.yml` declares its inputs and outputs, and
+[`.github/actions/README.md`](../.github/actions/README.md) describes most of them; this page keeps
+no second copy. They replace hand-rolled `docker run` blocks (twenty-plus copies across two
+workflows in the reference consumer) and include `deploy-over-ftp`, the family's one FTP publish policy
 ([`ftp-deploys.md`](ftp-deploys.md)).
 
 **One ordering rule is about your workflow, not an action, so it lives here:** on a Windows runner,
@@ -425,8 +427,9 @@ pull). It moves docker's data root to the big `D:` drive: the ~54 GB image does 
 `hcsshim::ImportLayer 0x70` (measured; see
 [windows-build-resources.md](windows-build-resources.md)).
 
-Five lanes are reusable workflows, each called with
-`uses: Kataglyphis/ANTfrastructure/.github/workflows/<name>.yml@develop`:
+The lanes below are reusable workflows, each called with
+`uses: Kataglyphis/ANTfrastructure/.github/workflows/<name>.yml@develop`. There are more:
+`grep -l workflow_call .github/workflows/*.yml` lists every one, and § 9 names the gate lanes.
 
 - `lint-gates.yml`: the consumer lint gates (§ 9).
 - `submodule-pins.yml`: the pin suite (§ 9).
@@ -540,10 +543,9 @@ install the client at `WEBDAVCLIENT_REF` from `versions.env`.
 
 ## 8. Calling conventions (what every consumer looks like)
 
-Eight repos consume this one (`.github/consumers.json`). The shapes below are what they converged
-on, so a new consumer that follows them reads like every other. Recorded 2026-08-11 after measuring
-the seven consumers of that day (WebDavClient joined the list later); until then the convention
-was folklore and had drifted.
+`.github/consumers.json` lists every repo that consumes this one. The shapes below are what the
+first seven consumers converged on, so a new consumer that follows them reads like every other.
+Until they were measured, the convention was folklore and had drifted.
 
 **Windows entry point**: `<scripts>/windows/Build-Windows.ps1`, PascalCase `Verb-Noun` like every
 other PowerShell file. It must:
@@ -779,8 +781,8 @@ and gets all of it:
 
 1. **The shared-asset manifest.** `.antfrastructure-shared.manifest` at the consumer root declares
    which hub-owned files the repo holds a copy of (configs, the two bootstrap templates);
-   `sync-shared-config.sh --repo-root . --check` is the drift gate, `--write` refreshes. The
-   registry of asset ids and the rules are in
+   `bash third_party/ANTfrastructure/shared/config/sync-shared-config.sh --repo-root . --check` is
+   the drift gate, `--write` refreshes. The registry of asset ids and the rules are in
    [`../shared/config/README.md`](../shared/config/README.md).
 2. **The lint aggregator.** `bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh .`
    runs shellcheck, actionlint + CI image refs, gitleaks (with a self-test), ruff, the manifest
@@ -850,6 +852,7 @@ Still hub-only: the hub's own git hooks; consumers get the pair of § 8
 ## Checklist
 
 - [ ] Submodule added; `Resolve-BuildModule.ps1` copied
+- [ ] The repo listed in the hub's [`.github/consumers.json`](../.github/consumers.json) (a hub commit), so the [consumer inventory](consumer-inventory.md) sees what it uses
 - [ ] Entry points named and shaped as in § 8
 - [ ] Windows build script built on `WindowsContainerBuild.Reuse`, ending in a delivery check (where the consumer has a Windows lane)
 - [ ] Linux build uses a container-native build dir and a cargo cache volume

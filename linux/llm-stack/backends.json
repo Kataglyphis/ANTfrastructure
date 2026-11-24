@@ -28,7 +28,7 @@
       "note": "This stack's own service (docker-compose.yml). Native /api/tags too."
     },
     "ollama-lan": {
-      "base_url": "http://summy-server:11434",
+      "base_url": "http://win-1:11434",
       "note": "Ollama on another host; see docker-compose.lan.yml."
     },
     "chain-genai": {
@@ -65,7 +65,7 @@
       "note": "NPU+CPU. Slower than plain CPU on every model measured - avoid."
     },
     "control": {
-      "base_url": "http://summy-server:11434",
+      "base_url": "http://win-1:11434",
       "note": "Calibration reference — see the comment above. Point this at the strongest endpoint available; a case the control also fails is a suspect case, not a model result."
     },
     "mistral-glm": {

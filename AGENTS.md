@@ -12,13 +12,13 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
 | Debug an error message | [`docs/failure-modes.md`](docs/failure-modes.md) — symptom → cause → fix |
 | Launch or debug a Windows chain | [`docs/windows-build-lanes.md`](docs/windows-build-lanes.md) — BuildKit, nerdctl, classic (historical) |
 | Wire a new project to this repo | [`docs/adopting-in-a-new-project.md`](docs/adopting-in-a-new-project.md) |
-| **Add or bump a dependency** | [`docs/third-party-licenses.md`](docs/third-party-licenses.md) § Maintaining this list — an `spdx` id is mandatory, copyleft needs a source pointer, and the build gates both |
+| **Add or bump a dependency** | [`docs/third-party-licenses.md`](docs/third-party-licenses.md) § Maintaining this list — an `spdx` id is mandatory, copyleft needs a source pointer, and the build gates both. The bump steps: [`docs/dependency-updates.md`](docs/dependency-updates.md#version-bumping-as-agentsmd-carried-it) |
 
 Windows ONNX source recovery must retain the full release commit, matching version file and recursively pinned submodules; a mirror branch or successful download alone is insufficient. QNN header recovery preserves its separate release and CMake patch population through a verified local source archive.
 
 ## Contents
 
-**Rules — never regress these.** [Project priorities](#project-priorities-owner-directive--optimize-for-all-three-always) ·
+**Rules — never regress these.** [Project priorities](#project-priorities-owner-directive--optimize-for-all-of-them-always) ·
 [Shell safety](#shell-safety-conventions-five-bug-classes-all-found-live-2026-08-08) ·
 [No ghost processes](#background-jobs-and-test-processes-no-ghosts) ·
 [Caching discipline](#caching-discipline-do-not-regress) ·
@@ -39,7 +39,7 @@ Windows ONNX source recovery must retain the full release commit, matching versi
 [Repo map](#repo-map) · [Code organization](#code-organization-key-shared-utilities) ·
 [Documentation maintenance](#documentation-maintenance)
 
-## Project priorities (owner directive — optimize for ALL THREE, always)
+## Project priorities (owner directive — optimize for all of them, always)
 
 1. **Fastest possible build.** Cache-first: narrow per-file closures, local cache exports, the
    compiler cache wired end to end AND measured (stats to stderr, the stream a clipped step log
@@ -533,7 +533,7 @@ a `-<variant>` infix to every tag after `bk-windows-base` (`bk-windows-sdk-rocm`
 
 Commands, knob tables and per-stage recipes:
 [`linux-cross-builds.md` § The command reference AGENTS.md used to carry](docs/linux-cross-builds.md#the-command-reference-agentsmd-used-to-carry).
-Five of them are RULES and stay here:
+The rules below stay here:
 
 - **Never `pkill` the orchestrator.** `bash linux/scripts/stop-cross-chain.sh` finds the run by
   its pidfile and reaps the orphaned nerdctl/buildctl subtree; a `pkill` orphans the children and
@@ -759,9 +759,11 @@ When adding here:
   On Windows, its copied-bootstrap drift proof runs through PowerShell first.
 - PowerShell 7 (pwsh) is the standard shell and the Windows containers' default SHELL. Every
   `.ps1`/`.psm1` declares `#requires -Version 7.0` on line 1 (or directly under the SPDX header),
-  before any `param()`. Exactly two tracked files omit it, on purpose, both pinned 5.1-parsable by
-  a suite: the script that INSTALLS pwsh, and the delete guard, which must not fail OPEN on a host
-  without `pwsh`.
+  before any `param()`. Two tracked files omit it on purpose, both pinned 5.1-parsable by a suite:
+  the script that INSTALLS pwsh, and the delete guard, which must not fail OPEN on a host without
+  `pwsh`. The two scripts in `linux/ansible/scripts/` omit it too: they can run under Windows
+  PowerShell 5.1 on a managed host. Two Pester suites also lack it:
+  `HostMaintenance.ToolLookup.Tests.ps1` and `StevedoreInventory.Tests.ps1`.
 - **PowerShell file names.** Three shapes: PascalCase `Verb-Noun.ps1` with a `Get-Verb`-approved
   verb for scripts, `Windows<Area>.<Facet>.psm1` for modules, `<Subject>.Tests.ps1` for suites.
   Three tracked files sit outside all three on purpose: the delete guard, registered by that exact
@@ -1655,14 +1657,17 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   `develop-red-selftest.yml` ([A red develop opens an issue](docs/github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue)).
 
 - **Never retype a number a gate can measure.** Manifest sizes, per-prefix mutation counts and the
-  hook's own slug list are pinned by `tests/test-doc-numbers.sh`, which reads them out of
+  hook's own slug list are pinned by `linux/scripts/tests/test-doc-numbers.sh`, which reads them out of
   `mutations.json` and the hook and fails on drift (`--update` rewrites the pages). Wall-clock
   figures cannot be pinned: write them with the date they were measured, or leave the digit out.
 
 - **`bash linux/scripts/preflight.sh` is the single source of the no-build gate list.** The
   inventory is its `KNOWN_SLUGS` array; do NOT enumerate it here (this paragraph once went stale
-  by three slugs). `tests/test-preflight-slugs.sh` enforces that every slug has a registered check
-  and vice versa. The commit hook runs a subset through `PREFLIGHT_ONLY` / `PREFLIGHT_SKIP`; never
+  by three slugs). `linux/scripts/tests/test-preflight-slugs.sh` enforces that every slug has a
+  `run_check` line and vice versa, so a new gate needs a `KNOWN_SLUGS` entry and a `run_check`
+  line. Then regenerate the registry with
+  `python3 linux/scripts/verify_gate_registry.py --write`, and name its mutations `<slug>.<kebab>`.
+  The commit hook runs a subset through `PREFLIGHT_ONLY` / `PREFLIGHT_SKIP`; never
   copy the check list into a new caller. On a Windows host:
   `MSYS=winsymlinks:nativestrict PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh`. Git Bash fixtures need real symlinks; denied creation remains a missing prerequisite. What each gate
   proves, and its allowlist: [`code-quality-gates.md`](docs/code-quality-gates.md) (generated) and
