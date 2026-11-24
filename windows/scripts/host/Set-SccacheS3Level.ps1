@@ -61,7 +61,7 @@ if ($Clear) {
 }
 
 if ($Endpoint -notmatch '^https?://[^/:]+(:\d+)?/?$') {
-    throw "-Endpoint '$Endpoint' is not an http(s) URL such as http://10.0.0.26:3900"
+    throw "-Endpoint '$Endpoint' is not an http(s) URL such as http://192.0.2.26:3900"
 }
 if (-not (Test-UrlPortOpen $Endpoint)) {
     Write-Warning "$Endpoint does not answer from here; is the VPN up? The settings are written anyway."

@@ -64,9 +64,9 @@ Describe 'WindowsImageEnv.Common: the matcher' {
     }
 
     It 'names the reason, so a red gate says what to fix' {
-        $r = @(Get-ImageEnvLeak -Name 'SCCACHE_WEBDAV_ENDPOINT' -Value 'http://10.0.0.16:5000')
+        $r = @(Get-ImageEnvLeak -Name 'SCCACHE_WEBDAV_ENDPOINT' -Value 'http://10.255.255.16:5000')
         Assert-Equal 2 $r.Count 'the name rule and the address rule both fire on the 2026-09-23 value'
-        Assert-Match '10\.0\.0\.16' ($r -join ' ')
+        Assert-Match '10\.255\.255\.16' ($r -join ' ')
     }
 
     foreach ($mutant in @(
@@ -97,7 +97,7 @@ Describe 'WindowsImageEnv.Common: Assert-ImageEnvPublishable' {
 
     It 'fails a Machine-scope leak and names the scope (a RUN that set it publishes it too)' {
         $leaky = [ordered]@{ Process = $clean.Process; Machine = @{} + $clean.Machine; User = @{} }
-        $leaky.Machine['SCCACHE_WEBDAV_ENDPOINT'] = 'http://10.0.0.16:5000'
+        $leaky.Machine['SCCACHE_WEBDAV_ENDPOINT'] = 'http://10.255.255.16:5000'
         Assert-Throws { Assert-ImageEnvPublishable -Scopes $leaky 6>$null } -MessagePattern 'SCCACHE_WEBDAV_ENDPOINT'
         # The throw is asserted above; here only the LEAK lines it printed first matter.
         $lines = @(& { try { Assert-ImageEnvPublishable -Scopes $leaky } catch { $null = $_ } } 6>&1 | ForEach-Object { "$_" })
@@ -295,7 +295,7 @@ $script:ConfigReads = 0
 $script:SolveAttemptCount = 0
 $script:CooldownCalls = [System.Collections.Generic.List[string]]::new()
 $script:LogDir = $Dir; $script:RunId = 'test'; $script:StageTimings = @{}
-$script:BkHistoryGateValue = @{ EndpointHost = @('10.0.0.26'); Bucket = 'kata-bucket'; Region = 'kata-region' }
+$script:BkHistoryGateValue = @{ EndpointHost = @('10.255.255.26'); Bucket = 'kata-bucket'; Region = 'kata-region' }
 $repoRoot = $Dir; $SkipHostChecks = $true; $NoCacheStage = @(); $NoCache = $false
 $ImportCacheRef = ''; $ExportCacheRef = ''; $TargetArch = 'amd64'; $BuildArg = @()
 function Assert-StageDiskHeadroom { }
@@ -320,7 +320,7 @@ $BuildCtl = {
 
 # Image configs for the fake: what the secret form leaves, and the 2026-10-17 S3 ARG.
 $script:cleanConfigJson = @{ history = @(@{ created_by = 'RUN |1 SCCACHE_LOG=warn pwsh -Command echo' }); config = @{ Env = @('PATH=C:\Windows') } } | ConvertTo-Json -Depth 5 -Compress
-$script:leakyConfigJson = @{ history = @(@{ created_by = 'ARG SCCACHE_ENDPOINT=http://10.0.0.26:3900' }); config = @{ Env = @('PATH=C:\Windows') } } | ConvertTo-Json -Depth 5 -Compress
+$script:leakyConfigJson = @{ history = @(@{ created_by = 'ARG SCCACHE_ENDPOINT=http://10.255.255.26:3900' }); config = @{ Env = @('PATH=C:\Windows') } } | ConvertTo-Json -Depth 5 -Compress
 
 # Runs $Scenario over the driver's lifted gate functions; -Find/-Replace mutate them.
 function Invoke-GateScenario {
@@ -403,7 +403,7 @@ Describe 'Build-Buildkit.ps1: the history gate grades every image a stage export
         $r = Invoke-GateScenario -Driver $drv -Scenario $chain -Config $script:leakyConfigJson
         Assert-Match 'history gate FAILED: \d+ finding\(s\) in the history and config of img:toolchain \(history\[0\]\)' $r.Error
         Assert-Equal 'Dockerfile.publish-gate|img:sdk; Dockerfile.toolchain-builder|img:sdk' $r.Solves 'the next stage must not solve on it'
-        Assert-False $r.Error.Contains('10.0.0.26') 'the error names the value'
+        Assert-False $r.Error.Contains('10.255.255.26') 'the error names the value'
     }
 
     It 'fails closed when buildctl wrote no config digest' {
