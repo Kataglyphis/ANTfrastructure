@@ -62134,5 +62134,13 @@
   "find": "-Name packaging, scikit-build-core, setuptools-scm, wheel, cython",
   "id": "windows-lane.tvm-build-tools-pin-packaging",
   "why": "scikit-build-core and setuptools-scm pull packaging; unpinned, the TVM branch takes the newest release and the media merge refuses the mixed install"
+ },
+ {
+  "why": "the app's setup.py copies hub modules at build time, so a checkout without the hub submodule fails uv sync in the torch stage",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only TorchApp.Checkout.Tests.ps1 -ResultFile logs/code-quality/torch-app-hub-mutation.json",
+  "id": "windows-lane.torch-app-hub-submodule",
+  "target": "windows/scripts/build/Build-TorchApp.ps1",
+  "replace": "status",
+  "find": "submodule update --init --depth 1 third_party/ANTfrastructure"
  }
 ]

@@ -5,6 +5,18 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## Torch stage: `verify_ort_profile.py is missing ... check out the hub submodule before building`
+
+**Symptom.** `uv sync` of the app fails in `Dockerfile.torch` with that message from OrchestrANT's
+`setup.py` (2026-11-24, Windows amd64).
+
+**Cause.** Since OrchestrANT `3abd84e` (hub CON288/CON289) its build copies hub modules from
+`third_party/ANTfrastructure`; the torch stage cloned the app without submodules.
+
+**Fix.** `New-TorchAppCheckout` runs `submodule update --init --depth 1 third_party/ANTfrastructure`
+after the checkout, without `--recursive`; `TorchApp.Checkout.Tests.ps1` holds it. The Linux
+lane's `fetch_app_tree` (`assemble-torch-app.sh`) clones the same way.
+
 ## Windows media merge: `a merge would leave a mixed install; pin one version`
 
 **Symptom.** `Dockerfile.media-merge-builder:built` fails in seconds with `packaging is 26.3 in

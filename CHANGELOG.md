@@ -26,6 +26,13 @@
   and checks the submodule out since this hub's windows-torch commit; `assemble-torch-app.sh`'s `fetch_app_tree` does
   the same now, `--depth 1` and not recursive, before its next app ref reaches the error. One case, one mutation.
 
+## 2026-11-24 — the Windows torch stage checks out the app's hub submodule
+
+- `uv sync` of OrchestrANT failed in `Dockerfile.torch`: since OrchestrANT `3abd84e` its `setup.py` copies hub
+  modules from `third_party/ANTfrastructure`, and `New-TorchAppCheckout` cloned without submodules. It now
+  initializes that one submodule shallowly, without nested ones. `TorchApp.Checkout.Tests.ps1`, one mutation
+  ([failure mode](docs/failure-modes.md#torch-stage-verify_ort_profilepy-is-missing--check-out-the-hub-submodule-before-building)).
+
 ## 2026-11-24 — the TVM branch pins packaging with its build tools
 
 - The Windows media merge refused `packaging` 26.3 from media-core beside 26.4 from TVM: TVM's branch
