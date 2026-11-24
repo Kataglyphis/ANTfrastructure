@@ -63,6 +63,16 @@
   remaining docs phases).
 - Home Assistant's runtime `config/ip_bans.yaml` is ignored, so it is never committed.
 
+## 2026-11-24 — :winarm64 carries the 946c1637 bundle
+
+- The ARM64 bundle built at `946c1637` passed its smoke gate and all 22 device steps. `:winarm64` now points at
+  `sha256:f0a860faba4629ff51897ffacef8de1905928902011c062459102991b6260a75`, promoted by
+  `windows-arm64-acceptance.py`, and the six consumers' Windows lanes were dispatched on it
+  ([acceptance](docs/windows-cross-builds.md#accept-an-arm64-image-before-moving-its-tag)).
+- Test fixtures no longer name the build host's LAN addresses: the image-env and sccache-level suites use
+  `10.255.255.16`/`.26`, which the leak gate still flags as private, and `Set-SccacheS3Level.ps1`'s example uses
+  `192.0.2.26`.
+
 ## 2026-11-24 — the old public nvidia stage tags and two legacy packages are gone
 
 - With the owner's approval, `ghcr-delete-tags.sh` deleted `cross-toolchain-nvidia-amd64`, `cross-media-nvidia-amd64`
