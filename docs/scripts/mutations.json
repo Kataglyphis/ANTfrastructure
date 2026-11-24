@@ -14950,9 +14950,9 @@
  {
   "id": "readme-length.limit-enforced",
   "target": "linux/scripts/verify_readme_length.py",
-  "find": "    if count > LIMIT:",
-  "replace": "    if False:",
-  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "find": "    problems = [] if count <= LIMIT else",
+  "replace": "    problems = [] if True else",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k lines",
   "why": "a README over 100 lines must fail, not print OK"
  },
  {
@@ -14960,15 +14960,15 @@
   "target": "linux/scripts/verify_readme_length.py",
   "find": "    return data.count(b\"\\n\") + (1 if data and not data.endswith(b\"\\n\") else 0)",
   "replace": "    return data.count(b\"\\n\")",
-  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k lines",
   "why": "a last line without a newline is still a line; counting newlines alone lets a 101-line README through"
  },
  {
   "id": "readme-length.missing-readme-fails",
   "target": "linux/scripts/verify_readme_length.py",
-  "find": "    if not os.path.isfile(readme):",
+  "find": "    if not readme.is_file():",
   "replace": "    if False:",
-  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k lines",
   "why": "a missing README is not a short one; without the check the gate crashes or reads green over nothing"
  },
  {
@@ -14976,7 +14976,7 @@
   "target": "linux/scripts/run-lint-gates.sh",
   "find": "  _lint_gates_hub linux/scripts/verify_readme_length.py || return 1",
   "replace": "  return 0",
-  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k wiring",
   "why": "the consumer half must run the gate and return its verdict, or lint-gates.yml passes every consumer README"
  },
  {
@@ -14984,8 +14984,184 @@
   "target": "linux/scripts/run-lint-gates.sh",
   "find": "  run_gate \"README length\" _lint_gates_readme\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k wiring",
   "why": "a gate function nothing registers never runs in a consumer lane"
+ },
+ {
+  "id": "readme-length.word-limit",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "LIMITS = {\"words\": 700,",
+  "replace": "LIMITS = {\"words\": 701,",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k words",
+  "why": "700 words is the owner's limit; the 701st must fail"
+ },
+ {
+  "id": "readme-length.token-needs-letter",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "WORD = re.compile(r\"[^\\W_]\")",
+  "replace": "WORD = re.compile(r\"\\S\")",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k words",
+  "why": "a table pipe or a dash is no word; counting them fails a README for its markup"
+ },
+ {
+  "id": "readme-length.limit-binds-without-row",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "            if now > LIMITS[metric]:",
+  "replace": "            if False:",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k words",
+  "why": "a figure without a census row meets its limit, or a new README has none"
+ },
+ {
+  "id": "readme-length.census-graded",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        problems += grade(values, census)",
+  "replace": "        problems += []",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k words",
+  "why": "a seeded census must be graded, or seeding turns the gate off"
+ },
+ {
+  "id": "readme-length.width-limit",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "WIDTH = 160",
+  "replace": "WIDTH = 161",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k width",
+  "why": "160 characters is the owner's limit; the 161st must fail"
+ },
+ {
+  "id": "readme-length.wide-is-over-160",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        if len(line) > WIDTH:",
+  "replace": "        if len(line) >= WIDTH:",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k width",
+  "why": "a line of exactly 160 characters is within the limit"
+ },
+ {
+  "id": "readme-length.wide-lines-named",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        sys.stderr.write(\"\".join(f\"      {README}:{n}: {chars} characters\\n\" for n, chars in wide))\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k width",
+  "why": "a width finding names each wide line, or the author hunts for it"
+ },
+ {
+  "id": "readme-length.badge-exempt",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        if BADGE_LINE.match(line) or LINK_LINE.match(line):",
+  "replace": "        if LINK_LINE.match(line):",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k width",
+  "why": "a badge line is exempt from the words and the width"
+ },
+ {
+  "id": "readme-length.link-line-exempt",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        if BADGE_LINE.match(line) or LINK_LINE.match(line):",
+  "replace": "        if BADGE_LINE.match(line):",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k width",
+  "why": "a line that is only a link is exempt from the words and the width"
+ },
+ {
+  "id": "readme-length.list-link-exempt",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "LINK_LINE = re.compile(rf\"^\\s*(?:[-*+]\\s+)?(?:",
+  "replace": "LINK_LINE = re.compile(rf\"^\\s*(?:",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k width",
+  "why": "a list item that holds one link is a link-only line"
+ },
+ {
+  "id": "readme-length.overflow-counted",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "\"overflow\": sum(n - WIDTH for _, n in wide)",
+  "replace": "\"overflow\": len(wide)",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "overflow counts the characters past 160, so a wide line cannot grow unseen"
+ },
+ {
+  "id": "readme-length.grew-fails",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        elif now > was:",
+  "replace": "        elif False:",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "a figure above its row is the regression the census exists to stop"
+ },
+ {
+  "id": "readme-length.fell-fails",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        elif now < was:",
+  "replace": "        elif False:",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "a fallen figure must be written down, or the next commit may grow back into the slack"
+ },
+ {
+  "id": "readme-length.write-never-raises",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "    rows: Census = {key: min(was, values[key[1]]) for key",
+  "replace": "    rows: Census = {key: values[key[1]] for key",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "--write that raises a row turns the ratchet into a recorder"
+ },
+ {
+  "id": "readme-length.write-drops-met-rows",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "    return {key: value for key, value in rows.items() if value > LIMITS[key[1]]}",
+  "replace": "    return rows",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "a row at its limit goes, so the fixed limit binds again"
+ },
+ {
+  "id": "readme-length.stale-rows-fail",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "if page != README or was <= LIMITS[metric]]",
+  "replace": "if False]",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "a row of another page or at its limit holds nothing and must not sit in the census"
+ },
+ {
+  "id": "readme-length.seed-refuses-existing",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "    if census_path.exists():\n        raise CensusError(f\"{census_path} exists;",
+  "replace": "    if False:\n        raise CensusError(f\"{census_path} exists;",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "--seed over a census would raise every row at once"
+ },
+ {
+  "id": "readme-length.census-spec-read",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "parts[1] not in spec.metrics",
+  "replace": "parts[1] not in PROSE.metrics",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "the README census has its own metrics; the shared reader must take them from the spec"
+ },
+ {
+  "id": "readme-length.census-counts-whole",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "int(value) if metric in spec.counts else",
+  "replace": "int(value) if metric == WORDS else",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "the README figures are whole counts and are written as such"
+ },
+ {
+  "id": "readme-length.seed-only-over-limit",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "float(v) for m, v in values.items() if v > LIMITS[m]}",
+  "replace": "float(v) for m, v in values.items()}",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k consumer",
+  "why": "a seed writes rows only for figures over their limit"
+ },
+ {
+  "id": "readme-length.consumer-off-until-seeded",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        if hub:\n            raise CensusError(f\"{census_path} is missing",
+  "replace": "        if True:\n            raise CensusError(f\"{census_path} is missing",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k consumer",
+  "why": "an unseeded consumer is reported, not failed; otherwise the next pin bump reds every consumer at once"
+ },
+ {
+  "id": "readme-length.hub-census-required",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        if hub:\n            raise CensusError(f\"{census_path} is missing",
+  "replace": "        if False:\n            raise CensusError(f\"{census_path} is missing",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k hub",
+  "why": "the hub grades its own README against its census; a missing one is an error"
  },
  {
   "id": "lint-gates.pattern-limits-limit-enforced",
@@ -64986,7 +65162,7 @@
  {
   "id": "doc-prose.malformed-row-refused",
   "target": "linux/scripts/verify_doc_prose.py",
-  "find": "        if len(parts) != 3 or parts[1] not in (*METRICS, WORDS) or not re.fullmatch(r\"\\d+(\\.\\d)?\", parts[2]):",
+  "find": "        if len(parts) != 3 or parts[1] not in spec.metrics or not re.fullmatch(r\"\\d+(\\.\\d)?\", parts[2]):",
   "replace": "        if len(parts) < 2:",
   "test": "bash linux/scripts/tests/test-doc-prose.sh -k ratchet",
   "why": "a row the gate cannot read is an error, never a skip"

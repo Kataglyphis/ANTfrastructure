@@ -19,6 +19,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — README words and width; the owner's NSIS answers
+
+- `readme-length` holds every root README to 700 words and 160 characters a line besides its 100 lines (owner
+  decision). Badge lines and lines that are only a link count for neither. A README already over them keeps rows
+  in `readme-length.census` that may only fall, in the `doc-prose` census format; a consumer only reports until
+  it seeds its census. Suite `test-readme-length.sh` gains `-k` sections and the family 22 recipes.
+- The hub README is an overview again: 98 lines, 563 words and no line over 160 characters, from 2,353 words and
+  28 wider lines (the widest 3,456 characters). The pages it links already held the detail.
+- CON302 records the owner's NSIS answers and a sub-step for the CPack setups that ship LZMA without its
+  CPL-1.0 notice. New: CON304, a shared case file for the usable-CPU rule.
+- The consumer `AGENTS.md` template links `docs/writing-docs.md`.
+
 ## 2026-11-24 — the mutation shard plan has fresh costs
 
 - `docs/scripts/mutation-costs.json` is rebuilt from the cost lines of run 45373701267 (all eight shards) and
