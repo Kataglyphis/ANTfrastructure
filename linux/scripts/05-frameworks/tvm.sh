@@ -228,8 +228,8 @@ resolve_tvm_llvm() {
   elif [ -z "$llvm_config" ]; then
     log "llvm-config not found; continuing without LLVM (some TVM features will be disabled)"
   else
-    log "Using LLVM: $llvm_config"
-    llvm_cmake_value="$llvm_config"
+    log "Using LLVM: $llvm_config --link-static"
+    llvm_cmake_value="$llvm_config --link-static"
   fi
 }
 
@@ -336,15 +336,22 @@ configure_tvm_cmake() {
   [ "$llvm_cmake_value" = "OFF" ] || assert_tvm_llvm_version_matches_pin "$configure_log"
 }
 
+# <out-var> <marker> <what>: names FindLLVM.cmake and returns 1 when it already carries the marker.
+_tvm_findllvm_unpatched() {
+  local -n _tvm_findllvm_out="$1"
+  _tvm_findllvm_out="${tvm_dir}/cmake/utils/FindLLVM.cmake"
+  [ -f "${_tvm_findllvm_out}" ] || die "TVM FindLLVM.cmake not found at ${_tvm_findllvm_out}"
+  if grep -q -e "$2" "${_tvm_findllvm_out}"; then
+    log "TVM FindLLVM.cmake already patched for $3"
+    return 1
+  fi
+  return 0
+}
+
 # A dylib LLVM package leaves LLVM_LIBS empty and FindLLVM runs the target llvm-config; link the LLVM target.
 patch_tvm_findllvm_dylib_fallback() {
-  local findllvm="${tvm_dir}/cmake/utils/FindLLVM.cmake"
-
-  [ -f "$findllvm" ] || die "TVM FindLLVM.cmake not found at ${findllvm}"
-  if grep -q 'cross-dylib fallback' "$findllvm"; then
-    log "TVM FindLLVM.cmake already patched for the dylib fallback"
-    return 0
-  fi
+  local findllvm
+  _tvm_findllvm_unpatched findllvm 'cross-dylib fallback' 'the dylib fallback' || return 0
   grep -q 'set(LLVM_CONFIG .*llvm-config")' "$findllvm" \
     || die "TVM FindLLVM.cmake: expected llvm-config fallback line not found (TVM ${ref} layout changed?)"
   sed -i \
@@ -353,6 +360,50 @@ patch_tvm_findllvm_dylib_fallback() {
     "$findllvm"
   grep -q 'cross-dylib fallback' "$findllvm" || die "Failed to patch TVM FindLLVM.cmake"
   log "Patched TVM FindLLVM.cmake: link imported LLVM dylib target when components resolve empty"
+}
+
+# A shared LLVM lets another process-wide LLVM interpose its data; see docs/linux-cross-builds.md#tvm-links-a-private-static-llvm
+patch_tvm_findllvm_private_static() {
+  local findllvm anchor='    llvm_map_components_to_libnames(LLVM_LIBS "all")'
+  _tvm_findllvm_unpatched findllvm 'private static LLVM' 'a private static LLVM' || return 0
+  [ "$(grep -c -x -F -e "$anchor" "$findllvm" || true)" = 1 ] \
+    || die "TVM FindLLVM.cmake: expected one LLVM component map line (TVM ${ref} layout changed?)"
+  awk -v anchor="$anchor" '
+    { print }
+    $0 == anchor {
+      print "    # private static LLVM: an installed package maps \"all\" to nothing, so pick its static targets"
+      print "    if(NOT LLVM_LIBS)"
+      print "      set(LLVM_LIBS ${LLVM_AVAILABLE_LIBS})"
+      print "    endif()"
+      print "    set(_tvm_llvm_static \"\")"
+      print "    foreach(_tvm_llvm_lib IN LISTS LLVM_LIBS)"
+      print "      if(TARGET ${_tvm_llvm_lib})"
+      print "        get_target_property(_tvm_llvm_type ${_tvm_llvm_lib} TYPE)"
+      print "        if(_tvm_llvm_type STREQUAL \"STATIC_LIBRARY\")"
+      print "          list(APPEND _tvm_llvm_static ${_tvm_llvm_lib})"
+      print "        endif()"
+      print "      endif()"
+      print "    endforeach()"
+      print "    set(LLVM_LIBS ${_tvm_llvm_static})"
+    }' "$findllvm" > "${findllvm}.private" || die "Failed to patch TVM FindLLVM.cmake for a private static LLVM"
+  mv "${findllvm}.private" "$findllvm"
+  grep -q 'private static LLVM' "$findllvm" || die "Failed to patch TVM FindLLVM.cmake for a private static LLVM"
+  log "Patched TVM FindLLVM.cmake: link only the static LLVM targets"
+}
+
+# <libtvm_compiler.so>: fails unless LLVM is linked in statically and none of it is exported.
+assert_tvm_private_llvm() {
+  local lib="$1" dynamic symbols exported
+  [ -f "$lib" ] || die "TVM private LLVM: ${lib} was not built"
+  dynamic="$(readelf -d -W "$lib")" || die "TVM private LLVM: readelf -d failed on ${lib}"
+  symbols="$(readelf --dyn-syms -W "$lib")" || die "TVM private LLVM: readelf --dyn-syms failed on ${lib}"
+  case "$dynamic" in
+    *'Shared library: [libLLVM'*) die "TVM private LLVM: ${lib} needs a shared libLLVM" ;;
+  esac
+  exported="$(printf '%s\n' "$symbols" | awk '$7 != "UND" && $8 ~ /^_ZN4llvm/ { n++ } END { print n + 0 }')"
+  [ "$exported" -eq 0 ] || die "TVM private LLVM: ${lib} exports ${exported} llvm:: symbol(s)"
+  log "TVM private LLVM: ${lib} links LLVM statically and exports none of it"
+  return 0
 }
 
 # No LLVM 23 patch here: versions.env's TVM_COMMIT pins v0.27.0, which carries the guards.
@@ -399,6 +450,7 @@ main() {
   require_toolchain_compilers
   fetch_tvm_source
   patch_tvm_findllvm_dylib_fallback
+  patch_tvm_findllvm_private_static
   resolve_tvm_llvm
 
   if [ "$do_clean" -eq 1 ]; then
@@ -412,6 +464,7 @@ main() {
 
   log "Building TVM (jobs=$jobs, mb_per_job=$mb_per_job)"
   cmake --build "$build_dir" --parallel "$jobs"
+  [ "$llvm_cmake_value" = "OFF" ] || assert_tvm_private_llvm "$build_dir/lib/libtvm_compiler.so"
 
   log "Installing TVM to $prefix"
   cmake --install "$build_dir"

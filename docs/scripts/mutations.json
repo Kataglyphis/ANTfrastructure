@@ -65230,5 +65230,69 @@
   "replace": "    require(Path(runtime.get('engine_wrapper', '')).resolve(strict=True).parents[2] is not None\n",
   "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
   "why": "FINAL binds the guardian to the runtime host tools checkout, so another checkout must refuse at launch"
+ },
+ {
+  "id": "tvm-llvm.private-static-filter",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "      print \"        if(_tvm_llvm_type STREQUAL \\\"STATIC_LIBRARY\\\")\"\n",
+  "replace": "      print \"        if(NOT _tvm_llvm_type STREQUAL \\\"INTERFACE_LIBRARY\\\")\"\n",
+  "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k patch",
+  "why": "only static LLVM targets may reach LLVM_LIBS, or TVM links the libLLVM another LLVM can interpose"
+ },
+ {
+  "id": "tvm-llvm.private-static-layout",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "  [ \"$(grep -c -x -F -e \"$anchor\" \"$findllvm\" || true)\" = 1 ] \\\n",
+  "replace": "  true \\\n",
+  "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k patch",
+  "why": "a moved upstream anchor must refuse, not build silently against the shared LLVM"
+ },
+ {
+  "id": "tvm-llvm.private-static-needed",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "    *'Shared library: [libLLVM'*) die \"TVM private LLVM: ${lib} needs a shared libLLVM\" ;;\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k elf",
+  "why": "a libtvm_compiler that needs a shared libLLVM must fail the build"
+ },
+ {
+  "id": "tvm-llvm.private-static-exported",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "  [ \"$exported\" -eq 0 ] || die",
+  "replace": "  [ \"$exported\" -ge 0 ] || die",
+  "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k elf",
+  "why": "an exported llvm:: symbol lets another LLVM bind to TVM's copy and must fail the build"
+ },
+ {
+  "id": "tvm-llvm.private-static-build-assert",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "  [ \"$llvm_cmake_value\" = \"OFF\" ] || assert_tvm_private_llvm \"$build_dir/lib/libtvm_compiler.so\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k smoke",
+  "why": "every LLVM-enabled TVM build must prove its private static LLVM"
+ },
+ {
+  "id": "tvm-llvm.private-static-main",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "  patch_tvm_findllvm_private_static\n  resolve_tvm_llvm\n",
+  "replace": "  resolve_tvm_llvm\n",
+  "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k smoke",
+  "why": "the FindLLVM patch must run before configure"
+ },
+ {
+  "id": "tvm-llvm.smoke-shared-llvm-mapped",
+  "target": "linux/scripts/06-packaging/smoke-torch-venv.sh",
+  "find": "if shared:\n    print(f\"TVM-CODEGEN FAIL",
+  "replace": "if not shared:\n    print(f\"TVM-CODEGEN FAIL",
+  "test": "bash linux/scripts/tests/test-smoke-arch-parity.sh",
+  "why": "the shipped image must fail when tvm maps a shared LLVM that another LLVM can interpose"
+ },
+ {
+  "id": "tvm-llvm.private-static-available",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "      print \"      set(LLVM_LIBS ${LLVM_AVAILABLE_LIBS})\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k patch",
+  "why": "an installed package maps all to nothing, so the static targets must come from LLVM_AVAILABLE_LIBS"
  }
 ]

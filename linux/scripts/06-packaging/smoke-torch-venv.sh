@@ -220,6 +220,11 @@ from tvm import te
 a = te.placeholder((8,), name="a")
 f = te.create_prim_func([a, te.compute((8,), lambda i: a[i] * 2.0, name="b")])
 (tvm.compile if hasattr(tvm, "compile") else tvm.build)(f, target="llvm")
+with open("/proc/self/maps", encoding="utf-8") as maps:
+    shared = sorted({line.split()[-1] for line in maps if "/libLLVM" in line})
+if shared:
+    print(f"TVM-CODEGEN FAIL: tvm loaded a shared LLVM, which another LLVM can interpose: {shared}")
+    sys.exit(1)
 print(f"TVM-CODEGEN OK: one PrimFunc compiled for llvm (USE_LLVM={llvm})")
 PYEOF
   )"; then rc=0; else rc=$?; fi

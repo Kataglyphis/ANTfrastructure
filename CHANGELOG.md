@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — TVM links a private static LLVM
+
+- `import tvm` crashed in about two of three ROCm app smokes: Torch-ROCm's own LLVM, loaded process-wide,
+  interposed 117 references inside the shared `libLLVM.so.23.1` that TVM linked. `tvm.sh` now links the LLVM
+  archives, which TVM hides, fails a `libtvm_compiler.so` that needs a `libLLVM` or exports `llvm::` symbols, and
+  the runtime codegen smoke fails a process that mapped any `libLLVM`. An installed LLVM package maps `all` to
+  nothing, so the patch takes the static targets from `LLVM_AVAILABLE_LIBS`. Two suites, eight mutations.
+
 ## 2026-11-24 — the runtime storage guardian refuses a placement FINAL cannot read
 
 - `launch-runtime-storage-guard.py launch` now requires the runtime's host tools checkout and revision and a directory
