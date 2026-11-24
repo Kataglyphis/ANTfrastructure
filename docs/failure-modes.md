@@ -24,10 +24,11 @@ lane's `fetch_app_tree` (`assemble-torch-app.sh`) clones the same way.
 
 **Cause.** The branches were built hours apart. TVM's branch installed `scikit-build-core` and
 `setuptools-scm` before it had `packaging`, so pip resolved their dependency to the newest release,
-which came out between the two builds. The merge gate is right to refuse.
+which came out between the two builds. On arm64 the cross path installs `wheel`, which also
+pulls `packaging`. The merge gate is right to refuse.
 
 **Fix.** Name the dependency in the same `Install-CpythonPipPin` call, so its pin applies.
-`Build.PipPins.Tests.ps1` fails a call that installs either tool without `packaging`; extend its
+`Build.PipPins.Tests.ps1` fails a call that installs one of these tools or `wheel` without `packaging`; extend its
 `$toolDeps` map when another build tool pulls an unpinned dependency.
 
 ## Local Docker-loaded GPU image does not resolve by repository@digest

@@ -18,7 +18,7 @@ Describe 'Get-PipPin and the chain''s pip installs (CON89)' {
         $pinned = [System.Collections.Generic.List[string]]::new()
         $unpinnedDeps = [System.Collections.Generic.List[string]]::new()
         # A branch without the dependency yet resolves it to the newest release, and the media merge refuses mixed versions.
-        $toolDeps = @{ 'scikit-build-core' = 'packaging'; 'setuptools-scm' = 'packaging' }
+        $toolDeps = @{ 'scikit-build-core' = 'packaging'; 'setuptools-scm' = 'packaging'; 'wheel' = 'packaging' }
         foreach ($script in Get-Item -Path (Join-Path (Get-RepoRoot) 'windows\scripts\build\*.ps1')) {
             $ast = Get-TestScriptAst -ScriptPath $script.FullName
             foreach ($call in Get-TestAstCommands -Ast $ast -Name 'Invoke-CpythonPip') {
