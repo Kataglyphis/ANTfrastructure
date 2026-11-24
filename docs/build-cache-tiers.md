@@ -1000,8 +1000,8 @@ a file written there would not enter the committed layer. The later compiler
 image contains no such file. The successful build, upload drain and later
 cached solves cannot identify those 186 causes.
 
-The versioned read-only cache reader now has exact native ORT Media CPU,
-GPU/plugin, Wasm and app-wheelhouse outer-RUN profiles. The same host tools can
+The versioned read-only cache reader has Media profiles for native ORT CPU,
+GPU/plugin, Wasm, OpenCV and the app wheelhouse. The same host tools can
 retain four stable IREE target CMake/Ninja inputs from the actual Media wheelhouse
 process, selected explicitly and bound to its live unit, start identity and tree. Preserve the selected process start
 identity and final-drain lifetime; a wrong phase or child command refuses.
@@ -1179,9 +1179,12 @@ and device code one each, PTX and CUBIN five each, with no repeat misses, errors
 or forced recaches. Both phases retain exactly one noncacheable `-M` dependency
 scan and one internal outer-driver execution; another reason or count fails.
 Raw proof is under `logs/test-results/webgpu-registration-20261110/opencv-cache-replay-output-6/`.
-This is one legacy FindCUDA kernel, not the complete OpenCV stage, remote-cache
-reuse or GPU inference. The next media rebuild must still prove that full stage;
-the non-x86 Torch follow-up above and consumer Rust cache wiring remain open.
+The probe measures a single legacy FindCUDA kernel. On the next full NVIDIA Media
+rebuild, capture the outer OpenCV RUN and its final cache drain with the
+[`opencv` phase](local-proof-workflows.md#live-cache-log-retention). Retain the
+generated object rules, CUDA and host compiler selection, and raw stage counters.
+The full-stage measurement, remote cache reuse, non-x86 Torch and consumer Rust
+cache wiring remain open.
 
 **CUDA cache counters describe subcommands.** The pinned implementation leaves the
 outer nvcc driver uncached and expands its dry run on every invocation so host-only

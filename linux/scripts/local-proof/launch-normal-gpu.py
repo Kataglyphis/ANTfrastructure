@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch the ordinary ROCm amd64 GPU stage from its qualified exact SDK; no rebuilt backend or final acceptance is implied."""
+"""Launch an ordinary ROCm or NVIDIA GPU stage from its exact qualified SDK; no final acceptance."""
 
 from __future__ import annotations
 
@@ -20,8 +20,9 @@ if TYPE_CHECKING:
     from proof_types import Json
 
 
-def sdk_parent(plan: Json, invocation: Path, proof_path: Path) -> tuple[Json, Path]:
+def sdk_parent(plan: Json, invocation: Path, proof_path: Path, *, arch: str = 'amd64') -> tuple[Json, Path]:
     subject = load_subject(plan, invocation)
+    assert subject['kind'] == 'sdk-' + arch, 'SDK parent target differs'
     proof, context, native = parent_layout(proof_path)
     assert proof['status'] == 'passed-qualified-native-SDK-OCI-and-compiler-ancestry' and proof['SDK_built'] is True, 'Actual SDK OCI required'
     assert proof['source_revision'] == plan['source_revision'] and proof['subject'] == subject, 'SDK source or subject differs'
@@ -48,7 +49,18 @@ def main() -> int:
     parser.add_argument('--image-repo', required=True)
     parser.add_argument('--gpu-source', type=Path)
     parser.add_argument('--gpu-source-proof', type=Path)
+    parser.add_argument('--variant', choices=('rocm', 'nvidia'), default='rocm')
+    parser.add_argument('--arch', choices=('amd64', 'arm64'), default='amd64')
     args = parser.parse_args()
+    if args.variant == 'nvidia':
+        from nvidia_handoff_profile import launch_nvidia_gpu
+
+        if args.gpu_source is not None or args.gpu_source_proof is not None:
+            parser.error('NVIDIA must retain its exact qualified SDK source')
+        return launch_nvidia_gpu(args.compiler_plan, args.sdk_invocation, args.parent_proof,
+                                 args.output.resolve(), args.unit, args.image_repo, args.arch)
+    if args.arch != 'amd64':
+        parser.error('Ordinary ROCm GPU requires amd64')
     plan = json.loads(args.compiler_plan.read_text())
     source = Path(plan['source'])
     full_path = Path(plan['full_source_preflight_proof'])

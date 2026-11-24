@@ -176,6 +176,8 @@ parse_common_args() {
   export SKIP_DEP_INSTALL ORT_WASM_WEBGPU_FLAVORS
 }
 
+genai_extensions_src_dir() { printf '%s/.pinned-deps/onnxruntime-extensions\n' "${GENAI_SRC_DIR}"; }
+
 validate_build_type() {
   local v="$1"
   local flag="$2"

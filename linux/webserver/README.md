@@ -87,9 +87,9 @@ fetch, and the glyph draws as an empty box.
 - **The family image holds them already** (CON147): the SDK stage fills `/opt/flutter-fallback-fonts`
   once and makes it read-only, and `KATAGLYPHIS_FONT_STORE` names it. The fetcher copies from there
   first, so a build downloads nothing; the cache serves only a file the store lacks.
-- **The lock holds every chunk of Noto Color Emoji and Noto Sans Symbols 2**, 18 files, 2.3 MiB
-  (2026-10-21): the families jonasheinle.de's content asked for. The engine loads a chunk only
-  when a glyph needs it. All 144 families are 724 files, 20.7 MiB, most of it CJK.
+- The Flutter 3.50.1 lock holds 16 files for the two families used by jonasheinle.de. It includes
+  every Noto Color Emoji v39 and Noto Sans Symbols 2 v25 chunk. The engine loads a chunk when a
+  glyph needs it.
 - **A Flutter bump can move the paths.** The fetcher reads the engine's
   `font_fallback_data.dart` in the image's SDK and fails on a locked file the engine no longer
   requests, or a chunk of a locked family the lock lacks. Re-pin with

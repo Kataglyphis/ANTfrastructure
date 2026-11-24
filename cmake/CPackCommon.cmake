@@ -277,6 +277,77 @@ set(_KATAGLYPHIS_BUNDLE_LOADER "${CMAKE_CURRENT_LIST_DIR}/../linux/scripts/06-pa
 set(_KATAGLYPHIS_PATCHELF_KEEP_GLIBC "${CMAKE_CURRENT_LIST_DIR}/../linux/scripts/06-packaging/patchelf-keep-glibc.sh")
 
 # The Linux twin of kataglyphis_install_package_dlls; arguments: docs/linux-build-basics.md#linux-packages-that-run-outside-the-image
+function(
+  kataglyphis_linux_immutable_helpers
+  out_code
+  out_keep
+  out_protect
+  out_verify
+  private_dir
+  external_paths)
+  set(_code "")
+  set(_keep "")
+  set(_protect)
+  set(_verify "")
+  set(_names)
+  if(ARGN)
+    foreach(_directory "${CMAKE_INSTALL_LIBDIR}" "${private_dir}")
+      if(NOT
+         _directory
+         MATCHES
+         "^[A-Za-z0-9_./+ -]+$"
+         OR IS_ABSOLUTE "${_directory}"
+         OR _directory MATCHES "(^|/)\\.\\.?(/|$)|/$")
+        message(FATAL_ERROR "IMMUTABLE_HELPERS requires literal relative library directories: '${_directory}'")
+      endif()
+    endforeach()
+  endif()
+  foreach(_path IN LISTS ARGN)
+    if(NOT
+       _path
+       MATCHES
+       "^[A-Za-z0-9_./+ -]+$"
+       OR IS_ABSOLUTE "${_path}"
+       OR _path MATCHES "(^|/)\\.\\.?(/|$)|/$")
+      message(FATAL_ERROR "IMMUTABLE_HELPERS requires a literal safe relative executable path: '${_path}'")
+    endif()
+    get_filename_component(_name "${_path}" NAME)
+    if(_name IN_LIST _names)
+      message(FATAL_ERROR "IMMUTABLE_HELPERS contains a colliding executable basename: '${_name}'")
+    endif()
+    list(APPEND _names "${_name}")
+    list(LENGTH _names _index)
+    list(APPEND _protect "${CMAKE_INSTALL_LIBDIR}/${private_dir}/${_name}-bin")
+    string(APPEND _keep " --keep-name \"${_name}-bin\"")
+    set(_external "")
+    if(external_paths)
+      set(_external "--external-library-path")
+    endif()
+    string(APPEND _code "file(SHA256 \"\${_kg_root}/${_path}\" _kg_helper_expected_${_index})
+execute_process(COMMAND bash \"${_KATAGLYPHIS_BUNDLE_LOADER}\" --preserve-bytes ${_external} \"\${_kg_root}\"
+  \"\${_kg_root}/${CMAKE_INSTALL_LIBDIR}/${private_dir}\" \"${_path}\" COMMAND_ERROR_IS_FATAL ANY)\n")
+    string(
+      APPEND
+      _verify
+      "file(SHA256 \"\${_kg_root}/${CMAKE_INSTALL_LIBDIR}/${private_dir}/${_name}-bin\" _kg_helper_actual_${_index})
+if(NOT _kg_helper_actual_${_index} STREQUAL _kg_helper_expected_${_index})
+  message(FATAL_ERROR \"Immutable helper bytes changed after the ELF closure: ${_path}\")
+endif()\n")
+  endforeach()
+  set(${out_code}
+      "${_code}"
+      PARENT_SCOPE)
+  set(${out_keep}
+      "${_keep}"
+      PARENT_SCOPE)
+  set(${out_protect}
+      "${_protect}"
+      PARENT_SCOPE)
+  set(${out_verify}
+      "${_verify}"
+      PARENT_SCOPE)
+endfunction()
+
 function(kataglyphis_install_linux_closure)
   # Embedded (AccelerANTgine in OmniAccelerANT's plugin), it would rewrite the parent's install tree, ORT included.
   if(NOT
@@ -290,7 +361,7 @@ function(kataglyphis_install_linux_closure)
     ARG
     "LOADER;EXTERNAL_LIBRARY_PATH;NO_DEFAULT_SYSTEM;PRESERVE_ORT_IN_APPIMAGE"
     "PRIVATE_DIR"
-    "TARGETS;SEARCH;SYSTEM;PROTECT"
+    "TARGETS;SEARCH;SYSTEM;PROTECT;IMMUTABLE_HELPERS"
     ${ARGN})
   if(NOT ARG_PRIVATE_DIR OR NOT ARG_TARGETS)
     message(FATAL_ERROR "kataglyphis_install_linux_closure: PRIVATE_DIR and TARGETS are required")
@@ -298,11 +369,23 @@ function(kataglyphis_install_linux_closure)
   if(ARG_EXTERNAL_LIBRARY_PATH AND NOT ARG_LOADER)
     message(FATAL_ERROR "kataglyphis_install_linux_closure: EXTERNAL_LIBRARY_PATH requires LOADER")
   endif()
+  if(ARG_IMMUTABLE_HELPERS AND NOT ARG_LOADER)
+    message(FATAL_ERROR "kataglyphis_install_linux_closure: IMMUTABLE_HELPERS requires LOADER")
+  endif()
   if(ARG_PRESERVE_ORT_IN_APPIMAGE AND NOT ARG_EXTERNAL_LIBRARY_PATH)
     message(FATAL_ERROR "kataglyphis_install_linux_closure: PRESERVE_ORT_IN_APPIMAGE requires EXTERNAL_LIBRARY_PATH")
   endif()
 
   include(GNUInstallDirs)
+  kataglyphis_linux_immutable_helpers(
+    _helper_code
+    _helper_keep
+    _helper_protect
+    _helper_verify
+    "${ARG_PRIVATE_DIR}"
+    "${ARG_EXTERNAL_LIBRARY_PATH}"
+    ${ARG_IMMUTABLE_HELPERS})
+  list(APPEND ARG_PROTECT ${_helper_protect})
   set(_libdir "${CMAKE_INSTALL_LIBDIR}")
   file(
     RELATIVE_PATH
@@ -381,11 +464,15 @@ function(kataglyphis_install_linux_closure)
       set(_external_loader_flag "--external-library-path")
     endif()
     # The AppImage generator would patch the bundled loader, which then segfaults (measured 2026-10-17).
-    if(ARG_PRESERVE_ORT_IN_APPIMAGE)
+    if(ARG_PRESERVE_ORT_IN_APPIMAGE OR ARG_IMMUTABLE_HELPERS)
       set(_keep_ort_wrapper "${PROJECT_BINARY_DIR}/tools/patchelf-keep-glibc-and-ort.sh")
+      set(_keep_ort "")
+      if(ARG_PRESERVE_ORT_IN_APPIMAGE)
+        set(_keep_ort " --keep-ort")
+      endif()
       file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
       file(WRITE "${_keep_ort_wrapper}"
-           "#!/usr/bin/env bash\nexec bash \"${_KATAGLYPHIS_PATCHELF_KEEP_GLIBC}\" --keep-ort \"$@\"\n")
+           "#!/usr/bin/env bash\nexec bash \"${_KATAGLYPHIS_PATCHELF_KEEP_GLIBC}\"${_keep_ort}${_helper_keep} \"$@\"\n")
       file(
         CHMOD
         "${_keep_ort_wrapper}"
@@ -409,16 +496,20 @@ function(kataglyphis_install_linux_closure)
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS
         OFF
         PARENT_SCOPE)
-    set(_loader_step
-        "execute_process(COMMAND bash \"${_KATAGLYPHIS_BUNDLE_LOADER}\" ${_external_loader_flag} \"\${_kg_root}\"
+    if(_loader_args OR NOT ARG_IMMUTABLE_HELPERS)
+      set(_loader_step
+          "execute_process(COMMAND bash \"${_KATAGLYPHIS_BUNDLE_LOADER}\" ${_external_loader_flag} \"\${_kg_root}\"
   \"\${_kg_root}/${_libdir}/${ARG_PRIVATE_DIR}\"${_loader_args} COMMAND_ERROR_IS_FATAL ANY)
 ")
+    endif()
   endif()
 
   # Last install rule: it walks the staged tree each CPack generator is about to pack.
-  install(CODE "set(_kg_root \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}\")
-${_loader_step}execute_process(COMMAND bash \"${_KATAGLYPHIS_ELF_CLOSURE}\" --bundle \"\${_kg_root}\"
-  --lib-dir \"\${_kg_root}/${_libdir}/${ARG_PRIVATE_DIR}\"${_argstr} COMMAND_ERROR_IS_FATAL ANY)")
+  install(
+    CODE "set(_kg_root \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}\")
+${_helper_code}${_loader_step}execute_process(COMMAND bash \"${_KATAGLYPHIS_ELF_CLOSURE}\" --bundle \"\${_kg_root}\"
+  --lib-dir \"\${_kg_root}/${_libdir}/${ARG_PRIVATE_DIR}\"${_argstr} COMMAND_ERROR_IS_FATAL ANY)
+${_helper_verify}")
 endfunction()
 
 macro(kataglyphis_cpack_common)

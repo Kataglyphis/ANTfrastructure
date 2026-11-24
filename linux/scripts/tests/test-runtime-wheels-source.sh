@@ -21,6 +21,7 @@ export RUNTIME_SMOKE_OVERLAP=0
 _FNS+=$'\n'"$(rw_fns "${CTX}" runtime_pushes_wrapper_images runtime_pushes_intermediate_images \
   runtime_use_local_artifact_context runtime_artifact_context_dir runtime_artifact_context_ref \
   _with_throwaway_container _export_cid_wheels runtime_wheels_context_dir)" || exit 1
+_FNS+=$'\n'"$(rw_fns "${SCRIPTS}/01-core/tag-naming.sh" runtime_artifact_platform)" || exit 1
 
 # Recorders below the wrapper build; EXPORT_WHEELS=0 exports an empty /opt/wheels, EXPORT_RC fails the export.
 _STUBS='log() { printf "%s\n" "$*"; }
@@ -30,6 +31,7 @@ _bool_truthy() { case "${1:-0}" in 1|true|yes|on) return 0 ;; esac; return 1; }
 trap_push() { printf "TRAP %s\n" "$1" >> "${BLOG}"; }
 runtime_android_pin() { printf "%s" "${PIN:-}"; }
 cross_build_host_infix() { printf "%s" "${INFIX:-}"; }
+cross_build_platform() { printf "%s" "${CROSS_BUILD_PLATFORM-linux/amd64}"; }
 cross_variant() { :; }
 cross_android_tag() { printf "repo:cross-android%s-%s" "${INFIX:-}" "$1"; }
 runtime_artifact_image_ref() { printf "repo:cross-android-other-%s" "$1"; }
@@ -132,8 +134,9 @@ t_assert_eq ". " "$(_wheels_tail)" "the same under ARTIFACT_CONTEXT_ROOT (the em
 t_assert_eq "" "$(cat "${NLOG}")" "and no containerd extraction"
 _fresh
 RUNTIME_WHEELS_SOURCE=image ARTIFACT_CONTEXT_ROOT="${WORK}/aa" INFIX=-hostarm64 _run "${_LANE}" >/dev/null
-t_assert_eq "--build-arg WHEELS_IMAGE=repo:cross-android-hostarm64-arm64 --build-context repo:cross-android-hostarm64-arm64=${WORK}/wheels-arm64 . " \
+t_assert_eq "--build-arg WHEELS_IMAGE=runtime_wheels --build-context runtime_wheels=${WORK}/wheels-arm64 . " \
   "$(_wheels_tail)" "a no-push native host keeps its containerd extraction"
+t_assert_contains "$(cat "${NLOG}")" "create repo:cross-android-hostarm64-arm64 /bin/true" "extraction keeps the actual native Android reference"
 t_assert_contains "$(cat "${NLOG}")" "export cid42" "through nerdctl export, as before"
 
 t_case "export mode: the wheelhouse is staged from the SAME image before the package build"
@@ -168,6 +171,8 @@ _fresh; _layout '{"schemaVersion":2,"manifests":[{"mediaType":"x","digest":"'"${
 _out="$(RUNTIME_WHEELS_SOURCE='export' ARTIFACT_CONTEXT_ROOT="${WORK}/aa" INFIX=-hostarm64 LOCAL_DIGEST="${_D1}" _run "${_LANE}")"
 t_assert_contains "$(_nth export | tr '\n' ' ')" "--build-arg WHEELS_IMAGE=runtime_artifact --build-context runtime_artifact=oci-layout://${WORK}/aa-arm64 . " \
   "the export takes the layout the package build reads"
+t_assert_contains "$(_nth export | tr '\n' ' ')" "--platform linux/amd64 --target wheels-export" "the local cross export reads the Android host platform"
+t_assert_contains "$(_nth wrapper | tr '\n' ' ')" "--platform linux/arm64" "the wrapper still builds the target platform"
 t_assert_contains "$(cat "${NLOG}")" "image inspect --mode=native" "after reading the containerd image's digest"
 t_assert_eq "" "$(grep -E '^(create|export) ' "${NLOG}" || true)" "and never streams the rootfs through nerdctl export"
 t_assert_contains "$(_events)" "WRAPPER-SAW-WHEELS" "the wrapper still gets the staged directory"
@@ -196,7 +201,7 @@ for _pulled in "" 1; do
 done
 _fresh; _layout '{"schemaVersion":2,"manifests":[{"mediaType":"x","digest":"'"${_D1}"'","size":1}]}'
 RUNTIME_WHEELS_SOURCE=image ARTIFACT_CONTEXT_ROOT="${WORK}/aa" PIN="${_R}" LOCAL_DIGEST="${_D1}" _run "${_LANE}" >/dev/null
-t_assert_eq "--build-arg WHEELS_IMAGE=${_R} --build-context ${_R}=${WORK}/wheels-arm64 . " "$(_wheels_tail)" \
+t_assert_eq "--build-arg WHEELS_IMAGE=runtime_wheels --build-context runtime_wheels=${WORK}/wheels-arm64 . " "$(_wheels_tail)" \
   "image mode there mounts the PUBLISHED android's wheelhouse (predates the knob, unchanged)"
 t_assert_contains "$(cat "${NLOG}")" "create ${_R} /bin/true" "extracted from a container of the registry's digest"
 

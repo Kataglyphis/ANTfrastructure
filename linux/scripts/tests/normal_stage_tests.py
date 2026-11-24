@@ -191,18 +191,20 @@ class StageTests(unittest.TestCase):
         self.actual = [{'Id':proof['config'],'RepoDigests':['ant-local/webgpu-fixture@' + proof['manifest']]}]
         return {'source_revision':'synthetic-fixture'},self.work / 'SDK invocation.json',proof_path,proof
 
-    def check_parent(self, plan: dict[str, Any], invocation: Path, proof_path: Path) -> tuple[dict[str, Any], Path]:
+    def check_parent(self, plan: dict[str, Any], invocation: Path, proof_path: Path, *, arch: str = 'amd64') -> tuple[dict[str, Any], Path]:
         qualify = mock.Mock(return_value=self.qualified)
         with mock.patch.dict(GPU['sdk_parent'].__globals__,{'load_subject':mock.Mock(return_value=self.subject),
                              'checked_run':mock.Mock(return_value=subprocess.CompletedProcess([],0,json.dumps(self.actual),''))}), \
                 mock.patch.object(runpy,'run_path',return_value={'qualification':qualify}):
-            result = GPU['sdk_parent'](plan,invocation,proof_path)
+            result = GPU['sdk_parent'](plan,invocation,proof_path,arch=arch)
         qualify.assert_called_once_with(Path(result[0]['qualification_proof']),plan,invocation)
         return result
 
     def test_sdk_parent_real_blobs_and_refusals(self) -> None:
         plan,invocation,path,proof = self.parent_fixture()
         self.assertEqual(self.check_parent(plan,invocation,path)[0],proof)
+        with self.assertRaisesRegex(AssertionError, 'SDK parent target differs'):
+            self.check_parent(plan,invocation,path,arch='arm64')
         for field,value in [('status','pending'), ('SDK_built',False), ('source_revision','different'), ('subject',{}),
                             ('parent_layer_reuse_verified',False), ('export_transport',{'producer_status':47,'extractor_status':0}),
                             ('matched_compiler_layers_and_diffIDs',25), ('qualification_sha256','wrong')]:

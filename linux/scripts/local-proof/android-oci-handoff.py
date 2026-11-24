@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export actual ordinary ROCm Android with native Media ancestry; no licence, inference or FINAL acceptance."""
+"""Export ordinary Android with native Media ancestry; no licence, inference or FINAL acceptance."""
 
 import runpy
 from pathlib import Path

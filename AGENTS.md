@@ -70,6 +70,7 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    remains advisory and preserves the completed promotion.
    Successful consumers retain their versioned checkouts, recursive Git stores and logs; safe layer cleanup must not delete them.
    Working-source copies retain the selected base and exact staged index, including staged gitlinks; an independently checked-out child must not replace that index. Bind actual child trees separately, and keep committed-tree acceptance strict.
+   Independent Git copies retain configured origin URLs and their order; local cloning must not replace repository identity. Origin metadata does not authenticate sources or qualify workflows.
    Independent source copies wait for the consumer log and recheck clean bytes and independent objects on reuse. Manual promotion also preserves
    the target's runtime platforms; an early shell-gate override cannot bypass acceptance.
    Native consumer CI pins the image, exact clean tooling and all recursive source snapshots;
@@ -87,6 +88,8 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    failed container cleanup or ownership restoration cannot produce a passed receipt.
    Combined WebGPU media factory acceptance requires native/GIL/FT plus fresh Asyncify and JSPI replay at one exact ORT revision; partial receipts cannot stand for the combined result.
    Six-lane Media command preparation keeps SDK parents for default targets and GPU parents for accelerators; NVIDIA arm64 requires SBSA. Prepared commands do not qualify parent ancestry or authorize a launch.
+   Default Media launches match the SDK target and recheck exact source and compiler ancestry before shared idle-host admission; retain the 300 GiB minimum and both required Wasm modes.
+   NVIDIA amd64 and arm64/SBSA GPU, Media and Android handoffs require the same-target SDK, verified native OCI ancestry, baked CUDA/TensorRT environment and both Media Wasm modes. Carry `nvidia_handoff_profile.py` with the shared export worker and preserve the target suffix on the Android context.
    Fake sccache server startup tests clear inherited cache-chain settings in their child environments; retain the explicit inherited-setting regression and original fallback assertions.
    Isolated preflight mirror opt-ins use the shared Ubuntu rewrite before apt; retain signed source metadata, the recorded URL and default-off behavior.
    Relocate only closed, Git-ignored quality venvs to a different existing tmpfs; shared inodes, nonregular payloads or changed canonical archive bytes cannot produce a receipt.
@@ -121,16 +124,18 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    Wheel unpack/pack transport keeps Python argument boundaries and raw status; packaging execution keeps best-effort and sudo failure policies separate.
    Cross-Clang wrappers use the filesystem-root sysroot with Debian's absolute target linker scripts; foreign target trees remain mandatory. Independent image probes require that same root and reject the old double-root wrappers.
    Copied compiler/SDK qualifiers and OCI handoffs carry `proof_subject.py` and `proof_commands.py`; SDK profiles bind the actual invocation, complete source and compiler parent, both native shell modes and all compiler ancestor layers. Never retarget a compiler plan to represent an SDK.
+   Foreign SDK proofs keep the Linux amd64 build image, both target driver ELF checks and both target QEMU executions in each shell mode.
    Copied live configure snapshots carry their cache reader/profile, native OCI layout/seed and command companions; require a live matching process, stable before/after source and copied bytes, bounded regular files, fresh output and no source/output overlap.
    Copied cache log readers/replayers/sealers carry `cache_capture_profile.py`; retain actual PID/start identity, existing regular-file and live inode checks, input hashes, bounded named units and explicit partial-timeout verdicts.
    Copied normal SDK/GPU launchers carry `normal_stage_launch.py`; GPU admission requires the exact qualified SDK, rehashed native blobs and compiler ancestry, complete source proof, fresh local alias, idle host and unchanged disk floor.
    The normal AMD producer loads all seven recorded source entry libraries after shared ROCm path publication and ldconfig; preserve selected-byte checks, fatal dependency failures and ASAN exclusion. Selected loads do not prove complete ABI, licence closure or inference.
-   Copied native OCI handoffs also carry `native_oci_layout.py` and `native_oci_seed.py`; parent-seeded context exports require these helpers beside the core layout, a fresh destination, immutable verified layer links, independent child metadata and both raw transport statuses. Hash and ancestry checks remain mandatory after sharing. New link receipts use schema 2 with device/inode, size, mode, owner and mtime checks; later links may advance ctime. Schema 1 retains its strict ctime policy. Default amd64 Media/Android byte parents use their own explicit statuses.
+   Copied native OCI handoffs also carry `native_oci_layout.py` and `native_oci_seed.py`; parent-seeded context exports require these helpers beside the core layout, a fresh destination, immutable verified layer links, independent child metadata and both raw transport statuses. Hash and ancestry checks remain mandatory after sharing. New link receipts use schema 2 with device/inode, size, mode, owner and mtime checks; later links may advance ctime. Schema 1 retains its strict ctime policy. Default Media and Android handoffs carry `default_handoff_profile.py` and the SDK/Media launch companions; require each target's own receipt scope, exact parent and baked cross environment.
    Compiler smoke callbacks stay unconditional; preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses.
    Isolated native workers preserve nonzero clock errors before launch and during supervision; absent errno becomes EIO. Keep optimized fatal-warning compilation and actual killed/reaped child controls.
    The hooks' host-red helper imports the canonical logging bootstrap; copied helpers retain it and the existing positive library-import controls.
    Optional Cargo release JSON paths are paired, distinct regular outputs cleared before wrapper setup; retain the whole workspace then explicit CLI, their original alias parse points, raw failures and one unfiltered invocation per stream.
    Cache launcher sites initialize their parent environment directly before resolution; required callers propagate raw failure with an explicit guard and legacy callers retain their advisory fallback. Cache-policy scans canonicalize their root before excluding tests and prove a planted bare call is visible through tests/.. inputs. Isolated C/C++ fixture compilers require the canonical cache owner and both launcher APIs, keep optimized/ASAN flags and capture raw compiler/cache status; a cache infrastructure failure cannot bypass the guarded launcher.
+   Cache diagnostic fixtures isolate automatic socket/port defaults in their child and prove explicit caller addresses survive; never unset the real capture environment.
    ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions.
    Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.
    Locked tool installs also require `uv-image-overlay.sh` beside `python_uv.sh`; copied code-quality libraries carry `quality/cmake-format/{pyproject.toml,uv.lock}` and retain the Python 3.15 lexer patch.
@@ -162,13 +167,16 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    CK host consumer probes select the exact installed package and library, compare original header bytes and retain child failures; metadata alone does not prove linkage or GPU inference.
    Native MIGraphX CMake plans share caller-array initialization and NUL argument recording; copied CK verification entries carry their CMake/C++ project and existing shared companions.
    The plugin QNN EP stage checks the module, both exports and the HTP backend beside it on arm64; the CPU prefix refuses an in-tree QNN provider.
+   Native plugin appends keep external-device reuse explicit; validate module and owned-path bindings first, retain raw enumeration failures and never claim an external registration as owned.
+   Native module fallback compares the queried file-status type and preserves errors for dangling bundle links; exact consumer mirrors keep their conservative filesystem guards.
+   Native external-registration mutation controls compile and link each variant before requiring an assertion or independent count failure; crashes, malformed reports and tool failures never count as semantic evidence.
    The GPU prefix refuses an in-tree TensorRT provider and requires the CUDA module's plugin exports; the TensorRT plugin stage runs on nvidia images with TensorRT.
    Native and C++ WASM WebGPU select `--use_webgpu static_plugin`; retain native external Dawn and Emscripten's integrated Dawn.
    Check the configured flags on CPU, NVIDIA, free-threaded, Asyncify and JSPI builds; explicit opt-outs prove OFF.
    Record both WASM products before their configured trees change; reuse the shared pool only after its source, mode, direct recipe and every artifact hash pass.
    Both WASM factory receipts require the real linked C export, exact unregister/negative controls, raw Node success and unchanged module/loader/recipe bytes; initialization or Dawn instance creation is insufficient.
    Instrumented WASM products carry the Hub probe's original MIT notice as a hash-bound sidecar; keep the companion identical to the root LICENSE and refuse foreign or linked destinations.
-   CON233 media chains forward ORT_WEB_REQUIRED=1 and require both flavors; preserve strict failures through the cache wrapper and after JS staging.
+   CON233 media chains forward ORT_WEB_REQUIRED=1 and require fresh Node factory replays of both delivered flavors after JS staging; preserve strict failures and the explicit disabled-flavor check.
    Copied WASM proof modules carry the build-proof/runtime modules and webgpu-factory-probe companions; copied suites carry wasm_proof_fixture.py and its independent node fixture.
    Python proof suites carry python-proof-fixture.sh; raw zero, a nonempty executed unittest suite and its successful summary are all required.
    Native/GIL and free-threaded builds carry `ort-webgpu-build-proof.py`; record each linker product before its configured tree changes.
@@ -271,6 +279,7 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order.
    Copied `app-packaging.sh` carries `app-packaging-license.sh` and `app-packaging-entrypoint.sh`; both it and `pe-icon-tools.sh` carry `log-bootstrap.sh` in the shared lib layout. Package the original project license and validate declared texts in built artifacts. The standalone entrypoint selector also imports the canonical logging bootstrap.
    Native and Python app DEBs use gzip compression and root-owned payloads; retain both properties when changing their builders.
+   Immutable Linux helpers use the shared byte-preserving launcher and AppImage patcher; retain exact private-payload protection, final staged hashes, safe unique paths and raw worker statuses. Finished consumer packages still require their own binary proofs.
    Linux TAR selection uses the shared bundle resolver and propagates its failure; keep explicit staged trees, default Flutter paths and the separate Android APK source policy.
    Python DEB discovery rejects a host library with multiple reported package owners; retain that refusal without assuming it proves architecture or loader selection.
    Shared bundle DEBs must store payload entries as uid 0 and gid 0 even when built by an unprivileged container user.
@@ -287,6 +296,7 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    Windows GPU producer resolution requires an explicit package layout and checks matching versions and vendor across package names; Windows ARM GPU tuples remain unsupported.
    Reusable GPU workflow invocation scopes use the shared validated suffix for artifact names and job concurrency; raw caller input must not cancel a valid invocation before validation.
    GPU artifact staging checks the raw archive digest, both required check receipts and exact expanded files before atomic no-replace publication; trusted callers remain responsible for receipt provenance and hardware checks.
+   Shared Python runtime protocols mark unused positional-only arguments with an underscore; copy the canonical module and retain strict consumer dead-code grading.
    GPU detector parity uses the shared two-cats comparator; validate the CPU baseline before using `--pairwise` for repeats, and require real provider profiles and matched results. For repeated inference, `verify_ort_profile.py --min-runs` requires provider operators in every complete sequential run; process identity alone does not prove one session.
    GPU loader-origin checks use `shared/python/verify_ort_loader_trace.py`; profile-bound checks select the matching PID trace and retain the canonical provider/run verdict. Every selected ORT/plugin record must match that PID, including duplicate records; unrelated fork-child libraries may share the trace. Paths and process identity do not prove bytes or one ORT session.
    Loader trace parent segments require explicit live root resolution, normalized package-directory agreement and actual containment; CLI roots remain canonical, and raw trace paths stay in the receipt.
@@ -318,6 +328,7 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    Windows ORT license staging matches the shipped DLL's SHA256 against exactly one wheel before copying both original texts; copied `WindowsOrtLicense.Common.psm1` carries its provenance, MSI and Python-wheel companions.
    When selected Windows ORT providers are supplied, their bytes must match that same wheel before its texts are copied.
    Finished-package binary checks use streaming exact hashes, not text-license normalization; copied `WindowsPackageBinary.Common.psm1` carries the MSI module and both Python verifiers, and MSI members map through the File and Media tables.
+   Linux directory, TAR and DEB byte checks reject ambiguous or nonregular selected members and failed dpkg transport. Native AppImage file readers share extraction and select the exact text or binary verifier; copied archive-check suites carry `package_binary_empty_tests.py`; copies retain `appimage-verification.sh`, `01-core/platform.sh` and both Python verifiers.
    Python app packages that contain Windows ORT must compare the installed texts with the matched wheel and check them in ZIP, MSI and MSIX; apps without ORT remain supported.
    Linux ORT license staging compares every selected native ELF with one wheel, directly or after target-compatible stripping; copied `stage-ort-wheel-licenses.py` carries `ort_census_probe.py`, and the shell companion carries both package verifiers.
    Explicit native original-byte staging validates every selected library and notice before writing; replace only unchanged regular files inside the bundle and retain per-file failure/cleanup verdicts.
@@ -342,6 +353,8 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    Isolated preflight installs the source-pinned managed FT interpreter, retains it across env-i and refuses wrong versions, enabled GILs or missing headers before running gates.
    Stream receipt suites carry `stream-receipt-fixture.sh`; keep their expected results independent of production code.
    Wheelhouse stderr fixtures pin child locale to C.UTF-8; retain both parent-locale controls and original receipt bytes.
+   Default runtime handoffs retain the exact Android/source receipt and 300-GiB admission. A local OCI wheel export selects the Android build-host platform; the wrapper keeps the target architecture. Local FINAL binds the same Android receipt and runtime worker closure.
+   NVIDIA runtime and local FINAL bind the exact same-target stopped Android export, its Media receipt and its OCI index. Preserve the CUDA backend, SBSA selection, amd64 wheel export, target wrapper and 300-GiB admission. FINAL requires these flags as actual systemd environment arguments.
    Named mutation-check suites carry their case-executor companion; failed controls and invalid recipes remain failed results.
    Shared mirror enumeration preserves source-file order and original shell-option behavior; artifact and image probes retain caller failure policies.
    ORT and GenAI provenance checks share hashing and chain-byte membership; keep their distinct archive and exemption policies.
@@ -438,6 +451,7 @@ Windows ONNX source recovery must retain the full release commit, matching versi
 
    Reviewed OCI archive deduplication uses its versioned preview/apply helper, preserves equal bytes and stable metadata, and excludes receipt-bound or externally linked inodes; copy its host-command and native-OCI companions together.
    Retire closed temporary quality installations only after closure hashes and a durable archive comparison match; retain source trees, packages and shared compiler/Cargo/uv caches.
+   Copied package staging retirement requires the closed producer, fresh absence/mount observations, exact preview and retained archive hashes; remove only its three declared copied trees and preserve home caches, compiler targets, sources and receipts.
 
 ## Container Architecture
 
@@ -555,6 +569,8 @@ The rules below stay here:
 - Compiler-plan copies carry `compiler_plan_profile.py`, `compiler_unique_profile.py`, `proof_profiles.py` and `native_oci_layout.py`; retain original profiles and record reviewed deltas without rewriting the old reference. The explicit GNU_UNIQUE profile binds its exact source, compiler6 inputs and normal matched-hook count; copied profile suites carry their shared fixture module.
 - The HIP smoke requests raw device ELF with `--no-gpu-bundle-output`; copied GPU launchers carry `gpu_source_profile.py`. An explicit alternate source requires the exact reviewed HIP, backend-install or runtime-load repair and its own complete preflight while preserving the original qualified SDK identity. Tool and documentation descendants do not inherit that production proof.
 - Local GPU-to-Media handoffs rehash native OCI bytes and SDK layer/diffID ancestry; require the actual terminal GPU producer, exact source proof and bounded export before ordinary Media with both required Wasm modes. Resolve the immutable local manifest ID independently against the tagged config before export; Media retains its repository@digest and native-context binding.
+- Ordinary local Media launches require at least 300 GiB available across the default, ROCm and NVIDIA lanes. A stricter plan still applies.
+- A ROCm Media source newer than its GPU parent requires `media_source_profile.py`: ancestry, its own complete source proof and byte-identical compiler, SDK and GPU inputs, rechecked at the Media export ([alternate Media source](docs/local-proof-workflows.md#a-media-source-newer-than-its-gpu-parent)).
 - Local Media-to-Android handoffs retain the same exact source/command checks and native GPU ancestry; keep distinct Media receipts, complete worker companions, raw export statuses and the unchanged disk floor. Android precedes runtime; native exports are not FINAL acceptance. Native Android exports keep their own subject and all Media ancestors; GPU/Media/Android copies carry `stage_handoff_profile.py` and the recursive parent companions.
 - Ordinary local runtime launches retain the verified native Android layout, exact app commit, all three fresh canonical image names and default image wheel transport. Create the immutable local alias from the verified source tag and independently inspect its bare manifest/config; preserve the post-tag identity checks. Carry `owned-nerdctl.py`, `owned_nerdctl_args.py`, `owned_containers.py`, `host_commands.py` and the cleanup entry together; install the same fresh ownership token, required cleanup CID-file argument and ExecStopPost before launch, then require cleanup and an independent absence query before acceptance. Runtime command success is not FINAL consumer acceptance.
 - The alternate ROCm runtime selector requires the exact reviewed wheel-context/smoke-export source with context-valid exporter controls and its own complete current preflight before any tags or units; an older source receipt cannot qualify the repair. Preserve the original Android/native parent, shared admission minimum, app commit and invocation cleanup bindings; ordinary ROCm runtime launches additionally require at least 300 GiB before allocating outputs, aliases or units.
@@ -562,7 +578,7 @@ The rules below stay here:
 - A runtime storage guardian binds one already live ordinary runtime by invocation hash, unit, PID and start ticks; commit its source and worker closure before launch. Reuse the canonical regular-layer worker synchronously in its bounded control group, retaining at least 100 GB while the outer producer is live even if BuildKit reports zero in-use records. Never restart, stop or accept the producer from storage observation; retain failed producer status in the stopped receipt. A stopped failed unit may retain systemd's failed state with PID 0; a successful guardian still requires an inactive stopped state.
 - The explicit ordinary-runtime `--serial-smoke` host option sets only `RUNTIME_SMOKE_OVERLAP=0`; keep the same required smoke, raw failure, production source proof, app, native parent and cleanup bindings. Ordinary overlap remains the default.
 - Automatic local image cleanup selects explicit obsolete published tags, verifies their immutable registry manifests/configs and waits for an idle engine; preserve current build parents, E30/receipts, all cachemounts and every unselected image identity. Keep before/after evidence and recheck the ordinary reserve ([host cleanup](docs/linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches)).
-- Native ORT and app-wheelhouse Media cache readers use exact outer RUN markers and the Media unit family; retain final-drain lifetime, mandatory worker/profile hashes and explicit partial-timeout scope. IREE configure snapshots require the selected target build tree and the same live process identity; they do not classify errors or prove a completed build.
+- Native ORT, OpenCV and app-wheelhouse Media cache readers require the outer RUN and the Media unit family. For OpenCV, require the final drain after the build command. Retain mandatory worker/profile hashes and explicit partial-timeout scope. IREE configure snapshots require the selected target build tree and the same live process identity.
 - **Python packaging cache prefixes stay command-scoped.** With `PYTHON_BUILD_COMPILER_CACHE=on`,
   pass explicit single-executable `CC` and `CXX`, use the shared resolver and preserve callback
   bindings and raw failures. Never export the cache-prefixed compiler strings into package assembly.
@@ -593,8 +609,10 @@ The rules below stay here:
   the mutation recipe contract lives in `mutation_parse.py` beside its runner.
   Source CI dispatch, retrieval and audits use `source-ci.py` with its `source_ci/` and `host_commands.py` companions.
   Mutation seals require a loaded, terminal successful unit before stopping; cached default success is insufficient.
+  Direct-wrapper complete receipts use the original closed evidence and unchanged canonical suite discovery; never synthesize driver run.json, re-seal or repeat exclusive cleanup.
   Native worker source tests require Dart, C/C++, Rust and sccache; use `ensure-native-worker-test-tools.sh` and preserve mandatory VM coverage.
   Flutter `--keep-cache` is a test-runner opt-in; fresh image installs retain their default bare-SDK policy.
+  Check the [fallback-font lock](linux/webserver/README.md#fallback-fonts-from-the-site) against the exact pinned Flutter SDK when its engine changes.
   Parity CLI copies carry `lib/cli-value-options.sh` and logging companions; retain usage alias binding and complete remaining arguments.
   `+CALLBACK` CLI dispatch uses an output count and an unconditional invocation; do not swallow the caller's active errexit policy.
   Container transport fixtures accept the shared runner security and value flags before parsing
@@ -879,7 +897,7 @@ Resume mid-chain, build one stage, or `--parallel-archs`:
 
 An alternate runtime source requires its own complete source proof and explicit reviewed
 selection; preserve the original Android source, invocation and native ancestry separately.
-A host-tools commit or the parent's source proof cannot qualify changed runtime code.
+A host-tools commit or the parent's source proof cannot qualify changed runtime code. A later runtime source on a newer Android parent may differ only in host-only runtime files ([runtime source](docs/local-proof-workflows.md#a-runtime-source-newer-than-its-android-parent)).
 
 Wrapper builds, manifest publishing and manifest repair:
 [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) § Runtime lane helper commands.
@@ -1363,6 +1381,10 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
 ## Linux Build Rules
 
 - Use `nerdctl` first on this host; `buildctl`/`ctr` commonly fail with permission errors.
+- GCC builds retain archive-matched original `COPYING3` and `COPYING.RUNTIME` with their source URL and SHA512 before cleanup; staging failures abort. These selected texts do not prove complete native licence closure.
+- GStreamer builds retain reviewed original monorepo and selected Rust notices before source cleanup; copied setup entries carry `stage-original-notices.py`, `original-notices.json` and `01-core/source_originals.py`. Keep exact release/commit/byte checks and fatal native/cross handoffs; selected texts do not prove binary linkage or complete licences.
+- Image source-original transport validates every selected tree before fresh output allocation; copied callers carry its GCC policy, the canonical GStreamer producer/policy and shared original-file companion. Keep exact bytes and limited-scope receipts; transport does not prove binary linkage or finished-package acceptance.
+- Finished image source-original checks retain the staged record and exact bytes in every selected format. Empty-source permissions name exact selected members; the source-original checker permits only recorded empty GStreamer patches. Share Flatpak import/checkout with the licence reader, retain native AppImage failure statuses and all required companions.
 - Keep both the QEMU/binfmt multi-platform lane and the cross-build lane working.
 - QNN plugin configure retries use the shared retry helper, retain every attempt in `build.log`
   and return the last raw configure failure after exhaustion. Keep compilation outside that retry;
@@ -1534,6 +1556,10 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
     library path to the bundle census: `check-ort-provenance.sh --library-path DIR[:DIR...] <bundle>`, entries
     relative to the bundle. Never patch a RUNPATH into the module, exempt the finding or hand the probe a host path
     ([contract](docs/consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime)).
+  - Linux ORT, GenAI and onnxruntime-extensions sources come through `source-fetch.sh` and its
+    `source-pins.txt`: every checkout must match its pinned commit, a moved upstream tag never falls
+    back to a fork, and a version bump needs a new pin
+    ([source pins](docs/onnxruntime-single-source.md#source-pins-and-fork-fallback)).
   - The image census (SHIPPED-TRUTH E) and `verify-critical-fixes.sh` fix11 enforce it. Every
     consumer, guard and gap: [`onnxruntime-single-source.md`](docs/onnxruntime-single-source.md);
     the Windows rule:

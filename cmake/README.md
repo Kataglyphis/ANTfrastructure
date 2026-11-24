@@ -204,6 +204,16 @@ For WiX, the default RTF is generated from the full UTF-8 licence text and prese
 An explicit `WIX_LICENSE_RTF` remains supported and must name an existing RTF with the correct text.
 These settings cover the project licence; bundled third-party notices still need their own staging.
 
+`kataglyphis_install_linux_closure(PRIVATE_DIR <name> TARGETS <targets> [LOADER]
+[EXTERNAL_LIBRARY_PATH] [NO_DEFAULT_SYSTEM] [PRESERVE_ORT_IN_APPIMAGE]
+[SEARCH <dirs>] [SYSTEM <globs>] [PROTECT <globs>]
+[IMMUTABLE_HELPERS <installed-relative-paths>])` stages Linux runtime dependencies.
+`IMMUTABLE_HELPERS` requires `LOADER`, validates relative paths and unique basenames, and works
+with library-only targets. It shares the byte-preserving launcher, closure protection and
+AppImage patcher; see [immutable helper layouts, refusals and proof limits](../docs/linux-build-basics.md#immutable-native-helpers).
+The exported `kataglyphis_linux_immutable_helpers` command also lets a consumer require this API
+before passing the argument to its pinned Hub. Finished-package binary proofs remain required.
+
 `kataglyphis_add_windows_icon(<target> <ico>)` adds the ICO resource to a Windows executable,
 rejects a missing or invalid ICO, and does nothing for non-Windows targets. The real PE tests
 link and inspect x64 and ARM64 resources; they require Clang, llvm-rc, lld-link and llvm-readobj.

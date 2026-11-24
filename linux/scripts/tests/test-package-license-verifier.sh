@@ -41,23 +41,10 @@ t_assert_fails python3 "$SCRIPT" "$work/mutant.deb" --require "share/doc/app/LIC
 
 t_case 'Flatpak import and checkout are required and the delivered text is checked'
 mkdir -p "$work/tools"
-cat > "$work/tools/flatpak" <<'SH'
-#!/usr/bin/env bash
-exit "${FAKE_FLATPAK_RC:-0}"
-SH
-cat > "$work/tools/ostree" <<'SH'
-#!/usr/bin/env bash
-case "$1" in
-  init) exit 0 ;;
-  refs) printf '%s\n' "${FAKE_REF:-app/org.example.Demo/x86_64/stable}" ;;
-  checkout)
-    target="${@: -1}"
-    mkdir -p "$target/files/lib/demo"
-    cp "$FAKE_LICENSE" "$target/files/lib/demo/LICENSE" ;;
-  *) exit 1 ;;
-esac
-SH
-chmod +x "$work/tools/flatpak" "$work/tools/ostree"
+for name in flatpak ostree; do
+  cp "$TESTS_DIR/fixtures/flatpak-package-tool.sh" "$work/tools/$name"
+  chmod +x "$work/tools/$name"
+done
 touch "$work/fixture.flatpak"
 export FAKE_LICENSE="$work/LICENSE"
 PATH="$work/tools:$PATH" t_assert_ok python3 "$SCRIPT" "$work/fixture.flatpak" --require "files/lib/demo/LICENSE=$work/LICENSE"
@@ -81,6 +68,8 @@ if command -v flatpak >/dev/null 2>&1 && command -v ostree >/dev/null 2>&1; then
   t_assert_ok flatpak build-bundle --arch="$_arch" "$work/flatpak-repo" "$work/real.flatpak" org.example.Demo stable
   t_assert_ok python3 "$SCRIPT" "$work/real.flatpak" --require "files/lib/demo/LICENSE=$work/LICENSE"
   t_assert_fails python3 "$SCRIPT" "$work/real.flatpak" --require "files/lib/demo/missing=$work/LICENSE"
+  t_assert_ok python3 "$TESTS_DIR/../verify_package_binary.py" "$work/real.flatpak" --require "files/lib/demo/LICENSE=$work/LICENSE"
+  t_assert_fails python3 "$TESTS_DIR/../verify_package_binary.py" "$work/real.flatpak" --require "files/lib/demo/missing=$work/LICENSE"
 fi
 
 if command -v 7z >/dev/null 2>&1; then

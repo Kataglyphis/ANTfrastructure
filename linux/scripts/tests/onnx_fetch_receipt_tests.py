@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline fetch receipts cover command boundaries and failure policy, not Git, uv, retries or SDK execution."""
+"""Offline fetch receipts cover command boundaries and failure policy, not Git, uv, network retries or SDK execution."""
 
 import json
 import os
@@ -14,21 +14,38 @@ SOURCE = Path(sys.argv.pop(1))
 EXPECTED = json.loads(Path(__file__).with_name("onnx-fetch-receipts.json").read_text())
 
 STUB = r"""set -euo pipefail
-_trace() { printf 'TRACE cwd=%s ' "$PWD"; printf '<%s>' "$@"; printf '\n'; }
+exec 3>&1
+_trace() { { printf 'TRACE cwd=%s ' "$PWD"; printf '<%s>' "$@"; printf '\n'; } >&3; }
 info() { _trace INFO "$*"; }
 warn() { _trace WARN "$*"; }
 parse_common_args() { _trace PARSE "$@"; }
 detect_jobs() { _trace JOBS; }
+err() { _trace ERR "$*"; exit 1; }
 retry() { _trace RETRY "$1" "$2" "$3"; shift 3; "$@"; }
+sleep() { _trace SLEEP "$@"; }
+genai_extensions_src_dir() { printf '%s/.pinned-deps/onnxruntime-extensions\n' "$GENAI_SRC_DIR"; }
+_fixture_deps() { mkdir -p "$1/cmake"; printf 'onnxruntime_extensions;https://fixture/ext.git;%s\n' "${DEPS_EXT_COMMIT}" > "$1/cmake/deps.txt"; }
 git() {
   _trace GIT "$@"
-  if [ "$1" = clone ]; then
-    [ "${FAIL_CLONE:-}" != "$PWD" ] || return 23
-    mkdir -p "${@: -1}"
-  elif [ "$1" = submodule ]; then
-    if [ "$2" = sync ] && [ "${FAIL_SYNC:-}" = "$PWD" ]; then return 17; fi
-    if [ "$2" = update ] && [ "${FAIL_UPDATE:-}" = "$PWD" ]; then return 31; fi
-  fi
+  local dir="$PWD"
+  if [ "$1" = -C ]; then dir="$2"; shift 2; fi
+  case "$1" in
+    clone)
+      [ "${FAIL_CLONE:-}" != "$PWD" ] || return 23
+      mkdir -p "${@: -1}/.git"
+      [ "${@: -1}" != "$GENAI_SRC_DIR" ] || _fixture_deps "${@: -1}" ;;
+    init) mkdir -p "$3/.git" ;;
+    fetch) [ "${FAIL_FALLBACK:-}" != "$dir" ] || return 29 ;;
+    rev-parse)
+      case "$dir" in
+        "$ORT_SRC_DIR") printf '%s\n' "${HEAD_ORT}" ;;
+        "$GENAI_SRC_DIR") printf '%s\n' "${HEAD_GENAI}" ;;
+        *) printf '%s\n' "${HEAD_EXT}" ;;
+      esac ;;
+    submodule)
+      if [ "$2" = sync ] && [ "${FAIL_SYNC:-}" = "$PWD" ]; then return 17; fi
+      if [ "$2" = update ] && [ "${FAIL_UPDATE:-}" = "$PWD" ]; then return 31; fi ;;
+  esac
 }
 require_cmd() { _trace REQUIRE "$@"; }
 uv() { _trace UV "$@"; return "${FAIL_UV:-0}"; }
@@ -47,7 +64,12 @@ cases = [
     ("requirements", {"venv": True, "requirements": True}),
     ("requirements-missing", {"venv": True}),
     ("requirements-fail", {"venv": True, "requirements": True, "uv": 11}),
+    ("ort-fallback", {"clone": "start", "fallback": True}),
+    ("ort-fallback-fails", {"clone": "start", "fallback": True, "fallback_fails": True}),
+    ("ort-moved-tag", {"head_ort": "f" * 40}),
+    ("extensions-deps-mismatch", {"deps_ext": "e" * 40}),
 ]
+PINS = {"ort": "a" * 40, "genai": "b" * 40, "ext": "c" * 40}
 
 
 class FetchReceipts(unittest.TestCase):
@@ -75,6 +97,13 @@ class FetchReceipts(unittest.TestCase):
         (driver / "lib").mkdir(parents=True)
         (driver / "20-fetch.sh").write_bytes(SOURCE.read_bytes())
         (driver / "lib/common.sh").write_text(STUB)
+        (driver / "lib/source-fetch.sh").write_bytes(SOURCE.with_name("lib").joinpath("source-fetch.sh").read_bytes())
+        fallback = " https://fixture/ort-fork" if config.get("fallback") else ""
+        (driver / "lib/source-pins.txt").write_text(
+            f"onnxruntime|v1.23.4|{PINS['ort']}|{fallback.strip()}\n"
+            f"onnxruntime-genai|v0.8.9|{PINS['genai']}|\n"
+            f"onnxruntime-extensions|-|{PINS['ext']}|\n"
+        )
         guard_bin = base / "guard-bin"
         guard_bin.mkdir()
         for tool in ("git", "uv"):
@@ -83,7 +112,8 @@ class FetchReceipts(unittest.TestCase):
             guard.chmod(0o755)
         if config.get("existing"):
             paths["ort"].mkdir()
-            paths["genai"].mkdir()
+            (paths["genai"] / "cmake").mkdir(parents=True)
+            (paths["genai"] / "cmake/deps.txt").write_text(f"onnxruntime_extensions;https://fixture/ext.git;{PINS['ext']}\n")
         if config.get("requirements"):
             paths["ort"].mkdir(exist_ok=True)
             (paths["ort"] / "requirements.txt").write_text("fixture\n")
@@ -98,6 +128,11 @@ class FetchReceipts(unittest.TestCase):
             BUILD_GENAI=str(config.get("genai", True)).lower(),
             USE_UV_VENV=str(config.get("venv", False)).lower(),
             FAIL_UV=str(config.get("uv", 0)),
+            HEAD_ORT=str(config.get("head_ort", PINS["ort"])),
+            HEAD_GENAI=PINS["genai"],
+            HEAD_EXT=PINS["ext"],
+            DEPS_EXT_COMMIT=str(config.get("deps_ext", PINS["ext"])),
+            FAIL_FALLBACK=str(paths["ort"]) if config.get("fallback_fails") else "",
         )
         env["PATH"] = str(guard_bin) + os.pathsep + env.get("PATH", "")
         for flag in ("clone", "sync", "update"):

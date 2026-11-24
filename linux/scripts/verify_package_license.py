@@ -24,7 +24,8 @@ import tarfile
 import tempfile
 import zipfile
 import zlib
-from collections.abc import Iterator
+from collections.abc import Callable, Generator, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import IO, Protocol
 
@@ -96,16 +97,25 @@ def directory_entries(path: Path, rules: list[tuple[str, bytes]]) -> Iterator[tu
                 yield name, limited_read(stream)
 
 
-def deb_entries(path: Path, rules: list[tuple[str, bytes]]) -> list[tuple[str, bytes]]:
-    """Read dpkg's payload stream and require a successful decompression exit."""
+def checked_deb_payload(path: Path, reader: Callable[[IO[bytes]], None]) -> None:
+    """Keep dpkg's status observable after the selected payload reader finishes."""
     with subprocess.Popen(["dpkg-deb", "--fsys-tarfile", str(path)], stdout=subprocess.PIPE) as proc:
         assert proc.stdout is not None
         try:
-            result = list(tar_entries(proc.stdout, rules))
+            reader(proc.stdout)
+            while proc.stdout.read(1024 * 1024):
+                pass
         finally:
             proc.stdout.close()
-        if proc.wait() != 0:
-            raise ValueError("dpkg-deb could not read the package")
+        status = proc.wait()
+        if status != 0:
+            raise ValueError(f"dpkg-deb could not read the package: {status}")
+
+
+def deb_entries(path: Path, rules: list[tuple[str, bytes]]) -> list[tuple[str, bytes]]:
+    """Read dpkg's payload stream and require a successful decompression exit."""
+    result: list[tuple[str, bytes]] = []
+    checked_deb_payload(path, lambda stream: result.extend(tar_entries(stream, rules)))
     return result
 
 
@@ -229,8 +239,9 @@ def msi_entries(path: Path, rules: list[tuple[str, bytes]]) -> Iterator[tuple[st
             yield from msi_cabinet_entries(path, cabinet, Path(temporary) / f"{index}.cab", checks)
 
 
-def flatpak_entries(path: Path, rules: list[tuple[str, bytes]]) -> Iterator[tuple[str, bytes]]:
-    """Import into a private repository and inspect one checkout without installing it."""
+@contextmanager
+def flatpak_checkout(path: Path) -> Generator[Path]:
+    """Share one private import without treating import as installation or provenance."""
     with tempfile.TemporaryDirectory(prefix="package-licenses-") as temporary:
         temp = Path(temporary)
         repo = temp / "repo"
@@ -241,6 +252,11 @@ def flatpak_entries(path: Path, rules: list[tuple[str, bytes]]) -> Iterator[tupl
         if len(refs) != 1 or not refs[0].startswith("app/"):
             raise ValueError(f"expected one Flatpak application ref, found {refs!r}")
         subprocess.run(["ostree", "checkout", f"--repo={repo}", "--user-mode", refs[0], str(checkout)], check=True, capture_output=True)
+        yield checkout
+
+
+def flatpak_entries(path: Path, rules: list[tuple[str, bytes]]) -> Iterator[tuple[str, bytes]]:
+    with flatpak_checkout(path) as checkout:
         yield from directory_entries(checkout, rules)
 
 

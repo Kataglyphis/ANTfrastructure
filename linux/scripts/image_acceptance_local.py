@@ -7,6 +7,7 @@ import json
 import re
 import subprocess
 import sys
+from itertools import pairwise
 from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
@@ -82,11 +83,31 @@ def command_binding(invocation: dict[str, Any], android: dict[str, Any], platfor
              'NERDCTL_BIN':text(invocation, 'engine_wrapper'), 'ANT_RUNTIME_ENGINE':text(invocation, 'engine'),
              'ANT_RUNTIME_OWNER_LABEL':'org.kataglyphis.normal-runtime', 'ANT_RUNTIME_RUN_ID':text(invocation, 'run_id', re.compile(r'[0-9a-f]{32}\Z')),
              'CROSS_RUN_ID':text(invocation, 'expected_runtime_run_id', re.compile(r'runtime-[0-9a-f]{32}\Z')), 'APP_REF':text(invocation, 'app_ref', SHA)}
+    if invocation.get('default_android_ancestry_verified') is True:
+        context = text(invocation, 'parent_context')
+        require(context.endswith('-' + arch), 'Default Android context target differs')
+        flags.update(CROSS_BUILD_PLATFORM='linux/amd64', RUNTIME_WHEELS_SOURCE='export',
+                     ARTIFACT_CONTEXT_ROOT=context.removesuffix('-' + arch),
+                     CROSS_IMAGE_PRUNE='0', PRUNE_DUP_CACHEMOUNTS='0')
+    if invocation['variant'] == 'nvidia':
+        context = text(invocation, 'parent_context')
+        require(context.endswith('-' + arch), 'NVIDIA Android context target differs')
+        flags.update(local_api('runtime_launch_profile').nvidia_runtime_flags(arch),
+                     ARTIFACT_CONTEXT_ROOT=context.removesuffix('-' + arch))
+        require_nvidia_transport(command, invocation['unit'], {**flags, 'RUNTIME_ANDROID_PIN_' + arch:parent})
     for name, expected_value in flags.items():
         require([value for value in command if value.startswith(name + '=')] == [name + '=' + expected_value], 'Local runtime gate or pin differs: ' + name)
     require('--push' not in command and '--gates-only' not in command, 'Actual unpublished local runtime required')
     key = 'RUNTIME_ANDROID_PIN_' + arch + '='
     require([value for value in command if value.startswith(key)] == [key + parent], 'Runtime Android pin differs')
+
+
+def require_nvidia_transport(command: list[str], unit: str, flags: dict[str, str]) -> None:
+    require(unit.startswith('webgpu-normal-runtime-nvidia-')
+            and [value for value in command if value.startswith('--unit=')] == ['--unit=' + unit], 'NVIDIA runtime unit differs')
+    environment = [value for option, value in pairwise(command[:-11]) if option == '-E']
+    for name, value in flags.items():
+        require([item for item in environment if item.startswith(name + '=')] == [name + '=' + value], 'NVIDIA runtime environment differs: ' + name)
 
 
 def producer_inputs(invocation: dict[str, Any], path: Path, platform: str) -> dict[str, Any]:
@@ -126,7 +147,9 @@ def host_binding(invocation: dict[str, Any]) -> None:
     host = profiles[0].parents[3]
     require(output(['git', '-C', str(host), 'rev-parse', 'HEAD']).strip() == text(invocation, 'host_tools_revision', SHA), 'Runtime host source revision differs')
     require(not output(['git', '-C', str(host), 'status', '--porcelain']).strip(), 'Runtime host source changed')
-    workers = local_api('runtime_launch_profile').runtime_worker_files(host)
+    runtime = local_api('runtime_launch_profile')
+    workers = runtime.runtime_worker_files(host, default=invocation.get('default_android_ancestry_verified') is True,
+                                        nvidia=invocation.get('variant') == 'nvidia')
     require(invocation.get('selected_host_workers_sha256') == {str(path): fingerprint(path) for path in workers}, 'Runtime worker closure changed')
     require(not output(['git', '-C', str(wrapper.parents[2]), 'status', '--porcelain']).strip(), 'Runtime wrapper source changed')
     for path in workers:
@@ -143,7 +166,11 @@ def android_command(android: dict[str, Any], platform: str) -> Path:
     command = cast(list[str], command)
     source, output_dir = Path(text(android, 'source')), Path(text(android, 'output'))
     unit = text(android, 'unit', producer_unit('android', arch, cast(str, variant)))
-    repo = text(android, 'image').rsplit(':', 1)[0]
+    image = text(android, 'image')
+    repo = image.rsplit(':', 1)[0]
+    if variant == 'nvidia':
+        repo = repo.removesuffix('-stages')
+        require(image == repo + '-stages:cross-android-nvidia-' + arch, 'NVIDIA Android stage image differs')
     expected = ['/bin/bash', str(source / 'linux/scripts/build-cross-stage.sh'), '--stage', 'android', '--arch', arch,
                 '--image-repo', repo, '--log-dir', str(output_dir / 'logs')]
     require(repo.startswith('ant-local/webgpu-') and command[:2] == ['systemd-run', '--user'] and command[-10:] == expected, 'Undeclared Android driver differs')
@@ -154,7 +181,10 @@ def android_command(android: dict[str, Any], platform: str) -> Path:
 
 
 def android_input(android: dict[str, Any], platform: str) -> dict[str, Any]:
-    if 'stage' in android:
+    if android.get('variant') == 'default':
+        require(android.get('stage') == 'android', 'Default Android stage differs')
+        android = {**android, 'variant': ''}
+    elif 'stage' in android and android.get('variant') != 'nvidia':
         return android
     source = android_command(android, platform)
     require(type(android.get('launch_status')) is int and android['launch_status'] == 0 and android.get('publication') is False
@@ -168,10 +198,64 @@ def android_input(android: dict[str, Any], platform: str) -> dict[str, Any]:
     return {**android, 'stage': 'android'}
 
 
+def default_parent_binding(invocation: dict[str, Any], android: dict[str, Any], proof: dict[str, Any],
+                           android_path: Path) -> None:
+    default_android = android.get('variant') == 'default'
+    require(default_android == (invocation.get('default_android_ancestry_verified') is True), 'Default Android ancestry scope differs')
+    if not default_android:
+        return
+    arch = invocation['target_arch']
+    status = local_api('native_oci_seed').default_status('android', arch)
+    scoped_parent_binding(invocation, android, proof, android_path, status, 'Default')
+
+
+def scoped_parent_binding(invocation: dict[str, Any], android: dict[str, Any], proof: dict[str, Any],
+                          android_path: Path, status: str, profile: str) -> None:
+    for key in ('source_revision', 'source_full_preflight_proof', 'source_full_preflight_sha256'):
+        require(android.get(key) == invocation.get(key), profile + ' runtime source differs from Android: ' + key)
+    require(proof.get('status') == status and proof.get('Android_invocation') == str(android_path.resolve())
+            and proof.get('Android_invocation_sha256') == invocation['Android_invocation_sha256'], profile + ' Android receipt scope differs')
+    require(proof.get('index_sha256') == text(invocation, 'parent_OCI_index_sha256', HASH)
+            and proof.get('context') == text(invocation, 'parent_context')
+            and proof.get('matched_Media_layers_and_diffIDs') == invocation['Media_layers_matched']
+            and proof.get('layers') == invocation['Android_layers_rehashed'], profile + ' Android ancestry differs')
+    require(proof.get('export_transport') == {'producer_status': 0, 'extractor_status': 0}
+            and proof.get('parent_layer_reuse_verified') is True
+            and proof.get('all_native_blob_sizes_and_sha256_verified') is True, profile + ' Android export proof is incomplete')
+
+
+def nvidia_parent_binding(invocation: dict[str, Any], android: dict[str, Any], proof: dict[str, Any],
+                          android_path: Path) -> None:
+    nvidia = invocation.get('variant') == 'nvidia'
+    require(nvidia == (invocation.get('nvidia_android_ancestry_verified') is True), 'NVIDIA Android ancestry scope differs')
+    if not nvidia:
+        return
+    arch = invocation['target_arch']
+    statuses = local_api('native_oci_seed').NVIDIA_ANDROID_STATUSES
+    require(arch in statuses and android.get('stage') == 'android' and android.get('variant') == 'nvidia', 'NVIDIA Android lane differs')
+    scoped_parent_binding(invocation, android, proof, android_path, statuses[arch], 'NVIDIA')
+    context = Path(text(proof, 'context'))
+    require(context.is_absolute() and context.name.endswith('-' + arch)
+            and fingerprint(context / 'index.json') == proof['index_sha256'], 'NVIDIA Android OCI context differs')
+    media = Path(text(android, 'parent_OCI_proof'))
+    require(fingerprint(media) == text(android, 'parent_OCI_proof_sha256', HASH)
+            and proof.get('parent_OCI_proof_sha256') == android['parent_OCI_proof_sha256'], 'NVIDIA Media receipt changed')
+    unit = text(proof, 'unit')
+    require(unit.startswith('webgpu-normal-android-export-nvidia-')
+            and producer_unit('android-export', arch, 'nvidia').fullmatch(unit), 'NVIDIA Android export unit differs')
+    before, after = proof.get('terminal_before_stop'), proof.get('stopped')
+    require(isinstance(before, dict) and all(before.get(key) == value for key, value in {
+        'Id':unit, 'ActiveState':'active', 'SubState':'exited', 'MainPID':'0', 'Result':'success', 'ExecMainStatus':'0',
+    }.items()) and isinstance(after, dict) and after.get('ActiveState') == 'inactive'
+            and after.get('MainPID') == '0', 'NVIDIA Android export terminal evidence differs')
+
+
 def parent_binding(invocation: dict[str, Any], platform: str) -> tuple[dict[str, Any], str]:
     android_path, proof_path = Path(text(invocation, 'Android_invocation')), Path(text(invocation, 'parent_OCI_proof'))
     require(fingerprint(android_path) == text(invocation, 'Android_invocation_sha256', HASH) and fingerprint(proof_path) == text(invocation, 'parent_OCI_proof_sha256', HASH), 'Original Android evidence changed')
     android, proof = read_object(android_path), read_object(proof_path)
+    default_parent_binding(invocation, android, proof, android_path)
+    nvidia_parent_binding(invocation, android, proof, android_path)
     android = android_input(android, platform)
     require(android.get('stage') == 'android' and android.get('target_arch') == platform.removeprefix('linux/') and android.get('variant') == invocation['variant'], 'Original Android lane differs')
     require(android.get('source_revision') == proof.get('source_revision') == text(invocation, 'parent_source_revision', SHA), 'Original Android source differs')

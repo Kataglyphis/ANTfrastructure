@@ -90,6 +90,29 @@ class CaptureTests(unittest.TestCase):
             self.assertFalse(record['producer_changed'])
             self.output.rename(self.work / phase)
 
+    def test_opencv_retains_both_outer_dockerfile_runs(self) -> None:
+        parser = runpy.run_path(str(ROOT / 'linux/scripts/verify_dockerfile_env_order.py'))
+        marker = 'bash /opt/scripts/03-media/build/opencv/build-opencv.sh '
+        shell_start = 'set -euo pipefail; '
+        commands = [line[line.index(shell_start):] for _, line in parser['instructions'](ROOT / 'linux/Dockerfile.media')
+                    if line.startswith('RUN ') and marker in line]
+        self.assertEqual(len(commands), 2)
+        build = commands[0][commands[0].index(marker):]
+        child = build.partition(';')[0]
+        PROFILE['validate_capture_unit']('webgpu-media1-opencv-error-capture-99999999-1.service', 'opencv')
+        for command in (child, child + '; true', build.replace('build-opencv.sh', 'install-deps.sh')):
+            (self.process / 'cmdline').write_bytes(command.encode())
+            with self.assertRaises(AssertionError):
+                self.capture(phase='opencv')
+            self.assertFalse(self.output.exists())
+        for step, command in enumerate(commands):
+            (self.process / 'cmdline').write_bytes(b'/bin/bash\0-c\0' + command.encode())
+            with mock.patch.object(time, 'monotonic', side_effect=[0, 2]):
+                record = self.capture(phase='opencv')
+            self.assertEqual(record['phase'], 'opencv')
+            self.assertEqual(record['status'], 'captured-partial-observation-timeout')
+            self.output.rename(self.work / f'opencv-{step}')
+
     def test_existing_descriptor_survives_process_tree_teardown(self) -> None:
         def teardown(_seconds: int) -> None:
             gone = self.work / 'gone'

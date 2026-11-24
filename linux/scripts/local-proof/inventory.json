@@ -582,6 +582,13 @@
       "classification": "versioned",
       "canonical": "linux/host-config/relocate-quality-venv.py",
       "original_sha256": "1714712d6428b52a6fedf1112695a9c4208a45be6c98402832ef9809720a7044"
+    },
+    {
+      "name": "complete-direct-preflight.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/complete-direct-preflight.py",
+      "original_sha256": "8d5e38f136edb0dbae32a1653220b456cb3754a7a62ced44dfb26cdb98584e58",
+      "reason": "Recurring direct owned-wrapper complete source receipt assembly; original driver evidence remains separate."
     }
   ],
   "new_canonical_files": [
@@ -609,6 +616,7 @@
     "linux/scripts/local-proof/launch-normal-gpu.py",
     "linux/scripts/local-proof/buildcache_transfer.py",
     "linux/scripts/local-proof/seed-buildkit-cache.py",
-    "linux/scripts/local-proof/gpu_source_profile.py"
+    "linux/scripts/local-proof/gpu_source_profile.py",
+    "linux/scripts/local-proof/media_source_profile.py"
   ]
 }

@@ -92,11 +92,13 @@ class LocalAcceptanceTests(unittest.TestCase):
     def test_metadata_transport_covers_exactly_the_six_linux_lanes(self) -> None:
         for index, (variant, arch) in enumerate([('', 'amd64'), ('', 'arm64'), ('', 'riscv64'),
                                                ('rocm', 'amd64'), ('nvidia', 'amd64'), ('nvidia', 'arm64')]):
-            for mode in ['image', 'export']:
+            for mode in (['export'] if variant == 'nvidia' else ['image', 'export']):
                 directory = self.root / (str(index) + mode)
                 directory.mkdir()
                 fixture = LocalFixture(directory, arch, variant)
-                if mode == 'export':
+                if variant == 'nvidia':
+                    fixture.nvidia_android()
+                elif mode == 'export':
                     old_unit = fixture.unit
                     fixture.unit = old_unit.replace('runtime-', 'runtime-' + (variant or 'default') + '-')
                     fixture.invocation['unit'] = fixture.terminal.return_value['Id'] = fixture.unit
@@ -116,6 +118,120 @@ class LocalAcceptanceTests(unittest.TestCase):
                      'webgpu-normal-runtime-nvidia-amd64-999-1.service', 'webgpu-normal-runtime-default-amd64-999-1.service.extra']:
             self.assertIsNone(pattern.fullmatch(unit))
         self.assertIsNone(LOCAL.producer_unit('runtime', 'amd64', 'rocm').fullmatch('webgpu-normal-runtime-default-amd64-999-1.service'))
+
+    def test_default_android_export_flows_to_all_six_local_final_consumers(self) -> None:
+        directory = self.root / 'default-foreign'
+        directory.mkdir()
+        f = LocalFixture(directory, 'arm64', '')
+        f.command_android()
+        f.android.update(stage='android', variant='default')
+        f.android_path.write_text(json.dumps(f.android))
+        digest = LOCAL.fingerprint(f.android_path)
+        context = str(directory / 'android-context-arm64')
+        f.parent.update(status='passed-native-default-arm64-Android-OCI-and-Media-ancestry-only',
+                        Android_invocation=str(f.android_path), Android_invocation_sha256=digest,
+                        context=context, index_sha256='f' * 64, layers=31, matched_Media_layers_and_diffIDs=30,
+                        export_transport={'producer_status':0, 'extractor_status':0}, parent_layer_reuse_verified=True,
+                        all_native_blob_sizes_and_sha256_verified=True)
+        f.parent_path.write_text(json.dumps(f.parent))
+        f.invocation.update(source_revision='b' * 40, default_android_ancestry_verified=True,
+                            parent_context=context, Android_invocation_sha256=digest, parent_OCI_index_sha256='f' * 64,
+                            parent_OCI_proof_sha256=LOCAL.fingerprint(f.parent_path), Android_layers_rehashed=31, Media_layers_matched=30)
+        f.tag_image['Config']['Labels']['org.opencontainers.image.revision'] = 'b' * 40
+        f.digest_image = copy.deepcopy(f.tag_image)
+        command = f.invocation['command']
+        command[command.index('RUNTIME_WHEELS_SOURCE=image')] = 'RUNTIME_WHEELS_SOURCE=export'
+        command[4:4] = ['CROSS_BUILD_PLATFORM=linux/amd64', 'ARTIFACT_CONTEXT_ROOT=' + context.removesuffix('-arm64'),
+                        'CROSS_IMAGE_PRUNE=0', 'PRUNE_DUP_CACHEMOUNTS=0']
+        workers = RUNTIME.runtime_worker_files(f.host, default=True)
+        for path in workers:
+            if not path.exists():
+                path.write_text('# target-specific worker identity\n')
+        f.invocation['selected_host_workers_sha256'] = {str(path): LOCAL.fingerprint(path) for path in workers}
+        f.save()
+        with f.commands():
+            MAIN.check(f.args)
+        receipt = json.loads(Path(f.args.receipt).read_text())
+        self.assertEqual([row['name'] for row in receipt['consumers']], NAMES)
+        self.assertEqual(receipt['platform'], 'linux/arm64')
+        with f.commands():
+            for field, value in [('default_android_ancestry_verified', False), ('source_revision', 'c' * 40),
+                                 ('parent_context', '/other/target-arm64'), ('Media_layers_matched', 9)]:
+                with self.subTest(field=field), self.assertRaises(ValueError):
+                    LOCAL.parent_binding({**f.invocation, field:value}, f.platform)
+            wrong = dict(f.parent, status='passed-native-default-amd64-Android-OCI-and-Media-ancestry-only')
+            f.parent_path.write_text(json.dumps(wrong))
+            with self.assertRaisesRegex(ValueError, 'receipt scope differs'):
+                LOCAL.parent_binding(dict(f.invocation, parent_OCI_proof_sha256=LOCAL.fingerprint(f.parent_path)), f.platform)
+
+    def nvidia_fixture(self) -> LocalFixture:
+        directory = self.root / 'nvidia-foreign'
+        directory.mkdir()
+        fixture = LocalFixture(directory, 'arm64', 'nvidia')
+        fixture.nvidia_android()
+        return fixture
+
+    def test_nvidia_final_refuses_drift_in_android_scope_and_media_receipt(self) -> None:
+        f = self.nvidia_fixture()
+        with f.commands():
+            self.assertEqual(LOCAL.parent_binding(f.invocation, f.platform), (f.android, f.parent_reference))
+            for field, value in [('nvidia_android_ancestry_verified', False), ('source_revision', 'c' * 40),
+                                 ('parent_context', '/other-context-arm64'), ('Media_layers_matched', 9)]:
+                with self.subTest(field=field), self.assertRaises(ValueError):
+                    LOCAL.parent_binding({**f.invocation, field:value}, f.platform)
+            for field, value in [('status', 'passed-native-NVIDIA-amd64-Android-OCI-and-Media-ancestry-only'),
+                                 ('unit', 'webgpu-normal-android-export-arm64-999-1.service'),
+                                 ('stopped', {'ActiveState':'active', 'MainPID':'1'}),
+                                 ('terminal_before_stop', {**f.parent['terminal_before_stop'], 'ExecMainStatus':'47'}),
+                                 ('parent_OCI_proof_sha256', '0' * 64)]:
+                f.parent_path.write_text(json.dumps({**f.parent, field:value}))
+                with self.subTest(proof_field=field), self.assertRaises(ValueError):
+                    LOCAL.parent_binding(dict(f.invocation, parent_OCI_proof_sha256=LOCAL.fingerprint(f.parent_path)), f.platform)
+            f.parent_path.write_text(json.dumps(f.parent))
+            index = Path(f.parent['context']) / 'index.json'
+            original_index = index.read_text()
+            index.write_text('changed Android index')
+            with self.assertRaisesRegex(ValueError, 'OCI context differs'):
+                LOCAL.parent_binding(f.invocation, f.platform)
+            index.write_text(original_index)
+            Path(f.android['parent_OCI_proof']).write_text('changed Media receipt')
+            with self.assertRaisesRegex(ValueError, 'Media receipt changed'):
+                LOCAL.parent_binding(f.invocation, f.platform)
+
+    def test_nvidia_final_requires_bound_cuda_flags_and_real_systemd_environment(self) -> None:
+        f = self.nvidia_fixture()
+        with f.commands():
+            LOCAL.command_binding(f.invocation, f.android, f.platform, f.parent_reference)
+            for name in ('ONNX_PACKAGE', 'PYTORCH_EXTRA', 'RUNTIME_WHEELS_SOURCE', 'CROSS_NVIDIA_SBSA',
+                         'CROSS_BUILD_PLATFORM', 'ENABLE_DEEPSTREAM', 'ENABLE_TENSORRT', 'ARTIFACT_CONTEXT_ROOT'):
+                invalid = '=image' if name == 'RUNTIME_WHEELS_SOURCE' else '=other'
+                command = [name + invalid if value.startswith(name + '=') else value for value in f.invocation['command']]
+                with self.subTest(flag=name), self.assertRaisesRegex(ValueError, 'environment differs: ' + name):
+                    LOCAL.command_binding(dict(f.invocation, command=command), f.android, f.platform, f.parent_reference)
+            command = f.invocation['command'].copy()
+            command.pop(command.index('ENABLE_NVIDIA=true') - 1)
+            with self.assertRaisesRegex(ValueError, 'environment differs: ENABLE_NVIDIA'):
+                LOCAL.command_binding(dict(f.invocation, command=command), f.android, f.platform, f.parent_reference)
+            for variant_unit in (f.unit.replace('runtime-nvidia-', 'runtime-'), f.unit):
+                command = [value.replace(f.unit, variant_unit) for value in f.invocation['command']]
+                if variant_unit == f.unit:
+                    command.insert(4, '--unit=' + variant_unit)
+                with self.subTest(unit=variant_unit), self.assertRaisesRegex(ValueError, 'NVIDIA runtime unit differs'):
+                    LOCAL.command_binding(dict(f.invocation, command=command, unit=variant_unit), f.android, f.platform, f.parent_reference)
+
+    def test_nvidia_final_checks_native_android_driver_and_worker_closure(self) -> None:
+        f = self.nvidia_fixture()
+        with f.commands():
+            LOCAL.host_binding(f.invocation)
+            workers = {path:identity for path, identity in f.invocation['selected_host_workers_sha256'].items()
+                       if not path.endswith('/nvidia_handoff_profile.py')}
+            with self.assertRaisesRegex(ValueError, 'Runtime worker closure changed'):
+                LOCAL.host_binding(dict(f.invocation, selected_host_workers_sha256=workers))
+            command = [arg.replace('--image-repo', '--push') for arg in f.android['command']]
+            with self.assertRaisesRegex(ValueError, 'Android driver differs'):
+                LOCAL.android_input(dict(f.android, command=command), f.platform)
+            with self.assertRaisesRegex(ValueError, 'stage image differs'):
+                LOCAL.android_input(dict(f.android, image=f.android['image'].replace('-stages:', ':')), f.platform)
 
     def test_reference_and_object_text_inputs_reject_mutable_foreign_or_missing_values(self) -> None:
         for reference in ['ant-local/webgpu-fixture:latest', 'ghcr.io/owner/image@' + self.fixture.manifest,

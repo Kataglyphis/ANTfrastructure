@@ -1165,8 +1165,10 @@ BACKLOG CON231 step 2.
 
 The shared Python owner is `shared/python/ort_plugin_eps.py`, declared as the exact
 `ort-plugin-registration-python` asset. Give its consumer-manifest row a path inside
-the installed application package, then import that copy. `register_plugin_library`
-uses the supplied ORT binding, not an implicit import; only a successful native call
+the installed application package, then import that copy. The runtime-binding protocol
+keeps its library argument positional-only and marks the unused declaration with an
+underscore prefix, so strict dead-code checks can grade the shared copy without an exception.
+`register_plugin_library` uses the supplied ORT binding, not an implicit import; only a successful native call
 enters its locked per-binding cache. A missing advertised root or module is fatal,
 while an absent advertisement and absent bundled module leave CPU use untouched.
 `registered_plugin_names` reports those successful calls. `select_plugin_device`
@@ -1187,10 +1189,30 @@ It returns failure text and consumes failed statuses instead of entering abortin
 `ORT_NO_EXCEPTIONS` C++ wrappers. Without an advertised root it resolves the loaded
 core from an address in that supplied API, then finds a bundled module beside it;
 callers may supply an explicit absolute bundle directory. An advertised image root
-still wins. Registration and V2 attachment
+still wins. Missing optional modules and dangling bundle links remain distinct; fallback
+compares the queried file-status enum, allowing exact mirrors under conservative consumer
+filesystem guards. Registration and V2 attachment
 are separate from session creation and real operator placement. The compiled fake API
 suite proves policy, and a real-header object checks signatures; neither proves a new
 runtime image, packaged inference or Windows loading.
+
+An append that must coexist with another library's registration can pass `true` as
+the final `reuse_existing` argument to `append_provider`. The default append and
+explicit `register_library` still require native registration. The opt-in validates
+the module and any registry-owned name/path binding first, then attaches the selected
+matching device already offered by the same environment without registering twice.
+Enumeration and append failures remain fatal. Such devices do not enter
+`registered_libraries()`: reuse neither authenticates the external factory's module
+nor proves inference, and it does not coordinate external unregistration.
+
+`test-ort-plugin-native-mutation-controls.sh` compiles and links every external-device
+mutation before requiring a policy assertion or a lower independent check count.
+Compiler warnings, link failures, crashes and malformed reports cannot satisfy that
+control. Its own negative controls reject those outcomes and an unchanged passing
+fixture. The ordinary native suite stays separate so a failing compiler cannot mask
+a registration-policy test; both suites share the fixture compiler and result parser.
+Object compilation and linking are separate, allowing the supplied compiler cache
+to store compilation results. These fake API fixtures do not prove ORT ABI or GPU use.
 
 The Rust policy owner is `shared/rust/ort_plugin_eps.rs`, the exact
 `ort-plugin-registration-rust` asset. Its adapter receives the owning environment, returns

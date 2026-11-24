@@ -16,6 +16,115 @@ checking the original notice hash. The original-text fixture and its source
 metadata move with a reviewed pybind11 pin; this checks one notice's provenance,
 not the complete linked binary's licence closure.
 
+## GCC runtime original texts
+
+Every native, cross and Canadian-cross invocation of `build-gcc.sh` preserves
+`COPYING3` and `COPYING.RUNTIME` at
+`${PREFIX}/share/licenses/gcc-runtime/` before deleting its build directory.
+The selected source files must be nonempty regular files and match the same
+members in that invocation's source archive. Missing, rewritten or linked inputs,
+invalid output paths and raw extraction, hashing, installation or metadata failures
+abort before cleanup can report success. Existing ordinary notice files may be
+refreshed; linked destinations and linked output files refuse.
+
+`source.sha512` names the original tarball and its measured SHA512;
+`source.url` retains its canonical release URL. These records do not replace the
+builder's existing checksum and optional signature verification. The source archive
+is not shipped by this step. Preserve corresponding sources and modifications
+separately where required.
+
+This stages two original texts, not the complete GCC, static/header or native
+dependency licence closure. Consumers must still associate the selected runtimes,
+carry the texts into their packages and verify the actual finished payloads.
+Synthetic fixture and mutation checks do not prove an actual GCC build or image.
+
+## GStreamer original source texts
+
+The Linux GStreamer setup retains selected original texts under
+`${GSTREAMER_PREFIX}/share/licenses/gstreamer-source-build/` before deleting its
+monorepo checkout. `monorepo/` contains the release's root `LICENSE`, six selected
+subprojects' `COPYING` files, its Rust wrap and static-linking guidance. The texts
+have different exact byte values; a generic LGPL copy does not replace them.
+
+`rust-monorepo/` records the wrapped cross-build source, while `rust-standalone/`
+records the native standalone source. Each retains the three root Rust license
+files, GTK4's own MPL text and both Cargo manifests. The GTK4 package's version
+comes from its workspace manifest; the GStreamer release tag is a separate value.
+
+The adjacent `original-notices.json` policy binds the selected release, both
+source commits and every original SHA256. `stage-original-notices.py` requires the
+actual checkout, matching release tag and unchanged original notice bytes. Missing,
+empty, linked, rewritten or oversized inputs, reused or linked outputs, and failed
+staging abort the setup, including conditional callers. Preserve both companions
+when copying setup, together with `01-core/source_originals.py`. The Dockerfile retains the GStreamer directory and a narrow mount for that shared file companion.
+
+Each output keeps `source-record.json` with original-file hashes, source URL,
+commit and the tracked `source.patch`. Reviewed original context files remain
+separate from `working-context/`, which retains the actual build's wrap/manifests.
+This permits existing Cargo workspace exclusions while checking the actual GTK4
+package identity, version and license expression. Updating `GSTREAMER_VERSION` requires
+reviewing the new commits and exact original files before updating that policy.
+The record does not verify a signature, include untracked or complete corresponding
+sources, map every installed binary, or collect all wrapped/native/Cargo licences.
+Use the existing Cargo collector for the actual selected dependency graph and
+verify original texts in finished packages separately. Synthetic source controls
+do not establish a rebuilt image, complete licence closure or GPU acceptance.
+
+## Transport image source originals into a consumer
+
+`06-packaging/stage-image-source-originals.py` validates selected GCC and/or
+GStreamer original trees from an image before writing a fresh consumer directory:
+
+```bash
+python3 linux/scripts/06-packaging/stage-image-source-originals.py \
+  --gcc-prefix /opt/gcc-16.2.0 --gcc-version 16.2.0 \
+  --gstreamer-prefix /opt/gstreamer --gstreamer-version 1.29.2 \
+  --destination /bundle/licenses/image-source-originals
+```
+
+Supply each selected prefix together with its version. GCC uses the reviewed
+`gcc-runtime-originals.json` policy for both original notices, the official archive
+SHA512 and canonical source URL. GStreamer reuses its producer's canonical policy,
+requiring the monorepo and exactly one Rust tree. Original hashes, record identity,
+working manifests, GTK4 package identity and tracked patch hashes must agree.
+Missing, unexpected, linked, hardlinked, empty or oversized selected inputs refuse;
+a patch may be empty and remains bounded at 8 MiB. Existing destinations refuse.
+All selected inputs are validated before creating the output directory.
+
+The output retains exact input bytes under component directories and writes
+`source-originals.json` with their hashes and sizes. Copy the entry, GCC policy,
+GStreamer producer and policy, and shared `01-core/source_originals.py` in their
+hub layout. Synthetic tests share the real-Git fixture and cover both producer and
+transport failures; they do not establish a rebuilt image or consumer integration.
+
+This transport does not authenticate producer records, associate selected binaries
+with source, preserve complete corresponding sources or collect all native and
+Cargo dependencies. The consumer selects components for its actual payload and
+checks every selected original in its finished artifact. Use the shared exact-byte
+package verifier for raw originals; the text licence verifier normalizes text.
+`verify-image-source-originals.py` validates that staged record, every selected
+file's hash/size and the exact staged tree, then compares the selected raw bytes
+and the record itself with the finished artifact. Supply `--originals DIR` and
+`--prefix INSTALLED/ORIGINALS/PATH`; `--appimage-arch ARCH` uses the shared native
+extractor without 7-Zip. The generic byte reader handles directory, TAR, DEB,
+ZIP/MSIX/wheel, MSI and Flatpak inputs; Flatpak shares the licence reader's private
+OSTree import/checkout and requires both existing host tools. Import is not install.
+
+The generic byte reader still rejects empty source files by default. Its explicit
+`--allow-empty EXACT_MEMBER` applies only to selected exact names; duplicate or
+unselected allowances refuse. The native binary AppImage wrapper accepts the
+prefix option `--allow-empty-source` for its one selected member. The source-original
+checker emits these permissions only for recorded empty GStreamer `source.patch`
+files; other selected originals must remain nonempty. Missing or changed empty
+members still fail, and child-verifier failures remain fatal with their status.
+
+Keep the source-original checker beside its stager, both Python package verifiers
+and their shared native AppImage/platform companions. Synthetic ZIP/TAR/DEB and
+controlled AppImage/Flatpak transports prove selected bytes and failures, not an
+actual application build. The existing conditional Flatpak test also exercises a
+real bundle when both tools are installed. A passed transport or finished-file
+receipt never certifies complete binary, licence or corresponding-source closure.
+
 ## Maintaining this list
 
 Everything between the `generated:deps-table` markers is **generated**. Editing
@@ -178,9 +287,33 @@ and file length, rejects missing, duplicate, aliased or changed members, and doe
 not normalize binary bytes. It stages the selected MSI cabinet in temporary disk
 space and requires 7-Zip. This proves equality with the supplied source only; it
 neither proves that source's wheel provenance nor discovers additional files.
-The standalone `linux/scripts/verify_package_binary.py` also accepts repeated
-`--require MEMBER=SOURCE` rules; MSI rules use `cabinet.cab::file-id`. It needs
-`verify_package_license.py` beside it for the shared cabinet listing and mapping.
+The standalone `linux/scripts/verify_package_binary.py` accepts repeated exact
+`--require MEMBER=SOURCE` rules for extracted directories, TAR, DEB, ZIP, MSIX,
+wheels and MSI. MSI rules use `cabinet.cab::file-id`; the selected files must be
+regular and match streaming SHA256 and size. Duplicate, case-conflicting and
+ambiguous selected paths fail. TAR permits one conventional leading `./`, but
+not duplicate aliases. DEB reads the real dpkg payload stream and requires the
+native reader to succeed even when all selected bytes were already produced.
+Keep `verify_package_license.py` beside it for shared cabinet and dpkg transport.
+
+On a matching native Linux architecture,
+`linux/scripts/06-packaging/verify-native-appimage-binary.sh` extracts one exact
+entry and passes its bytes to that binary verifier. It shares architecture,
+path, extraction and cleanup checks with the native licence reader, retaining
+raw extraction failures and requiring no 7-Zip. Copies carry
+`appimage-verification.sh`, `../01-core/platform.sh` and both Python verifiers.
+For a helper changed by normal ELF assembly, compare against the selected
+post-assembly file and retain its separate link to the original producer:
+
+```bash
+python3 linux/scripts/verify_package_binary.py app.tar.gz --require 'app/native-helper=stage/app/native-helper'
+python3 linux/scripts/verify_package_binary.py app.deb --require 'opt/app/native-helper=stage/app/native-helper'
+bash linux/scripts/06-packaging/verify-native-appimage-binary.sh app.AppImage x64 usr/lib/app/native-helper stage/app/native-helper
+```
+
+These checks establish selected regular-file byte equality. They do not prove
+producer authenticity, executable permissions, loader behavior, integrity of
+unselected archive members or complete native dependency licence obligations.
 
 `WindowsOrtLicense.Common.psm1` provides `Copy-OrtWheelLicenses` and
 `Assert-OrtWheelLicensesInPackage`: the former requires the actual DLL's SHA256

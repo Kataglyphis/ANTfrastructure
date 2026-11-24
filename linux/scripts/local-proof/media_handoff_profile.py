@@ -19,6 +19,10 @@ if TYPE_CHECKING:
 
 def validate_media(invocation: Json, parent: Json, gpu: Json) -> None:
     validate_inherited_source(invocation, parent, gpu, 'media', 'GPU', 'SDK')
+    validate_wasm_modes(invocation)
+
+
+def validate_wasm_modes(invocation: Json) -> None:
     assert invocation['ORT_WEB_REQUIRED'] == 1 and invocation['ORT_WASM_WEBGPU_FLAVORS'] is True, 'Both required Media Wasm modes must be retained'
     assert invocation['command'].count('ORT_WEB_REQUIRED=1') == invocation['command'].count('ORT_WASM_WEBGPU_FLAVORS=true') == 1, 'Media Wasm command flags differ'
 

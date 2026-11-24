@@ -244,6 +244,7 @@ class StorageGuardTests(unittest.TestCase):
             self.launch()
         self.directory.rmdir()
         for key, value in [('stage', 'media'), ('launch_status', True), ('launch_status', 1),
+                           ('variant', 'unsupported'), ('unit', 'webgpu-normal-runtime-rocm-amd64-99999999-1.service'),
                            ('target_arch', 'mips'), ('unit', 'foreign.service')]:
             self.runtime_path.write_text(json.dumps({**self.runtime, key:value}))
             with self.subTest(key=key), self.assertRaises(ValueError):

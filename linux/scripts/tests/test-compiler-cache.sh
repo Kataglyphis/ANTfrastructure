@@ -184,8 +184,12 @@ t_assert_eq "${_uds4}" "UNSET|24226"
 
 
 # ── the address must be readable in the log (YB): the launcher prints it only on failure ──
-t_case "ensure_sccache_env's setup line NAMES the address it just exported"
-_addr_out="$(
+_cache_setup_report() (
+  # Temporary call assignments reveal outer bindings when unset, so set only the child exports.
+  export SCCACHE_SERVER_UDS="${2:?controlled socket required}" SCCACHE_SERVER_PORT=24226
+  if [ "${1:?address mode required}" = automatic ]; then
+    unset SCCACHE_SERVER_UDS SCCACHE_SERVER_PORT
+  fi
   # shellcheck disable=SC1090
   source "${TESTS_DIR}/../01-core/logging.sh"
   sccache() { case "$1" in --version) echo "sccache 0.17.0" ;; *) return 0 ;; esac; }
@@ -194,12 +198,19 @@ _addr_out="$(
   source "${TESTS_DIR}/../01-core/sccache-server-address.sh"
   eval "$(sed -n '/^ensure_sccache_env() {/,/^}/p' "${TESTS_DIR}/../01-core/common.sh")"
   ensure_sccache_env 2>&1
-)"
+)
+t_case "ensure_sccache_env's setup line NAMES the address it just exported"
+_addr_out="$(_cache_setup_report automatic "${CACHE_FIXTURE_WORK}/inherited.sock")"
 t_assert_contains "${_addr_out}" "[server=/tmp/sccache-" "one grep per stage IS the YB verdict"
 case "${_addr_out}" in
   *"[server=tcp:4226]"*) t_assert_eq "uds" "tcp:4226 — the regression's own address" ;;
   *)                     t_assert_eq "uds" "uds" ;;
 esac
+
+t_case "a diagnostic preserves the caller's explicit socket address"
+_custom_uds="${CACHE_FIXTURE_WORK}/chosen.sock"
+_chosen_out="$(_cache_setup_report preserve "${_custom_uds}")"
+t_assert_contains "${_chosen_out}" "[server=${_custom_uds}]"
 
 t_case "setup_sccache prints the same field, spelled the same way"
 # Two setters, one grep: a second spelling means half the stages go unread.

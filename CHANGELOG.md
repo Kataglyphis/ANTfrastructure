@@ -24,8 +24,8 @@
 - The build host's name is gone from every tracked file; the Home Assistant notes write the MQTT broker as
   `<mqtt-host>:1883`.
 - No home host name or LAN address is left in the tree (owner decision): the fleet's hosts are `catcam-2`,
-  `sbc-1` and `win-1` in the inventory, the README tables and the LLM registry, `setup-summy-server.sh` is
-  `setup-win-1.sh`, and addresses are placeholders. On a control node, rename `host_vars/<old>.yml` to the new
+  `sbc-1` and `win-1` in the inventory, the README tables and the LLM registry, the Windows host's setup
+  script is `setup-win-1.sh`, and addresses are placeholders. On a control node, rename `host_vars/<old>.yml` to the new
   key and make `win-1` resolve for `backends.json`. Home Assistant ids that hold `mintberry` stay, since a new
   `unique_id` would start the cam's long-term statistics from zero.
 - `code-quality-tooling.md` carried an older second copy of its mutation-gate sections behind a broken heading.
@@ -35,6 +35,14 @@
   counts, the `#requires` exceptions, the hook suite paths, the doc gates, where host-tool checksums live, what
   `sync_versions.py` rewrites in the docs, the `01-core` count and two contradictions in `failure-modes.md`. The
   adoption checklist now lists `.github/consumers.json`, and two done backlog items are pruned.
+
+## 2026-11-24 — the no-push runtime wrapper finds its wheelhouse again
+
+- The local wheel context keeps the stage name `runtime_wheels` instead of a digest-pinned image
+  reference, which BuildKit sent to the registry. The fix existed on an unmerged branch since
+  2026-11-14 and is now on the main line.
+- `launch-normal-runtime.py --runtime-source` accepts a later commit on a verified Android parent
+  when only host-only runtime files differ among the base-to-Android inputs.
 
 ## 2026-11-24 — CON295 (c) is done in AccelerANTgine
 
@@ -59,6 +67,14 @@
   initializes that one submodule shallowly, without nested ones. `TorchApp.Checkout.Tests.ps1`, one mutation
   ([failure mode](docs/failure-modes.md#torch-stage-verify_ort_profilepy-is-missing--check-out-the-hub-submodule-before-building)).
 
+## 2026-11-24 — every Windows wheel install pins packaging
+
+- The arm64 media merge refused the same mixed `packaging` after the TVM fix below: `wheel` also pulls
+  `packaging`, and the TVM cross path, IREE, FFmpeg and GenAI installed `wheel` without it.
+  Each of those `Install-CpythonPipPin` calls now names `packaging`, and `Build.PipPins.Tests.ps1`
+  treats `wheel` like the other build tools; one mutation
+  ([failure mode](docs/failure-modes.md#windows-media-merge-a-merge-would-leave-a-mixed-install-pin-one-version)).
+
 ## 2026-11-24 — the TVM branch pins packaging with its build tools
 
 - The Windows media merge refused `packaging` 26.3 from media-core beside 26.4 from TVM: TVM's branch
@@ -66,6 +82,25 @@
   appeared between the two builds. `Build-TvmFromSource.ps1` now names `packaging` in that pinned install, and
   `Build.PipPins.Tests.ps1` fails a call that installs either tool without it; one mutation
   ([failure mode](docs/failure-modes.md#windows-media-merge-a-merge-would-leave-a-mixed-install-pin-one-version)).
+
+## 2026-11-23 — build ROCm Media from a reviewed newer source on the same GPU parent
+
+- `launch-normal-media.py --media-source/--media-source-proof` accepts a later commit when it
+  descends from the GPU source, has its own complete preflight and leaves every compiler, SDK
+  and GPU input byte-identical. The Media export recomputes that review.
+
+## 2026-11-23 — fetch ONNX Runtime sources by verified commit with fork fallback
+
+- Microsoft's ONNX Runtime, GenAI and onnxruntime-extensions repositories return 404.
+  Linux Media and Android now fetch each source through `source-fetch.sh`: the upstream tag
+  first, then the pinned commit from fork networks, and every checkout must match its pin.
+- GenAI builds against the verified extensions checkout instead of cloning it in CMake.
+  The Windows lane still clones the Microsoft URLs and remains blocked.
+
+## 2026-11-23 — refresh SDK fallback fonts for Flutter 3.50.1
+
+- Pin every Noto Color Emoji v39 and Noto Sans Symbols 2 v25 chunk requested by
+  the built Flutter SDK, with SHA-256 verified against the original font downloads.
 
 ## 2026-11-23 — the MSVC runtime notice is final (CON228)
 
@@ -209,6 +244,107 @@
   `context_length_exceeded`, pass `temperature` and `stop`, and follow the split; OrchestrANT copies the ORT count in
   at build time (owner, 2026-11-23).
 
+## 2026-11-22 — continue the local NVIDIA Android export through runtime and FINAL
+
+- Launch the amd64 and arm64/SBSA runtime from the verified same-target Android
+  export. Use the NVIDIA GPU ORT and CUDA Torch packages, the amd64 Android
+  wheelhouse export and the target runtime wrapper.
+- Bind the original Android, Media and runtime receipts in local FINAL. Check
+  the recorded runtime environment and worker closure before the complete
+  consumer plan. Actual builds and consumer acceptance remain pending.
+
+## 2026-11-22 — carry NVIDIA Linux Media through the Android stage
+
+- Use the same-target NVIDIA Media receipt to launch Android on amd64 and
+  arm64/SBSA. The OCI exporter checks inherited accelerator settings and all
+  Media ancestor layers and requires a target-suffixed runtime context.
+
+## 2026-11-22 — bind NVIDIA Linux GPU and WebGPU Media to the target SDK
+
+- Add local amd64 and arm64/SBSA GPU and Media launch/export profiles. Bind
+  the exact SDK source, target-specific image config, immutable native OCI
+  ancestry, both required Media Wasm modes and the 300-GiB Media floor.
+  Ordinary ROCm Media now uses the same launch floor.
+- Synthetic OCI tests cover the launcher and export contracts. Fresh builds,
+  downstream runtime/FINAL acceptance and physical GPU tests remain pending.
+
+## 2026-11-22 — continue default Linux Android through runtime and local FINAL
+
+- Launch the existing runtime chain for default amd64, arm64 and riscv64 from
+  same-target stopped Android receipts. Local wheel exports use the artifact's
+  build-host platform and the runtime build uses the target platform.
+- Retain exact parent/source bindings through the six-consumer local FINAL
+  entry and use the same 300-GiB runtime admission. Synthetic transport and
+  receipt tests exercise these paths. Fresh builds and acceptance are pending.
+
+## 2026-11-22 — continue default Linux Media through native Android handoffs
+
+- Extend the existing OCI export and ordinary Android launch entries to the
+  default amd64, arm64 and riscv64 chains. Bind target-specific receipts, baked
+  cross environment, immutable SDK/Media parent, both Media Wasm modes and all
+  ancestor layers. Keep the ROCm command defaults and current disk admission.
+- Test all three command and receipt paths with synthetic OCI data. Actual
+  foreign Media/Android builds, runtime and FINAL acceptance remain open.
+
+## 2026-11-22 — qualify arm64 and riscv64 SDKs for default Media
+
+- Bind the foreign SDK receipts to the matching producer, Linux amd64 image,
+  target LLVM drivers and C/C++ QEMU smokes in both shell modes. Reuse the
+  compiler OCI ancestry checks and the ordinary Media launcher's disk guard.
+- Add fixture and mutation controls for target selection and receipt coverage.
+  The actual foreign SDK builds, Media exports and factory replays remain open.
+
+## 2026-11-22 — replay the delivered WebGPU Wasm factories
+
+- After JS staging, strict Linux Media builds run the Asyncify and JSPI factory
+  checks against the delivered modules. The replay also runs on shared output
+  cache hits. Preserve ordinary receipt-only checks and the explicit
+  disabled-flavor path.
+
+## 2026-11-22 — retain live OpenCV cache diagnostics
+
+- Add an OpenCV Media phase to the shared read-only cache log reader. Require the
+  outer build command and its final cache drain before allocating evidence.
+- Test both Dockerfile RUNs and reject the inner build command, dependency setup
+  and a missing drain. The full OpenCV compiler-cache measurement remains open.
+
+## 2026-11-22 — keep the shared Python registration protocol valid under dead-code grading
+
+- Mark the unused positional-only library parameter in the runtime-binding protocol explicitly
+  unused. Preserve its argument order, types and positional-only contract; registration behavior
+  and owning-binding state remain unchanged.
+- The ordinary consumer Vulture gate exposed the defect at its existing 100-confidence bound.
+  Retain that bound and the shared-asset equality check; a real-analyser consumer regression
+  checks the mirror rather than adding a private copy or quality exception. This proves no
+  native loading, compiled consumer package or GPU inference.
+
+## 2026-11-22 — assemble closed direct-wrapper source receipts
+
+- Preserve complete direct-wrapper preflight receipt assembly with exact suite/mutation evidence, canonical runner library exclusions and regular-file discovery, original cleanup identity and fresh absence queries. Never reconstruct driver metadata, re-seal a stopped unit or repeat exclusive cleanup.
+
+## 2026-11-22 — keep native file-status fallback compatible with consumer guards
+
+- Compare the already queried file-status enum when distinguishing optional absence from a broken bundle link. This preserves resolution and native error behavior while exact C++ consumer mirrors retain their conservative no-throw source guard. Re-key the existing broken-link mutation to the new expression; no quality threshold or exclusion changes.
+
+## 2026-11-22 — explicitly reuse externally registered native plugin devices
+
+- Add an append opt-in for a device another library already registered in the owning ORT environment. Preserve module checks, registry-owned path bindings, exact device selection and raw failures; external factories do not enter the owned-registration report. Default append and explicit registration retain their existing behavior.
+- Add compiled fake-API controls and mutation recipes for the opt-in, strict defaults, failed enumeration and external ownership. These checks do not authenticate an external factory or prove a native consumer, package or GPU.
+- Validate that every new native variant compiles and links before it fails a policy assertion or independent count. Preserve compiler, linker and abnormal-exit refusals and mutation-test the validator itself; separate object compilation makes the fixture compiler cache usable.
+
+## 2026-11-22 — verify packaged image source originals byte for byte
+
+- Add a shared finished-file checker for staged original trees and their original manifest, preserving exact bytes, selected scope and raw verifier failures.
+- Keep empty sources forbidden by default; allow explicitly selected empty members and forward that permission through native AppImage extraction only for recorded source patches.
+- Share Flatpak's private import/checkout between text and binary checks; the fixture declares its actual defaults and omits unused controls. Share exact member-name validation and drive empty-source CLI cases through one Python fixture. Preserve default ZIP/TAR/DEB/MSI verdicts and native architecture/path checks.
+- Add synthetic archive, real DEB, controlled native-extraction and conditional real Flatpak controls. Actual rebuilt images and application packages, complete binary/source licences and GPU inference remain separate requirements.
+
+## 2026-11-22 — transport selected image source originals
+
+- Add a reusable consumer stager for the reviewed GCC and GStreamer original trees, retaining exact notices, source records, working context and patches. Validate selected inputs before fresh output allocation.
+- Share bounded file validation and fresh writes with the GStreamer producer; retain its narrow Dockerfile companion mount and required API checks. Copy the two media smoke siblings together without increasing the frozen Dockerfile size.
+- Add synthetic transport/refusal and mutation controls. Actual rebuilt images, consumer integration, finished packages and complete native licences and corresponding sources remain open.
+
 ## 2026-11-22 — read equivalent systemd cleanup arguments
 
 - Accept joined and separated systemd `ExecStopPost` arguments when assembling a complete-preflight receipt. Require exactly one across all forms; keep the executed argv unchanged and retain every source, mutation, owner, cleanup and engine-query check.
@@ -244,6 +380,50 @@
   (D7), which `orchestrant-serve` answers with HTTP 400.
 - **Consumers:** OxidANT's `endpoint.rs`, OrchestrANT's `answers.py` and OmniAccelerANT's `endpoint_reply.dart`
   replay every stream case, so the new ones fail each at its next pin until its reader follows D8.
+
+## 2026-11-22 — shared immutable native-helper packaging
+
+- Add explicit byte-preserving Linux helper launchers with private library paths on both loader branches, unchanged arguments and raw worker exit statuses. Refuse legacy RPATH, linked or escaping inputs, existing payloads and mismatched launcher policies.
+- CMake accepts installed-relative `IMMUTABLE_HELPERS`, protects their native payloads during ELF closure, checks their hashes after closure and composes helper and ORT protection in one AppImage patcher. Literal paths and unique basenames prevent ambiguous staging.
+- Real ELF, relocation, TGZ and DEB fixtures exercise the shared transport. Finished consumer packages, actual AppRun, hardware inference and complete licence closure retain their separate proof requirements.
+
+## 2026-11-21 — preserve selected GStreamer source notices before cleanup
+
+- Retain distinct original monorepo and Rust-plugin notices, source commits, tracked patches and the GTK4 package's own version under the GStreamer prefix.
+- Require reviewed release/commit/hash bindings and unchanged original Git bytes; missing, linked or reused paths and native/cross staging failures abort before cleanup.
+- Add real-Git synthetic byte/refusal and conditional-call controls. Actual rebuilt images, finished packages and complete native/transitive licence and corresponding-source closure remain required.
+
+## 2026-11-21 — preserve original GCC runtime notices before source cleanup
+
+- Require the original GPL and runtime-exception texts to match the same build's source archive, then retain both under the installed GCC prefix with the archive SHA512 and canonical source URL.
+- Preserve raw staging failures before cleanup, including conditional callers; reject missing, empty, rewritten or linked inputs and linked output paths.
+- Add synthetic transport and refusal controls. Actual rebuilt images, consumer package staging and the complete native licence closure remain required.
+
+## 2026-11-21 — retain repository origins in independent source copies
+
+- Preserve locally configured origin URLs, their order and literal values when copying committed, recursive or staged sources from local objects. Workflow checks retain the original repository identity instead of the local source folder name.
+- Add real local-Git controls for recursive/working copies, absent origins, multiple values and fatal configuration failures. This metadata does not authenticate sources or prove workflow/build acceptance.
+
+## 2026-11-21 — admit default amd64 WebGPU Media from its SDK
+
+- Add a dedicated owned launcher using the canonical default Media command and existing native SDK/OCI qualifier, exact source proof, compiler ancestry and shared bounded admission.
+- Retain both required Wasm modes, explicit accelerator flags and a 300 GiB durable-storage minimum, including stricter caller reserves. Bind SDK/source/parent and launcher bytes; reject optimized Python before shared parent assertions.
+- Add synthetic positive/refusal and mutation controls. Other foreign/NVIDIA profiles, actual Media builds, factory replay and FINAL acceptance remain open.
+
+## 2026-11-21 — isolate cache diagnostic defaults and derive gate counts
+
+- Keep the compiler-cache report fixture's automatic address independent of inherited socket/port settings, and prove an explicit caller socket still appears in the report. The production capture environment is unchanged; a new mutation must break the isolated default case.
+- Refresh quoted manifest and dead-function figures with the existing measured updater; stale documentation cannot supply a green baseline for its mutation controls.
+
+## 2026-11-21 — retire closed copied package staging
+
+- Add a preview/apply worker restricted to a closed producer's three copied package trees. Bind fresh unit/container/mount observations, exact staging identity and snapshots, and all three retained archive hashes; preserve sources, targets, home caches and receipts. Temporary fixtures and require-removal mutations cover refusals without asserting host authenticity or archive validity.
+
+## 2026-11-21 — exact binary checks for finished Linux packages
+
+- Extend the shared streaming binary verifier to extracted directories, TAR and DEB payloads. Retain exact member names, duplicate/case/alias refusals, regular-file requirements and complete hashes; one conventional TAR root prefix is accepted without accepting duplicate aliases. Share the checked dpkg stream with the text verifier and preserve failed native transport status.
+- Add a native AppImage binary entry point using the same architecture, selected-path, extraction and cleanup helper as licence checks. Synthetic fixtures cover large payloads, final-byte changes, symlinks, duplicates, malformed paths and raw extractor failures; byte equality alone does not establish provenance, executable mode, loader behavior or complete licence coverage.
+- Keep extraction state initialization in the shared helper, removing redundant entry-point declarations reported by the complete ShellCheck warning gate; no warning budget is raised.
 
 ## 2026-11-21 — recognize quiet task-absent Stevedore containers
 

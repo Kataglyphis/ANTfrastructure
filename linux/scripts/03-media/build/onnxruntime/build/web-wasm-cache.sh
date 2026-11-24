@@ -2,17 +2,20 @@
 # A marker alone cannot authenticate the shared pool's source, configured flavors or compiled bytes.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-verify_only=0
-if [ "${1:-}" = --verify-only ]; then verify_only=1; shift; fi
+check_mode=""
+case "${1:-}" in
+  --verify-only|--verify-delivery) check_mode="$1"; shift ;;
+esac
 source "${here}/lib/common.sh"
 parse_common_args "$@"
 case "${ORT_WEB_REQUIRED:-0}" in 0|1) ;; *) printf '%s\n' 'ORT_WEB_REQUIRED must be 0 or 1' >&2; exit 2 ;; esac
 revision="$(git -C "${ORT_SRC_DIR}" rev-parse --verify HEAD)"
 proof=(python3 "${here}/lib/ort-webgpu-wasm-proof.py")
 options=(--source-ref "${ORT_VERSION}" --source-revision "${revision}" --config "${WASM_CONFIG}" --flavors "${ORT_WASM_WEBGPU_FLAVORS}")
-if [ "${verify_only}" = 1 ]; then
-  "${proof[@]}" verify --prefix "${WASM_OUTPUT_DIR}" "${options[@]}"
-  exit 0
+if [ -n "${check_mode}" ]; then
+  action=verify
+  if [ "${check_mode}" = --verify-delivery ] && [ "${ORT_WASM_WEBGPU_FLAVORS}" = true ]; then action=replay; fi
+  exec "${proof[@]}" "${action}" --prefix "${WASM_OUTPUT_DIR}" "${options[@]}"
 fi
 shared="${ORT_WEB_SHARED_CACHE:-/var/cache/onnxruntime-web-shared}"
 mkdir -p "${shared}" "${WASM_OUTPUT_DIR}"

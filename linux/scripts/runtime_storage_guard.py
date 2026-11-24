@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from host_commands import checked_output
-from image_acceptance_local import local_api
+from image_acceptance_local import LANES, local_api, producer_unit
 from source_ci.common import fingerprint, read, require, save, timestamp
 
 HERE = Path(__file__).resolve().parent
@@ -148,8 +148,9 @@ def launch(runtime_path: Path, directory: Path, unit: str, authorization: Path) 
     runtime = read(runtime_path)
     require(runtime.get('stage') == 'runtime' and type(runtime.get('launch_status')) is int and runtime['launch_status'] == 0, 'Actual runtime launch required')
     arch = runtime.get('target_arch')
-    require(arch in {'amd64', 'arm64', 'riscv64'}, 'Supported ordinary runtime architecture required')
-    require(re.fullmatch(r'webgpu-normal-runtime-' + arch + r'-[0-9-]+\.service', runtime['unit']), 'Ordinary runtime unit required')
+    variant = runtime.get('variant', '')
+    require(isinstance(variant, str) and (variant, arch) in LANES, 'Supported ordinary runtime lane required')
+    require(producer_unit('runtime', arch, variant).fullmatch(runtime['unit']), 'Ordinary runtime unit required')
     require('agents may run the existing \x60linux/host-config/prune-safe.sh\x60 autonomously' in authorization.read_text(), 'Standing canonical cleanup authorization required')
     state = UNIT_API(runtime['unit'])
     require(state.get('Id') == runtime['unit'] and state.get('LoadState') == 'loaded' and state.get('ActiveState') in {'active', 'activating'}, 'Runtime is not live')

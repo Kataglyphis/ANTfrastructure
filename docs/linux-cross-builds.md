@@ -963,8 +963,9 @@ while the wrapper builds.
 
 - **The same image.** The export resolves its ref with `runtime_wheels_image_ref`,
   the function image mode uses. It passes the same `WHEELS_IMAGE`, or none when the
-  ref is empty, so both fall back to the Dockerfile default. It uses the wrapper
-  build's `--platform` and pull policy.
+  ref is empty, so both fall back to the Dockerfile default. It retains the
+  wrapper build's pull policy. An explicit local OCI artifact uses its
+  build-host platform for the export. The wrapper uses the target platform.
 - **Under `ARTIFACT_CONTEXT_ROOT`** (a `--no-push` chain) the export reads the
   android OCI layout the package build reads, but only when the layout's one manifest
   digest equals the digest the ref has in containerd (`nerdctl image inspect

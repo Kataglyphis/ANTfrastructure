@@ -1,4 +1,4 @@
-"""Bind explicit compiler or amd64 SDK proof profiles; supplied receipts do not authenticate their provenance."""
+"""Bind explicit compiler or per-target SDK proof profiles; supplied receipts do not authenticate their provenance."""
 
 from __future__ import annotations
 
@@ -11,12 +11,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from proof_types import Json
 
+SDK_TARGETS = ('amd64', 'arm64', 'riscv64')
+
 
 def validate_sdk(plan: Json, invocation: Json, parent: Json, full: Json) -> None:
-    assert invocation['target_arch'] == 'amd64', 'Only the reviewed amd64 SDK profile is supported'
+    arch = invocation['target_arch']
+    assert arch in SDK_TARGETS, 'An explicitly reviewed SDK target is required'
     assert invocation['source'] == plan['source'] and invocation['source_revision'] == plan['source_revision'], 'SDK source differs from its compiler'
     assert invocation['parent_source_revision'] == plan['source_revision'], 'SDK compiler source differs'
-    assert re.fullmatch(r'webgpu-normal-sdk-amd64-[0-9-]+\.service', invocation['unit']), 'Unexpected SDK producer unit'
+    assert re.fullmatch(rf'webgpu-normal-sdk-{arch}-[0-9-]+\.service', invocation['unit']), 'Unexpected SDK producer unit'
     assert invocation['launch_status'] == 0 and invocation['publication'] is False, 'SDK launch was not a successful local invocation'
     assert invocation['source_full_preflight_passed'] and invocation['producer_source_unchanged'], 'SDK source proof was not retained'
     assert parent['status'] == 'passed-qualified-native-compiler-OCI-and-base-ancestry', 'SDK requires its actual qualified compiler parent'
@@ -30,10 +33,11 @@ def validate_sdk(plan: Json, invocation: Json, parent: Json, full: Json) -> None
     assert full['command_exit_status'] == full['cleanup_exit_status'] == full['independent_engine_query_exit_status'] == 0, 'SDK source proof contains a failure'
     assert full['owned_container_absent'] and full['unit_stopped_after_seal'], 'SDK source proof lacks cleanup'
     command = invocation['command']
-    repo = invocation['image'].removesuffix(':cross-sdk-amd64')
-    assert repo.startswith('ant-local/webgpu-') and invocation['image'] == repo + ':cross-sdk-amd64', 'Unexpected SDK candidate name'
+    suffix = ':cross-sdk-' + arch
+    repo = invocation['image'].removesuffix(suffix)
+    assert repo.startswith('ant-local/webgpu-') and invocation['image'] == repo + suffix, 'Unexpected SDK candidate name'
     assert command[:2] == ['systemd-run', '--user'] and '--expand-environment=no' in command, 'SDK transport differs'
-    assert command[-10:] == ['/bin/bash', str(Path(plan['source']) / 'linux/scripts/build-cross-stage.sh'), '--stage', 'sdk', '--arch', 'amd64', '--image-repo', repo, '--log-dir', str(Path(invocation['output']) / 'logs')], 'SDK stage command differs'
+    assert command[-10:] == ['/bin/bash', str(Path(plan['source']) / 'linux/scripts/build-cross-stage.sh'), '--stage', 'sdk', '--arch', arch, '--image-repo', repo, '--log-dir', str(Path(invocation['output']) / 'logs')], 'SDK stage command differs'
     expected_base = 'CROSS_SDK_BASE_IMAGE=' + plan['local_image'].rsplit(':', 1)[0] + '@' + parent['manifest']
     assert command.count(expected_base) == 1 and command.count('CROSS_SDK_BASE_CONTEXT=' + parent['context']) == 1, 'SDK command is not bound to its qualified native parent'
     assert '--push' not in command and '--gates-only' not in command, 'SDK profile requires an actual local build'
@@ -56,19 +60,31 @@ def image_subject(plan: Json, invocation: Json | None = None, parent: Json | Non
     if invocation is not None:
         assert parent is not None and full is not None, 'SDK profile requires parent and source receipts'
         validate_sdk(plan, invocation, parent, full)
-        value.update(kind='sdk-amd64', image=invocation['image'], producer_unit=invocation['unit'],
-                     native_prefix='/opt/llvm-target', cpu_profile='sdk-amd64', cross_required=False,
+        arch = invocation['target_arch']
+        profile = 'sdk-' + arch
+        native_prefix = '/opt/llvm-target' if arch == 'amd64' else '/opt/llvm-target-amd64'
+        value.update(kind=profile, image=invocation['image'], producer_unit=invocation['unit'],
+                     native_prefix=native_prefix, cpu_profile=profile, cross_required=False,
                      unit_prefix='webgpu-sdk-image-qualification-',
                      qualification_status='passed-fresh-SDK-native-tool-and-loader-selection-only')
     return value
 
 
 def validate_subject_binding(record: Json, subject: Json, *, cpu_checks: bool = False) -> None:
-    sdk = subject['kind'] == 'sdk-amd64'
+    sdk = subject['kind'] in {'sdk-' + arch for arch in SDK_TARGETS}
     assert record.get('subject', subject if not sdk else None) == subject, 'Stored proof subject differs'
     if cpu_checks:
         assert record.get('sdk_native_checks_required', False) == sdk, 'Stored SDK CPU requirement differs'
         assert record.get('cross_wrapper_checks_required', False) == subject['cross_required'], 'Stored cross-wrapper requirement differs'
+
+
+def validate_foreign_sdk_image(image: Json, subject: Json) -> None:
+    arch = subject['kind'].removeprefix('sdk-')
+    assert arch in {'arm64', 'riscv64'}, 'Foreign SDK image requires an explicit target'
+    assert image['Os'] == 'linux' and image['Architecture'] == 'amd64', 'Foreign SDK must use the Linux amd64 build image'
+    environment = image['Config']['Env']
+    for key, expected in {'TARGET_ARCH':arch, 'TARGETARCH':arch, 'BUILD_MODE':'cross', 'BUILDPLATFORM':'linux/amd64'}.items():
+        assert [row for row in environment if row.startswith(key + '=')] == [key + '=' + expected], 'Foreign SDK image environment differs: ' + key
 
 
 def load_subject(plan: Json, sdk_invocation: Path | None) -> Json:

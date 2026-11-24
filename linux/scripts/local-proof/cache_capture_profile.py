@@ -6,6 +6,7 @@ MEDIA_PHASE_MARKERS = {
     'ort-cpu': 'bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step cpu;',
     'ort-gpu': 'bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step gpu;',
     'ort-web': 'bash /opt/scripts/03-media/build/onnxruntime/build/web-wasm-cache.sh;',
+    'opencv': 'bash /opt/scripts/03-media/build/opencv/build-opencv.sh ',
     'app-wheelhouse': 'bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh;',
 }
 

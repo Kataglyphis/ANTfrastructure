@@ -61,6 +61,10 @@ def capture_log(pid: int, phase: str, output: Path, timeout: int, process: Path 
     ticks = start_ticks(process)
     command = (process / 'cmdline').read_bytes().replace(b'\0', b' ').decode(errors='replace').strip()
     assert PHASE_MARKERS[phase] in command, 'Cache reader process does not match its phase'
+    if phase == 'opencv':
+        args = command.partition(PHASE_MARKERS[phase])[2]
+        drain = args.partition(';')[2].strip()
+        assert drain == 'bash /opt/scripts/core/sccache-s3-level.sh drain', 'OpenCV requires the outer RUN through its final drain'
     source = process / 'root/tmp/sccache.log'
     assert stat.S_ISREG(source.lstat().st_mode), 'Existing cache log must be a regular file'
     with source.open('rb') as handle:

@@ -5,6 +5,42 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## ONNX Runtime clone asks for a GitHub username
+
+`fatal: could not read Username for 'https://github.com': No such device or address` while
+cloning ONNX Runtime, GenAI or onnxruntime-extensions means GitHub answers 404 for the
+repository; an anonymous clone of a missing repository asks for credentials. Since about
+2026-11-17 Microsoft's three repositories are offline. Do not add credentials or retry. The
+Media and Android fetch now verify the pinned commit and fall back to fork networks
+([source pins](onnxruntime-single-source.md#source-pins-and-fork-fallback)); `[ort-source]`
+lines name the source that served each commit. A refusal naming a stale pin means a version
+bump needs a new commit in `source-pins.txt`.
+
+## Consumer pattern limits flag the native plugin header's status helper
+
+The conservative `throwing_filesystem_calls` consumer scan can flag the file-status overload
+of `std::filesystem::is_symlink(entry)` in an exact imported native header. The queried
+`entry` is already a `file_status`; the canonical fallback compares its type directly and
+retains the distinction between absent optional modules and dangling bundle links. Update
+the exact Hub pin and mirror together, preserving the consumer's zero budget and scan scope.
+The native policy and broken-link controls check resolution; no GPU or package proof follows.
+
+## Workflow lint identifies an independent source copy as editor
+
+**Symptom.** Full preflight rejects repository `editor` as undeclared in
+`.github/consumers.json`, while the original checkout has the expected repository name.
+
+**Cause.** A local independent clone replaces its origin with the source checkout's
+filesystem path. Copying that Git metadata into isolated preflight makes workflow
+selection use the directory basename instead of the original repository identity.
+
+**Fix.** Prepare a fresh copy with `preserve-consumer-sources.py`, which retains
+configured origin URLs and their order after cloning from local objects. Inspect
+the copied origin before replaying workflow checks. Existing copies keep their
+recorded metadata; original receipts remain unchanged. Origin metadata does not
+authenticate the source or establish workflow acceptance. See
+[working consumer sources](local-proof-workflows.md#working-consumer-sources).
+
 ## Torch stage: `verify_ort_profile.py is missing ... check out the hub submodule before building`
 
 **Symptom.** `uv sync` of the app fails in `Dockerfile.torch` with that message from OrchestrANT's
@@ -24,10 +60,11 @@ lane's `fetch_app_tree` (`assemble-torch-app.sh`) clones the same way.
 
 **Cause.** The branches were built hours apart. TVM's branch installed `scikit-build-core` and
 `setuptools-scm` before it had `packaging`, so pip resolved their dependency to the newest release,
-which came out between the two builds. The merge gate is right to refuse.
+which came out between the two builds. On arm64 the cross path installs `wheel`, which also
+pulls `packaging`. The merge gate is right to refuse.
 
 **Fix.** Name the dependency in the same `Install-CpythonPipPin` call, so its pin applies.
-`Build.PipPins.Tests.ps1` fails a call that installs either tool without `packaging`; extend its
+`Build.PipPins.Tests.ps1` fails a call that installs one of these tools or `wheel` without `packaging`; extend its
 `$toolDeps` map when another build tool pulls an unpinned dependency.
 
 ## Local Docker-loaded GPU image does not resolve by repository@digest
@@ -128,6 +165,18 @@ Use the actual normal GPU invocation, matching live build-image or outer RUN PID
 ## Unchanged compiler inputs still rebuild after changing the local cache namespace
 
 A new image repository or `BUILDKIT_CACHE_DIR` selects a different stage-cache path. Byte-identical GNU mounts establish only equal input boundaries; without the old index in that path the normal driver emits no local `--cache-from`. Preserve a completed producer's cache with [the versioned transfer helper](local-proof-workflows.md#local-buildkit-cache-transfer), select the actual driver path and retain a dry run proving that import before starting the next build. Hard-link only immutable blobs and copy mutable metadata separately. Do not edit a live plan or cache export, restart a running producer for hits, or report source equality as an observed cache hit.
+
+## Cache diagnostic fixture inherits the capture socket
+
+The compiler-cache report fixture can fail under the normal command capturer because
+`SCCACHE_SERVER_UDS` already points at that command's private socket. The production helper
+correctly honors the caller, while the fixture expects an automatically selected default.
+Clear socket and port only in the fixture's automatic-address child, with deliberately
+inherited values as a control. A separate explicit-socket case must retain the chosen
+address in the diagnostic. Keep the real parent capture socket and its statistics intact.
+Pass controlled values as arguments and export them directly inside the fixture child.
+Temporary assignments before a function call can expose the outer binding again when unset.
+The fixture and mutation prove this isolation; they do not start a real cache server.
 
 ## Live compiler-cache reader rejects a changed log inode
 
@@ -2107,7 +2156,7 @@ neither compiler reuse nor image/GPU acceptance.
 
 **Cause.** The android tag exists only in containerd's store, which BuildKit's OCI worker cannot see. nerdctl maps every `oci-layout://` context onto one store id (`parent-image-key`), so a second one beside `runtime_package` makes one of them unresolvable. Rootless nerdctl refuses `cp` from a stopped container.
 
-**Fix.** `runtime_wheels_context_dir` extracts `/opt/wheels` with `nerdctl export | tar` into a directory context. Never pass two `oci-layout://` contexts to one nerdctl build. Since 2026-09-24 `RUNTIME_WHEELS_SOURCE=export` is the other way: its own export build reads the android OCI layout (the only `oci-layout://` context of that build), after proving it is the same image ([both deliveries](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries)).
+**Fix.** `runtime_wheels_context_dir` extracts `/opt/wheels` with `nerdctl export | tar` into a directory context. The context keeps the stage name `runtime_wheels`; a digest-pinned image reference as its key reaches the registry resolver and fails with `<repo>@sha256:...: not found`. Never pass two `oci-layout://` contexts to one nerdctl build. Since 2026-09-24 `RUNTIME_WHEELS_SOURCE=export` is the other way: its own export build reads the android OCI layout (the only `oci-layout://` context of that build), after proving it is the same image ([both deliveries](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries)).
 
 ### The torch RUN idles for minutes before `uv venv`
 

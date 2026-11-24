@@ -49,10 +49,12 @@ def blob(context: Path, data: bytes, media_type: str) -> dict[str, Any]:
     return {'digest':'sha256:' + digest, 'size':len(data), 'mediaType':media_type}
 
 
-def layout(context: Path, payloads: list[bytes]) -> tuple[str, dict[str, Any], dict[str, Any]]:
+def layout(context: Path, payloads: list[bytes], *, environment: list[str] | None = None) -> tuple[str, dict[str, Any], dict[str, Any]]:
     (context / 'blobs/sha256').mkdir(parents=True)
     layers = [blob(context,data,'application/vnd.oci.image.layer.v1.tar+gzip') for data in payloads]
     config = {'os':'linux','architecture':'amd64','rootfs':{'type':'layers','diff_ids':[row['digest'] for row in layers]}}
+    if environment is not None:
+        config['config'] = {'Env': environment}
     config_descriptor = blob(context,json.dumps(config).encode(),'application/vnd.oci.image.config.v1+json')
     manifest = {'schemaVersion':2,'config':config_descriptor,'layers':layers}
     selected = blob(context,json.dumps(manifest).encode(),'application/vnd.oci.image.manifest.v1+json')

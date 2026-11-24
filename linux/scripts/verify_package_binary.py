@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""Compare exact binary members in ZIP/MSIX/wheels or MSI packages to source files.
+"""Compare exact binary members in directories, TAR, DEB, ZIP/MSIX/wheels or MSI to source files.
 
 Rules are exact MEMBER=SOURCE pairs, not globs. MSI members use the embedded
 cabinet and File-table identifier returned by Get-MsiCabinetPattern. The check
-proves byte equality only; callers must separately establish source provenance.
+proves regular-file byte equality, not source provenance, executable mode, loader
+behavior or the integrity of unselected members. TAR permits one conventional
+leading './' but rejects duplicate or ambiguous selected paths.
+Empty sources require --allow-empty for their exact selected member; Flatpak uses a private checkout.
 """
 # PACKAGE_BINARY_WHEEL_API=1
+
+# PACKAGE_BINARY_LINUX_API=1
 
 from __future__ import annotations
 
@@ -18,6 +23,7 @@ import runpy
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import zipfile
 from pathlib import Path
@@ -27,6 +33,8 @@ _shared = runpy.run_path(str(Path(__file__).with_name("verify_package_license.py
 safe_name = _shared["safe_name"]
 sevenzip_member_names = _shared["sevenzip_member_names"]
 msi_cabinet_checks = _shared["msi_cabinet_checks"]
+checked_deb_payload = _shared["checked_deb_payload"]
+PACKAGE_BINARY_EMPTY_API = 1
 
 
 def digest(stream: IO[bytes]) -> tuple[str, int]:
@@ -52,35 +60,66 @@ def exact_name(name: str) -> str:
     return result
 
 
-def load_rules(items: list[str], *, msi: bool) -> dict[str, tuple[str, int]]:
+def selected_member_name(name: str, *, msi: bool) -> str:
+    if not msi:
+        return exact_name(name)
+    cabinet, sep, member = name.partition("::")
+    if not sep or "::" in member:
+        raise ValueError("MSI members require cabinet.cab::file-id")
+    if "/" in cabinet or "\\" in cabinet or not cabinet.lower().endswith(".cab"):
+        raise ValueError("MSI cabinet must be an embedded cabinet basename")
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", member):
+        raise ValueError("MSI member must be a File-table identifier")
+    return f"{exact_name(cabinet)}::{exact_name(member)}"
+
+
+def load_rules(
+    items: list[str], *, msi: bool, allow_empty: set[str] | None = None
+) -> dict[str, tuple[str, int]]:
     rules: dict[str, tuple[str, int]] = {}
     for item in items:
         name, separator, source = item.partition("=")
         if not separator or not name or not source:
             raise ValueError(f"invalid rule: {item!r}; expected MEMBER=SOURCE")
-        if msi:
-            cabinet, sep, member = name.partition("::")
-            if not sep or "::" in member:
-                raise ValueError("MSI members require cabinet.cab::file-id")
-            if (
-                "/" in cabinet
-                or "\\" in cabinet
-                or not cabinet.lower().endswith(".cab")
-            ):
-                raise ValueError("MSI cabinet must be an embedded cabinet basename")
-            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", member):
-                raise ValueError("MSI member must be a File-table identifier")
-            name = f"{exact_name(cabinet)}::{exact_name(member)}"
-        else:
-            name = exact_name(name)
+        name = selected_member_name(name, msi=msi)
         if name.casefold() in {existing.casefold() for existing in rules}:
             raise ValueError(f"duplicate package member rule: {name}")
         with Path(source).open("rb") as stream:
             expected = digest(stream)
-        if not expected[1]:
+        if not expected[1] and name not in (allow_empty or set()):
             raise ValueError(f"empty binary source: {source}")
         rules[name] = expected
+    if allow_empty and not allow_empty <= rules.keys():
+        raise ValueError("empty-source allowance names an unselected member")
     return rules
+
+
+def selected_name(raw: str, names: dict[str, str]) -> str | None:
+    canonical = "/".join(
+        part for part in safe_name(raw).split("/") if part not in ("", ".")
+    )
+    return names.get(canonical.casefold())
+
+
+def require_member_count(name: str, count: int) -> None:
+    if count != 1:
+        raise ValueError(
+            f"package member {name!r} matched {count} entries; expected one"
+        )
+
+
+def require_regular_member(name: str, actual_name: str, regular: bool) -> None:
+    if actual_name != name:
+        raise ValueError(f"package member path differs: {name}")
+    if not regular:
+        raise ValueError(f"package member is not a regular file: {name}")
+
+
+def require_binary(
+    actual: tuple[str, int], expected: tuple[str, int], name: str
+) -> None:
+    if actual != expected:
+        raise ValueError(f"package binary differs from source: {name}")
 
 
 def check_zip(path: Path, rules: dict[str, tuple[str, int]]) -> None:
@@ -88,26 +127,60 @@ def check_zip(path: Path, rules: dict[str, tuple[str, int]]) -> None:
         entries: dict[str, list[zipfile.ZipInfo]] = {name: [] for name in rules}
         names = {name.casefold(): name for name in rules}
         for entry in archive.infolist():
-            name = safe_name(entry.filename)
-            canonical = "/".join(
-                part for part in name.split("/") if part not in ("", ".")
-            )
-            if canonical.casefold() in names:
-                entries[names[canonical.casefold()]].append(entry)
+            name = selected_name(entry.filename, names)
+            if name is not None:
+                entries[name].append(entry)
         for name, found in entries.items():
-            if len(found) != 1:
-                raise ValueError(
-                    f"package member {name!r} matched {len(found)} entries; expected one"
-                )
+            require_member_count(name, len(found))
             entry = found[0]
-            if entry.filename != name:
-                raise ValueError(f"package member path differs: {name}")
-            if entry.is_dir() or stat.S_ISLNK(entry.external_attr >> 16):
-                raise ValueError(f"package member is not a regular file: {name}")
+            mode_type = stat.S_IFMT(entry.external_attr >> 16)
+            require_regular_member(
+                name,
+                entry.filename,
+                not entry.is_dir() and mode_type in (0, stat.S_IFREG),
+            )
             with archive.open(entry) as stream:
-                actual = digest(stream)
-            if actual != rules[name]:
-                raise ValueError(f"package binary differs from source: {name}")
+                require_binary(digest(stream), rules[name], name)
+
+
+def check_directory(path: Path, rules: dict[str, tuple[str, int]]) -> None:
+    if path.is_symlink():
+        raise ValueError("extracted package root must not be a symlink")
+    entries: dict[str, list[Path]] = {name: [] for name in rules}
+    names = {name.casefold(): name for name in rules}
+    for entry in path.rglob("*"):
+        name = selected_name(entry.relative_to(path).as_posix(), names)
+        if name is not None:
+            entries[name].append(entry)
+    for name, found in entries.items():
+        require_member_count(name, len(found))
+        entry = found[0]
+        require_regular_member(
+            name,
+            entry.relative_to(path).as_posix(),
+            stat.S_ISREG(entry.lstat().st_mode),
+        )
+        with entry.open("rb") as stream:
+            require_binary(digest(stream), rules[name], name)
+
+
+def check_tar(stream: IO[bytes], rules: dict[str, tuple[str, int]]) -> None:
+    counts = dict.fromkeys(rules, 0)
+    names = {name.casefold(): name for name in rules}
+    with tarfile.open(fileobj=stream, mode="r|*") as archive:
+        for entry in archive:
+            name = selected_name(entry.name, names)
+            if name is None:
+                continue
+            counts[name] += 1
+            require_regular_member(name, entry.name.removeprefix("./"), entry.isfile())
+            member = archive.extractfile(entry)
+            if member is None:
+                raise ValueError(f"cannot read package member: {name}")
+            with member:
+                require_binary(digest(member), rules[name], name)
+    for name, count in counts.items():
+        require_member_count(name, count)
 
 
 def extract_cabinet(path: Path, name: str, output: Path) -> None:
@@ -162,8 +235,7 @@ def check_msi(path: Path, rules: dict[str, tuple[str, int]]) -> None:
                     )
                 if member not in names:
                     raise ValueError(f"cabinet member case differs: {rule}")
-                if hash_cabinet_member(cab, member) != rules[rule]:
-                    raise ValueError(f"package binary differs from source: {rule}")
+                require_binary(hash_cabinet_member(cab, member), rules[rule], rule)
 
 
 def main() -> int:
@@ -172,20 +244,42 @@ def main() -> int:
     parser.add_argument(
         "--require", action="append", required=True, metavar="MEMBER=SOURCE"
     )
+    parser.add_argument(
+        "--allow-empty",
+        action="append",
+        default=[],
+        metavar="MEMBER",
+        help="permit an empty source only for this exact selected member",
+    )
     args = parser.parse_args()
     try:
+        if len(args.allow_empty) != len(set(args.allow_empty)):
+            raise ValueError("duplicate empty-source allowance")
         msi = args.package.suffix.lower() == ".msi"
-        rules = load_rules(args.require, msi=msi)
-        if msi:
+        rules = load_rules(args.require, msi=msi, allow_empty=set(args.allow_empty))
+        if args.package.is_dir():
+            check_directory(args.package, rules)
+        elif msi:
             check_msi(args.package, rules)
         elif args.package.suffix.lower() in (".zip", ".msix", ".whl"):
             check_zip(args.package, rules)
+        elif args.package.suffix.lower() == ".deb":
+            checked_deb_payload(args.package, lambda stream: check_tar(stream, rules))
+        elif args.package.suffix.lower() == ".flatpak":
+            with _shared["flatpak_checkout"](args.package) as checkout:
+                check_directory(checkout, rules)
+        elif tarfile.is_tarfile(args.package):
+            with args.package.open("rb") as stream:
+                check_tar(stream, rules)
         else:
-            raise ValueError("package must be ZIP, MSIX, wheel or MSI")
+            raise ValueError(
+                "package must be a directory, TAR, DEB, ZIP, MSIX, wheel or MSI"
+            )
     except (
         OSError,
         ValueError,
         zipfile.BadZipFile,
+        tarfile.TarError,
         EOFError,
         subprocess.CalledProcessError,
     ) as exc:

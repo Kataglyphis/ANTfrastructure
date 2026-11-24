@@ -29,8 +29,8 @@ UNIT_STATE = runpy.run_path(str(HERE / 'seal-mutation-unit.py'))['unit_state']
 TERMINAL = runpy.run_path(str(HERE / 'watch-build-units.py'))['terminal']
 
 
-def workers() -> list[Path]:
-    runtime = API['local_module']().local_api('runtime_launch_profile').runtime_worker_files(ROOT)
+def workers(variant: str = '') -> list[Path]:
+    runtime = API['local_module']().local_api('runtime_launch_profile').runtime_worker_files(ROOT, nvidia=variant == 'nvidia')
     return sorted({*runtime, Path(__file__), HERE / 'image-acceptance.py', HERE / 'image_acceptance_local.py', HERE / 'runtime_terminal_evidence.py',
                    HERE / 'source_ci/common.py', HERE / 'seal-mutation-unit.py', HERE / 'watch-build-units.py',
                    ROOT / 'shared/config/image-consumers.json'})
@@ -48,7 +48,7 @@ def binding(directory: Path, record: dict[str, Any]) -> None:
     OwnedContainers(ENGINE, OWNER, record['run_id'])
     require(re.fullmatch(r'webgpu-local-final-' + record['platform'].removeprefix('linux/') + r'-[0-9-]+\.service', record['unit']), 'FINAL unit identity differs')
     clean_source(record['revision'])
-    require(record['workers_sha256'] == {str(path):fingerprint(path) for path in workers()}, 'FINAL launcher worker closure changed')
+    require(record['workers_sha256'] == {str(path):fingerprint(path) for path in workers(record['local_subject']['variant'])}, 'FINAL launcher worker closure changed')
     require(fingerprint(Path(record['runtime_invocation'])) == record['runtime_invocation_sha256'], 'FINAL runtime invocation changed')
     require(fingerprint(directory / 'plan.json') == record['plan_sha256'], 'FINAL plan bytes changed')
     plan = API['read_plan'](directory / 'plan.json')
@@ -88,7 +88,7 @@ def launch(runtime_path: Path, image: str, directory: Path, unit: str) -> None:
                   'ANT_RUNTIME_ENGINE=' + ENGINE, 'ANT_RUNTIME_OWNER_LABEL=' + OWNER, 'ANT_RUNTIME_RUN_ID=' + owner.run_id]:
         command += ['-E', value]
     command += [sys.executable, str(Path(__file__).resolve()), 'worker', '--directory', str(directory)]
-    record = {'source':str(ROOT), 'revision':revision, 'workers_sha256':{str(path):fingerprint(path) for path in workers()},
+    record = {'source':str(ROOT), 'revision':revision, 'workers_sha256':{str(path):fingerprint(path) for path in workers(origin['variant'])},
               'unit':unit, 'engine':ENGINE, 'owner_label':OWNER, 'run_id':owner.run_id, 'platform':platform, 'image':image,
               'runtime_invocation':str(runtime_path), 'runtime_invocation_sha256':fingerprint(runtime_path), 'local_subject':origin,
               'plan_sha256':fingerprint(directory / 'plan.json'), 'command':command, 'cleanup_command':cleanup,

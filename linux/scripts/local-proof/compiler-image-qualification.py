@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify reviewed compiler/amd64-SDK tools, loader and CPU wrappers; no foreign SDK, complete C++ ABI or GPU acceptance."""
+"""Qualify reviewed compiler and SDK tools, loader and CPU wrappers; no complete C++ ABI or GPU acceptance."""
 
 from __future__ import annotations
 
@@ -18,7 +18,11 @@ if TYPE_CHECKING:
     from proof_types import Json
 
 from proof_commands import checked_run
-from proof_subject import load_subject, validate_subject_binding
+from proof_subject import (
+    load_subject,
+    validate_foreign_sdk_image,
+    validate_subject_binding,
+)
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("action", choices=["launch", "seal"])
@@ -31,7 +35,7 @@ parser.add_argument('--sdk-invocation', type=Path)
 args = parser.parse_args()
 plan = json.loads(args.plan.read_text())
 subject = load_subject(plan, args.sdk_invocation)
-sdk_required = subject['kind'] == 'sdk-amd64'
+sdk_required = args.sdk_invocation is not None
 source = Path(plan["source"])
 out = args.output.resolve()
 tools_dir = Path(__file__).resolve().parent
@@ -80,6 +84,8 @@ if args.action == "launch":
     cleanup = source / "linux/scripts/cleanup-owned-containers.py"
     run(["python3", str(cleanup), "--help"])
     image = json.loads(run([engine, "image", "inspect", subject['image']]).stdout)[0]
+    if sdk_required and subject['kind'] != 'sdk-amd64':
+        validate_foreign_sdk_image(image, subject)
     manifests = {value.rsplit("@", 1)[1] for value in image["RepoDigests"]}
     assert len(manifests) == 1
     manifest = manifests.pop()
@@ -124,7 +130,7 @@ if args.action == "launch":
                                  '-v', f'{out}/cross-probe.py:/cross-probe.py:ro', '-v', f'{out}/inputs:/inputs:ro']
         command[command.index('/qualify.sh')] = '/qualify-with-cross.sh'
         if sdk_required:
-            command.append('sdk-amd64')
+            command.append(subject['cpu_profile'])
     record = {"created_at": datetime.datetime.now(datetime.UTC).isoformat(), "unit": args.unit, "producer_unit": subject['producer_unit'], 'subject':subject,
               "producer_terminal": producer, "source_revision": plan["source_revision"], "source": str(source),
               "image": subject['image'], "expected_manifest": manifest, "expected_config": image["Id"],

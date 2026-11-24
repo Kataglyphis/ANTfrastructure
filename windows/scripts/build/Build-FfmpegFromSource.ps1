@@ -809,7 +809,7 @@ function Invoke-FfmpegPyavWheel {
     Install-CpythonPip -Python $py
     Initialize-PythonPlatformTag | Out-Null
     # One Cython in both media branches: the fan-in refuses a distribution at two versions.
-    Install-CpythonPipPin -Python $py -Name cython, setuptools, wheel
+    Install-CpythonPipPin -Python $py -Name cython, setuptools, wheel, packaging
     $pyavSrcRoot = 'C:\temp\pyav-src'
     New-Item -Path $pyavSrcRoot -ItemType Directory -Force | Out-Null
     Invoke-CpythonPip -Python $py -Arguments @('download', "av==$pyavVersion", '--no-binary', ':all:', '--no-deps', '--no-build-isolation', '-d', $pyavSrcRoot)

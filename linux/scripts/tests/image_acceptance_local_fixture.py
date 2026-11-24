@@ -22,6 +22,7 @@ MAIN = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MAIN)
 LOCAL = MAIN.local_module()
 RUNTIME = LOCAL.local_api('runtime_launch_profile')
+SEED = LOCAL.local_api('native_oci_seed')
 NAMES = ['AccelerANTgine', 'OxidANT', 'ANThology', 'OmniAccelerANT', 'jotrockenmitlocken', 'WebDavClient']
 
 
@@ -64,7 +65,7 @@ class LocalFixture:
         self.android_path, self.parent_path = self.root / 'android.json', self.root / 'native-parent.json'
         self.android: dict[str, Any] = {'stage':'android', 'variant':self.variant, 'target_arch':self.arch,
                         'source_revision':'b' * 40, 'image':'ant-local/webgpu-fixture:cross-android-' + self.arch}
-        self.parent = {'manifest':'sha256:' + 'b' * 64, 'config':'sha256:' + 'e' * 64, 'source_revision':'b' * 40}
+        self.parent: dict[str, Any] = {'manifest':'sha256:' + 'b' * 64, 'config':'sha256:' + 'e' * 64, 'source_revision':'b' * 40}
         self.android_path.write_text(json.dumps(self.android))
         self.parent_path.write_text(json.dumps(self.parent))
         self.workers = RUNTIME.runtime_worker_files(self.host)
@@ -128,11 +129,71 @@ class LocalFixture:
         self.invocation['Android_invocation_sha256'] = LOCAL.fingerprint(self.android_path)
         self.save()
 
+    def nvidia_android(self) -> None:
+        self.command_android()
+        android_unit = f'webgpu-normal-android-nvidia-{self.arch}-99999999-1.service'
+        original_unit = self.android['unit']
+        media = self.root / 'media-oci-proof.json'
+        media.write_text('{"synthetic": "Media export"}\n')
+        self.android.update(stage='android', unit=android_unit, parent_OCI_proof=str(media),
+                            parent_OCI_proof_sha256=LOCAL.fingerprint(media),
+                            image='ant-local/webgpu-fixture-stages:cross-android-nvidia-' + self.arch)
+        self.android['command'] = [value.replace(original_unit, android_unit) for value in self.android['command']]
+        self.android_path.write_text(json.dumps(self.android))
+        context = self.root / ('android-context-' + self.arch)
+        context.mkdir()
+        index = context / 'index.json'
+        index.write_text('{"synthetic": "Android index"}\n')
+        export = f'webgpu-normal-android-export-nvidia-{self.arch}-99999999-1.service'
+        self.parent.update(status=f'passed-native-NVIDIA-{self.arch}-Android-OCI-and-Media-ancestry-only',
+                           Android_invocation=str(self.android_path), Android_invocation_sha256=LOCAL.fingerprint(self.android_path),
+                           context=str(context), index_sha256=LOCAL.fingerprint(index), layers=32, matched_Media_layers_and_diffIDs=31,
+                           export_transport={'producer_status':0, 'extractor_status':0}, parent_layer_reuse_verified=True,
+                           all_native_blob_sizes_and_sha256_verified=True, parent_OCI_proof_sha256=LOCAL.fingerprint(media),
+                           unit=export, terminal_before_stop={'Id':export, 'ActiveState':'active', 'SubState':'exited', 'MainPID':'0',
+                                                              'Result':'success', 'ExecMainStatus':'0'},
+                           stopped={'ActiveState':'inactive', 'MainPID':'0'})
+        self.parent_path.write_text(json.dumps(self.parent))
+        self.bind_nvidia_runtime(context)
+
+    def bind_nvidia_runtime(self, context: Path) -> None:
+        old_unit = self.unit
+        self.unit = f'webgpu-normal-runtime-nvidia-{self.arch}-99999999-1.service'
+        self.terminal.return_value['Id'] = self.unit
+        self.parent_reference = 'docker.io/ant-local/webgpu-fixture-stages@' + self.parent['manifest']
+        command = self.invocation['command']
+        flags = [value for value in command[4:-11] if not value.startswith(('RUNTIME_ANDROID_PIN_', 'RUNTIME_WHEELS_SOURCE='))]
+        flags += ['CROSS_BUILD_PLATFORM=linux/amd64', 'CROSS_NVIDIA_SBSA=' + ('1' if self.arch == 'arm64' else '0'),
+                  'ENABLE_DEEPSTREAM=' + ('true' if self.arch == 'amd64' else 'false'), 'ENABLE_TENSORRT=true',
+                  'ENABLE_ROCM_ASAN=false', 'BUILD_TYPE=Release', 'TORCH_APP_MODE=all', 'CROSS_BUILDKIT_KEEP_GB=120',
+                  'ONNX_PACKAGE=onnxruntime-gpu', 'PYTORCH_EXTRA=pytorch-cu130', 'RUNTIME_WHEELS_SOURCE=export',
+                  'CROSS_IMAGE_PRUNE=0', 'PRUNE_DUP_CACHEMOUNTS=0',
+                  'ARTIFACT_CONTEXT_ROOT=' + str(context).removesuffix('-' + self.arch),
+                  'RUNTIME_ANDROID_PIN_' + self.arch + '=' + self.parent_reference]
+        driver = command[-11:]
+        driver[7] = 'ant-local/webgpu-fixture-stages:cross-android-nvidia'
+        runtime_command = [*(value.replace(old_unit, self.unit) for value in command[:4]),
+                           *(part for value in flags for part in ('-E', value)), *driver]
+        self.workers = RUNTIME.runtime_worker_files(self.host, nvidia=True)
+        for path in self.workers:
+            if not path.exists():
+                path.write_text('# synthetic NVIDIA worker identity\n')
+        self.invocation.update(unit=self.unit, command=runtime_command, source_revision=self.android['source_revision'],
+                               nvidia_android_ancestry_verified=True, parent_context=str(context),
+                               Android_invocation_sha256=LOCAL.fingerprint(self.android_path),
+                               parent_OCI_proof_sha256=LOCAL.fingerprint(self.parent_path), parent_OCI_index_sha256=self.parent['index_sha256'],
+                               Android_layers_rehashed=32, Media_layers_matched=31,
+                               selected_host_workers_sha256={str(path):LOCAL.fingerprint(path) for path in self.workers})
+        self.tag_image['Config']['Labels'].update({'org.opencontainers.image.revision':self.android['source_revision'],
+                                                  'org.kataglyphis.parent-digest':self.parent_reference})
+        self.digest_image = copy.deepcopy(self.tag_image)
+        self.save()
+
     def save(self) -> None:
         self.invocation_path.write_text(json.dumps(self.invocation))
 
     def api(self, name: str) -> Any:
-        return {'runtime_launch_profile':RUNTIME, 'normal_stage_launch':types.SimpleNamespace(full_source=self.full_source),
+        return {'runtime_launch_profile':RUNTIME, 'native_oci_seed':SEED, 'normal_stage_launch':types.SimpleNamespace(full_source=self.full_source),
                 'gpu_handoff_profile':types.SimpleNamespace(terminal=self.terminal)}[name]
 
     def dispatch(self, command: list[str], **options: Any) -> subprocess.CompletedProcess[str]:

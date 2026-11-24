@@ -2444,9 +2444,18 @@ The returned command and environment are preparation data. They explicitly claim
 neither verified parent ancestry nor a launch. Before executing them, the owning
 launcher must qualify the exact parent OCI/source chain, apply normal idle-host,
 storage and cache admission, and register bounded unit/container cleanup. The
-existing `launch-normal-media.py` remains restricted to its reviewed ROCm amd64
-chain. The other owned launch/handoff profiles and every actual image acceptance
-remain open. Command tests compare all six profiles with independent expectations
+ordinary `launch-normal-media.py` selects ROCm amd64 by default. Its explicit
+NVIDIA variant follows the same-target [GPU and Media handoffs](local-proof-workflows.md#nvidia-gpu-and-media-handoffs)
+for amd64 and arm64/SBSA, including the Android OCI export that supplies runtime inputs.
+The [NVIDIA runtime and FINAL path](local-proof-workflows.md#nvidia-runtime-and-local-final)
+uses that stopped export and checks the target's CUDA and TensorRT settings.
+The [default Media launcher](local-proof-workflows.md#default-amd64-media-admission)
+qualifies the exact same-target SDK/source and compiler ancestry before shared idle-host
+admission with at least 300 GiB available; stricter caller reserves remain intact.
+The [default Media and Android handoffs](local-proof-workflows.md#default-media-and-android-handoffs)
+bind the same-target parent and cross build environment through native export.
+Actual default and NVIDIA builds and current image acceptance remain
+open. Command tests compare all six profiles with independent expectations
 and the real shell stage graph; they do not build ORT or run a GPU.
 
 ### Combined media factory acceptance
@@ -2495,6 +2504,20 @@ Evidence is retained in
 with raw status zero, checked cleanup and independent container absence. This
 covers the CPU prefix in that media image; other target/variant products, WASM
 execution and fresh final runtime/consumer acceptance remain open.
+
+The 2026-11-14 ROCm amd64 Media build from Hub `8c4e13b0` rebuilt Asyncify and
+JSPI after rejecting the shared output cache. The completed outer BuildKit RUN
+took 1,096.6 seconds. Across all four passes, ccache recorded 1,274 hits and
+245 misses among 1,519 cacheable calls. The native, GIL, FT and both Wasm factory
+replays checked Media manifest
+`sha256:253d1f9c807a968acc79dbcefb7c7f6aac8f2f5bf40dcf0dec3096d16e12edb7`
+with ORT `6af1a932e2286d5c58166085d24c68783033edee`. The default-amd64 Media
+manifest `sha256:170d74a478e32bd30811b572ed2c46120d9bbbbc0a6a88aae6e05d3b01bac447`
+contains the same Wasm module and loader hashes. The combined gate passed all
+five factory phases offline on that digest on 2026-11-22, including the
+GIL-disabled FT check. Evidence is retained under
+`logs/test-results/webgpu-registration-20261110/orchestrant-current-helper-20261122-1/static-docs-20261122-1/`.
+The six-lane production rebuild, FINAL consumers and GPU parity remain open.
 
 The preserved C API probe is built in both native CPU/NVIDIA producers before the
 GIL receipt and FT reconfiguration. Its CMake project reads the core's configured
@@ -2576,9 +2599,13 @@ availability, inference and complete global-runtime teardown remain separate.
 
 For CON233's own chains, export `ORT_WEB_REQUIRED=1 ORT_WASM_WEBGPU_FLAVORS=true`.
 The canonical media-stage argument builder forwards both; required build, copy and
-receipt failures propagate through the outer driver. The post-JS `--verify-only`
-path checks the compiled modules again without creating a cache. Generic optional
-web builds retain their explicit policy and cannot stamp an incomplete pool.
+receipt failures propagate through the outer driver. After JS staging,
+`web-wasm-cache.sh --verify-delivery` replays both enabled factory modules in
+separate Node processes, retains their raw result records and checks both
+products and receipts again. Cached builds still run these checks.
+The same mode verifies the core artifacts when flavors
+are explicitly disabled. `--verify-only` remains available for receipt and
+artifact inspection. Neither mode creates a cache or rebuilds products.
 Start the strict AMD64 lane before foreign targets so the common host-built pool
 exists; a foreign-target skip cannot seal an empty directory. The existing disk
 admission and digest-pinned parent handoff rules still apply.

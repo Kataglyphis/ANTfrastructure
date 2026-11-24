@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export actual ordinary ROCm Media with native GPU ancestry; no factory, licence, inference or FINAL acceptance."""
+"""Export ordinary Media with native parent ancestry; no factory, licence, inference or FINAL acceptance."""
 
 import runpy
 from pathlib import Path

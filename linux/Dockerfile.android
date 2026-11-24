@@ -94,6 +94,8 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=cache,target
 # Hoisted into the parent so each library stage COPYs only its own dir.
 COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
 COPY --chmod=755 linux/scripts/03-media/android-dispatch.sh /opt/scripts/03-media/android-dispatch.sh
+COPY --chmod=644 linux/scripts/03-media/build/onnxruntime/build/lib/source-fetch.sh /opt/scripts/03-media/onnxruntime/source-fetch.sh
+COPY --chmod=644 linux/scripts/03-media/build/onnxruntime/build/lib/source-pins.txt /opt/scripts/03-media/onnxruntime/source-pins.txt
 
 # android-gstreamer (parallel with the other library stages)
 FROM android-sdk AS android-gstreamer

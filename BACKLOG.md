@@ -759,6 +759,16 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([`docs/language-ai.md` § Roadmap](docs/language-ai.md#roadmap)). ORT is built for Android
       (`03-media/build/onnxruntime/android/build-android.sh`, `Dockerfile.android:125`); GenAI is not. Left: build
       GenAI against that ORT in the android stage. Proving it needs a chain.
+
+- [ ] **CON301 — ship GenieX in the ANTfrastructure ARM64 runtime images** [L, ★★]. Owner request
+      2026-11-22. Install the [Qualcomm GenieX CLI](https://github.com/qualcomm/GenieX) in the existing
+      Linux and Windows ARM64 image builds. Pin one release and the SHA256 of each platform's
+      artifact, and record its licence and shipped notices. Start `geniex serve` from the self-built
+      Linux ARM64 image in the [existing Compose stack](linux/llm-stack/docker-compose.gateway.yml)
+      and route APISIX to it. Done when both finished images pass an ARM64 CLI smoke, the Compose
+      endpoint returns a real model response, and any claimed NPU path is verified on supported
+      hardware. Test the Windows image under its Windows container engine and record its
+      Snapdragon device access separately. See [the current GenieX setup](docs/geniex-local-ai-setup.md).
 ## Open — Linux image (all arches)
 
 - [ ] **CON238 — two test tools the images lack: cargo-mutants and pytest-timeout** [S, ★★]. Found by the audit
@@ -1723,9 +1733,10 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       actual samples. The clean source's full 42-group/5824-mutation preflight now passes600suites
       and32176assertions, with successful terminal and independent cleanup sealed. Actual instrumented builds remain open. Native and WASM probe products also retain
       the Hub's exact original MIT notice, with missing/altered/linked destinations rejected.
-      Both enabled WASM flavors still need actual source-to-artifact proof and runtime registration; the four
-      local media builds predate these receipts and do not complete that evidence. Before that
-      media rebuild, preserve the
+      The historical ROCm amd64 Media build at `8c4e13b0` rebuilt both Wasm flavors and passes all five factory
+      phases against one ORT revision. The retained default-amd64 Media digest passes the combined offline
+      gate using the same Wasm and loader bytes. The [digest-specific evidence](docs/linux-accelerator-images.md#combined-media-factory-acceptance)
+      leaves the new six-lane build and runtime matrix and hardware acceptance open. Before that rebuild, preserve the
       OpenCV FindCUDA cache repair: its bounded SBSA replay records twelve forced-repeat hits and no misses;
       the complete stage, non-x86 Torch wrapper policy and consumer Rust cache wiring remain follow-ups
       ([cache scope](docs/build-cache-tiers.md#nvcc--hipcc)).
@@ -2322,6 +2333,14 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       `frontend` extra leaves riscv64 out until then.
 
 ## Open — Windows `:winamd64`
+
+- [ ] **CON300 — fetch the Windows ORT and GenAI sources by pinned commit** [S, ★★★]. Found 2026-11-23:
+      `github.com/microsoft/onnxruntime`, `onnxruntime-genai` and `onnxruntime-extensions` answer 404, so
+      `Build-OnnxFromSource.ps1` and `Build-OnnxGenaiFromSource.ps1` cannot clone. Linux reads
+      `03-media/build/onnxruntime/build/lib/source-pins.txt` and falls back to fork networks
+      ([source pins](docs/onnxruntime-single-source.md#source-pins-and-fork-fallback)). Done when the Windows lane
+      reads the same pins, verifies each commit and builds from a fork while upstream is down. Separately, move the
+      Linux pins into `versions.env` at the next planned full rebuild, since that re-keys the whole chain.
 
 - [ ] **CON93 — the torch venv's sdists compile with VS's `cl` and cannot link against the in-tree CPython**
       **In source 2026-11-04.** `WindowsSdistCompiler.Common.psm1` shares the shim, and a sync fails on a distribution uv built with MSVC's Rich header. Proved in a

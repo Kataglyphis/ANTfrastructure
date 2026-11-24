@@ -63,7 +63,7 @@ runtime_wheels_discard() {
 
 # Copies /opt/wheels from the very image image-mode would mount, so both modes ship the same wheels.
 runtime_wheels_export() {
-  local arch="$1" ref dir pull="--pull=true"
+  local arch="$1" ref dir pull="--pull=true" platform="linux/$1"
   local -a args=()
   ref="$(runtime_wheels_image_ref "${arch}")"
   if is_dry_run; then
@@ -76,6 +76,10 @@ runtime_wheels_export() {
   fi
   dir="${RUNTIME_WHEELS_EXPORT_ROOT}/${arch}"
   _runtime_wheels_source_args args "${arch}" "${ref}" || return 1
+  if [ -n "${ref}" ] && runtime_use_local_artifact_context; then
+    platform="$(runtime_artifact_platform "${arch}")" || return 1
+    [ -n "${platform}" ] || return 1
+  fi
   runtime_pushes_intermediate_images || pull="--pull=false"
   rm -rf "${dir}" "${dir}.sha256"
   mkdir -p "${dir}" || return 1
@@ -84,7 +88,7 @@ runtime_wheels_export() {
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     "${pull}" \
     ${RUNTIME_NO_CACHE:+--no-cache} \
-    --platform "linux/${arch}" \
+    --platform "${platform}" \
     --target wheels-export \
     --output "type=local,dest=${dir}" \
     -f "${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
