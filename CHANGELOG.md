@@ -17,6 +17,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — the no-push runtime wrapper finds its wheelhouse again
+
+- The local wheel context keeps the stage name `runtime_wheels` instead of a digest-pinned image
+  reference, which BuildKit sent to the registry. The fix existed on an unmerged branch since
+  2026-11-14 and is now on the main line.
+- `launch-normal-runtime.py --runtime-source` accepts a later commit on a verified Android parent
+  when only host-only runtime files differ among the base-to-Android inputs.
+
 ## 2026-11-23 — build ROCm Media from a reviewed newer source on the same GPU parent
 
 - `launch-normal-media.py --media-source/--media-source-proof` accepts a later commit when it

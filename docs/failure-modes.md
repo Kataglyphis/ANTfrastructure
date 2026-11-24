@@ -2070,7 +2070,7 @@ neither compiler reuse nor image/GPU acceptance.
 
 **Cause.** The android tag exists only in containerd's store, which BuildKit's OCI worker cannot see. nerdctl maps every `oci-layout://` context onto one store id (`parent-image-key`), so a second one beside `runtime_package` makes one of them unresolvable. Rootless nerdctl refuses `cp` from a stopped container.
 
-**Fix.** `runtime_wheels_context_dir` extracts `/opt/wheels` with `nerdctl export | tar` into a directory context. Never pass two `oci-layout://` contexts to one nerdctl build. Since 2026-09-24 `RUNTIME_WHEELS_SOURCE=export` is the other way: its own export build reads the android OCI layout (the only `oci-layout://` context of that build), after proving it is the same image ([both deliveries](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries)).
+**Fix.** `runtime_wheels_context_dir` extracts `/opt/wheels` with `nerdctl export | tar` into a directory context. The context keeps the stage name `runtime_wheels`; a digest-pinned image reference as its key reaches the registry resolver and fails with `<repo>@sha256:...: not found`. Never pass two `oci-layout://` contexts to one nerdctl build. Since 2026-09-24 `RUNTIME_WHEELS_SOURCE=export` is the other way: its own export build reads the android OCI layout (the only `oci-layout://` context of that build), after proving it is the same image ([both deliveries](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries)).
 
 ### The torch RUN idles for minutes before `uv venv`
 

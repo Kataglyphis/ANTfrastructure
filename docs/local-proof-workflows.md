@@ -287,6 +287,18 @@ export recomputes the review and requires the recorded one; Android and later st
 the Media source unchanged. The review proves that the upstream inputs are unchanged. It does
 not prove cache hits or a successful build. NVIDIA has no such profile.
 
+### A runtime source newer than its Android parent
+
+`launch-normal-runtime.py --runtime-source CLEAN_CHECKOUT --runtime-source-proof COMPLETE_PROOF`
+keeps a verified ROCm Android parent while the runtime lane runs a later commit. For any Android
+source other than the historical `8c4e13b0`, `runtime_source_profile.py` requires ancestry, the new
+commit's own complete preflight, byte-identical inputs for every stage from base through Android
+(the four upstream Dockerfiles plus `Dockerfile.media` and `Dockerfile.android`, their mounted and
+copied paths and the SDK and AMD script closures) and no image stage naming a host-only file. The
+only permitted difference inside those inputs is `01-core/runtime-build-fns.sh`: image stages mount
+`01-core` whole, but only host orchestrators load the file, through `artifact-common.sh`. The review
+proves unchanged parent inputs, not cache hits or a successful runtime build.
+
 Carry the existing `normal_stage_launch.py`, `gpu_source_profile.py`, `media_source_profile.py`,
 native OCI/seed and proof helpers beside these entries. `test-gpu-handoff.sh` uses real synthetic OCI bytes and
 hardlinks with explicit engine/unit doubles; the standard native seed and stage suites

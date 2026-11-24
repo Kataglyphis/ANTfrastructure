@@ -274,15 +274,15 @@ runtime_wheels_image_ref() {
 # RUNTIME_WHEELS_SOURCE=image: the torch RUN bind-mounts /opt/wheels out of the android image.
 _append_wheels_image_args() {
   local -n _awia_out=$1
-  local arch="$2" _wheels_image
+  local arch="$2" _wheels_image _wheels_ctx
   _wheels_image="$(runtime_wheels_image_ref "${arch}")"
   [ -n "${_wheels_image}" ] || return 0
-  _awia_out+=(--build-arg "WHEELS_IMAGE=${_wheels_image}")
-  # BuildKit's OCI worker cannot see the containerd store, so pass the wheelhouse as a directory context.
+  # A stage name remains a named context when a digest-pinned image reference would reach the registry resolver.
   if runtime_use_local_artifact_context; then
-    local _wheels_ctx
     _wheels_ctx="$(runtime_wheels_context_dir "${arch}" "${_wheels_image}")" || return 1
-    _awia_out+=(--build-context "${_wheels_image}=${_wheels_ctx}")
+    _awia_out+=(--build-arg WHEELS_IMAGE=runtime_wheels --build-context "runtime_wheels=${_wheels_ctx}")
+  else
+    _awia_out+=(--build-arg "WHEELS_IMAGE=${_wheels_image}")
   fi
   return 0
 }

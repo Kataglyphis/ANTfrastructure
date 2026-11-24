@@ -134,8 +134,9 @@ t_assert_eq ". " "$(_wheels_tail)" "the same under ARTIFACT_CONTEXT_ROOT (the em
 t_assert_eq "" "$(cat "${NLOG}")" "and no containerd extraction"
 _fresh
 RUNTIME_WHEELS_SOURCE=image ARTIFACT_CONTEXT_ROOT="${WORK}/aa" INFIX=-hostarm64 _run "${_LANE}" >/dev/null
-t_assert_eq "--build-arg WHEELS_IMAGE=repo:cross-android-hostarm64-arm64 --build-context repo:cross-android-hostarm64-arm64=${WORK}/wheels-arm64 . " \
+t_assert_eq "--build-arg WHEELS_IMAGE=runtime_wheels --build-context runtime_wheels=${WORK}/wheels-arm64 . " \
   "$(_wheels_tail)" "a no-push native host keeps its containerd extraction"
+t_assert_contains "$(cat "${NLOG}")" "create repo:cross-android-hostarm64-arm64 /bin/true" "extraction keeps the actual native Android reference"
 t_assert_contains "$(cat "${NLOG}")" "export cid42" "through nerdctl export, as before"
 
 t_case "export mode: the wheelhouse is staged from the SAME image before the package build"
@@ -200,7 +201,7 @@ for _pulled in "" 1; do
 done
 _fresh; _layout '{"schemaVersion":2,"manifests":[{"mediaType":"x","digest":"'"${_D1}"'","size":1}]}'
 RUNTIME_WHEELS_SOURCE=image ARTIFACT_CONTEXT_ROOT="${WORK}/aa" PIN="${_R}" LOCAL_DIGEST="${_D1}" _run "${_LANE}" >/dev/null
-t_assert_eq "--build-arg WHEELS_IMAGE=${_R} --build-context ${_R}=${WORK}/wheels-arm64 . " "$(_wheels_tail)" \
+t_assert_eq "--build-arg WHEELS_IMAGE=runtime_wheels --build-context runtime_wheels=${WORK}/wheels-arm64 . " "$(_wheels_tail)" \
   "image mode there mounts the PUBLISHED android's wheelhouse (predates the knob, unchanged)"
 t_assert_contains "$(cat "${NLOG}")" "create ${_R} /bin/true" "extracted from a container of the registry's digest"
 

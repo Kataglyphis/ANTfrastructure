@@ -861,7 +861,7 @@ Resume mid-chain, build one stage, or `--parallel-archs`:
 
 An alternate runtime source requires its own complete source proof and explicit reviewed
 selection; preserve the original Android source, invocation and native ancestry separately.
-A host-tools commit or the parent's source proof cannot qualify changed runtime code.
+A host-tools commit or the parent's source proof cannot qualify changed runtime code. A later runtime source on a newer Android parent may differ only in host-only runtime files ([runtime source](docs/local-proof-workflows.md#a-runtime-source-newer-than-its-android-parent)).
 
 Wrapper builds, manifest publishing and manifest repair:
 [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) § Runtime lane helper commands.

@@ -10,7 +10,7 @@ CTX="${TESTS_DIR}/../01-core/context-management.sh"
 
 _FNS="$(rw_fns "${RBF}" append_wrapper_build_args runtime_wheels_image_ref _append_wheels_image_args runtime_gpu_backend_pair)" || exit 1
 _FNS+=$'\n'"$(rw_fns "${CTX}" runtime_use_local_artifact_context _with_throwaway_container _export_cid_wheels runtime_wheels_context_dir)" || exit 1
-_STUBS='runtime_android_pin() { :; }
+_STUBS='runtime_android_pin() { printf "%s" "${RW_TEST_ANDROID_PIN:-}"; }
 cross_build_host_infix() { printf hostarm64; }
 cross_android_tag() { printf "repo:cross-android-hostarm64-%s" "$1"; }
 runtime_stage_context_dir() { printf "%s/%s-%s" "${WORK}" "$1" "$2"; }'$'\n'"${RW_OPTIONAL_ARG_STUB}"
@@ -24,13 +24,15 @@ _args() {  # prints one arg per line; exit 7 = append_wrapper_build_args failed
   PATH="${_BIN}:${PATH}" bash -c "set -uo pipefail"$'\n'"${_STUBS}"$'\n'"${_FNS}"$'\n''a=(); append_wrapper_build_args a arm64 parent || exit 7; printf "%s\n" "${a[@]}"' 2>&1
 }
 
+export RW_TEST_ANDROID_PIN=''
 export WORK NLOG
 WORK="$(mktemp -d)"; NLOG="${WORK}/nerdctl.log"
 
 t_case "a local artifact context hands the wheelhouse over as a directory"
 _out="$(ARTIFACT_CONTEXT_ROOT=/any _args)"
-t_assert_contains "${_out}" "WHEELS_IMAGE=repo:cross-android-hostarm64-arm64" "the wheels image is named"
-t_assert_contains "${_out}" $'--build-context\nrepo:cross-android-hostarm64-arm64='"${WORK}/wheels-arm64" \
+t_assert_contains "${_out}" "WHEELS_IMAGE=runtime_wheels" "the wheelhouse is addressed by its named context"
+t_assert_contains "$(cat "${NLOG}")" "create repo:cross-android-hostarm64-arm64" "the original image supplies the exported bytes"
+t_assert_contains "${_out}" $'--build-context\nruntime_wheels='"${WORK}/wheels-arm64" \
   "and resolved from a local directory"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -F 'oci-layout://')" \
   "never as a second oci-layout context (nerdctl gives them all one store id)"
@@ -41,8 +43,18 @@ t_assert_eq yes "$([ -f "${WORK}/wheels-arm64/opt/wheels-free-threaded/x-1-cp314
 t_assert_eq "" "$(compgen -G "${WORK}/wheels-arm64/usr")" "and nothing else of the 30 GB rootfs"
 t_assert_contains "$(cat "${NLOG}")" "rm -f cid42" "the helper container is removed"
 
+t_case "a canonical digest pin supplies bytes without becoming a context name"
+_pin="docker.io/ant-local/webgpu-fixture@sha256:$(printf 'a%.0s' {1..64})"
+: > "${NLOG}"
+_out="$(RW_TEST_ANDROID_PIN="${_pin}" ARTIFACT_CONTEXT_ROOT=/any _args)"
+t_assert_contains "${_out}" "WHEELS_IMAGE=runtime_wheels" "the Dockerfile FROM selects the stable alias"
+t_assert_contains "${_out}" $'--build-context\nruntime_wheels='"${WORK}/wheels-arm64" "the alias resolves to the exported directory"
+t_assert_contains "$(cat "${NLOG}")" "create ${_pin}" "the actual immutable pin still supplies the wheelhouse"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -F "${_pin}=")" "a digest reference never becomes the BuildKit context key"
+
 t_case "a registry run is unchanged, and a failed copy stops the wrapper"
 _out="$(_args)"
+t_assert_contains "${_out}" "WHEELS_IMAGE=repo:cross-android-hostarm64-arm64" "the registry source keeps its original image selector"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -x -- '--build-context')" \
   "no local context → BuildKit resolves the tag as before"
 : > "${NLOG}"

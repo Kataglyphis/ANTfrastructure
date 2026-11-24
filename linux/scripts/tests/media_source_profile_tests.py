@@ -20,15 +20,21 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'linux/scripts/local-proof'))
 PROFILE = importlib.import_module('media_source_profile')
 HANDOFF = importlib.import_module('stage_handoff_profile')
+RUNTIME = importlib.import_module('runtime_source_profile')
 DOCKERFILES = {
     'linux/Dockerfile.base': 'RUN --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/c true\n',
     'linux/Dockerfile.toolchain': 'COPY --chmod=755 linux/scripts/02-toolchain/ /opt/t/\n'
                                   'RUN --mount=type=bind,source=linux/scripts/03-media/build/${LIB}/x,target=/x true\n',
     'linux/Dockerfile.sdk': 'LABEL org.kataglyphis.build-script-closure=demo\nCOPY --from=hub-scripts / /opt/s/\n',
     'linux/Dockerfile.amd': 'RUN --mount=type=bind,source=linux/scripts/01-core,target=/core true\n',
+    'linux/Dockerfile.media': 'RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv/build.sh,target=/b true\n',
+    'linux/Dockerfile.android': 'COPY linux/scripts/03-media/android-dispatch.sh /opt/d.sh\n',
 }
 FILES = {
     'linux/scripts/01-core/common.sh': 'core\n',
+    'linux/scripts/01-core/runtime-build-fns.sh': 'host only\n',
+    'linux/scripts/03-media/build/opencv/build.sh': 'media input\n',
+    'linux/scripts/03-media/android-dispatch.sh': 'android input\n',
     'linux/scripts/02-toolchain/gcc.sh': 'gcc\n',
     'linux/scripts/03-media/build/onnxruntime/x': 'shared upstream prefix\n',
     'linux/scripts/04-runtime/media-only.sh': 'media only\n',
@@ -59,7 +65,7 @@ class MediaSourceProfileTests(unittest.TestCase):
         git(self.root, 'clone', '-q', str(self.gpu_source), str(self.media_source))
         self.proof = self.root / 'complete media proof.json'
         self.proof.write_text('independent fixture proof bytes')
-        self.full = mock.Mock(return_value={'actual_full_registry_mutations': 17})
+        self.full = mock.Mock(return_value={'actual_full_registry_mutations': 17, 'actual_preflight_group_count': 42})
         patcher = mock.patch.object(PROFILE, 'full_source', self.full)
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -157,6 +163,37 @@ class MediaSourceProfileTests(unittest.TestCase):
         HANDOFF.validate_source_fields(dict(previous, parent_source_revision='b'), previous)
         with self.assertRaisesRegex(AssertionError, 'exact proven parent source'):
             HANDOFF.validate_source_fields(dict(previous, source='other', parent_source_revision='b'), previous)
+
+    def runtime_select(self, parent: str | None = None) -> tuple:
+        android = {'source': str(self.gpu_source), 'source_revision': parent or self.parent, 'stage': 'android',
+                   'variant': 'rocm', 'target_arch': 'amd64'}
+        return RUNTIME.select_runtime_source(android, self.media_source, self.proof)
+
+    def test_runtime_host_only_change_is_admitted_with_its_review(self) -> None:
+        self.change({'linux/scripts/01-core/runtime-build-fns.sh': 'repaired\n', 'notes/page.txt': 'docs\n'})
+        source, review = self.runtime_select()
+        self.assertEqual(source, self.media_source.resolve())
+        self.assertEqual(review['profile'], 'host-only-runtime-delta')
+        self.assertEqual(review['host_only_inputs_changed'], ['linux/scripts/01-core/runtime-build-fns.sh'])
+        self.assertEqual(review['runtime_source_revision'], git(self.media_source, 'rev-parse', 'HEAD'))
+        self.assertEqual(review['Android_source_revision'], self.parent)
+
+    def test_runtime_change_to_any_base_to_android_input_is_refused(self) -> None:
+        for path in ('linux/scripts/01-core/common.sh', 'linux/scripts/03-media/build/opencv/build.sh',
+                     'linux/scripts/03-media/android-dispatch.sh', 'linux/Dockerfile.android',
+                     'linux/scripts/05-frameworks/sdk-only.sh'):
+            with self.subTest(path=path):
+                self.change({path: 'changed ' + path + '\n'})
+                with self.assertRaisesRegex(AssertionError, 'image input|script closure'):
+                    self.runtime_select()
+                git(self.media_source, 'reset', '-q', '--hard', 'HEAD~1')
+
+    def test_runtime_stage_naming_the_host_file_is_refused(self) -> None:
+        self.change({'linux/Dockerfile.android': DOCKERFILES['linux/Dockerfile.android'] + '# runtime-build-fns.sh\n'})
+        named_parent = git(self.media_source, 'rev-parse', 'HEAD')
+        self.change({'linux/scripts/01-core/runtime-build-fns.sh': 'repaired\n'})
+        with self.assertRaisesRegex(AssertionError, 'names a host-only'):
+            self.runtime_select(named_parent)
 
     def launcher(self, *extra: str) -> subprocess.CompletedProcess[str]:
         required = [f'--{name}={self.root / name}' for name in ('compiler-plan', 'gpu-invocation', 'parent-proof', 'output')]

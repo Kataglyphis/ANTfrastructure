@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from proof_types import Json
 
 UPSTREAM_DOCKERFILES = ('linux/Dockerfile.base', 'linux/Dockerfile.toolchain', 'linux/Dockerfile.sdk', 'linux/Dockerfile.amd')
-FIXED_INPUTS = ('.dockerignore', 'linux/.dockerignore', *UPSTREAM_DOCKERFILES)
+FIXED_INPUTS = ('.dockerignore', 'linux/.dockerignore')
 _MOUNT_SOURCE = re.compile(r'\bsource=([^,\s\\]+)')
 _COPY = re.compile(r'^\s*(?:ADD|COPY)\s+(.+)$', re.MULTILINE)
 
@@ -57,22 +57,33 @@ def _closures(root: Path) -> dict[str, object]:
         sys.modules.pop('script_closure', None)
 
 
-def select_media_source(gpu: Json, selected: Path, proof_path: Path) -> tuple[Path, str, Path, Json]:
-    """Return the Media source, revision, proof and review, or refuse an upstream input change."""
-    producer = Path(str(gpu['source'])).resolve(strict=True)
+def descendant_source(producer: Path, selected: Path, proof_path: Path, parent: str) -> tuple[Path, str, Json, list[str]]:
+    """Return a distinct descendant source, its revision, complete proof and changed paths."""
     source = selected.resolve(strict=True)
-    assert gpu['variant'] == 'rocm' and gpu['stage'] == 'gpu', 'Alternate Media source is reviewed for ROCm GPU parents only'
-    assert source != producer, 'Alternate Media source must be distinct'
-    parent = str(gpu['source_revision'])
+    assert source != producer, 'Alternate source must be distinct'
     head = checked_run(['git', '-C', str(source), 'rev-parse', 'HEAD']).stdout.strip()
-    assert head != parent, 'Alternate Media source must be a different revision'
+    assert head != parent, 'Alternate source must be a different revision'
     checked_run(['git', '-C', str(source), 'merge-base', '--is-ancestor', parent, head])
     full = full_source(source, proof_path, head)
     changed = sorted(filter(None, checked_run(['git', '-C', str(source), 'diff', '--name-only', parent, head]).stdout.splitlines()))
-    inputs = set(FIXED_INPUTS)
-    for name in UPSTREAM_DOCKERFILES:
+    return source, head, full, changed
+
+
+def changed_inputs(source: Path, parent: str, head: str, dockerfiles: tuple[str, ...]) -> tuple[set[str], list[str]]:
+    """Every build input the given Dockerfiles read at the parent, and those whose Git object differs at head."""
+    inputs = {*FIXED_INPUTS, *dockerfiles}
+    for name in dockerfiles:
         inputs |= dockerfile_inputs(checked_run(['git', '-C', str(source), 'show', f'{parent}:{name}']).stdout)
-    differing = sorted(path for path in inputs if _object(source, parent, path) != _object(source, head, path))
+    return inputs, sorted(path for path in inputs if _object(source, parent, path) != _object(source, head, path))
+
+
+def select_media_source(gpu: Json, selected: Path, proof_path: Path) -> tuple[Path, str, Path, Json]:
+    """Return the Media source, revision, proof and review, or refuse an upstream input change."""
+    producer = Path(str(gpu['source'])).resolve(strict=True)
+    assert gpu['variant'] == 'rocm' and gpu['stage'] == 'gpu', 'Alternate Media source is reviewed for ROCm GPU parents only'
+    parent = str(gpu['source_revision'])
+    source, head, full, changed = descendant_source(producer, selected, proof_path, parent)
+    inputs, differing = changed_inputs(source, parent, head, UPSTREAM_DOCKERFILES)
     assert not differing, 'Media source changes compiler, SDK or GPU inputs: ' + ', '.join(differing)
     assert _closures(producer) == _closures(source), 'Media source changes a selected SDK or GPU script closure'
     review = {'profile': 'media-only-source-delta', 'GPU_source_revision': parent, 'Media_source_revision': head,

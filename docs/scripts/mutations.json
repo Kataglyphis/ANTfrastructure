@@ -61722,8 +61722,8 @@
  {
   "id": "handoff.media-source-dockerfiles-fixed",
   "target": "linux/scripts/local-proof/media_source_profile.py",
-  "find": "FIXED_INPUTS = ('.dockerignore', 'linux/.dockerignore', *UPSTREAM_DOCKERFILES)",
-  "replace": "FIXED_INPUTS = ('.dockerignore', 'linux/.dockerignore')",
+  "find": "    inputs = {*FIXED_INPUTS, *dockerfiles}",
+  "replace": "    inputs = set(FIXED_INPUTS)",
   "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_upstream_dockerfile",
   "why": "an upstream Dockerfile edit re-keys its stage even when no mounted script changes"
  },
@@ -61754,8 +61754,8 @@
  {
   "id": "handoff.media-source-distinct",
   "target": "linux/scripts/local-proof/media_source_profile.py",
-  "find": "    assert source != producer, ",
-  "replace": "    assert True, ",
+  "find": "    assert source != producer, 'Alternate source must be distinct'",
+  "replace": "    assert True, 'Alternate source must be distinct'",
   "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_only_reviewed",
   "why": "the GPU source itself is no alternate"
  },
@@ -61942,5 +61942,53 @@
   "target": "linux/scripts/lib/code-quality.sh",
   "find": "errors=\"$(grep -cE ': (fatal )?error:' \"${log}\" || true)\"",
   "replace": "errors=\"$(grep -cE ': (fatal )?error:' \"${log}\")\""
+ },
+ {
+  "id": "handoff.runtime-wheels-stage-context",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "    _awia_out+=(--build-arg WHEELS_IMAGE=runtime_wheels --build-context \"runtime_wheels=${_wheels_ctx}\")",
+  "replace": "    _awia_out+=(--build-arg \"WHEELS_IMAGE=${_wheels_image}\" --build-context \"${_wheels_image}=${_wheels_ctx}\")",
+  "test": "bash linux/scripts/tests/test-runtime-wheels-context.sh",
+  "why": "a digest-pinned reference as the context key reaches the registry resolver and the no-push wrapper cannot find its android image"
+ },
+ {
+  "id": "handoff.runtime-source-host-only",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "    assert touched <= HOST_ONLY_FILES, ",
+  "replace": "    assert True, ",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_runtime_change_to_any",
+  "why": "a runtime source may differ from its Android parent only in host-only runtime files"
+ },
+ {
+  "id": "handoff.runtime-source-android-dockerfiles",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "ANDROID_DOCKERFILES = (*UPSTREAM_DOCKERFILES, 'linux/Dockerfile.media', 'linux/Dockerfile.android')",
+  "replace": "ANDROID_DOCKERFILES = UPSTREAM_DOCKERFILES",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_runtime_change_to_any",
+  "why": "Media and Android inputs belong to the already built parent as much as compiler, SDK and GPU inputs"
+ },
+ {
+  "id": "handoff.runtime-source-unnamed-host-file",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "        assert not any(Path(path).name in text for path in HOST_ONLY_FILES), ",
+  "replace": "        assert True, ",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_runtime_stage_naming",
+  "why": "a host-only file must stay unnamed by every image stage"
+ },
+ {
+  "id": "handoff.runtime-source-closure",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "    assert _closures(producer) == _closures(source), 'Runtime source",
+  "replace": "    assert True, 'Runtime source",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_runtime_change_to_any",
+  "why": "the SDK and GPU selected-script contexts are parent inputs too"
+ },
+ {
+  "id": "handoff.runtime-source-dispatch",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "    if invocation['source_revision'] != ANDROID_REVISION:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_runtime_host_only_change",
+  "why": "a new Android parent uses the host-only review, not the historical pinned repair"
  }
 ]

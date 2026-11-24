@@ -285,10 +285,13 @@ class RuntimeTests(unittest.TestCase):
 
     def test_alternate_source_refuses_parent_changes_same_source_and_failed_full_proof(self) -> None:
         source, proof, invocation = self.alternate_source_fixture()
-        for change in [{'source_revision':'e' * 40}, {'stage':'media'}, {'variant':'nvidia'}, {'target_arch':'arm64'}]:
+        for change in [{'stage':'media'}, {'variant':'nvidia'}, {'target_arch':'arm64'}]:
             with self.subTest(change=change), mock.patch.object(SOURCE_PROFILE, 'full_source') as full, self.assertRaises(AssertionError):
                 SOURCE_PROFILE.select_runtime_source(dict(invocation, **change), source, proof)
             full.assert_not_called()
+        with mock.patch.object(SOURCE_PROFILE, 'full_source') as full, self.assertRaises(subprocess.CalledProcessError):
+            SOURCE_PROFILE.select_runtime_source(dict(invocation, source_revision='e' * 40), source, proof)
+        full.assert_not_called()
         with mock.patch.object(SOURCE_PROFILE, 'full_source') as full, self.assertRaises(AssertionError):
             SOURCE_PROFILE.select_runtime_source(invocation, self.work, proof)
         full.assert_not_called()
