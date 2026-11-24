@@ -295,8 +295,10 @@ source other than the historical `8c4e13b0`, `runtime_source_profile.py` require
 commit's own complete preflight, byte-identical inputs for every stage from base through Android
 (the four upstream Dockerfiles plus `Dockerfile.media` and `Dockerfile.android`, their mounted and
 copied paths and the SDK and AMD script closures) and no image stage naming a host-only file. The
-only permitted difference inside those inputs is `01-core/runtime-build-fns.sh`: image stages mount
-`01-core` whole, but only host orchestrators load the file, through `artifact-common.sh`. The review
+only permitted differences inside those inputs are two runtime-lane files. Image stages mount `01-core`
+whole, but only host orchestrators load `01-core/runtime-build-fns.sh`, through `artifact-common.sh`;
+`03-media/runtime/assemble-torch-app.sh` lies under a Media mount prefix, but only `Dockerfile.torch`
+copies and runs it. The review
 proves unchanged parent inputs, not cache hits or a successful runtime build.
 
 Carry the existing `normal_stage_launch.py`, `gpu_source_profile.py`, `media_source_profile.py`,

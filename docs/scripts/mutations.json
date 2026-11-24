@@ -62006,5 +62006,13 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-app-ref.sh",
   "why": "OrchestrANT's setup.py copies hub modules from its submodule, so a tree without it fails the torch stage's uv sync"
+ },
+ {
+  "id": "handoff.runtime-source-torch-assembly",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "HOST_ONLY_FILES = frozenset({'linux/scripts/01-core/runtime-build-fns.sh', 'linux/scripts/03-media/runtime/assemble-torch-app.sh'})",
+  "replace": "HOST_ONLY_FILES = frozenset({'linux/scripts/01-core/runtime-build-fns.sh'})",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_runtime_torch_assembly",
+  "why": "the torch stage's own assembly script runs only in the runtime lane and must not force a rebuild of verified parents"
  }
 ]
