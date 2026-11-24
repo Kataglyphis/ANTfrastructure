@@ -61998,5 +61998,13 @@
   "replace": "    return producer, review",
   "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_runtime_host_only_change",
   "why": "the reviewed runtime checkout, not the Android parent's, must drive the runtime build"
+ },
+ {
+  "id": "lib.torch-app-hub-submodule",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "  git -C \"${APP_DIR}\" submodule update --init --depth 1 third_party/ANTfrastructure\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-app-ref.sh",
+  "why": "OrchestrANT's setup.py copies hub modules from its submodule, so a tree without it fails the torch stage's uv sync"
  }
 ]
