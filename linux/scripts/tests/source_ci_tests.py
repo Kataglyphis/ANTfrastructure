@@ -20,6 +20,8 @@ from source_ci import combined, dispatch, fetch, linux, windows
 from source_ci.common import WORKFLOWS, dispatch_record, read, save
 
 seal = runpy.run_path(str(SCRIPTS / "seal-mutation-unit.py"))
+# The hub workflow's mutation jobs; the auditor reads the count from the workflow at the tested head.
+SHARDS = 9
 
 
 class SourceFixtures(unittest.TestCase):
@@ -35,7 +37,7 @@ class SourceFixtures(unittest.TestCase):
                                     "head_merge_and_local_tree_match": True})
         for row in self.plan["workflows"]:
             self.plant_run(row)
-        self.manifest = [{"id": f"test.{index}"} for index in range(8)]
+        self.manifest = [{"id": f"test.{index}"} for index in range(SHARDS)]
         self.summary = {"Total": 20, "Passed": 20, "MinTests": 10, "ExitCode": 0, "PesterFailures": 0,
                         "FailedCount": 0, "FloorMet": True, "CoverageFloorMet": True, "Failed": [], "Skipped": [],
                         "Broken": [], "CoverageFailures": [], "Coverage": [{"Module": "Example.psm1", "Analyzed": 10,
@@ -60,7 +62,7 @@ class SourceFixtures(unittest.TestCase):
             "path": ".github/workflows/" + row["file"], "name": row["file"]})
         names = ["source tests"]
         if index == 1:
-            names = ["preflight", "submodule-cycles", *(f"mutations ({number})" for number in range(8))]
+            names = ["preflight", "submodule-cycles", *(f"mutations ({number})" for number in range(SHARDS))]
         if index == 3:
             names.append("docs / Publish the site")
         jobs = []
@@ -73,7 +75,7 @@ class SourceFixtures(unittest.TestCase):
                 text += "All preflight checks passed.\nAll linux script test suites passed (2 suites, 30 assertions)\n"
             if name.startswith("mutations ("):
                 text += (f"stamp [1/1] bites test.{number - 2} caught\n"
-                         "coverage: proved 1 of 1 selected; 0 delegated to CI, 0 skipped by this host; the manifest holds 8\n")
+                         f"coverage: proved 1 of 1 selected; 0 delegated to CI, 0 skipped by this host; the manifest holds {SHARDS}\n")
             if index == 5:
                 text += "security-audit: fixture mode gate\n"
             (self.root / f"source-ci-{job_id}.log").write_text(text, encoding="utf-8")
@@ -87,7 +89,9 @@ class SourceFixtures(unittest.TestCase):
         self.write("api.json", {"id": 99, "workflow_run": {"id": 2, "head_sha": self.head}, "expired": False,
                    "digest": "sha256:" + hashlib.sha256(target.read_bytes()).hexdigest(), "size_in_bytes": target.stat().st_size})
 
-    def git(self, _root: Path, command: str, _selection: str) -> bytes:
+    def git(self, _root: Path, command: str, selection: str) -> bytes:
+        if command == "show" and selection.endswith(".github/workflows/linux-x64.yml"):
+            return f"    strategy:\n      matrix:\n        shard: [{', '.join(map(str, range(SHARDS)))}]\n".encode()
         return json.dumps(self.manifest).encode() if command == "show" else ("c" * 40).encode()
 
     def audit(self) -> None:
@@ -101,7 +105,7 @@ class SourceFixtures(unittest.TestCase):
     def test_complete_proofs_and_no_overwrite(self) -> None:
         self.audit()
         result = read(self.args.output)
-        self.assertEqual((result["linux_unique_mutations"], result["native_windows_tests"], len(result["runs"])), (8, 20, 5))
+        self.assertEqual((result["linux_unique_mutations"], result["native_windows_tests"], len(result["runs"])), (SHARDS, 20, 5))
         with self.assertRaises(FileExistsError):
             combined.run(self.args)
 

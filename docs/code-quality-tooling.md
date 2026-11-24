@@ -1298,7 +1298,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **8176 entries** over **972 distinct test commands**; both digits are
+manifest holds **8176 entries** over **995 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1504,9 +1504,9 @@ the timeout was not raised and CI does not sample.
 | job | runs | timeout |
 | --- | --- | --- |
 | `preflight` | `PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh` — every other slug | 45 min |
-| `mutations` × 8 (`shard: [0, 1, 2, 3, 4, 5, 6, 7]`, `fail-fast: false`) | `PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD=K/8 PREFLIGHT_MUTATION_COSTS=docs/scripts/mutation-costs.json bash linux/scripts/preflight.sh`, which passes `--shard K/8 --shard-costs …` to `verify_mutations.py` | 30 min each |
+| `mutations` × 9 (`shard: [0, 1, 2, 3, 4, 5, 6, 7, 8]`, `fail-fast: false`) | `PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD=K/9 PREFLIGHT_MUTATION_COSTS=docs/scripts/mutation-costs.json bash linux/scripts/preflight.sh`, which passes `--shard K/9 --shard-costs …` to `verify_mutations.py` | 30 min each |
 
-The eight jobs prove shard K of one deterministic plan, so they prove every entry
+The nine jobs prove shard K of one deterministic plan, so they prove every entry
 exactly once; suites pin that the plan partitions the manifest and that the
 matrix lists `0..N-1` for the `N` its jobs pass. Every `mutations` job repeats the
 preflight job's setup (uv, pytest, PyYAML): without them the baselines fail
@@ -1561,6 +1561,9 @@ they came out even.
 Without `--shard-costs` the gate keeps `entries[K::N]`, which is what consumers
 and `validate_consumer_mutations.py` use. `test-mutation-shards.sh` proves the
 partition, the grouping, the split, the balance and the interleaving.
+
+Keep each job under about 24 minutes. When one gets close, make the costliest commands cheaper first: give a
+suite `-k` sections and prove each recipe on the cheapest section that bites it.
 
 The 30-minute budget includes job setup and cleanup. On 2026-10-22,
 [shard 0](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/39793092934/job/119873728596)

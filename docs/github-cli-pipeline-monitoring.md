@@ -215,7 +215,7 @@ become a cached successful log. Reusing the directory resumes absent downloads w
 preserved evidence. Existing failed evidence requires a separate attempt directory.
 
 Run `audit-linux` with `--root`, `--head`, `--run`, `--jobs`, `--tree-binding`, `--log-dir` and `--output`.
-It reads the manifest from that Git revision, checks all eight shards' actual ID union and the
+It reads the manifest from that Git revision, checks every shard's actual ID union and the
 nonvacuous preflight summary. Run `audit-windows` with `--zip`, `--api`, `--prior-proof`, `--root` and
 `--output`; the prior proof must be an independently audited coverage baseline. Its coverage policy
 must be byte-identical to the tested revision, otherwise re-audit it before proceeding. The archive

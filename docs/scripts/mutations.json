@@ -260,7 +260,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "lines[:3] + [\"...\"] + lines[-3:]",
   "replace": "lines[-6:]",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k gitbash",
   "why": "a long assertion report must retain the first failure instead of hiding it behind the final lines of a multiline comparison"
  },
  {
@@ -268,7 +268,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "line[:500] for line in excerpt",
   "replace": "line for line in excerpt",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k gitbash",
   "why": "a single very long baseline line must not turn every failed entry sharing that baseline into an unbounded repeated CI log"
  },
  {
@@ -620,7 +620,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    if not applied:\n        report.err(\"FAIL: {} -- {} ({})\\n\".format(e[\"id\"], detail, e[\"target\"]))\n        return 1",
   "replace": "    if not applied:\n        report.err(\"FAIL: {} -- {} ({})\\n\".format(e[\"id\"], detail, e[\"target\"]))\n        return 0",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k twice",
   "why": "a stale mutation is silently testing nothing"
  },
  {
@@ -628,7 +628,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "        shutil.copyfile(backup.name, target)",
   "replace": "        pass",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k gitbash",
   "why": "a tool that edits in place must never leave the tree mutated"
  },
  {
@@ -636,7 +636,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    with open(path, \"rb\") as fh:\n        return fh.read().decode(\"utf-8\")",
   "replace": "    with open(path, encoding=\"utf-8\") as fh:\n        return fh.read()",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k copies",
   "why": "a text-mode read turns CRLF into LF, so the restore and the mutant both change a target's line endings (CON134)"
  },
  {
@@ -644,7 +644,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    if \"\\r\\n\" in original:",
   "replace": "    if False:",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k copies",
   "why": "a CRLF checkout (core.autocrlf) of a target makes every multi-line LF find stale"
  },
  {
@@ -652,7 +652,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    if not base_ok:",
   "replace": "    if False:",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k gitbash",
   "why": "a mutation recorded as biting while its suite was ALREADY red proves nothing; each distinct test must pass unmutated first"
  },
  {
@@ -660,7 +660,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "HOST_MAY_SKIP = os.name == \"nt\" or sys.platform.startswith((\"cygwin\", \"msys\"))",
   "replace": "HOST_MAY_SKIP = True",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k gitbash",
   "why": "on Linux, where CI grades every mutation, an exit 77 or a waived case must stay a failure; a skip there would shrink CI without a red line"
  },
  {
@@ -668,7 +668,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    if rc == 77 and HOST_MAY_SKIP:",
   "replace": "    if False:",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k gitbash",
   "why": "on Git Bash a suite that cannot run says so with exit 77; reading that as a vacuous bite makes every Windows pre-push red for the host, not the code"
  },
  {
@@ -676,7 +676,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    if HOST_MAY_SKIP and now_skips:",
   "replace": "    if False:",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k gitbash",
   "why": "a survivor in a suite that skipped or waived a case on this host proves nothing there (the case that would catch it never ran); calling it SURVIVED on Git Bash is a false alarm Linux would not raise"
  },
  {
@@ -684,7 +684,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    if rc == 0 and report.skipped:",
   "replace": "    if False:",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k gitbash",
   "why": "a run with skips must not close on 'every recorded mutation is caught' -- that line is what a reader trusts, and here it would be untrue"
  },
  {
@@ -842,8 +842,8 @@
  {
   "id": "shellcheck.extensionless-arm",
   "target": "linux/scripts/lint-shell.sh",
-  "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
-  "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+  "find": "    *)\n      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+  "replace": "    *)\n      continue\n      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
   "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
   "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
  },
@@ -1277,7 +1277,7 @@
   "find": "            if m.group(\"sec\") in have:\n                continue",
   "replace": "            if True:\n                continue",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "a bare (\u00a7 1a) pointing at no section must be caught, not merely counted"
+  "why": "a bare (§ 1a) pointing at no section must be caught, not merely counted"
  },
  {
   "id": "doc-links.git-free-floor",
@@ -1612,7 +1612,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "if not seen[name]]",
   "replace": "if False]",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k root",
   "why": "an unfrozen function nothing names must fail"
  },
  {
@@ -1620,7 +1620,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "return HEAD.sub(\"\", COMMENT.sub(\"\", text))",
   "replace": "return HEAD.sub(\"\", text)",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k basics",
   "why": "a name mentioned only in a comment is still dead"
  },
  {
@@ -1628,7 +1628,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "return HEAD.sub(\"\", COMMENT.sub(\"\", text))",
   "replace": "return COMMENT.sub(\"\", text)",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k defs",
   "why": "its own head, or a second definition, must not count as a call"
  },
  {
@@ -1636,7 +1636,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "r\"(?:^|(?<=\\s))#.*$\", re.MULTILINE)",
   "replace": "r\"(?:^|(?<=\\s))#.*$\")",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k basics",
   "why": "without MULTILINE only a comment on the first line is stripped"
  },
  {
@@ -1644,7 +1644,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "r\"(?:^|(?<=\\s))#.*$\"",
   "replace": "r\"(?:^|(?<= ))#.*$\"",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k basics",
   "why": "a tab-indented comment is a comment; a space-only lookbehind counts it as a use"
  },
  {
@@ -1652,7 +1652,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "HEAD = re.compile(r\"^\\s*\" + DEF_HEAD, re.MULTILINE)",
   "replace": "HEAD = re.compile(r\"^\\s*\" + DEF_HEAD)",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k defs",
   "why": "without MULTILINE only a definition head at byte 0 is stripped"
  },
  {
@@ -1660,7 +1660,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "SKIP_SUFFIXES = (\".md\", \".patch\", \".diff\", \".allow\")",
   "replace": "SKIP_SUFFIXES = (\".md\", \".patch\", \".diff\")",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k defs",
   "why": "a freeze row must not count as a use, or every freeze goes STALE"
  },
  {
@@ -1668,7 +1668,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "SKIP_SUFFIXES = (\".md\", \".patch\", \".diff\", \".allow\")",
   "replace": "SKIP_SUFFIXES = (\".md\", \".allow\")",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k basics",
   "why": "a patch or diff quotes code, it never runs it"
  },
  {
@@ -1676,7 +1676,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "\"__pycache__\", \"patches\",",
   "replace": "\"__pycache__\",",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k basics",
   "why": "vendored upstream source under patches/ is not a caller"
  },
  {
@@ -1684,7 +1684,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "\".pytest_cache\", \".dart_tool\"}",
   "replace": "\".dart_tool\"}",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k basics",
   "why": "a pytest cache records test node ids and would name functions nothing calls"
  },
  {
@@ -1692,7 +1692,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "\".pytest_cache\", \".dart_tool\"}",
   "replace": "\".pytest_cache\"}",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k basics",
   "why": "the Flutter tool cache is generated, not source"
  },
  {
@@ -1700,7 +1700,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "\"docs/scripts/mutations.json\"}",
   "replace": "\"docs/scripts/mutations.json.none\"}",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k basics",
   "why": "a mutation's find/replace text is prose about code, like an .allow row"
  },
  {
@@ -1708,7 +1708,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "\"linux/webserver/dist\"",
   "replace": "\"linux/webserver/dist/none\"",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k basics",
   "why": "a minified web bundle can name anything; letting it count would mask dead functions"
  },
  {
@@ -1716,7 +1716,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "\"node_modules\",",
   "replace": "\"node_modules\", \"dist\",",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k basics",
   "why": "skipping every dist/ by name would silently drop a future linux/scripts/dist"
  },
  {
@@ -1724,7 +1724,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "if not fn.endswith(SKIP_SUFFIXES) and _kept(path):",
   "replace": "if not fn.endswith(SKIP_SUFFIXES) and _kept(path) and not fn.startswith(\"Dockerfile\"):",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k defs",
   "why": "a Dockerfile RUN is how stages call helpers; dropping it would flag live code"
  },
  {
@@ -1732,7 +1732,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "    return ([key for key in considered if _isolated(key[0], corpus_texts)],",
   "replace": "    return ([],",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k mask",
   "why": "--census is the only pass that sees a function another file's same name masks"
  },
  {
@@ -1740,7 +1740,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "    if SOURCED.search(corpus_texts.get(rel, \"\")):",
   "replace": "    if False:",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k mask",
   "why": "a file that sources a library can be called back into by it"
  },
  {
@@ -1748,7 +1748,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "    return not any(base in text for other, text in corpus_texts.items() if other != rel)",
   "replace": "    return True",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k mask",
   "why": "a file another file names by basename can be sourced or run from there"
  },
  {
@@ -1756,7 +1756,7 @@
   "target": "linux/scripts/verify_code_size.py",
   "find": "SCAN = (\"linux/scripts\", \"linux/host-config\", \"docs/scripts\", \"linux/llm-stack\")",
   "replace": "SCAN = (\"linux/scripts\", \"docs/scripts\", \"linux/llm-stack\")",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k basics",
   "why": "operator tools under linux/host-config are scanned for definitions, not only for calls"
  },
  {
@@ -1796,7 +1796,7 @@
   "target": "linux/scripts/quality_allow.py",
   "find": "    stale = sorted(frozen - set(keys))",
   "replace": "    stale = []",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k root",
   "why": "a freeze must not outlive its subject"
  },
  {
@@ -1804,7 +1804,7 @@
   "target": "linux/scripts/verify_code_size.py",
   "find": "            if depth == 0:\n",
   "replace": "            if depth == 0 and n > 1:\n",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k defs",
   "why": "a one-line function on a file's last line was never yielded and could not be dead"
  },
  {
@@ -1812,7 +1812,7 @@
   "target": "linux/scripts/verify_code_size.py",
   "find": "DEF = re.compile(\"^\" + DEF_HEAD)",
   "replace": "DEF = re.compile(r\"^()([A-Za-z_][A-Za-z0-9_]*)\\(\\)\\s*\\{\")",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k defs",
   "why": "function name { is a definition too"
  },
  {
@@ -2076,7 +2076,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "        args.root = workspace",
   "replace": "        pass",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k heavy",
   "why": "the throwaway copy must be the tree that gets mutated; pointing the run back at --root writes into a directory buildkit may be reading as a build context"
  },
  {
@@ -2084,7 +2084,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    elif args.in_place:",
   "replace": "    elif False:",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k gitbash",
   "why": "--in-place is the documented opt-out the gate's own fixtures need; silently ignoring it turns every absolute-path fixture into a false SURVIVED"
  },
  {
@@ -2092,7 +2092,7 @@
   "target": "docs/scripts/mutation_workspace.py",
   "find": "            for root in roots:\n                shutil.rmtree(root, ignore_errors=True)",
   "replace": "            for root in roots:\n                pass",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k copies",
   "why": "one leaked ~130MB copy per invocation, and the gate runs from a pre-commit hook"
  },
  {
@@ -2692,7 +2692,7 @@
   "target": "linux/scripts/preflight.sh",
   "find": "docs/scripts/verify_mutations.py",
   "replace": "docs/scripts/verify_mutations.py --in-place",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k callsites",
   "why": "preflight points the gate at the repo buildkit reads as a build context; one flag turns every mutation into an in-place edit of that tree"
  },
  {
@@ -2700,7 +2700,7 @@
   "target": "linux/scripts/preflight.sh",
   "find": "run_check mutations \"mutation gate (can the tests fail?)\" ${PREFLIGHT_PYTHON} docs/scripts/verify_mutations.py",
   "replace": "run_check mutations \"mutation gate (can the tests fail?)\" true",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k callsites",
   "why": "the mutations slug must actually invoke the gate, not a stand-in that always passes"
  },
  {
@@ -2708,7 +2708,7 @@
   "target": "linux/host-config/git-hooks/pre-commit",
   "find": "    ${_PY} docs/scripts/verify_mutations.py \"${_only[@]}\" 2>&1 | tee \"${_mlog}\"",
   "replace": "    ${_PY} docs/scripts/verify_mutations.py --in-place \"${_only[@]}\" 2>&1 | tee \"${_mlog}\"",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k callsites",
   "why": "the hook runs on the live working tree; --in-place there mutates files a concurrent build is snapshotting"
  },
  {
@@ -2716,7 +2716,7 @@
   "target": "linux/host-config/git-hooks/pre-commit",
   "find": "    ${_PY} docs/scripts/verify_mutations.py \"${_only[@]}\" 2>&1 | tee \"${_mlog}\"",
   "replace": "    true 2>&1 | tee \"${_mlog}\"",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k callsites",
   "why": "the commit decision must depend on the staged-file run of the gate, not on a stand-in"
  },
  {
@@ -2724,7 +2724,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    if hits > 1:",
   "replace": "    if False:",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k twice",
   "why": "a find string matching several places would neuter only the first, leaving the guarantee half-standing and the verdict a false SURVIVED"
  },
  {
@@ -2732,7 +2732,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "            shutil.copy2(",
   "replace": "            shutil.copyfile(",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k twice",
   "why": "a copy that drops the executable bit makes every shell test fail for the wrong reason -- a vacuous-bite storm, not a verdict"
  },
  {
@@ -2740,7 +2740,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "follow_symlinks=False)",
   "replace": "follow_symlinks=True)",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k symlinks",
   "why": "dereferencing pulls whatever a link points at -- a host binary, a device node -- into a copy the pre-commit hook makes once per commit, and turns a path the tests see as a link into a regular file"
  },
  {
@@ -2748,7 +2748,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    if os.path.islink(target):",
   "replace": "    if False:",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k symlinks",
   "why": "the copy holds symlinks, not their contents: writing to one lands on the outside path it points at, which is the one thing the throwaway copy exists to prevent"
  },
  {
@@ -2978,7 +2978,7 @@
  {
   "id": "pre-commit.fast-tier-aborts",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED \u2014 fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
+  "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED — fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
   "replace": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || true",
   "test": "bash linux/scripts/tests/test-precommit-hook.sh",
   "why": "a failing fast gate must REFUSE the commit, not print and continue"
@@ -3036,7 +3036,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    if os.path.islink(target):\n        return None, None, \"target is a symlink -- a write through it escapes the copy\"\n    if not within(os.path.realpath(root), target):\n        return None, None, \"target resolves outside the mutation root\"\n    if not os.path.exists(target):\n        return None, None, \"target missing\"",
   "replace": "    if not os.path.exists(target):\n        return None, None, \"target missing\"\n    if os.path.islink(target):\n        return None, None, \"target is a symlink -- a write through it escapes the copy\"\n    if not within(os.path.realpath(root), target):\n        return None, None, \"target resolves outside the mutation root\"",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k symlinks",
   "why": "os.path.exists follows the link, so checking it first reports a dangling symlink as a stale manifest entry and hides the escape"
  },
  {
@@ -3052,7 +3052,7 @@
   "target": "linux/scripts/01-core/cpython-dev-packages.sh",
   "find": "cpython_ext_dev_packages_required() { _cpython_dev_pkgs_by_class required; }",
   "replace": "cpython_ext_dev_packages_required() { _cpython_dev_pkgs_by_class required; }\ncpython_ext_dev_packages_optional() { _cpython_dev_pkgs_by_class optional; }",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k history",
   "why": "a wrapper deleted as dead must not reappear"
  },
  {
@@ -3060,7 +3060,7 @@
   "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
   "find": "main() {\n    local _ff_stamp=",
   "replace": "cleanup() {\n    rm -rf \"${FFMPEG_SRC}\" || true\n}\n\nmain() {\n    local _ff_stamp=",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k history",
   "why": "same-name masking blinds the gate to ffmpeg's cleanup(); only the suite pin sees it come back"
  },
  {
@@ -3428,7 +3428,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "[key for key in considered if definers[key[1]] > 1]",
   "replace": "[]",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k mask",
   "why": "the census must list the (file, name) pairs whose verdict comes from another file's same-named definition"
  },
  {
@@ -3436,7 +3436,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "            [key for key in considered if definers[key[1]] > 1],",
   "replace": "            [k for k in considered if definers[k[1]] > 1 and _isolated(k[0], corpus_texts)],",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k mask",
   "why": "the masked tier is keyed on (file, name); re-adding the file-reachability filter makes it inert again"
  },
  {
@@ -3564,7 +3564,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "            if os.path.islink(path) and not within(home, path):",
   "replace": "            if False:",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k symlinks",
   "why": "a link kept as a link is still a door out of the copy: a test running inside it reads and writes through docs/.venv/bin/python straight to /usr/bin/python3"
  },
  {
@@ -3572,7 +3572,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    for e in entries:\n        todo.put(e)",
   "replace": "    for e in entries[::2]:\n        todo.put(e)",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k parallel",
   "why": "parallelism must not thin the run -- entries dealt to a shard that is never submitted are reported as neither biting nor surviving"
  },
  {
@@ -3580,7 +3580,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "            return max(f.result() for f in done)",
   "replace": "            return min(f.result() for f in done)",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k parallel",
   "why": "a survivor in ONE shard must fail the whole gate; taking the best shard's verdict is the false green this tool exists to find"
  },
  {
@@ -3588,13 +3588,13 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    report.summary(entries)",
   "replace": "    pass",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k parallel",
   "why": "verdicts stream in the order the shards finish them; without the closing summary a long log names its failures nowhere in manifest order"
  },
  {
   "id": "pre-commit.pinned-shellcheck-or-refuse",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck \u2014 see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
+  "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck — see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
   "replace": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || _sc_bin=shellcheck",
   "test": "bash linux/scripts/tests/test-precommit-hook.sh",
   "why": "with no pinned binary the hook must REFUSE; falling back to whatever shellcheck PATH offers lints the commit against an unknown version and calls it green"
@@ -3812,7 +3812,7 @@
   "target": "linux/scripts/tests/gate-tree.sh",
   "find": "  printf '%s\\n' \"${subject}\" > \"${dir}/linux/scripts/subject.sh\"",
   "replace": "  : > \"${dir}/linux/scripts/subject.sh\"",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k defs",
   "why": "one helper now plants the subject for two gate suites; a fixture that writes an EMPTY subject.sh makes every case in both pass against nothing -- exactly the vacuous-fixture failure this manifest exists to catch"
  },
  {
@@ -4436,7 +4436,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "        rc = run_stale(entries, args.root)",
   "replace": "        rc = run_entries(args, entries, Report())",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k stale",
   "why": "the staleness pass is affordable in a hook only because it runs no suite; running them turns a 0.06s whole-manifest sweep into minutes"
  },
  {
@@ -4444,7 +4444,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "        if mutated is None:\n            rc = 1",
   "replace": "        if False:\n            rc = 1",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k stale",
   "why": "an entry that can no longer be applied must FAIL the pass; reporting nothing is how the rot stayed invisible until CI"
  },
  {
@@ -5050,8 +5050,8 @@
  {
   "id": "arg-consistency.gcc-literal-drift-fatal",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
-  "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"",
+  "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
+  "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "these ~25 sites all name the same /opt/gcc-<ver> toolchain, so unlike the generic scan there is no legitimate divergence to be advisory about"
  },
@@ -5090,8 +5090,8 @@
  {
   "id": "arg-consistency.script-drift-advisory",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
-  "replace": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
+  "find": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
+  "replace": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "script defaults legitimately diverge -- a standalone run pins a branch, not the built ref -- so this scan must never be an exit code"
  },
@@ -5148,7 +5148,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "    seen.subtract(self_mentions())",
   "replace": "    pass",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k defs",
   "why": "a function that names itself in a printf, or calls only itself, must stay dead: string literals are not stripped from the corpus"
  },
  {
@@ -5309,7 +5309,7 @@
   "find": "            if SECTION_SIGN in line:\n                continue",
   "replace": "            if False:\n                continue",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "`page.md \u00a7 Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
+  "why": "`page.md § Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
  },
  {
   "id": "doc-links.header-stale-row",
@@ -5892,7 +5892,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "found_keys | scoped, allow,",
   "replace": "found_keys, allow,",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k mask",
   "why": "the unlinked-definer arm must actually reach check_keys; dropping the union leaves the gate exactly as blind as before"
  },
  {
@@ -5900,7 +5900,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "if not peers or text is None or re.search(rf\"\\b{name}\\b\", _code(text)):",
   "replace": "if not peers or text is None or False:",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k mask",
   "why": "a definition its own file names again was never a candidate; without this the arm fails live code"
  },
  {
@@ -5908,7 +5908,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "if any(o != rel and name in words and o not in definers[name]",
   "replace": "if any(False and o != rel and name in words and o not in definers[name]",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k mask",
   "why": "one mention from a file that does NOT define the name is a real caller and must stop the arm dead"
  },
  {
@@ -5916,7 +5916,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "if any(reads(rel) & reads(peer) for peer in peers):",
   "replace": "if any(False and reads(rel) & reads(peer) for peer in peers):",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k mask",
   "why": "the whole argument: a file naming both definers' basenames can load them into one shell, so the arm must stay quiet there"
  },
  {
@@ -5924,7 +5924,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "readers[rel] = {rel} | {o for o, text",
   "replace": "readers[rel] = {o for o, text",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k mask",
   "why": "seeding the reader set with the file itself is what makes the link symmetric -- without it, the subject naming the peer (or the peer naming the subject) is not seen as a link"
  },
  {
@@ -5932,7 +5932,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "+ (\"  [unlinked definer]\" if k in scoped else \"\"),",
   "replace": "+ \"\",",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k mask",
   "why": "the two arms ask for different fixes; an untagged row leaves the author guessing which one fired"
  },
  {
@@ -7068,7 +7068,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "            except OSError as e:\n                raise SystemExit(",
   "replace": "            except OSError as e:\n                continue; raise SystemExit(",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k heavy",
   "why": "a swallowed copy error produced 0-byte tests and nineteen false vacuous bites"
  },
  {
@@ -7076,7 +7076,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    skip |= {os.path.normpath(dst)} | _git_ignored(src)",
   "replace": "    skip |= {os.path.normpath(dst)}",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k heavy",
   "why": "gitignored bulk filled the temp filesystem on every gate run -- and with --jobs that cost is paid once per shard"
  },
  {
@@ -7084,7 +7084,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "encoding=\"utf-8\", errors=\"replace\", start_new_session=True)",
   "replace": "encoding=\"utf-8\", errors=\"replace\", start_new_session=False)",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k tree",
   "why": "a timed-out test left its grandchildren running; one orphan burned CPU for twenty minutes"
  },
  {
@@ -7092,7 +7092,7 @@
   "target": "docs/scripts/mutation_push.py",
   "find": "path == entry[\"target\"] or path in str(entry[\"test\"])",
   "replace": "path == entry[\"target\"]",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k changed",
   "why": "a commit that only weakened a test selected no mutation"
  },
  {
@@ -7268,7 +7268,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "                    describe_stale=lambda k: k.replace(\"\\t\", \"  \") + _stale_note(k, corpus_texts))",
   "replace": "                    )",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k mask",
   "why": "the stale heading says 'the function is called again or gone'; for a disarmed unlinked row both halves are false, and the reader deletes a freeze that still holds"
  },
  {
@@ -7276,7 +7276,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "            if base in text and pbase in text:",
   "replace": "            if base in text or pbase in text:",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k mask",
   "why": "the arm is disarmed only when ONE file could load BOTH definitions; either basename alone names a file that cannot mask anything, so 'or' explains rows that were never disarmed"
  },
  {
@@ -7429,7 +7429,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "            signal.signal(getattr(signal, _sig), _exit_on_signal)",
   "replace": "            pass",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k tree",
   "why": "a gate killed at a preflight's timeout left its running tests orphaned; a SIGTERM must take their sessions down"
  },
  {
@@ -8536,7 +8536,7 @@
   "target": "linux/scripts/verify_dead_functions.py",
   "find": "        GRADED = gate_scope.resolve_root(args.root, ROOT)",
   "replace": "        GRADED = os.path.abspath(ROOT)",
-  "test": "bash linux/scripts/tests/test-dead-functions.sh",
+  "test": "bash linux/scripts/tests/test-dead-functions.sh -k root",
   "why": "the argument is the only thing that puts a consumer's tree in front of this gate; ignoring it grades ANTfrastructure -- which is clean and frozen -- and reports that verdict as the consumer's, which is a green run over a tree nobody looked at"
  },
  {
@@ -11632,7 +11632,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "            stream.flush()",
   "replace": "            pass",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k parallel",
   "why": "Python block-buffers a piped stdout: unflushed, a job killed at its timeout loses every verdict it had reached, header included (2026-09-23)"
  },
  {
@@ -11640,7 +11640,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "stream.write(getattr(self._cur, \"tag\", \"\") + text)",
   "replace": "stream.write(text)",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k parallel",
   "why": "streamed verdicts arrive in completion order; the shard tag is what says which mirror proved a line"
  },
  {
@@ -11648,7 +11648,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    return entries[k::n]",
   "replace": "    return entries[k::max(n - 1, 1)]",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k parallel",
   "why": "N CI jobs prove the manifest only if their slices partition it: an overlap proves entries twice and a gap never proves them"
  },
  {
@@ -11656,7 +11656,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    if not 0 <= k < n:",
   "replace": "    if n == 0:",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k parallel",
   "why": "a K outside 0..N-1 selects nothing or the wrong slice, and reads as a green job"
  },
  {
@@ -11664,7 +11664,7 @@
   "target": "linux/scripts/preflight.sh",
   "find": " \\\n  ${PREFLIGHT_MUTATION_SHARD:+--shard \"${PREFLIGHT_MUTATION_SHARD}\"}",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k callsites",
   "why": "without the pass-through every CI mutations job proves the WHOLE manifest, eight times over, into the timeout the split exists to avoid"
  },
  {
@@ -11672,7 +11672,7 @@
   "target": "linux/scripts/preflight.sh",
   "find": " \\\n  ${PREFLIGHT_MUTATION_COSTS:+--shard-costs \"${PREFLIGHT_MUTATION_COSTS}\"}",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k callsites",
   "why": "without the pass-through the CI jobs plan nothing and prove the round-robin slices, paying every baseline once per shard"
  },
  {
@@ -11680,23 +11680,23 @@
   "target": ".github/workflows/linux-x64.yml",
   "find": " PREFLIGHT_MUTATION_COSTS=docs/scripts/mutation-costs.json bash linux/scripts/preflight.sh",
   "replace": " bash linux/scripts/preflight.sh",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k callsites",
   "why": "the mutations jobs must name the checked-in cost table, or the hub falls back to the round-robin split"
  },
  {
   "id": "mutations.ci-shards-cover-the-manifest",
   "target": ".github/workflows/linux-x64.yml",
-  "find": "        shard: [0, 1, 2, 3, 4, 5, 6, 7]",
-  "replace": "        shard: [0, 1, 2, 3, 4, 5, 6]",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
-  "why": "a matrix that stops short of N-1 leaves an eighth of the manifest proven by nobody, green"
+  "find": "        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8]",
+  "replace": "        shard: [0, 1, 2, 3, 4, 5, 6, 7]",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k callsites",
+  "why": "a matrix that stops short of N-1 leaves a ninth of the manifest proven by nobody, green"
  },
  {
   "id": "mutations.ci-preflight-skips-the-slug",
   "target": ".github/workflows/linux-x64.yml",
   "find": "run: PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh",
   "replace": "run: bash linux/scripts/preflight.sh",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k callsites",
   "why": "the whole gate inside the preflight job is what hit its 45-minute timeout on 2026-09-23"
  },
  {
@@ -11704,7 +11704,7 @@
   "target": ".github/workflows/linux-x64.yml",
   "find": "      - name: Install pytest (mutation-gate baselines)\n        run: pip install --quiet pytest\n      - name: Install PyYAML (renovate_audit.py's real YAML parser)\n        run: pip install --quiet pyyaml\n      - name: Mutation gate,",
   "replace": "      - name: Mutation gate,",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k callsites",
   "why": "without pytest and PyYAML the baselines fail unmutated and every entry under them reads vacuous (2026-09-07)"
  },
  {
@@ -13584,7 +13584,7 @@
   "target": "docs/scripts/mutation_push.py",
   "find": "[\"git\", \"diff\", \"--name-only\", base + \"...HEAD\"]",
   "replace": "[\"git\", \"diff\", \"--name-only\", \"origin/main...HEAD\"]",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k changed",
   "why": "--base is the pre-push hook's push scope; ignoring it re-grades everything since main"
  },
  {
@@ -15806,8 +15806,8 @@
  {
   "id": "docs-site.publish-no-tolerance",
   "target": ".github/workflows/build-docs.yml",
-  "find": "      - name: \ud83d\udcc2 Sync files to domain\n",
-  "replace": "      - name: \ud83d\udcc2 Sync files to domain\n        continue-on-error: true\n",
+  "find": "      - name: 📂 Sync files to domain\n",
+  "replace": "      - name: 📂 Sync files to domain\n        continue-on-error: true\n",
   "test": "bash linux/scripts/tests/test-docs-site.sh",
   "why": "a publish that may fail is a site that stops updating while the lane stays green"
  },
@@ -16752,7 +16752,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "    if (toggled.state === before.state) {",
   "replace": "    if (false) {",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k callers",
   "why": "a toggle the theme JS never bound looks fine until it is clicked: five family sites had dead toggles at every width"
  },
  {
@@ -16760,7 +16760,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "    if (!before.toggle.onScreen) {",
   "replace": "    if (false) {",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k toggles",
   "why": "a sticky sidebar pushed the article's toggle to x=-242 at 850 px, where no reader can reach it"
  },
  {
@@ -16768,7 +16768,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "    if (!before.toggle.topmost) {",
   "replace": "    if (false) {",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k toggles",
   "why": "a toggle under another element takes no click, though it is drawn"
  },
  {
@@ -16776,7 +16776,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "    results.push(after.state === before.state",
   "replace": "    results.push(true",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k themes",
   "why": "a sidebar that opens but never closes again traps a phone reader under it"
  },
  {
@@ -16784,7 +16784,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "`FAIL ${where}: hidden, and no toggle opens it`",
   "replace": "`ok   ${where}: hidden`",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k toggles",
   "why": "a hidden sidebar with no toggle hides the whole navigation"
  },
  {
@@ -16792,7 +16792,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "[...document.querySelectorAll(spec.toggle)].find((e) => e.getBoundingClientRect().width > 0)",
   "replace": "document.querySelector(spec.toggle)",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k toggles",
   "why": "pydata 0.20's header put a hidden toggle first in the DOM; the reader clicks the visible one"
  },
  {
@@ -16800,7 +16800,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "    else await escape();\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k toggles",
   "why": "below 992 px the book theme's toggle opens a modal dialog, which only Escape or its backdrop closes"
  },
  {
@@ -16808,7 +16808,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "  if (failed) fail(",
   "replace": "  if (false) fail(",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k tree",
   "why": "a check that prints FAIL and exits 0 publishes the broken site anyway"
  },
  {
@@ -16816,7 +16816,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "  await send('Runtime.enable');\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k tree",
   "why": "without Runtime.enable Chrome sends no exceptionThrown, and a page that throws looks clean"
  },
  {
@@ -16824,7 +16824,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "  for (const line of new Set(thrown.map(uncaught))) results.push(`FAIL ${w}x${h}: uncaught ${line}`);\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k tree",
   "why": "Exhale's applier threw `$ is not defined` on every page of two sites while every toggle passed"
  },
  {
@@ -16832,7 +16832,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "    if (!tree.applied) results.push(",
   "replace": "    if (false) results.push(",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k tree",
   "why": "a tree view whose script never ran shows every list open and folds nothing"
  },
  {
@@ -16840,7 +16840,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "      if (folded.state === tree.state) results.push(",
   "replace": "      if (false) results.push(",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k tree",
   "why": "an applied tree without its click handler draws the buttons and does nothing"
  },
  {
@@ -16848,7 +16848,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "        results.push(back.state === tree.state",
   "replace": "        results.push(true",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k tree",
   "why": "an item that opens but never folds again"
  },
  {
@@ -16856,7 +16856,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "  if (text) range.selectNodeContents(text);",
   "replace": "  range.selectNodeContents(li.querySelector('a'));",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k usage",
   "why": "the reader folds an item on its own text: its link opens another page"
  },
  {
@@ -16864,7 +16864,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "(li.querySelector(':scope > a') || li).scrollIntoView({ block: 'center' });",
   "replace": "li.scrollIntoView({ block: 'center' });",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k usage",
   "why": "BeschleunigerBallett's open first namespace is taller than the viewport: centring the whole item scrolled its text away, and the second click missed"
  },
  {
@@ -16872,7 +16872,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "  for (let i = 0; i < 600 && !port; i++) {",
   "replace": "  for (let i = 0; i < 600 && !fs.existsSync(portFile); i++) {",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k usage",
   "why": "Chrome creates DevToolsActivePort before it writes the port; a loaded runner read it empty and failed 5 mutation baselines with 'opened no page' (run 39518418220)"
  },
  {
@@ -16880,7 +16880,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "...(kind === 'sphinx' && !isUrl(site) ? treePages(site) : [])",
   "replace": "...[]",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k tree",
   "why": "the callers pass the site alone, and Exhale's tree is on api/library_root.html, not index.html"
  },
  {
@@ -16888,7 +16888,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "[...start, ...asked, ",
   "replace": "[...start, ",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k usage",
   "why": "a published site has no file list to search: the live check names its API page"
  },
  {
@@ -16896,7 +16896,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "const start = kind === 'rustdoc' && !isUrl(site) ? rustdocPages(site) : ['index.html'];",
   "replace": "const start = ['index.html'];",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k themes",
   "why": "a rustdoc site's index.html is a redirect with no sidebar, so the check would click nothing"
  },
  {
@@ -16976,7 +16976,7 @@
   "target": "linux/scripts/docs-site.sh",
   "find": "  node \"${DOCS_SITE_HUB}/linux/scripts/check-docs-sidebars.js\" \"${site}\"",
   "replace": "  true",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k callers",
   "why": "the check subcommand is what build-docs.yml and both Sphinx drivers call"
  },
  {
@@ -16984,7 +16984,7 @@
   "target": "linux/scripts/docs-site.sh",
   "find": "      if [ -z \"${CHROME_EXECUTABLE:-}\" ]; then",
   "replace": "      if true; then",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k callers",
   "why": "--if-chrome skips riscv64, which has no Chrome for Testing build, never an image that has Chrome"
  },
  {
@@ -16992,7 +16992,7 @@
   "target": ".github/workflows/build-docs.yml",
   "find": "          script: bash ${{ steps.plan.outputs.hub }}/linux/scripts/docs-site.sh build ${{ steps.plan.outputs.site-dir }}\n",
   "replace": "          script: bash ${{ steps.plan.outputs.hub }}/linux/scripts/docs-site.sh build && bash ${{ steps.plan.outputs.hub }}/linux/scripts/docs-site.sh check ${{ steps.plan.outputs.site-dir }}\n",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k callers",
   "why": "script is docker run's argv: a shell && ran the click check on the runner, with the runner's Chrome, not the image's"
  },
  {
@@ -17000,7 +17000,7 @@
   "target": "linux/scripts/docs-site.sh",
   "find": "  [ -n \"${1:-}\" ] || return 0\n  docs_site_check \"$1\"\n",
   "replace": "  [ -n \"${1:-}\" ] || return 0\n",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k callers",
   "why": "build-docs.yml passes the site to build so the click runs in the image's Chrome, inside the one container command"
  },
  {
@@ -17008,7 +17008,7 @@
   "target": "linux/scripts/lib/docs-build.sh",
   "find": "    [[ \"${target}\" != html ]] || docs_build_check_sidebars || return $?\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k callers",
   "why": "BeschleunigerBallett and AccelerANTgine publish an artifact; this is the one place their toggles are clicked"
  },
  {
@@ -17016,7 +17016,7 @@
   "target": "linux/scripts/02-toolchain/python/ci_build_docs.sh",
   "find": "bash \"$SCRIPT_DIR/../../docs-site.sh\" check \"$WORKSPACE_ROOT/docs/build/html\" --if-chrome\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k callers",
   "why": "OrchestrANT and WebDavClient publish an artifact; this is the one place their toggles are clicked"
  },
  {
@@ -17816,7 +17816,7 @@
   "target": "linux/scripts/lib-runtime-push.sh",
   "find": "runtime_switch_mode RUNTIME_ASYNC_PUSH 1 ",
   "replace": "runtime_switch_mode RUNTIME_ASYNC_PUSH 0 ",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k knob",
   "why": "the background pusher is the default; RUNTIME_ASYNC_PUSH=0 is the switch back to inline"
  },
  {
@@ -17824,7 +17824,7 @@
   "target": "linux/scripts/lib-runtime-switch.sh",
   "find": "      return 2\n",
   "replace": "      return 0\n",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k knob",
   "why": "a typo in the knob stops the lane at its start instead of silently picking a mode"
  },
  {
@@ -17832,7 +17832,7 @@
   "target": "linux/scripts/lib-runtime-push.sh",
   "find": "[[ \"${f}\" < \"${oldest}\" ]]",
   "replace": "[[ \"${f}\" > \"${oldest}\" ]]",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k queue",
   "why": "the first arch built uploads first, so its upload ends earliest"
  },
  {
@@ -17840,7 +17840,7 @@
   "target": "linux/scripts/lib-runtime-push.sh",
   "find": "      [ -n \"$(_runtime_push_next \"${dir}\")\" ] || return 0\n      continue",
   "replace": "      return 0",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k queue",
   "why": "an item queued between the pusher's empty read and the close would never be pushed"
  },
  {
@@ -17848,7 +17848,7 @@
   "target": "linux/scripts/lib-runtime-push.sh",
   "find": "{ rc=0; runtime_push_tag \"${tag}\" 2>&1 || rc=$?;",
   "replace": "{ rc=0; runtime_push_tag \"${tag}\" 2>&1; rc=$?;",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k queue",
   "why": "under errexit a failed push would end the pusher and strand every arch queued behind it"
  },
  {
@@ -17856,7 +17856,7 @@
   "target": "linux/scripts/lib-runtime-push.sh",
   "find": "  item=\"q.$(date +%s%N).${arch}\"",
   "replace": "  runtime_push_tag \"${tag}\"\n  item=\"q.$(date +%s%N).${arch}\"",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k lane",
   "why": "the whole point: the arch's lane hands its upload off and the next arch builds at once"
  },
  {
@@ -17864,7 +17864,7 @@
   "target": "linux/scripts/lib-runtime-push.sh",
   "find": "    chain_terminate_descendants TERM \"${RUNTIME_PUSHER_PID}\"\n    kill -TERM \"${RUNTIME_PUSHER_PID}\" 2>/dev/null || true",
   "replace": "    :",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k lane",
   "why": "an interrupted lane must stop uploading, not wait out an hour-long push"
  },
  {
@@ -17872,7 +17872,7 @@
   "target": "linux/scripts/lib-runtime-push.sh",
   "find": "    [ \"${rc}\" = 0 ] || failed=\"${failed:+${failed} }${arch}(rc=${rc:-none})\"",
   "replace": "    :",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k lane",
   "why": "a wrapper that never reached the registry must fail the lane before the index lists it"
  },
  {
@@ -17880,7 +17880,7 @@
   "target": "linux/scripts/lib-runtime-push.sh",
   "find": "  trap_push 'runtime_push_queue_finish exit'",
   "replace": "  :",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k lane",
   "why": "a lane that fails after a build still uploads that wrapper, as the inline push did"
  },
  {
@@ -17888,7 +17888,7 @@
   "target": "linux/scripts/lib-runtime-push.sh",
   "find": "    kill -0 \"${owner}\" 2>/dev/null || return 0\n    sleep",
   "replace": "    sleep",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k lane",
   "why": "a pusher whose lane was killed hard would poll forever"
  },
  {
@@ -17896,7 +17896,7 @@
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
   "find": "_runtime_ship_image() {\n  local mode=\"$1\" tag=\"$2\" arch=\"$3\"\n  if [ \"${mode}\" = dry ]; then\n    log \"[DRY RUN] would push wrapper image ${tag}\"\n    return 0\n  fi\n  if runtime_pushes_wrapper_images; then\n    _runtime_push_wrapper_tag \"${tag}\" \"${arch}\" || return 1\n  fi\n}",
   "replace": "_runtime_ship_image() {\n  local mode=\"$1\" tag=\"$2\" arch=\"$3\"\n  if [ \"${mode}\" = dry ]; then\n    log \"[DRY RUN] would push wrapper image ${tag}\"\n    return 0\n  fi\n  if runtime_pushes_wrapper_images; then\n    runtime_push_tag \"${tag}\" || return 1\n  fi\n}",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k wiring",
   "why": "a wrapper build that pushes past the queue blocks its arch for the whole upload again"
  },
  {
@@ -17904,7 +17904,7 @@
   "target": "linux/scripts/build-runtime-manifest.sh",
   "find": "  runtime_push_queue_start || return $?\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k wiring",
   "why": "without the pusher every wrapper push is inline and serial again"
  },
  {
@@ -17912,7 +17912,7 @@
   "target": "linux/scripts/build-runtime-manifest.sh",
   "find": "  # The index lists every arch, so it waits for the last upload.\n  runtime_step_phase push-wait runtime_push_queue_finish\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k wiring",
   "why": "the index would be created over wrappers still uploading, or never uploaded"
  },
  {
@@ -17920,7 +17920,7 @@
   "target": "linux/scripts/build-cross-chain.sh",
   "find": "  runtime_push_mode >/dev/null || exit 2\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k wiring",
   "why": "the chain reaches the runtime lane hours in; a typo must stop it at its start"
  },
  {
@@ -17928,7 +17928,7 @@
   "target": "linux/scripts/build-runtime-manifest.sh",
   "find": "  for rc in \"${pids[@]}\"; do wait \"${rc}\" 2>/dev/null || true; done",
   "replace": "  wait",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k gates",
   "why": "a bare wait also waits for the background pusher, so the gates would hang until every upload ends"
  },
  {
@@ -17936,7 +17936,7 @@
   "target": "linux/scripts/build-runtime-manifest.sh",
   "find": "\"${dir}/${arch}.rc\" ) &",
   "replace": "\"${dir}/${arch}.rc\" )",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k gates",
   "why": "the arches' content gates and smokes run at once, not one after another"
  },
  {
@@ -17944,7 +17944,7 @@
   "target": "linux/scripts/build-runtime-manifest.sh",
   "find": "    cat \"${dir}/${arch}.log\" 2>/dev/null || true",
   "replace": "    :",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k gates",
   "why": "a parallel gate's output reaches the lane log whole, per arch"
  },
  {
@@ -17952,7 +17952,7 @@
   "target": "linux/scripts/build-runtime-manifest.sh",
   "find": "    [ \"${rc}\" = 0 ] || failed=\"${failed:+${failed} }${arch}\"",
   "replace": "    :",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k gates",
   "why": "one red arch fails the phase, so a broken wrapper never reaches the index"
  },
  {
@@ -17960,7 +17960,7 @@
   "target": "linux/scripts/build-runtime-manifest.sh",
   "find": "    ''|*[!0-9]*|0)",
   "replace": "    ''|*[!0-9]*)",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k gates",
   "why": "RUNTIME_GATE_JOBS=0 is a typo, not a request to gate in turn"
  },
  {
@@ -17968,7 +17968,7 @@
   "target": "linux/scripts/build-runtime-manifest.sh",
   "find": "    _manifest_gate_arch \"${label}\" \"${script}\" \"${arch}\" || return 1",
   "replace": "    _manifest_gate_arch \"${label}\" \"${script}\" \"${arch}\" || true",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k gates",
   "why": "RUNTIME_GATE_JOBS=1 is the old path, which stopped at the first failing arch"
  },
  {
@@ -18056,7 +18056,7 @@
   "target": "linux/scripts/lib-runtime-push.sh",
   "find": "  mode=\"$(runtime_push_mode)\" || return 2",
   "replace": "  mode=\"$(runtime_push_mode)\" || mode=async",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k knob",
   "why": "the runtime lanes learn of a bad RUNTIME_ASYNC_PUSH here, before their first build"
  },
  {
@@ -18208,7 +18208,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "        return run_shard(args, _drain(todo), root, report, baselines, f\"[{n + 1}/{jobs}] \", costs)",
   "replace": "        return run_shard(args, entries[n::jobs], root, report, baselines, f\"[{n + 1}/{jobs}] \", costs)",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k parallel",
   "why": "dealt round-robin, two slow entries can land on one mirror while the others idle"
  },
  {
@@ -18216,7 +18216,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "        if n:\n            mirror_tree(src, root)\n",
   "replace": "        if n:\n",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k parallel",
   "why": "each extra shard copies its own mirror, now inside the pool rather than before it"
  },
  {
@@ -18376,7 +18376,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "DEFAULT_JOBS = (getattr(os, \"process_cpu_count\", None) or os.cpu_count)() or 1",
   "replace": "DEFAULT_JOBS = min(8, (getattr(os, \"process_cpu_count\", None) or os.cpu_count)() or 1)",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k parallel",
   "why": "the default is every CPU the process may use; a fixed 8 left 24 of 32 cores idle"
  },
  {
@@ -18384,7 +18384,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "    return max(1, free_bytes // 4 // max(mirror_bytes, 1))",
   "replace": "    return max(1, free_bytes // max(mirror_bytes, 1))",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k parallel",
   "why": "the mirrors may take a quarter of the temp filesystem, which on tmpfs is RAM a build may need"
  },
  {
@@ -18568,7 +18568,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "for (let i = 0; i < Math.min(Number(askedJobs), jobs.length); i++)",
   "replace": "for (let i = 0; i < 1; i++)",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k browsers",
   "why": "a site's pages and widths in one Chrome are checked in turn, which is what the knob exists to undo"
  },
  {
@@ -18576,7 +18576,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "  if (!/^[1-9]\\d*$/.test(askedJobs)) fail(",
   "replace": "  if (false) fail(",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k browsers",
   "why": "a count of 0 launches no Chrome and dies on browsers[0] with a stack trace instead of naming the knob"
  },
  {
@@ -18584,7 +18584,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "  const lines = found.flat();",
   "replace": "  const lines = found.slice(0, 1).flat();",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k tree",
   "why": "a verdict read from the first page alone passes a site whose other pages fail"
  },
  {
@@ -18592,7 +18592,7 @@
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "[...(j % viewports.length ? [] : [`  ${job.page}`]), ",
   "replace": "[",
-  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh -k tree",
   "why": "a FAIL line without its page header names no page to fix"
  },
  {
@@ -21520,7 +21520,7 @@
   "target": "linux/scripts/tests/test-mutation-gate.sh",
   "find": "  _copied=\"$(cat \"${_tmp}/copied\")\"",
   "replace": "  _copied=",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k heavy",
   "why": "Copy exclusion fixtures retain the real copied-file listing and its positive ordinary-file controls."
  },
  {
@@ -21528,7 +21528,7 @@
   "target": "linux/scripts/tests/test-mutation-gate.sh",
   "find": "  printf '%s' \"$2\" > \"$path\"",
   "replace": "  :",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k heavy",
   "why": "A source preparer must plant both the excluded inputs and the ordinary file that proves the copy was real."
  },
  {
@@ -30445,7 +30445,7 @@
   "target": "linux/scripts/lib-runtime-push.sh",
   "find": "      _runtime_push_mark \"${arch}\" on\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k queue",
   "why": "a background upload names its arch in the resource samples it overlaps"
  },
  {
@@ -30453,7 +30453,7 @@
   "target": "linux/scripts/lib-runtime-push.sh",
   "find": "      _runtime_push_mark \"${arch}\" off\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh -k queue",
   "why": "a finished upload drops its push marker"
  },
  {
@@ -33315,7 +33315,7 @@
  {
   "id": "packaging.gpu-receipt-windows-device-names",
   "target": "shared/python/gpu_artifact_receipt.py",
-  "find": "for digit in \"\u00b9\u00b2\u00b3\"",
+  "find": "for digit in \"¹²³\"",
   "replace": "for digit in \"\"",
   "test": "python3 shared/python/tests/test_gpu_artifact_receipt.py",
   "why": "Windows COM and LPT aliases with superscript digits must not be accepted as portable names"
@@ -41093,7 +41093,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "encoding=\"utf-8\", errors=\"replace\", start_new_session=True)",
   "replace": "encoding=\"utf-8\", start_new_session=True)",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k basics",
   "why": "A test that prints bytes that are not UTF-8 keeps its verdict; strict decoding crashed the whole run."
  },
  {
@@ -61573,7 +61573,7 @@
   "find": "assert invocation['GPU_layers_matched'] == parent['matched_GPU_layers_and_diffIDs'], 'NVIDIA Android GPU coverage differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
-  "why": "The Android profile retains the Media receipt\u2019s matched GPU ancestry."
+  "why": "The Android profile retains the Media receipt’s matched GPU ancestry."
  },
  {
   "id": "compiler-llvm-tools.nvidia-android-disk",
@@ -65372,7 +65372,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "        write_exact(target, mutated)\n        drop_bytecode(target)\n",
   "replace": "        write_exact(target, mutated)\n",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k basics",
   "why": "a same-size Python mutant must not run the previous mutant's cached bytecode"
  },
  {
@@ -65380,7 +65380,7 @@
   "target": "docs/scripts/verify_mutations.py",
   "find": "        os.unlink(backup.name)\n        drop_bytecode(target)\n",
   "replace": "        os.unlink(backup.name)\n",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh -k basics",
   "why": "no bytecode of a mutant may outlive its run, where a later same-size mutant would load it"
  },
  {

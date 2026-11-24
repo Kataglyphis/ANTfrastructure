@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fixture subject functions are printed so this suite's definitions cannot mask their dead-code verdicts.
+# Fixture subject functions are printed so this suite's definitions cannot mask their dead-code verdicts. -k basics|defs|mask|history|real|shared|root picks cases.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -54,6 +54,10 @@ _called()  { _verdict "$1" "$2" "${USED}" "" linux/scripts/caller.sh "$3"; }
 _mask() { local fn="$1"; shift; "${fn}" "$1" "$2" "${MASKED}" "" \
   linux/scripts/other.sh "${MASKING}" "${@:3}"; }
 
+# A runner that sources both definers, so they can meet in one shell.
+LINKED=(linux/scripts/runner.sh $'. ./subject.sh\n. ./other.sh')
+
+_section_basics() {
 t_case "a function nothing names fails, and says which"
 _verdict 1 "printing is not enough; it must fail" "${DEAD}"
 _says "NEW dead function" "the heading names the failure class" "${DEAD}"
@@ -118,7 +122,9 @@ _verdict 1 "a dart tool cache is generated too" "${USED}" "" \
   linux/webserver/.dart_tool/package_config.json '{"name": "used_fn"}'
 _verdict 1 "a mutation manifest quotes code, it does not run it" "${USED}" "" \
   docs/scripts/mutations.json '[{"find": "used_fn", "replace": ":"}]'
+}
 
+_section_defs() {
 t_case "a definition naming ITSELF is not a use: a diagnostic is not a caller"
 _verdict 1 "the corpus scan strips comments and heads, never string literals" \
   $'dead_fn() {\n  printf \'dead_fn: no toolchain\\n\' >&2\n}'
@@ -166,8 +172,9 @@ _says "linux/scripts/subject.sh  used_fn" "names the row to delete" "${USED}" "$
   .github/ci.yml 'run: used_fn'
 _verdict 1 "a frozen name that is no longer defined is stale" ':' "${FROZEN_DEAD}"
 
-LINKED=(linux/scripts/runner.sh $'. ./subject.sh\n. ./other.sh')
+}
 
+_section_mask() {
 t_case "same-name masking: the unlinked-definer arm fails what the name table cannot see"
 _mask _verdict 1 "no mention of foo_fn can be about this copy, so the gate must say so"
 _mask _says "[unlinked definer]" "the row is tagged so the author knows which arm fired"
@@ -227,7 +234,9 @@ _census "none -- every candidate sits in a sourced or externally named file" \
   "${MASKED}" "" linux/scripts/runner.sh 'bash subject.sh'
 _census "0 of those in a file that sources nothing" "a file another file names by basename may be run from there" \
   "${MASKED}" "" linux/scripts/runner.sh 'bash subject.sh'
+}
 
+_section_history() {
 t_case "the 2026-09-04 DEAD group is deleted, rows and all"
 ROOT="$(cd "${SCRIPTS_DIR}/../.." && pwd)"
 FFMPEG_SH="linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh"
@@ -258,11 +267,15 @@ t_assert_eq "0" "$(grep -c -e "$(printf '%s\t%s' "${PARITY_SH##*/}" "${_CP}")" \
   "${SCRIPTS_DIR}/dead-functions.allow")" \
   "a contract suite names it now, so no freeze is left to hold"
 t_assert_grep "${TESTS_DIR}/test-verify-parity-checks.sh" "${_CP}"
+}
 
+_section_real() {
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$( "${PY}" "${GATE}" >/dev/null 2>&1; echo $? )"
 t_assert_eq "0" "$( "${PY}" "${GATE}" --census >/dev/null 2>&1; echo $? )"
+}
 
+_section_shared() {
 t_case "a declared shared bootstrap has a real image-consumer caller, not an inert name"
 shared_hub="$(_fixture ':')"
 cp "${SCRIPTS_DIR}/image-acceptance.py" "${shared_hub}/linux/scripts/"
@@ -325,10 +338,14 @@ t_git_commit "${shared_consumer}"
 t_assert_eq 1 "$(t_rc "${PY}" "${shared_gate}" --root "${shared_consumer}")" \
   "real local dead code still fails with external shared API evidence"
 rm -rf "${shared_hub}" "${shared_consumer}"
+}
 
+_section_root() {
 # Every fixture above plants its tree around the gate, so only gate_root_arm reaches --root.
 t_case "--root grades the named tree, and reads its freeze file"
 _root_subject="${DEAD}"
 gate_root_arm "${PY}" "${GATE}" "${_root_subject}" dead-functions.allow $'zz-sentinel.sh\tzz_sentinel' zz_sentinel
+}
 
+t_sections _section_basics _section_defs _section_mask _section_history _section_real _section_shared _section_root -- "$@"
 t_summary

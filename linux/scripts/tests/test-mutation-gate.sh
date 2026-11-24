@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The pointed-at tree must stay byte-identical, since a build may be reading it; see docs/code-quality-tooling.md#the-mutation-gate-mutations
+# The pointed-at tree must stay byte-identical, since a build may be reading it; see docs/code-quality-tooling.md#the-mutation-gate-mutations -k basics|gitbash|copies|changed|stale|callsites|twice|heavy|tree|symlinks|parallel picks cases.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=linux/scripts/tests/test-workspace-fixture.sh
@@ -52,7 +52,7 @@ _iso() { TMPDIR="${_tmp}" "${PY}" "${GATE}" --manifest "${_work}/m.json" --root 
 _iso_run() { t_out _iso; }
 _iso_rc()  { t_rc _iso; }
 _snapshot() { (cd "${_work}" && find . -type f -exec md5sum {} + | LC_ALL=C sort); }
-
+_section_basics() {
 t_case "a mutation the tests catch is reported as biting"
 _fixture "GUARD=on" "GUARD=off" yes
 t_assert_contains "$(_run)" "bites" "the guarded test must go red"
@@ -110,7 +110,8 @@ case "${_out}" in
   *bites*) t_assert_eq "no bites line" "a bites line" "a vacuous entry must not be reported as biting" ;;
   *)       t_assert_ok true ;;
 esac
-
+}
+_section_gitbash() {
 # Force only the host-skip fact, so native Windows parser and executable lookup keep their real platform.
 _gate_as_gitbash() {
   TMPDIR="${_tmp}" "${PY}" -c 'import os, runpy, sys; sys.argv = sys.argv[1:]; sys.path.insert(0, os.path.dirname(sys.argv[0])); state = runpy.run_path(sys.argv[0], run_name="host_skip_fixture"); main = state["main"]; main.__globals__["HOST_MAY_SKIP"] = True; raise SystemExit(main())' \
@@ -167,7 +168,8 @@ t_case "on Linux a SKIP line or a waiver changes nothing: the same mutation SURV
 t_needs "a POSIX python3 (the gate reads a Windows one as a Git Bash host)" t_posix_python
 t_assert_contains "$(_run 2>&1)" "SURVIVED"
 t_assert_eq "1" "$(_rc)"
-
+}
+_section_copies() {
 t_case "--in-place restores the target afterwards, whatever the verdict"
 _fixture "GUARD=on" "GUARD=off" yes
 _run >/dev/null 2>&1
@@ -235,7 +237,8 @@ _fixture "GUARD=on" "GUARD=off" yes .
 _iso_run >/dev/null 2>&1
 t_assert_eq "" "$(find "${_tmp}" -maxdepth 1 -name 'mutation-gate-*' -print)" \
   "one leaked copy per invocation fills the disk of the machine running CI"
-
+}
+_section_changed() {
 t_case "--changed selects by target, using the diff of the real repo"
 if _posix_host "a script named git on PATH"; then
 _fixture "GUARD=on" "GUARD=off" yes .
@@ -265,7 +268,8 @@ t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "bites" 
 fi
 
 # --stale-check runs no test, which makes it cheap enough for a hook and no substitute for the gate.
-
+}
+_section_stale() {
 _stale() { TMPDIR="${_tmp}" "${PY}" "${GATE}" --manifest "${_work}/m.json" --root "${_work}" --stale-check; }
 _ran() { if [ -e "${_tmp}/ran" ]; then echo ran; else echo not-run; fi; }
 # A test command whose only job is to record that it was executed at all.
@@ -306,7 +310,8 @@ _fixture "GUARD=on" "GUARD=off" yes
 _before="$(_snapshot)"
 _stale >/dev/null 2>&1
 t_assert_eq "${_before}" "$(_snapshot)" "it reads targets; it must never apply one"
-
+}
+_section_callsites() {
 # --- the production call sites: isolation is a DEFAULT, --in-place is one flag away
 _gate_calls() { grep -e 'verify_mutations\.py' "$1" || true; }
 _count() { printf '%s\n' "$1" | grep -c "${@:2}" || true; }
@@ -348,7 +353,8 @@ printf '  shard: [0, 1]\r\n' > "${_tmp}/matrix-newlines"
 t_assert_eq "0, 1" "$(_matrix_shards "${_tmp}/matrix-newlines")" "a Windows CRLF checkout must keep the same shard proof"
 t_assert_eq "2 2" "$(grep -c -e 'pip install --quiet pytest' "${_wf}") $(grep -c -e 'pip install --quiet pyyaml' "${_wf}")" \
   "both jobs that run preflight.sh need the same setup, or the baselines go vacuous"
-
+}
+_section_twice() {
 t_case "a find string that matches TWICE is an error, not a silent partial edit"
 _fixture "GUARD=on" "GUARD=off" yes .
 printf 'GUARD=on\n' >> "${_work}/subject.sh"
@@ -371,6 +377,7 @@ t_assert_contains "$(_iso_run)" "bites" \
   "a mode-losing copy makes every shell test fail for the wrong reason, not for the mutation"
 t_assert_eq "0" "$(_iso_rc)" "the executable subject must still produce an honest bite"
 fi
+}
 
 _copy_fixture_file() {
   local path="${_work}/$1"
@@ -416,7 +423,7 @@ _capture_copy_listing() {
   t_assert_contains "$(_iso_run)" "bites" "the listing must come from a real, biting run"
   _copied="$(cat "${_tmp}/copied")"
 }
-
+_section_heavy() {
 t_case "the copy skips the heavy trees, it does not clone the whole checkout"
 _capture_copy_listing _prepare_heavy_copy_fixture
 t_assert_contains "${_copied}" "./subject.sh" "the tree under test is what gets copied"
@@ -453,7 +460,8 @@ t_assert_contains "${_out}" "mirror_tree: could not copy" "the failure must name
 case "${_out}" in *"vacuous bite"*) t_assert_eq "no vacuous verdict" "vacuous verdict" \
   "disk trouble must not be reported as a test defect" ;; *) t_assert_ok true ;; esac
 fi
-
+}
+_section_tree() {
 # _child_probe <test body> [timeout]: one probe mutation whose test records a child's pid in ${_tmp}/gpid.
 _child_probe() {
   _fixture "GUARD=on" "GUARD=off" yes .
@@ -528,8 +536,7 @@ _gp=$!
 t_wait_file "${_tmp}/gpid"
 kill -TERM "${_gp}"; wait "${_gp}" 2>/dev/null
 _child_gone "a SIGTERM'd gate left its test's child running"
-
-# --- symlinks: the copy must neither dereference them nor let a write out ------
+}
 
 # _symlink_fixture <target> [inside|outside|dangling]: the test records what the copy holds and the outside file.
 _symlink_fixture() {
@@ -550,6 +557,19 @@ _symlink_fixture() {
   printf '[{"id":"probe","target":"%s","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t.sh","why":"probe"}]\n' \
     "$1" > "${_work}/m.json"
 }
+
+_safe_target_contract() {
+  local driver="$1"
+  local status
+  TMPDIR="${_tmp}" "${PY}" "${driver}" --manifest "${_work}/m.json" --root "${_work}" --in-place >/dev/null 2>&1
+  status=$?
+  if [ "${status}" -ne 1 ] || [ "$(cat "${_tmp}/outside.txt")" != 'GUARD=on' ]; then
+    return 1
+  fi
+  return 0
+}
+_section_symlinks() {
+# --- symlinks: the copy must neither dereference them nor let a write out ------
 
 t_case "the copy keeps a symlink AS a symlink instead of dereferencing it"
 t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
@@ -607,19 +627,10 @@ t_assert_contains "${_out}" "target resolves outside the mutation root"
 t_assert_eq "1" "$(_rc)"
 t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside.txt")"
 
-_safe_target_contract() {
-  local driver="$1"
-  local status
-  TMPDIR="${_tmp}" "${PY}" "${driver}" --manifest "${_work}/m.json" --root "${_work}" --in-place >/dev/null 2>&1
-  status=$?
-  if [ "${status}" -ne 1 ] || [ "$(cat "${_tmp}/outside.txt")" != 'GUARD=on' ]; then
-    return 1
-  fi
-  return 0
-}
 t_assert_ok _safe_target_contract "${GATE}"
 sed '/if not within(os.path.realpath(root), target):/,+1d' "${GATE}" > "${_tmp}/no-target-containment.py"
 t_assert_fails _safe_target_contract "${_tmp}/no-target-containment.py"
+}
 
 # _shard_fixture <n> <survivor> [root] [setup]: a dropped shard leaves a surviving mutation.
 _shard_fixture() {
@@ -646,12 +657,21 @@ _plant_setup_caller() {
   printf 'mkdir -p .venv\nprintf ready > .venv/ready\necho setup >> "%s/setup-count"\n' "${_tmp}" > "${dir}/setup.sh"
 }
 
-t_case "optional setup runs once in each copy before its unmutated baseline"
-_setup_repo="$(t_consumer_fixture "${_tmp}" _plant_setup_caller setup)"
 _setup_gate() {
   TMPDIR="${_tmp}" "${PY}" "${GATE}" --manifest "${_setup_repo}/m.json" \
     --root "${_setup_repo}" --jobs 2 "$@"
 }
+
+_mutant_setup_gate() { GATE="${_tmp}/no-mirror-setup.py" _setup_gate --setup-script setup.sh; }
+# The ids reported as biting, in id order: verdicts stream in completion order, each behind its [j/J] tag.
+_bitten() {
+  printf '%s\n' "$1" | sed -n 's/^\(\[[0-9]*\/[0-9]*\] \)\{0,1\}  bites  *probe\.\([0-9]*\).*/\2/p' \
+    | sort -n | sed 's/^/probe./' | tr '\n' ' '
+}
+
+_parallel_setup_and_verdicts() {
+t_case "optional setup runs once in each copy before its unmutated baseline"
+_setup_repo="$(t_consumer_fixture "${_tmp}" _plant_setup_caller setup)"
 _out="$(t_out _setup_gate)"
 t_assert_contains "${_out}" "baseline test already fails unmutated" "the ignored source .venv must not reach mirrors"
 t_assert_eq "1" "$(t_rc _setup_gate)"
@@ -668,17 +688,10 @@ t_assert_contains "${_out}" "setup script failed-setup.sh exited rc=7"
 t_assert_eq "1" "$(t_rc _setup_gate --setup-script failed-setup.sh)"
 t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c 'bites   probe\.' || true)" "a failed setup cannot pass as a caught mutation"
 sed 's/if not script:/if True:/' "${GATE}" > "${_tmp}/no-mirror-setup.py"
-_mutant_setup_gate() { GATE="${_tmp}/no-mirror-setup.py" _setup_gate --setup-script setup.sh; }
 t_assert_contains "$(t_out _mutant_setup_gate)" "baseline test already fails unmutated"
 t_assert_eq "1" "$(t_rc _mutant_setup_gate)"
 
 # Shards run in parallel, but every entry must still be proven alone.
-
-# The ids reported as biting, in id order: verdicts stream in completion order, each behind its [j/J] tag.
-_bitten() {
-  printf '%s\n' "$1" | sed -n 's/^\(\[[0-9]*\/[0-9]*\] \)\{0,1\}  bites  *probe\.\([0-9]*\).*/\2/p' \
-    | sort -n | sed 's/^/probe./' | tr '\n' ' '
-}
 
 t_case "a parallel run proves every entry, and one survivor anywhere fails it"
 _shard_fixture 8 6
@@ -712,7 +725,9 @@ t_assert_contains "$(t_out _iso --shard 1/3)" "(shard 1/3: 3 entr(ies))" "the he
 for _bad in 3/3 -1/3 1 x/y; do
   t_assert_eq "2" "$(t_rc _iso --shard "${_bad}")" "--shard ${_bad} is a usage error, not an empty green run"
 done
+}
 
+_parallel_shards_and_mirrors() {
 t_case "a run killed mid-way has already printed the verdicts it reached"
 # CI kills a job at its timeout; a block-buffered report took every finding with it (2026-09-23).
 printf 'GUARD=on\n' > "${_work}/s1.sh"; printf 'GUARD=on\n' > "${_work}/s2.sh"
@@ -771,5 +786,8 @@ t_case "the default job count is the CPUs this process may use"
 t_assert_eq "3" "$(cd "${REPO}/docs/scripts" && PYTHON_CPU_COUNT=3 "${PY}" -c 'import verify_mutations as v; print(v.DEFAULT_JOBS)')"
 t_assert_eq "12" "$(cd "${REPO}/docs/scripts" && PYTHON_CPU_COUNT=12 "${PY}" -c 'import verify_mutations as v; print(v.DEFAULT_JOBS)')" \
   "no cap below the CPU count: a fixed 8 left 24 of 32 cores idle"
+}
+_section_parallel() { _parallel_setup_and_verdicts; _parallel_shards_and_mirrors; }
 
+t_sections _section_basics _section_gitbash _section_copies _section_changed _section_stale _section_callsites _section_twice _section_heavy _section_tree _section_symlinks _section_parallel -- "$@"
 t_summary

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The background wrapper pusher and the parallel runtime gates, with the push stubbed: docs/linux-cross-builds.md#the-wrapper-push-runs-beside-the-next-build
+# The background wrapper pusher and the parallel runtime gates, with the push stubbed: docs/linux-cross-builds.md#the-wrapper-push-runs-beside-the-next-build; -k knob|queue|lane|wiring|gates picks cases
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -17,7 +17,7 @@ trap 'rm -rf "${_work}"' EXIT
 # The real EXIT trap stack, so the drain sees the lane's exit code as it does in a lane.
 _TRAP="declare -a _EXIT_TRAP_STACK=()"$'\n'"$(t_fn_src "${SCRIPTS}/01-core/build-helpers.sh" trap_push)" || exit 1
 
-# PUSH_GATE=<arch> holds that arch's push until ${W}/release exists (120 s at most); PUSH_FAIL=<arch> fails it.
+# PUSH_GATE=<arch> holds that arch's push until ${W}/release exists (40 s at most); PUSH_FAIL=<arch> fails it.
 _STUBS='log() { printf "LOG %s\n" "$*"; }
 warn() { printf "WARN %s\n" "$*"; }
 is_dry_run() { [ "${DRY_RUN:-0}" = 1 ]; }
@@ -25,7 +25,7 @@ runtime_pushes_wrapper_images() { [ "${PUSH_IMAGES:-1}" = 1 ]; }
 runtime_push_tag() {
   printf "start %s\n" "$1" >> "${W}/pushes"
   if [ "${1##*-}" = "${PUSH_GATE:-none}" ]; then
-    for _ in $(seq 1200); do [ -e "${W}/release" ] && break; sleep 0.1; done
+    for _ in $(seq 400); do [ -e "${W}/release" ] && break; sleep 0.1; done
   fi
   printf "end %s\n" "$1" >> "${W}/pushes"
   [ "${1##*-}" != "${PUSH_FAIL:-none}" ]
@@ -39,9 +39,27 @@ _run() {
 # The first upload, held open until ${W}/release exists, has started.
 _HELD='runtime_push_queue_start
 runtime_push_wrapper repo:latest-amd64 amd64
-for _ in $(seq 600); do grep -q "start repo:latest-amd64" "${W}/pushes" 2>/dev/null && break; sleep 0.1; done'
+for _ in $(seq 200); do grep -q "start repo:latest-amd64" "${W}/pushes" 2>/dev/null && break; sleep 0.1; done'
 _starts_ends() { printf '%s\n' "$1" | grep -E "^(${2:-start|end}) " | tr '\n' ' ' | sed 's/ $//'; }
 
+# The gate loops over a stub gate; GATE_FAIL names the arch whose gate fails, MEET where the gates meet.
+_EACH="$(t_fn_src "${BRM}" _manifest_gate_jobs)"$'\n'"$(t_fn_src "${BRM}" _manifest_each_arch)"$'\n'"$(t_fn_src "${BRM}" _manifest_gates_parallel)" || exit 1
+_GATE_STUBS="$(declare -f meet_peers)"'
+set -euo pipefail
+log() { printf "LOG %s\n" "$*"; }
+warn() { printf "WARN %s\n" "$*"; }
+arch_list_to_words() { printf "%s\n" "${1:-}" | tr ", " "\n\n"; }
+TARGET_ARCHES="${ARCHES:-amd64,arm64,riscv64}"
+_manifest_gate_arch() { printf "gate-%s line1\n" "$3"; [ -z "${MEET:-}" ] || meet_peers "${MEET}" "$3" 3 20 > "${MEET}/said.$3"; sleep 1; printf "gate-%s line2\n" "$3"; [ "$3" != "${GATE_FAIL:-none}" ]; }'
+_gates() {
+  printf '%s\n' "${_GATE_STUBS}" "${_EACH}" "$1" > "${_work}/gates.sh"
+  TMPDIR="${_work}" bash "${_work}/gates.sh" 2>&1
+}
+# One content-gate phase; prints its output and EACH-RC=<rc>.
+_each() { _gates "${1:-}"$'\n''_manifest_each_arch "content gate" /bin/gate.sh && echo EACH-RC=0 || echo "EACH-RC=$?"'; }
+_gate_lines() { printf '%s\n' "$1" | grep '^gate-' | tr '\n' ' ' | sed 's/ $//'; }
+
+_section_knob() {
 t_case "the knob: background by default, 0 is inline, anything else stops the lane"
 t_assert_eq "async" "$(_run 'runtime_push_mode')"
 t_assert_eq "inline" "$(RUNTIME_ASYNC_PUSH=0 _run 'runtime_push_mode')"
@@ -63,7 +81,9 @@ cat \"\${W}/pushes\"")"
   t_assert_contains "${_out}" "DIR=[]" "${_env} starts no pusher"
   t_assert_contains "${_out}" "end repo:latest-amd64" "${_env} pushes inline, before the call returns"
 done
+}
 
+_section_queue() {
 # The overlap a chain run must show: arm64 builds while amd64's upload is still streaming.
 t_case "a queued push streams while the next arch builds, and the drain waits for it"
 _out="$(PUSH_GATE=amd64 _run "${_HELD}"'
@@ -136,7 +156,9 @@ _out="$(_run 'runtime_push_queue_finish; echo "RC1=$?"; runtime_push_queue_start
 t_assert_contains "${_out}" "RC1=0"
 t_assert_contains "${_out}" "RC2=0"
 t_assert_eq "1" "$(printf '%s\n' "${_out}" | grep -c 'queue drained' || true)"
+}
 
+_section_lane() {
 t_case "a lane that fails still lets the wrappers it built land"
 _out="$(PUSH_GATE=amd64 _run '
 runtime_push_queue_start
@@ -155,7 +177,7 @@ if command -v pgrep >/dev/null 2>&1; then
 exit 130' || true)"
   t_assert_contains "${_out}" "interrupted (rc 130): stopping the background pusher"
   t_assert_contains "${_out}" "wrapper push FAILED for: amd64(rc=none)"
-  t_assert_ok test "$(( $(date +%s) - _t0 ))" -lt 60
+  t_assert_ok test "$(( $(date +%s) - _t0 ))" -lt 20
 fi
 
 t_case "the pusher stops once its owner is gone"
@@ -166,7 +188,9 @@ for _ in $(seq 300); do kill -0 "${p}" 2>/dev/null || break; sleep 0.1; done
 kill -0 "${p}" 2>/dev/null && echo ALIVE || echo GONE
 kill "${p}" 2>/dev/null || true')"
 t_assert_contains "${_out}" "GONE"
+}
 
+_section_wiring() {
 # The wiring: the wrapper builds hand their push to the queue, and the index waits for it.
 t_case "both wrapper ship steps push through the queue hook, which falls back inline"
 for _fn in _runtime_ship_image _runtime_ship_rootfs; do
@@ -191,24 +215,9 @@ t_assert_contains "$(t_fn_src "${CHAIN}" _chain_validate_stages)" 'runtime_push_
 t_assert_contains "$(cat "${SCRIPTS}/lib-orchestrator.sh")" 'source "${_LIB_ORCHESTRATOR_DIR}/lib-runtime-push.sh"'
 t_assert_eq "" "$(grep -ln 'lib-runtime-push' "${SCRIPTS}"/../Dockerfile* 2>/dev/null || true)" \
   "no image closure holds the lib, so editing it re-keys no stage"
-
-# The gate loops over a stub gate; GATE_FAIL names the arch whose gate fails, MEET where the gates meet.
-_EACH="$(t_fn_src "${BRM}" _manifest_gate_jobs)"$'\n'"$(t_fn_src "${BRM}" _manifest_each_arch)"$'\n'"$(t_fn_src "${BRM}" _manifest_gates_parallel)" || exit 1
-_GATE_STUBS="$(declare -f meet_peers)"'
-set -euo pipefail
-log() { printf "LOG %s\n" "$*"; }
-warn() { printf "WARN %s\n" "$*"; }
-arch_list_to_words() { printf "%s\n" "${1:-}" | tr ", " "\n\n"; }
-TARGET_ARCHES="${ARCHES:-amd64,arm64,riscv64}"
-_manifest_gate_arch() { printf "gate-%s line1\n" "$3"; [ -z "${MEET:-}" ] || meet_peers "${MEET}" "$3" 3 20 > "${MEET}/said.$3"; sleep 1; printf "gate-%s line2\n" "$3"; [ "$3" != "${GATE_FAIL:-none}" ]; }'
-_gates() {
-  printf '%s\n' "${_GATE_STUBS}" "${_EACH}" "$1" > "${_work}/gates.sh"
-  TMPDIR="${_work}" bash "${_work}/gates.sh" 2>&1
 }
-# One content-gate phase; prints its output and EACH-RC=<rc>.
-_each() { _gates "${1:-}"$'\n''_manifest_each_arch "content gate" /bin/gate.sh && echo EACH-RC=0 || echo "EACH-RC=$?"'; }
-_gate_lines() { printf '%s\n' "$1" | grep '^gate-' | tr '\n' ' ' | sed 's/ $//'; }
 
+_section_gates() {
 # A rendezvous, never a wall-clock comparison: a loaded host slows both runs unevenly.
 t_case "the gates run side by side, and each arch's output prints whole, in arch order"
 mkdir -p "${_work}/meet"
@@ -240,8 +249,10 @@ t_assert_eq "6 EACH-RC=0" "$(printf '%s\n' "${_out}" | grep -c '^gate-') $(print
 
 t_case "a long-running background job (the pusher) does not hold the gates"
 _t0="$(date +%s)"
-_out="$(_each 'sleep 120 > /dev/null & _p=$!; trap "kill ${_p}" EXIT')"
+_out="$(_each 'sleep 40 > /dev/null & _p=$!; trap "kill ${_p}" EXIT')"
 t_assert_contains "${_out}" "EACH-RC=0"
-t_assert_ok test "$(( $(date +%s) - _t0 ))" -lt 60
+t_assert_ok test "$(( $(date +%s) - _t0 ))" -lt 20
+}
 
+t_sections _section_knob _section_queue _section_lane _section_wiring _section_gates -- "$@"
 t_summary

@@ -611,9 +611,25 @@
   "baseline": 0.42,
   "per_entry": 0.44
  },
- "bash linux/scripts/tests/test-dead-functions.sh": {
-  "baseline": 46.89,
-  "per_entry": 47.96
+ "bash linux/scripts/tests/test-dead-functions.sh -k basics": {
+  "baseline": 2.8,
+  "per_entry": 2.86
+ },
+ "bash linux/scripts/tests/test-dead-functions.sh -k defs": {
+  "baseline": 2.18,
+  "per_entry": 2.23
+ },
+ "bash linux/scripts/tests/test-dead-functions.sh -k history": {
+  "baseline": 0.21,
+  "per_entry": 0.21
+ },
+ "bash linux/scripts/tests/test-dead-functions.sh -k mask": {
+  "baseline": 2.49,
+  "per_entry": 2.55
+ },
+ "bash linux/scripts/tests/test-dead-functions.sh -k root": {
+  "baseline": 0.21,
+  "per_entry": 0.21
  },
  "bash linux/scripts/tests/test-deb-control-rendering.sh": {
   "baseline": 0.97,
@@ -731,9 +747,29 @@
   "baseline": 0.34,
   "per_entry": 0.36
  },
- "bash linux/scripts/tests/test-docs-sidebars.sh": {
-  "baseline": 100.0,
-  "per_entry": 97.15
+ "bash linux/scripts/tests/test-docs-sidebars.sh -k browsers": {
+  "baseline": 23.21,
+  "per_entry": 22.55
+ },
+ "bash linux/scripts/tests/test-docs-sidebars.sh -k callers": {
+  "baseline": 17.86,
+  "per_entry": 17.35
+ },
+ "bash linux/scripts/tests/test-docs-sidebars.sh -k themes": {
+  "baseline": 18.75,
+  "per_entry": 18.22
+ },
+ "bash linux/scripts/tests/test-docs-sidebars.sh -k toggles": {
+  "baseline": 19.64,
+  "per_entry": 19.08
+ },
+ "bash linux/scripts/tests/test-docs-sidebars.sh -k tree": {
+  "baseline": 12.5,
+  "per_entry": 12.14
+ },
+ "bash linux/scripts/tests/test-docs-sidebars.sh -k usage": {
+  "baseline": 8.04,
+  "per_entry": 7.81
  },
  "bash linux/scripts/tests/test-docs-site-htaccess.sh": {
   "baseline": 0.5,
@@ -1503,9 +1539,49 @@
   "baseline": 3.35,
   "per_entry": 3.35
  },
- "bash linux/scripts/tests/test-mutation-gate.sh": {
-  "baseline": 23.91,
-  "per_entry": 29.89
+ "bash linux/scripts/tests/test-mutation-gate.sh -k basics": {
+  "baseline": 1.62,
+  "per_entry": 2.03
+ },
+ "bash linux/scripts/tests/test-mutation-gate.sh -k callsites": {
+  "baseline": 0.12,
+  "per_entry": 0.15
+ },
+ "bash linux/scripts/tests/test-mutation-gate.sh -k changed": {
+  "baseline": 0.58,
+  "per_entry": 0.73
+ },
+ "bash linux/scripts/tests/test-mutation-gate.sh -k copies": {
+  "baseline": 1.39,
+  "per_entry": 1.74
+ },
+ "bash linux/scripts/tests/test-mutation-gate.sh -k gitbash": {
+  "baseline": 1.28,
+  "per_entry": 1.6
+ },
+ "bash linux/scripts/tests/test-mutation-gate.sh -k heavy": {
+  "baseline": 0.81,
+  "per_entry": 1.02
+ },
+ "bash linux/scripts/tests/test-mutation-gate.sh -k parallel": {
+  "baseline": 5.8,
+  "per_entry": 7.25
+ },
+ "bash linux/scripts/tests/test-mutation-gate.sh -k stale": {
+  "baseline": 1.16,
+  "per_entry": 1.45
+ },
+ "bash linux/scripts/tests/test-mutation-gate.sh -k symlinks": {
+  "baseline": 1.28,
+  "per_entry": 1.6
+ },
+ "bash linux/scripts/tests/test-mutation-gate.sh -k tree": {
+  "baseline": 9.4,
+  "per_entry": 11.75
+ },
+ "bash linux/scripts/tests/test-mutation-gate.sh -k twice": {
+  "baseline": 0.46,
+  "per_entry": 0.58
  },
  "bash linux/scripts/tests/test-mutation-parse.sh": {
   "baseline": 4.54,
@@ -2347,9 +2423,25 @@
   "baseline": 2.1,
   "per_entry": 2.45
  },
- "bash linux/scripts/tests/test-runtime-push-queue.sh": {
-  "baseline": 17.36,
-  "per_entry": 61.55
+ "bash linux/scripts/tests/test-runtime-push-queue.sh -k gates": {
+  "baseline": 8.35,
+  "per_entry": 29.62
+ },
+ "bash linux/scripts/tests/test-runtime-push-queue.sh -k knob": {
+  "baseline": 0.1,
+  "per_entry": 0.36
+ },
+ "bash linux/scripts/tests/test-runtime-push-queue.sh -k lane": {
+  "baseline": 2.31,
+  "per_entry": 8.21
+ },
+ "bash linux/scripts/tests/test-runtime-push-queue.sh -k queue": {
+  "baseline": 6.54,
+  "per_entry": 23.19
+ },
+ "bash linux/scripts/tests/test-runtime-push-queue.sh -k wiring": {
+  "baseline": 0.05,
+  "per_entry": 0.18
  },
  "bash linux/scripts/tests/test-runtime-push-selectors.sh": {
   "baseline": 0.67,

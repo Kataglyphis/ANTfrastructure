@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-docs-sidebars.js (toggles, Exhale tree views, uncaught exceptions) and its three callers, against fixture sites in headless Chrome. See docs/docs-sites.md#the-sidebar-toggle-check
+# check-docs-sidebars.js (toggles, Exhale tree views, uncaught exceptions) and its three callers, against fixture sites in headless Chrome. See docs/docs-sites.md#the-sidebar-toggle-check; -k toggles|themes|tree|usage|callers|browsers picks cases
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -89,7 +89,10 @@ _tree() {
 # _check <out-var> <rc-var> <site> [pages...]: one browser run, graded for its report and its status together.
 _check() { t_capture_command "$1" "$2" node "${CHECK}" "${@:3}"; }
 declare out rc
+# Sites later sections reuse, built here so each section also runs alone.
+_sphinx works works >/dev/null; _sphinx dead dead >/dev/null; _tree folds folds >/dev/null
 
+_section_toggles() {
 t_case "a toggle that opens and closes its sidebar passes"
 _check out rc "$(_sphinx works works)"
 t_assert_contains "${out}" "ok   1000x700 primary: open -> closed -> open"
@@ -117,7 +120,9 @@ t_assert_contains "$(t_out node "${CHECK}" "$(_sphinx dlg dialog)")" "ok   1000x
 
 t_case "a hidden sidebar without a toggle fails"
 t_assert_contains "$(t_out node "${CHECK}" "$(_sphinx none no-toggle)")" "FAIL 1000x700 primary: hidden, and no toggle opens it"
+}
 
+_section_themes() {
 t_case "dartdoc's drawer opens with its toggle and closes on the overlay"
 t_assert_contains "$(t_out node "${CHECK}" "$(_dartdoc drawer closes)")" "ok   1000x700 left: closed -> open -> closed"
 t_assert_contains "$(t_out node "${CHECK}" "$(_dartdoc stuck stays)")" "FAIL 1000x700 left: closed -> open, and it does not go back"
@@ -139,7 +144,9 @@ t_assert_contains "${out}" "ok   1000x700 primary: open -> closed -> open"
 t_assert_contains "${out}" "FAIL 1000x700: uncaught TypeError: boom (http://127.0.0.1:"
 t_assert_eq 1 "${rc}"
 t_assert_contains "$(t_out node "${CHECK}" "$(_sphinx rejects rejects)")" "FAIL 1000x700: uncaught (in promise) Error: nope"
+}
 
+_section_tree() {
 t_case "a tree view that folds and unfolds passes, on a page found without being named"
 _check out rc "$(_tree folds folds)"
 t_assert_contains "${out}" "  api/library_root.html"
@@ -157,7 +164,9 @@ _check out rc "$(_tree stuck stuck)"
 t_assert_contains "${out}" "FAIL 1000x700 tree: clicking the item at "
 t_assert_contains "${out}" " leaves it closed"
 t_assert_contains "$(t_out node "${CHECK}" "$(_tree oneway-tree one-way)")" "FAIL 1000x700 tree: closed -> open, and it does not go back"
+}
 
+_section_usage() {
 t_case "a published site checks the pages named after its URL; a page outside the site or not built is a usage error"
 "${PYTHON:-python3}" -c 'import functools, http.server, sys; s = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(http.server.SimpleHTTPRequestHandler, directory=sys.argv[1])); open(sys.argv[2], "w").write(str(s.server_port)); s.serve_forever()' \
   "$(_tree served folds)" "${_tmp}/port" >/dev/null 2>&1 &
@@ -184,7 +193,9 @@ exec "${_chrome}" "\$@"
 EOF
 chmod +x "${_tmp}/slow-chrome"
 t_assert_contains "$(CHROME_EXECUTABLE="${_tmp}/slow-chrome" t_out node "${CHECK}" "${_tmp}/works")" "ok   1000x700 primary: open -> closed -> open"
+}
 
+_section_callers() {
 t_case "docs-site.sh check runs the click check; --if-chrome skips only without CHROME_EXECUTABLE"
 t_assert_rc 0 bash "${SCRIPTS}/docs-site.sh" check "${_tmp}/works"
 t_assert_rc 1 bash "${SCRIPTS}/docs-site.sh" check "${_tmp}/dead"
@@ -215,7 +226,9 @@ t_assert_rc 1 _docs_build dead
 
 t_case "ci_build_docs.sh clicks the toggles after make html"
 t_assert_grep "${SCRIPTS}/02-toolchain/python/ci_build_docs.sh" '^bash "\$SCRIPT_DIR/\.\./\.\./docs-site\.sh" check "\$WORKSPACE_ROOT/docs/build/html" --if-chrome$'
+}
 
+_section_browsers() {
 # Chromes counted at launch, never a wall-clock comparison: a loaded host slows both runs unevenly.
 t_case "several browsers report what one reports, page by page in order"
 _many="$(_sphinx many works)"
@@ -235,5 +248,7 @@ t_assert_eq "index.html p1.html p2.html p3.html p4.html p5.html p6.html" \
 t_case "a browser count that is not a positive integer is a usage error"
 t_assert_rc 2 env CHECK_DOCS_SIDEBARS_JOBS=0 node "${CHECK}" "${_many}"
 t_assert_contains "$(CHECK_DOCS_SIDEBARS_JOBS=0 node "${CHECK}" "${_many}" 2>&1)" "CHECK_DOCS_SIDEBARS_JOBS=0 is not a positive integer"
+}
 
+t_sections _section_toggles _section_themes _section_tree _section_usage _section_callers _section_browsers -- "$@"
 t_summary

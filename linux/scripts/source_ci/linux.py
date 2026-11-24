@@ -39,6 +39,16 @@ def preflight_log(job: dict[str, Any], directory: Path, binding: dict[str, Any])
             "log_sha256": hashlib.sha256(raw).hexdigest()}
 
 
+def shard_count(root: Path, head: str) -> int:
+    """The mutation jobs the tested revision's workflow runs: its matrix lists K = 0..N-1."""
+    workflow = git(root, "show", head + ":.github/workflows/linux-x64.yml").decode()
+    matrix = re.findall(r"^\s*shard: \[([0-9, ]+)\]\s*$", workflow, re.MULTILINE)
+    require(len(matrix) == 1, "The Linux workflow lacks one mutation shard matrix")
+    shards = [int(value) for value in matrix[0].split(",")]
+    require(shards == list(range(len(shards))), "The mutation shard matrix is not 0..N-1")
+    return len(shards)
+
+
 def run(args: argparse.Namespace) -> None:
     manifest = git(args.root, "show", args.head + ":docs/scripts/mutations.json")
     expected = [entry["id"] for entry in json.loads(manifest)]
@@ -50,7 +60,7 @@ def run(args: argparse.Namespace) -> None:
             "Tested checkout or local tree differs")
     require((run_data["head_sha"], run_data["status"], run_data["conclusion"]) == (args.head, "completed", "success"), "Linux run has not passed")
     jobs = job_list(args.jobs, run_data["id"], args.head)
-    names = {"preflight", "submodule-cycles", *(f"mutations ({index})" for index in range(8))}
+    names = {"preflight", "submodule-cycles", *(f"mutations ({index})" for index in range(shard_count(args.root, args.head)))}
     require(collections.Counter(job["name"] for job in jobs) == collections.Counter(names), "Linux job set changed")
     rows, all_ids = [], []
     for job in jobs:

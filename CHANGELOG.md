@@ -19,6 +19,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — nine mutation shards, and the four slowest suites in sections
+
+- Owner decision: both. The hub's mutation lane runs nine shards, and `source_ci/linux.py` reads the shard count
+  from the tested revision's workflow instead of assuming eight.
+- `test-docs-sidebars.sh`, `test-dead-functions.sh`, `test-mutation-gate.sh` and `test-runtime-push-queue.sh`
+  have `-k` sections; each of their 143 recipes runs the cheapest section that bites it, proven here (the sidebar
+  ones in the CI image). The push-queue suite's held upload, start wait and background job are three times
+  shorter, and both of its "under 60 s" checks are now "under 20 s", so a mutant that waits them out still fails.
+- The cost table gets a row per section, scaled from local runs; the next green run's logs replace them. The plan
+  predicts about 17 minutes per shard, against 27 to 28 for three of eight before.
+
 ## 2026-11-24 — TVM links a private static LLVM
 
 - `import tvm` crashed in about two of three ROCm app smokes: Torch-ROCm's own LLVM, loaded process-wide,
