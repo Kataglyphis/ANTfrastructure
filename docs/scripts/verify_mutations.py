@@ -373,6 +373,17 @@ def write_exact(path: str, text: str) -> None:
         fh.write(text.encode("utf-8"))
 
 
+def drop_bytecode(path: str) -> None:
+    """Python trusts a cached .pyc whose source size and mtime second match, so a same-size mutant can run stale code."""
+    stem, ext = os.path.splitext(os.path.basename(path))
+    if ext != ".py":
+        return
+    cache = os.path.join(os.path.dirname(path), "__pycache__")
+    for name in os.listdir(cache) if os.path.isdir(cache) else ():
+        if name.startswith(stem + ".") and name.endswith(".pyc"):
+            os.unlink(os.path.join(cache, name))
+
+
 def applicable(entry: MutationEntry, root: str) -> tuple[str | None, str | None, str | None]:
     """(original, mutated, reason); mutated is None, with the reason, when the edit no longer applies."""
     target = os.path.join(root, entry["target"])
@@ -422,6 +433,7 @@ def apply_and_run(entry: MutationEntry, root: str) -> tuple[bool, bool, str | No
         backup.write(original.encode("utf-8"))
     try:
         write_exact(target, mutated)
+        drop_bytecode(target)
         rc, timed_out, output = _run_test(entry["test"], root, entry.get("timeout", 300))
         if timed_out:
             return True, True, "test timed out (counts as failing)", 0
@@ -429,6 +441,7 @@ def apply_and_run(entry: MutationEntry, root: str) -> tuple[bool, bool, str | No
     finally:
         shutil.copyfile(backup.name, target)
         os.unlink(backup.name)
+        drop_bytecode(target)
 
 
 def baseline_ok(

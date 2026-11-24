@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — a Python mutant never runs the previous mutant's bytecode
+
+- `verify_mutations.py` deletes a `.py` target's cached bytecode after writing each mutant and after restoring it.
+  Python trusts a `.pyc` whose source size and mtime second match, so a same-size second mutant of one module ran
+  the first one's code and survived on a fast host. `test-mutation-gate.sh` covers it; two mutations.
+- The CON50 probe fixture carries its own `cargo` dispatcher and a planted host `cargo`, since the probe now asks
+  `cargo <tool> --version`.
+
 ## 2026-11-24 — two runtime smoke probes read the shipped image correctly
 
 - The `cargo-qa-tools` probe now asks `cargo <tool> --version`: `cargo-mutants --version` rejects the flag, so every

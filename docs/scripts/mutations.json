@@ -65190,5 +65190,21 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-runtime-probe-inputs.sh -k ft_probe_inputs",
   "why": "the sourced library reads its twin table beside itself"
+ },
+ {
+  "id": "mutations.drop-bytecode-after-apply",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "        write_exact(target, mutated)\n        drop_bytecode(target)\n",
+  "replace": "        write_exact(target, mutated)\n",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "a same-size Python mutant must not run the previous mutant's cached bytecode"
+ },
+ {
+  "id": "mutations.drop-bytecode-after-restore",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "        os.unlink(backup.name)\n        drop_bytecode(target)\n",
+  "replace": "        os.unlink(backup.name)\n",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "no bytecode of a mutant may outlive its run, where a later same-size mutant would load it"
  }
 ]

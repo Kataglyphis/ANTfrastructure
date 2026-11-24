@@ -1298,7 +1298,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **8138 entries** over **960 distinct test commands**; both digits are
+manifest holds **8140 entries** over **960 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1440,6 +1440,16 @@ nothing (the common commit) copies nothing at all.
 | `--shard-costs <table>` | with `--shard`: prove shard K of the plan built from the cost table instead of `entries[K::N]` ([the shard plan](#the-shard-plan)). The hub's CI passes it through preflight's `PREFLIGHT_MUTATION_COSTS`; consumers keep the round-robin slice |
 | `--parse-check` | refuse every selected recipe whose mutant does not parse, and run no test ([mutants must parse](#mutants-must-parse)) |
 | `--in-place` | mutate `--root` itself, no copy. The pre-2026-09-03 behaviour, kept for the gate's OWN fixtures: their test commands name the subject by absolute path, so nothing would bite inside a copy. Never point it at the repo |
+
+### Mutants never run stale bytecode
+
+Python reuses a cached `.pyc` when its source has the same size and the same
+mtime second. Two same-size mutants of one module, run back to back in one
+worker, could therefore run the first mutant's code for the second, which then
+survived only on fast hosts (`handoff.runtime-source-selected-checkout`, seen
+in the pre-push hook). `apply_and_run` deletes the target's `__pycache__`
+entries after it writes the mutant and after it restores the original. Other
+importers of the target are not covered; they read their own unchanged files.
 
 ### Mutants must parse
 
@@ -1718,7 +1728,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 121 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 123 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
