@@ -64766,5 +64766,317 @@
   "replace": "-Name cython, wheel",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.PipPins.Tests.ps1 -ResultFile logs/code-quality/tvm-cross-wheel-mutation.json",
   "id": "windows-lane.tvm-cross-wheel-pin-packaging"
+ },
+ {
+  "id": "doc-prose.list-item-ends-sentence",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "        if LIST_ITEM.match(text):\n            self.flush()\n",
+  "replace": "        if LIST_ITEM.match(text):\n            pass\n",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "a list item without a full stop would run into the next one and read as one long sentence"
+ },
+ {
+  "id": "doc-prose.fence-is-not-prose",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "            fence = opened.group(1)\n",
+  "replace": "            fence = \"\"\n",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "code in a fence is not prose; counted, it skews every rate"
+ },
+ {
+  "id": "doc-prose.table-is-not-prose",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "MD_SKIP = re.compile(r\"^(?:\\||#|",
+  "replace": "MD_SKIP = re.compile(r\"^(?:#|",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "a table row has no sentences; read as prose it joins the next line into one"
+ },
+ {
+  "id": "doc-prose.inline-code-is-one-word",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "    (re.compile(r\"(`+)(?:(?!\\1).)+?\\1\"), \" X \"),",
+  "replace": "    (re.compile(r\"(`+)((?:(?!\\1).)+?)\\1\"), r\" \\2 \"),",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "a date or a dot inside inline code is not the page's own date or sentence end"
+ },
+ {
+  "id": "doc-prose.link-target-dropped",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "    (re.compile(r\"\\[([^\\]]*)\\]\\([^)]*\\)\"), r\"\\1\"),",
+  "replace": "    (re.compile(r\"\\[([^\\]]*)\\]\\(([^)]*)\\)\"), r\"\\1 \\2\"),",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "a link target is an address, not prose; a date in a URL is not a date in the text"
+ },
+ {
+  "id": "doc-prose.sentence-split",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "SENTENCE_END = re.compile(r\"(?:(?<=[.!?])|(?<=[.!?][\\\"')\\]*]))\\s+(?=[\\\"'(\\[*_A-Z0-9])\")",
+  "replace": "SENTENCE_END = re.compile(r\"(?!)\")",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "without the split a paragraph is one sentence, and every average is a paragraph length"
+ },
+ {
+  "id": "doc-prose.fragment-is-no-sentence",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "    return [n for n in lengths if n >= MIN_SENTENCE]",
+  "replace": "    return lengths",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "a label or a lone path is not a sentence; counted, it pulls the average down"
+ },
+ {
+  "id": "doc-prose.short-page-not-graded",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "    if words < MIN_WORDS:\n        return None",
+  "replace": "    if False:\n        return None",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "a rate over a few words means nothing; a generated stub must not get rows"
+ },
+ {
+  "id": "doc-prose.dates-and-ids-counted",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "DATE_OR_ID = re.compile(r\"\\b(?:20\\d\\d-[01]\\d-[0-3]\\d|D\\d{1,2}|CON\\d{1,4})\\b\")",
+  "replace": "DATE_OR_ID = re.compile(r\"\\b(?:20\\d\\d-[01]\\d-[0-3]\\d)\\b\")",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "a decision id in an instruction is what the metric exists to count, beside the dates"
+ },
+ {
+  "id": "doc-prose.bold-counted",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "        \"bold-per-k\": round(len(BOLD.findall(text)) * per_k, 1),",
+  "replace": "        \"bold-per-k\": 0.0,",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "bold is one of the four rates; a constant zero freezes nothing"
+ },
+ {
+  "id": "doc-prose.short-page-counts-as-1000",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "    per_k = 1000 / max(words, 1000)",
+  "replace": "    per_k = 1000 / words",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "a 200-word page with one date is not five dates per 1000 words; without the floor short pages fail on one date"
+ },
+ {
+  "id": "doc-prose.directive-body-skipped",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "        return -1 if directive and directive.group(1) in PROSE_DIRECTIVES else indent",
+  "replace": "        return -1",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "raw HTML under a reST directive read as prose is the generated page that counted as one 1393-word sentence"
+ },
+ {
+  "id": "doc-prose.admonition-is-prose",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "PROSE_DIRECTIVES = {\"note\", \"warning\",",
+  "replace": "PROSE_DIRECTIVES = {\"warning\",",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "a note body is the page's own prose and must be graded"
+ },
+ {
+  "id": "doc-prose.literal-block-skipped",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "        out.flush()\n        return indent\n    return None",
+  "replace": "        out.flush()\n        return -1\n    return None",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "the indented block after :: is code, not prose"
+ },
+ {
+  "id": "doc-prose.rst-table-skipped",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "        if table or SIMPLE_TABLE.match(stripped):",
+  "replace": "        if table:",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "a simple reST table is data, not sentences"
+ },
+ {
+  "id": "doc-prose.title-is-not-prose",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "        if len(self.lines) == 1:\n            self.lines = []",
+  "replace": "        if False:\n            self.lines = []",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k split",
+  "why": "an underlined title is a heading, not a sentence"
+ },
+ {
+  "id": "doc-prose.records-exempt",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "EXEMPT = re.compile(r\"changelog|backlog|archive|(^|/)decisions\\.md$|(^|/)third_party/\"",
+  "replace": "EXEMPT = re.compile(r\"(^|/)third_party/\"",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k records",
+  "why": "CHANGELOG, BACKLOG, archives and decisions.md are where dates and ids belong"
+ },
+ {
+  "id": "doc-prose.licence-exempt",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "r\"|(^|/)(licen[cs]e|copying|notice)[^/]*$|",
+  "replace": "r\"|(^|/)(copying|notice)[^/]*$|",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k records",
+  "why": "a licence text is not ours to restyle"
+ },
+ {
+  "id": "doc-prose.generated-skipped",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "        if not GENERATED.search(head):",
+  "replace": "        if True:",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k records",
+  "why": "a generated page changes with its generator, not by hand"
+ },
+ {
+  "id": "doc-prose.generated-block-skipped",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "HTML_COMMENT.sub(_blank_out, GENERATED_BLOCK.sub(_blank_out, text))",
+  "replace": "HTML_COMMENT.sub(_blank_out, text)",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k records",
+  "why": "a generated block inside a page is rewritten by its tool; grading it fails the page on the next sync"
+ },
+ {
+  "id": "doc-prose.grew-fails",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "        elif now > was:",
+  "replace": "        elif False:",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k ratchet",
+  "why": "a value above its row is the regression the census exists to stop"
+ },
+ {
+  "id": "doc-prose.fell-fails",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "        elif now < was:",
+  "replace": "        elif False:",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k ratchet",
+  "why": "a drop not written down lets the next change grow back into the gap"
+ },
+ {
+  "id": "doc-prose.write-never-raises",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "    return {key: min(was, measured[key[0]][key[1]]) for key, was in census.items()",
+  "replace": "    return {key: measured[key[0]][key[1]] for key, was in census.items()",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k ratchet",
+  "why": "--write that raises a row turns the ratchet into a recorder"
+ },
+ {
+  "id": "doc-prose.stale-rows-fail",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "    stale = sorted({page for page, metric in census if metric not in measured.get(page, {})})",
+  "replace": "    stale: list[str] = []",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k ratchet",
+  "why": "rows of a page that is gone are cover for the next page of that name"
+ },
+ {
+  "id": "doc-prose.malformed-row-refused",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "        if len(parts) != 3 or parts[1] not in (*METRICS, WORDS) or not re.fullmatch(r\"\\d+(\\.\\d)?\", parts[2]):",
+  "replace": "        if len(parts) < 2:",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k ratchet",
+  "why": "a row the gate cannot read is an error, never a skip"
+ },
+ {
+  "id": "doc-prose.seed-refuses-existing",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "        if census_path.exists():\n            raise CensusError(f\"{census_path} exists;",
+  "replace": "        if False:\n            raise CensusError(f\"{census_path} exists;",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k ratchet",
+  "why": "--seed over a census would raise every row at once"
+ },
+ {
+  "id": "doc-prose.new-page-limits-bind",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "            for metric, now in values.items() if metric in caps and now > caps[metric]]",
+  "replace": "            for metric, now in values.items() if False]",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k limits",
+  "why": "a page without rows must meet the fixed limits, or every new page is unbounded"
+ },
+ {
+  "id": "doc-prose.avg-limit",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "NEW_PAGE_LIMITS = {\"avg-sentence\": 22.0,",
+  "replace": "NEW_PAGE_LIMITS = {\"avg-sentence\": 23.0,",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k limits",
+  "why": "the new-page average is 22 words, as decided"
+ },
+ {
+  "id": "doc-prose.long-share-limit",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "\"long-share\": 15.0,",
+  "replace": "\"long-share\": 20.0,",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k limits",
+  "why": "at most 15 % of a new page's sentences may run over 30 words"
+ },
+ {
+  "id": "doc-prose.ids-limit",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "\"ids-per-k\": 2.0}",
+  "replace": "\"ids-per-k\": 3.0}",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k limits",
+  "why": "a new page may hold at most two dates or ids per 1000 words"
+ },
+ {
+  "id": "doc-prose.long-is-over-30",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "sum(n > LONG_SENTENCE for n in lengths)",
+  "replace": "sum(n >= LONG_SENTENCE for n in lengths)",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k limits",
+  "why": "a 30-word sentence is not over 30"
+ },
+ {
+  "id": "doc-prose.agents-consumer-target",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "AGENTS_TARGET = {True: 6000, False: 3000}",
+  "replace": "AGENTS_TARGET = {True: 6000, False: 3001}",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k agents",
+  "why": "a consumer AGENTS.md targets 3000 words"
+ },
+ {
+  "id": "doc-prose.agents-hub-target",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "AGENTS_TARGET = {True: 6000, False: 3000}",
+  "replace": "AGENTS_TARGET = {True: 6001, False: 3000}",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k hub",
+  "why": "the hub AGENTS.md targets 6000 words"
+ },
+ {
+  "id": "doc-prose.agents-words-counted",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "[WORDS] = float(len(agents.read_text(encoding=\"utf-8\").split()))",
+  "replace": "[WORDS] = 0.0",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k agents",
+  "why": "the AGENTS.md word budget needs the real count"
+ },
+ {
+  "id": "doc-prose.consumer-off-until-seeded",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "    if not census_path.exists():\n        if hub:",
+  "replace": "    if False:\n        if hub:",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k consumer",
+  "why": "an unseeded consumer is reported, not failed; otherwise the next pin bump reds every consumer at once"
+ },
+ {
+  "id": "doc-prose.hub-census-required",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "        if hub:\n            raise CensusError(f\"{census_path} is missing",
+  "replace": "        if False:\n            raise CensusError(f\"{census_path} is missing",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k hub",
+  "why": "the hub without its census would report instead of grade, and pass every page"
+ },
+ {
+  "id": "doc-prose.consumer-half-grades",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  _lint_gates_hub linux/scripts/verify_doc_prose.py || return 1",
+  "replace": "  return 0",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k wiring",
+  "why": "the consumer half must run the gate and return its verdict"
+ },
+ {
+  "id": "doc-prose.consumer-half-registered",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  run_gate \"doc prose\" _lint_gates_doc_prose\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k wiring",
+  "why": "a gate function nothing registers runs in no consumer"
+ },
+ {
+  "id": "doc-prose.consumer-half-root",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  _lint_gates_hub_python --root \"${_LINT_GATES_ROOT}\"\n}\n\n# A quality-report.toml",
+  "replace": "  _lint_gates_hub_python\n}\n\n# A quality-report.toml",
+  "test": "bash linux/scripts/tests/test-doc-prose.sh -k wiring",
+  "why": "without --root the gate grades the hub and passes every consumer"
  }
 ]

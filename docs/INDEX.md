@@ -44,6 +44,9 @@ The two halves of one topic often split:
 | **An error message** — symptom → cause → fix, both lanes | [`failure-modes.md`](failure-modes.md) |
 | **Wiring a new project to this repo** | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) |
 | **The family's repositories** — what each is and who vendors it, how one is laid out, **the README rule**, contributing, licence and contact | [`repository-family.md`](repository-family.md) |
+| Writing docs: where text goes, the style rules with a before and after each, and templates for a topic page, a failure entry and an `AGENTS.md` "Common tasks" block | [`writing-docs.md`](writing-docs.md) |
+| What a family term means: admission, census, chain, closure, companion, floor, lane, phase, proof, ratchet, receipt, seal | [`glossary.md`](glossary.md) |
+| Owner decisions the docs cite, each with its date and reason | [`decisions.md`](decisions.md) |
 | **Models and scenes outside the code** — ModelANT, AssetANT, the SHA-256 lock, the hub's fetcher `fetch-data-lock.py` and `kataglyphis_fetch_data`, what stays tracked | [`data-repositories.md`](data-repositories.md) |
 | **Language AI across the family** — the owner's 2026-10-30 decisions, the one engine (chain GenAI), the text contract every binding offers, ModelANT's model packages and their search order, Llama and Gemma obligations, and the roadmap IDs (`LAI-*`) the backlogs name | [`language-ai.md`](language-ai.md) |
 | What is published, what is in it, the feature matrix | [`overview.md`](overview.md) |
@@ -164,6 +167,7 @@ Wiring a new project: [Start here](#start-here).
 | Which preflight gate has a test, a mutation, or neither — the derived table | [`code-quality-gates.md`](code-quality-gates.md) |
 | **Weekly fleet health** — `fleet-health.py` and `fleet-health.yml`: the AI repos' tree metrics and GitHub state graded against the previous run, exit codes, storage and the owner routine | [`fleet-health.md`](fleet-health.md) |
 | **A consumer page that restates a hub page** — `doc-dupes --against-hub` in `run-lint-gates.sh --ratchets`, off until the consumer seeds `doc-dupes-hub.allow` | [`code-quality-tooling.md`](code-quality-tooling.md#consumer-pages-against-the-hub-doc-dupes---against-hub) |
+| Prose that may only get better: the `doc-prose` ratchet, its census, the limits for a new page and the `AGENTS.md` word budget | [`code-quality-tooling.md`](code-quality-tooling.md#doc-prose-doc-prose) |
 | Which repos consume this hub, and which entry points they actually reach | [`consumer-inventory.md`](consumer-inventory.md) |
 | **Upgrading dependencies** — Renovate as a local CLI, direct submodules initialized on apply and moved to each remote default branch tip, and lock file maintenance (every lock to its newest in-range release) | [`dependency-updates.md`](dependency-updates.md) |
 | Compiling a Slang shader tree to SPIR-V and WGSL | [`slang-shader-compilation.md`](slang-shader-compilation.md) |
@@ -290,7 +294,7 @@ them.
   `linux/host-config/git-hooks`. What they run: [`AGENTS.md`](../AGENTS.md) § Validation.
 - **These gates guard the docs; none is optional.** They exist because this tree lost a licence
   page, a doc index and ~50 cross-references to silent drift on a single day. Run them with
-  `PREFLIGHT_ONLY=doc-links,doc-dupes,sbom,version-snapshot,readme-length bash linux/scripts/preflight.sh`.
+  `PREFLIGHT_ONLY=doc-links,doc-dupes,doc-prose,sbom,version-snapshot,readme-length bash linux/scripts/preflight.sh`.
   - `doc-links` — every relative link, deep-link anchor, `file.md § Heading` prose reference,
     and index coverage against BOTH `docs/INDEX.md` and the Sphinx toctree. **Rename a heading
     and this fails**, which is the point.
@@ -301,6 +305,8 @@ them.
   - `sbom` / `version-snapshot` — the generated licence pages and the curated SBOM must match
     `deps.json` + `versions.env`.
   - `readme-length` — a root README over 100 lines fails.
+  - `doc-prose` — a page's prose rates may only fall; a new page meets fixed limits. The style:
+    [`writing-docs.md`](writing-docs.md).
 - **Adding a dependency is a docs change.** A new component needs an entry in
   `docs/deps/deps.json` with an `spdx` id and, if that licence is copyleft, a `source` block, or
   the build fails; a component this repo patches also needs a `modified` marker. Procedure,

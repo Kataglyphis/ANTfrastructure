@@ -67,6 +67,7 @@ _hub_copy() {
   _stub_sh "${d}/shared/config/sync-shared-config.sh"
   _stub_secrets "${d}/linux/scripts/lint-secrets.sh"
   for rel in docs/scripts/sync_versions.py docs/scripts/verify_doc_dupes.py linux/scripts/verify_readme_length.py \
+    linux/scripts/verify_doc_prose.py \
     linux/scripts/verify_pattern_limits.py \
     "${_LINT_GATES_RATCHET_DOC_GATES[@]}" "${_LINT_GATES_RATCHET_GATES[@]/%/.py}"; do
     case "${rel}" in */*) ;; *) rel="linux/scripts/${rel}" ;; esac
@@ -250,7 +251,7 @@ _section_push() {
   d="$(_consumer)"
   _push "${d}" 0 README.md "more"
   t_assert_contains "${_out}" "pre-push: scripts/linux/run-lint-gates.sh"
-  t_assert_contains "${_out}" "LINT GATES OK (11 gate(s))" "the ten of every consumer and the wrapper's ratchets"
+  t_assert_contains "${_out}" "LINT GATES OK (12 gate(s))" "the ten of every consumer and the wrapper's ratchets"
   t_assert_contains "${_out}" "demo-mutations.json: 1 entr(ies)"
   t_assert_grep "${HOOK_TEST_ARGV}" '^lint-shell\.sh$'
   t_assert_grep "${HOOK_TEST_ARGV}" '^--against-hub --root '
@@ -264,7 +265,7 @@ _section_push() {
   _push "${d}" 1
   t_assert_contains "${_out}" "demo.guard" "the recipe to re-point"
   t_assert_contains "${_out}" "demo-mutations.json" "and its manifest"
-  t_assert_contains "${_out}" "LINT GATES FAILED (1 of 11): mutation staleness"
+  t_assert_contains "${_out}" "LINT GATES FAILED (1 of 12): mutation staleness"
   t_assert_contains "${_out}" "git push --no-verify" "the refusal names the bypass"
   t_assert_eq "${tip}" "$(_tip "${d}")" "the remote did not move"
 
@@ -285,7 +286,7 @@ _section_push() {
   bare="$(_consumer bare)"
   _push "${bare}" 0 README.md "more"
   t_assert_contains "${_out}" "linux/scripts/run-lint-gates.sh $(_git_root "${bare}")"
-  t_assert_contains "${_out}" "LINT GATES OK (10 gate(s))"
+  t_assert_contains "${_out}" "LINT GATES OK (11 gate(s))"
   t_assert_no_grep "${HOOK_TEST_ARGV}" '^--against-hub'
   _push "${bare}" 1 scripts/linux/subject.sh "GUARD=renamed"
   t_assert_contains "${_out}" "demo.guard"
@@ -415,7 +416,7 @@ _section_notice() {
   t_assert_eq 0 "$?" "a warning is not a verdict: ${out}"
   t_assert_eq 1 "$(printf '%s\n' "${out}" | grep -c -e 'core.hooksPath is unset')" "${out}"
   t_assert_contains "${out}" "set it once: git config core.hooksPath ${d}/${HOOKS_REL}"
-  t_assert_eq "LINT GATES OK (11 gate(s))" "$(printf '%s\n' "${out}" | tail -n 1)" "the verdict stays the last line"
+  t_assert_eq "LINT GATES OK (12 gate(s))" "$(printf '%s\n' "${out}" | tail -n 1)" "the verdict stays the last line"
   t_assert_contains "$(cd "${d}" && bash scripts/linux/run-lint-gates.sh --staged 2>&1)" "core.hooksPath is unset" \
     "the staged checks run by hand say it too"
 

@@ -19,6 +19,27 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — docs get a style page, a glossary, a decisions page and a prose ratchet
+
+- Priority 4 in `AGENTS.md` is narrower (owner decision, docs audit): `AGENTS.md` changes only for a new or
+  changed rule, the README only for a new entry point, a mechanism goes to the `docs/` page that owns it and
+  history comes here. Dates, decision ids, run ids and hashes stay in this file, `BACKLOG.md` and the new
+  `docs/decisions.md`.
+- New pages: `docs/writing-docs.md` (twelve rules, each with a before and after from a real page, and
+  templates for a topic page, a failure entry and an `AGENTS.md` "Common tasks" block), `docs/glossary.md`
+  (twelve family terms as the docs use them) and `docs/decisions.md` (the owner decisions the docs cite, each
+  with its date and reason).
+- New gate `doc-prose` (`linux/scripts/verify_doc_prose.py`): per page the average sentence length, the share
+  of sentences over 30 words, dates and ids per 1000 words and bold per 1000 words, frozen in
+  `docs/scripts/doc-prose.census`. A value may only fall; a page without rows meets fixed limits (22 words, 15 %,
+  2 per 1000); the `AGENTS.md` word count is a row too, against a target of 6000 here and 3000 in a consumer.
+  It runs in preflight and the commit hook, and through `run-lint-gates.sh` in every consumer, report-only until
+  the consumer seeds its census. Its splitter keeps list items apart and skips reST directives, so a generated
+  page no longer reads as one 1393-word sentence. Suite `test-doc-prose.sh`, 39 recipes.
+- BACKLOG: CON302 (an NSIS setup beside MSI and MSIX, with the owner's decisions and the steps) and CON303 (the
+  remaining docs phases).
+- Home Assistant's runtime `config/ip_bans.yaml` is ignored, so it is never committed.
+
 ## 2026-11-24 — the docs match the tree again, and name no host
 
 - The build host's name is gone from every tracked file; the Home Assistant notes write the MQTT broker as

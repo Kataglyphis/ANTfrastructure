@@ -2654,6 +2654,83 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
 
 ## Open — hub tooling and the dev host
 
+- [ ] **CON302 — NSIS setup beside MSI and MSIX** [L, ★★]. Owner decisions 2026-11-24. Today only AccelerANTgine
+      and BeschleunigerBallett ship an NSIS setup, built by CPack with whatever makensis the Windows image floats to.
+      OxidANT, OrchestrANT and OmniAccelerANT ship MSI and MSIX only, and no gate reads an NSIS setup.
+      Decided:
+      - Build in the Windows container beside WiX and makeappx. OmniAccelerANT packages its app on the host
+        runners, so it needs a pinned NSIS there as well.
+      - Test-sign now with a per-build test certificate, the setup and its uninstaller both. Use a real certificate
+        with a cloud-HSM key before shipping to end users. The PFX password stays in the environment, never in the
+        `!finalize` command line.
+      - End-user apps only: OxidANT first as the pilot, then OrchestrANT CPU, OmniAccelerANT with ObservANT, then the
+        CMake repos. No libraries (WebDavClient, ModelANT), no GPU variant until it is measured, and
+        jotrockenmitlocken only once it has a Windows lane.
+      - Defaults: an x86 stub on both architectures with an architecture check; per-machine; a setup that finds an
+        MSI install of the same product stops with a message (non-zero exit when silent); the file is
+        `<stem>-setup.exe`; a licence page (LICENSE plus the MSVC notice); CMake repos stay on CPack.
+      - Releases already publish only after every lane is green (`release.yml` needs every lane); the setup joins
+        through the collect pattern.
+      Steps, in order:
+      1. Phase 0, measure in Windows CI (owner: the Windows session, after its four Windows lanes have proven their
+         final commit). The Windows lanes start only on `workflow_dispatch` or `workflow_call`, so
+         dispatch on purpose. Measure the image's makensis version, how 7-Zip lists a setup, whether makensis takes
+         the one-frame PNG `.ico`, time and RAM of `/SOLID lzma` on OrchestrANT's 0.56 GB bundle, the NVIDIA
+         DirectML bundle size, and whether Start-menu shortcuts work in a Server Core container.
+      2. Pin makensis at 3.12 or later (owner: the Windows session, after the same proof; it changes
+         the Windows image files and `versions.env`): 3.11 fixes CVE-2025-43715, 3.12 fixes CVE-2026-42171, Scoop ships 3.13.
+         First read which NSIS built the setups AccelerANTgine and BeschleunigerBallett already released; below
+         3.12 makes this a security fix, and those setups are rebuilt and released again. The pin goes in
+         `versions.env` with a SHA256 and is installed in the final stage of `windows/Dockerfile`, so a bump
+         rebuilds one stage. Record it in the toolchain manifest, give Renovate a custom datasource (the tags are
+         `v313`, not semver), add a `bump_tools.py` spec, and list the stub's licences (zlib, bzip2, CPL-1.0 for
+         LZMA) in `deps.json` and `license_obligations.py`. Pin or record 7-Zip too: the licence reader needs it.
+      3. The hub module `WindowsNsis.Common.psm1` with a template and `kataglyphis-common.nsh`: a stable uninstall
+         key, the upgrade, the MSI guard and the architecture check. Pester tests go through an invoker seam, and
+         `Invoke-PackagerTool` must be exported. `Resolve-MakensisExe` fails on any version but the pin, since
+         GitHub runners carry their own NSIS.
+      4. The gates' NSIS branches: package licence, binary equality, MSVC notice, ORT licences and
+         `New-PortableBundle`, which copies an `.exe` today only beside a same-stem `.msi` or `.zip`. Linux tests
+         use a fake 7z; the real one runs in the Windows lane. The device install job has no checkout, so a module
+         call there needs the module in the artifact or a sparse hub checkout; consumers on old pins keep the
+         inline block. After an uninstall only `Uninstall.exe` may remain.
+      5. `Invoke-AuthenticodeSign`: the signtool part of `Invoke-MsixSign`, format-neutral, with `-Require` so a
+         failed signature stops the build, plus a small script for makensis's `!finalize` and `!uninstfinalize`.
+      6. `CPackCommon.cmake`: a version-free uninstall key (old versioned entries stay once; the release notes say
+         so), `NSIS_DEFAULT ON|OFF` beside `WIX_DEFAULT`, the combined licence page, and a short file name or a path
+         length check. CPack signs through `CPACK_NSIS_EXECUTABLE_PRE_ARGUMENTS`; a hub `NSIS.template.in` is needed
+         only to change `.onInit` or the registry view.
+      7. The pilot, OxidANT: `-SkipNsis` reaches `Invoke-WindowsLane.ps1` and `Build-GpuCandidate.ps1`, the payload
+         is `$payloadFiles` plus the exe, the release pattern is `*/packages/*-setup.exe`. Install the x64 setup on
+         the bare runner (`host-command`), because the image carries every DLL; then arm64 on the device.
+      8. Then OrchestrANT (format `nsis` in the Python packager), OmniAccelerANT (the hub takes
+         `WindowsAppInstallers.Common` with `Manufacturer` as a parameter, a runner action installs pinned WiX and
+         NSIS, and ObservANT's hooks add a local-subnet firewall rule and an all-users Startup shortcut that the
+         uninstaller removes), then the CMake repos.
+      Open for the owner, with a recommendation each: whether the x64 setup refuses to run on ARM64 or only warns
+      (the x64 MSI allows it; recommend refuse, and point to the arm64 setup); whether test-signed setups go into a
+      Release (recommend not until the real certificate); a PATH entry for Python apps (recommend none for the
+      pilot, a pinned EnVar plugin later); the compressor, since LZMA ships CPL-1.0 code that needs a source
+      pointer (recommend zlib until the notice is in place); and OxidANT's Start-menu argument `gui` in MSI and
+      MSIX too (recommend yes, in the same change).
+
+- [ ] **CON303 — the remaining docs phases** [L, ★★]. Owner decisions 2026-11-24, after the docs audit. The first
+      phase is in: the narrowed priority 4, `writing-docs.md`, `glossary.md`, `decisions.md` and the `doc-prose`
+      ratchet. Each later phase lowers the census rows it improves, in the same commit.
+      - Move the dates and ids out of instructions, page by page, into `docs/decisions.md`.
+      - Slim the hub `AGENTS.md` toward 6000 words. Its lines ~42-441 are one-liners appended under "Project
+        priorities"; each moves to the page that owns it, and the "Copied X carries Y" lines become data for the
+        copy-coverage gate.
+      - Split `code-quality-tooling.md`, `failure-modes.md`, `windows-builds.md` and `dependency-updates.md` into
+        pages under about 800 lines.
+      - Bring each consumer's `AGENTS.md` toward 3000 words, with a "Common tasks" block at the top, and seed its
+        census (`verify_doc_prose.py --root . --seed`).
+      - Give `readme-length` a word budget and a line width (the audit recommends 700 words and 160 characters;
+        the owner has not set the numbers).
+      - Let `doc-dupes` also compare passages within one page; a doubled block in `code-quality-tooling.md` went
+        unseen.
+      - Let `agents-drift` also check from docs to tree, so a deleted package the docs still name fails.
+
 - [ ] **CON280 — github.com/microsoft/onnxruntime answers 404** [S, ★★]. Since about 2026-11-17 22:20Z the
       repository, its API and its release assets are gone, with `onnxruntime-genai` and other Microsoft ONNX repos;
       third-party reports only, no statement from Microsoft or GitHub; pip and NuGet still serve the packages. Seen in

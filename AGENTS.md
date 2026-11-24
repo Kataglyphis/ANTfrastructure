@@ -60,10 +60,10 @@ Windows ONNX source recovery must retain the full release commit, matching versi
    Sparse ONNX patch checks share source identity validation; keep their original-commit fallback and both patch dry runs fatal. Source and patch suites carry WindowsOrt.SourceFixture.psm1 with its Git and harness companions.
    GenAI source recovery shares the pinned clone helper with its explicit VERSION_INFO; keep its original commit and compile-only forwarding before patches.
    Its extensions retain the exact upstream deps.txt commit, recursive checkout and fatal identity checks before their explicit FetchContent source argument; a mirror tip never substitutes for that commit.
-4. **Docs follow the change, in the same work unit.** A behavior, flag, workflow or invariant
-   change updates AGENTS.md (rules, quick reference), README.md (user-facing pointers), the owning
-   `docs/` page and `CHANGELOG.md` before it is done. A mechanism only git history knows does not
-   exist for the next session.
+4. **Docs follow the change, in the same work unit.** `AGENTS.md` changes only for a new or
+   changed rule, and `README.md` only for a new entry point. The mechanism goes to the `docs/` page
+   that owns the topic, and the history to `CHANGELOG.md`. Dates, decision ids, run ids and hashes
+   belong only in `CHANGELOG.md`, `BACKLOG.md` and `docs/decisions.md`, never inside instructions.
    Image publication also requires the digest-specific consumer receipt before a public tag
    moves; see [image-acceptance.md](docs/image-acceptance.md) for replay and its coverage limits.
    Dispatch consumer lanes only after promotion succeeds; a refused post-publish dispatch
@@ -1641,7 +1641,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 
   | when | what runs | cost |
   | --- | --- | --- |
-  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 21 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, the derived doc numbers when a page that quotes them is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
+  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 22 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, the derived doc numbers when a page that quotes them is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
   | every `git push` | `linux/host-config/git-hooks/pre-push` — refuses an unfetched remote tip, then doc numbers and comment size, `--stale-check` over the whole manifest, and the mutation gate over `--push-range` with Chrome suites delegated to CI and counted. `--no-verify` only with a by-hand `--changed` proof named in the report ([`code-quality-tooling.md` § The pre-push hook](docs/code-quality-tooling.md#the-pre-push-hook)) | 16 to 339 s over four replayed commits with 10 to 481 entries (measured 2026-11-04) |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
   | every push | `.github/workflows/linux-x64.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, a pinned WebDAV source type gate, plus the `mutations` slug as eight `PREFLIGHT_MUTATION_SHARD=K/8` jobs that together prove every entry, planned from `docs/scripts/mutation-costs.json` | CI |
@@ -1968,8 +1968,9 @@ The shared theme and its `conf.py` snippet:
 
 ## Documentation Maintenance
 
-**Write docs like a developer: short and precise** (owner, 2026-10-19). Say what a thing does,
-how to run it and what breaks; no filler, no marketing, no repetition.
+**Write docs like a developer: short and precise.** Say what a thing does, how to run it and what
+breaks. The rules and templates: [`docs/writing-docs.md`](docs/writing-docs.md); the `doc-prose`
+gate holds each page to a census that may only fall.
 
 - **[`docs/INDEX.md`](docs/INDEX.md) decides which page owns which topic.** Add a row when you add
   a page; the `doc-links` gate fails a page that no row and no toctree entry names.

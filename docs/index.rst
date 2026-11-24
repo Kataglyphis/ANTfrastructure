@@ -143,6 +143,9 @@ Common development targets:
 
    INDEX
    repository-family
+   writing-docs
+   glossary
+   decisions
    failure-modes
    adopting-in-a-new-project
    data-repositories

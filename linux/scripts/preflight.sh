@@ -55,7 +55,7 @@ KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage context-paths cr
              gate-registry \
              shared-config \
              cmake-format \
-             doc-links doc-dupes sbom)
+             doc-links doc-dupes doc-prose sbom)
 
 _in_csv() {  # _in_csv needle csv
   local needle="$1" csv="$2" item
@@ -187,6 +187,9 @@ if [ -f docs/scripts/verify_doc_dupes.py ]; then
 else
   run_check doc-dupes "docs duplication"          bash -c 'echo "docs/scripts/verify_doc_dupes.py MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
 fi
+
+# Prose rates only fall: each page against docs/scripts/doc-prose.census. See docs/code-quality-tooling.md#doc-prose-doc-prose
+run_check doc-prose "docs prose ratchet" ${PREFLIGHT_PYTHON} linux/scripts/verify_doc_prose.py
 
 # The curated SBOM covers the source-built (copyleft) components syft cannot read.
 if [ -f docs/scripts/generate_sbom.py ]; then

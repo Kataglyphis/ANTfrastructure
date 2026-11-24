@@ -1298,7 +1298,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **8085 entries** over **939 distinct test commands**; both digits are
+manifest holds **8124 entries** over **947 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2118,6 +2118,63 @@ markup, not prose, so the badge row every family README opens with matches nothi
 `doc-dupes.hub-*` mutations prove the off switch and its git-free short cut, the failure once seeded, the consumer-side budget,
 the stale row, the cross-side rule, the refused hub root and the wiring, and
 `doc-dupes.badges-are-not-prose` the markup rule.
+
+## Doc prose (`doc-prose`)
+
+`linux/scripts/verify_doc_prose.py` holds the prose of every tracked `.md` and `.rst` page to its
+rows in a committed census. A value may only fall. The style it measures is in
+[`writing-docs.md`](writing-docs.md).
+
+Fix a finding by its word:
+
+- `grew`: rewrite the new text. Use shorter sentences, move dates and ids to the records, and drop
+  bold.
+- `fell`: lower the row in the same commit with
+  `python3 linux/scripts/verify_doc_prose.py --write`. It lowers rows and deletes the rows of pages
+  that are gone. It never raises a row or adds one.
+- `over the … a page without census rows may have`: rewrite the page until it fits the limits.
+
+| metric | per page |
+| --- | --- |
+| `avg-sentence` | words per sentence |
+| `long-share` | percent of sentences over 30 words |
+| `ids-per-k` | ISO dates, `D<n>` and `CON<n>` ids per 1000 words |
+| `bold-per-k` | bold spans per 1000 words |
+| `words` | the root `AGENTS.md` only: all of its words |
+
+- What counts as prose: paragraphs and list items. A sentence never runs across two of them, so
+  a list item without a full stop is its own sentence, and a fragment under three words is none.
+  Code fences, inline code, tables, headings, HTML comments, link targets and generated blocks are
+  skipped. In reST, so are directives other than admonitions, literal blocks and simple tables.
+- Short pages: a page with under 100 words of prose is not graded. A page under 1000 words
+  counts as 1000 for the two rates per 1000 words.
+- Not graded: `CHANGELOG*`, `BACKLOG*` and the other backlogs, archives, `decisions.md`, licence
+  texts, `third_party/`, vendored and upstream trees, and a page whose first five lines say it is
+  generated.
+- A new page: without census rows, a page must stay within 22 words per sentence, 15 % of
+  sentences over 30 words and 2 dates or ids per 1000 words. Bold has no fixed limit. A row for a new
+  page is an exception, and only the owner grants one.
+- The `AGENTS.md` budget: its word count is a census row and may only fall. The hub's target is
+  6000 words, a consumer's 3000, and every run prints the distance. Without a row, the target is the
+  limit.
+
+Where it runs:
+
+- Here as the preflight slug `doc-prose`, in the commit hook's fast set, against
+  `docs/scripts/doc-prose.census`. The hub fails without its census.
+- In every consumer through `run-lint-gates.sh`. It only reports until the consumer seeds
+  `<root>/doc-prose.census` with
+  `python3 third_party/ANTfrastructure/linux/scripts/verify_doc_prose.py --root . --seed`, which
+  refuses to overwrite an existing census.
+- `--report` lists every page's figures, longest sentences first.
+
+Not covered: whether a sentence is true or clear, run ids and hashes, prose inside a table, and
+Markdown's indented code blocks, which count as prose.
+
+`tests/test-doc-prose.sh` drives fixture repos and a fixture hub; `-k <section>` picks one group.
+The `doc-prose.*` mutations prove the splitter, the skipped parts, the exemptions, the ratchet in
+both directions, `--write` and `--seed`, the limits at their edges, the word targets and the
+`run-lint-gates.sh` wiring.
 
 ## Code-to-docs pointers (`doc-links`)
 
