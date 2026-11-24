@@ -37,7 +37,7 @@ from mutation_push import (
     touches,
 )
 from mutation_shards import describe, load_costs, plan
-from mutation_workspace import mutation_workspaces, relative_file_path
+from mutation_workspace import drop_bytecode, mutation_workspaces, relative_file_path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mutations.json")
@@ -371,17 +371,6 @@ def read_exact(path: str) -> str:
 def write_exact(path: str, text: str) -> None:
     with open(path, "wb") as fh:
         fh.write(text.encode("utf-8"))
-
-
-def drop_bytecode(path: str) -> None:
-    """Python trusts a cached .pyc whose source size and mtime second match, so a same-size mutant can run stale code."""
-    stem, ext = os.path.splitext(os.path.basename(path))
-    if ext != ".py":
-        return
-    cache = os.path.join(os.path.dirname(path), "__pycache__")
-    for name in os.listdir(cache) if os.path.isdir(cache) else ():
-        if name.startswith(stem + ".") and name.endswith(".pyc"):
-            os.unlink(os.path.join(cache, name))
 
 
 def applicable(entry: MutationEntry, root: str) -> tuple[str | None, str | None, str | None]:

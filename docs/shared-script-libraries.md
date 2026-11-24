@@ -1447,6 +1447,9 @@ same commit as the gates it calls.
 `w/-text`. The staged checks run it with `--staged`, which reads the `i/` column of the staged
 scripts: the bytes the commit carries.
 
+README length runs `verify_readme_length.py --root <consumer-root>`. Its 100-line limit binds at
+once. Words and width only report until the consumer seeds `<consumer-root>/readme-length.census`.
+
 Doc prose runs `verify_doc_prose.py --root <consumer-root>`. It only reports until the consumer
 seeds `<consumer-root>/doc-prose.census`; from then on a page's prose may only get better.
 

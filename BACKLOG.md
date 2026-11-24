@@ -2670,11 +2670,21 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
         `<stem>-setup.exe`; a licence page (LICENSE plus the MSVC notice); CMake repos stay on CPack.
       - Releases already publish only after every lane is green (`release.yml` needs every lane); the setup joins
         through the collect pattern.
+      - The x64 setup refuses to run on ARM64. It stops with a message that names the arm64 setup, and a silent
+        run exits nonzero.
+      - Test-signed setups go into GitHub Releases at once; the owner chose this against the recommendation to wait
+        for the real certificate. The release collect step takes the test-signed `-setup.exe` too, and the release
+        notes say the publisher is a test certificate until the real one exists.
+      - The compressor is zlib. LZMA's stub code is CPL-1.0, so it ships only once a source-availability notice
+        exists.
+      - No PATH entry for the pilot.
+      - OxidANT's Start-menu shortcut starts `gui` in NSIS, and in MSI and MSIX as well.
       Steps, in order:
       1. Phase 0, measure in Windows CI (owner: the Windows session, after its four Windows lanes have proven their
          final commit). The Windows lanes start only on `workflow_dispatch` or `workflow_call`, so
          dispatch on purpose. Measure the image's makensis version, how 7-Zip lists a setup, whether makensis takes
-         the one-frame PNG `.ico`, time and RAM of `/SOLID lzma` on OrchestrANT's 0.56 GB bundle, the NVIDIA
+         the one-frame PNG `.ico`, time, RAM and size of zlib on OrchestrANT's 0.56 GB bundle (and of `/SOLID lzma`
+         for the day it has its notice), the NVIDIA
          DirectML bundle size, and whether Start-menu shortcuts work in a Server Core container.
       2. Pin makensis at 3.12 or later (owner: the Windows session, after the same proof; it changes
          the Windows image files and `versions.env`): 3.11 fixes CVE-2025-43715, 3.12 fixes CVE-2026-42171, Scoop ships 3.13.
@@ -2699,19 +2709,25 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
          so), `NSIS_DEFAULT ON|OFF` beside `WIX_DEFAULT`, the combined licence page, and a short file name or a path
          length check. CPack signs through `CPACK_NSIS_EXECUTABLE_PRE_ARGUMENTS`; a hub `NSIS.template.in` is needed
          only to change `.onInit` or the registry view.
+      6a. The CPack setups that already ship, independent of the steps above. AccelerANTgine and BeschleunigerBallett
+         build theirs through the hub's `cmake/CPackCommon.cmake`, which sets no `CPACK_NSIS_COMPRESSOR`. So CPack's
+         default, LZMA, ships CPL-1.0 code without a source-availability notice. Fix it there: add the notice to
+         their licence texts, or set `CPACK_NSIS_COMPRESSOR` to zlib in `CPackCommon.cmake`, which reaches both
+         repos at their next pin.
       7. The pilot, OxidANT: `-SkipNsis` reaches `Invoke-WindowsLane.ps1` and `Build-GpuCandidate.ps1`, the payload
-         is `$payloadFiles` plus the exe, the release pattern is `*/packages/*-setup.exe`. Install the x64 setup on
+         is `$payloadFiles` plus the exe, the release pattern is `*/packages/*-setup.exe`. The Start-menu shortcut
+         runs `gui`, so the MSI and MSIX shortcuts change in the same commit; no PATH entry. Install the x64 setup on
          the bare runner (`host-command`), because the image carries every DLL; then arm64 on the device.
       8. Then OrchestrANT (format `nsis` in the Python packager), OmniAccelerANT (the hub takes
          `WindowsAppInstallers.Common` with `Manufacturer` as a parameter, a runner action installs pinned WiX and
          NSIS, and ObservANT's hooks add a local-subnet firewall rule and an all-users Startup shortcut that the
          uninstaller removes), then the CMake repos.
-      Open for the owner, with a recommendation each: whether the x64 setup refuses to run on ARM64 or only warns
-      (the x64 MSI allows it; recommend refuse, and point to the arm64 setup); whether test-signed setups go into a
-      Release (recommend not until the real certificate); a PATH entry for Python apps (recommend none for the
-      pilot, a pinned EnVar plugin later); the compressor, since LZMA ships CPL-1.0 code that needs a source
-      pointer (recommend zlib until the notice is in place); and OxidANT's Start-menu argument `gui` in MSI and
-      MSIX too (recommend yes, in the same change).
+      Open for the owner: nothing. The owner answered all five questions on 2026-11-24 (see Decided):
+      - ~~whether the x64 setup refuses to run on ARM64 or only warns~~: it refuses.
+      - ~~whether test-signed setups go into a Release~~: yes, at once, against the recommendation.
+      - ~~a PATH entry for Python apps~~: none for the pilot; a pinned EnVar plugin stays an option for later.
+      - ~~the compressor~~: zlib until the CPL-1.0 notice exists.
+      - ~~OxidANT's Start-menu argument `gui` in MSI and MSIX too~~: yes, in the same change.
 
 - [ ] **CON303 — the remaining docs phases** [L, ★★]. Owner decisions 2026-11-24, after the docs audit. The first
       phase is in: the narrowed priority 4, `writing-docs.md`, `glossary.md`, `decisions.md` and the `doc-prose`
@@ -2723,12 +2739,31 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       - Split `code-quality-tooling.md`, `failure-modes.md`, `windows-builds.md` and `dependency-updates.md` into
         pages under about 800 lines.
       - Bring each consumer's `AGENTS.md` toward 3000 words, with a "Common tasks" block at the top, and seed its
-        census (`verify_doc_prose.py --root . --seed`).
-      - Give `readme-length` a word budget and a line width (the audit recommends 700 words and 160 characters;
-        the owner has not set the numbers).
+        census (`verify_doc_prose.py --root . --seed`) and its README census (`verify_readme_length.py --root .
+        --seed`).
+      - Done 2026-11-24: `readme-length` holds every root README to 700 words and 160 characters a line (owner
+        decision); badge lines and lines that are only a link are exempt. A README over them has census rows that
+        may only fall. The hub README now fits both: 98 lines, 563 words, no line over 160 characters.
       - Let `doc-dupes` also compare passages within one page; a doubled block in `code-quality-tooling.md` went
         unseen.
       - Let `agents-drift` also check from docs to tree, so a deleted package the docs still name fails.
+
+- [ ] **CON304 — a shared case file for the usable-CPU rule** [S, ★★]. OxidANT's rule from the oxidation review
+      (D16): the usable CPUs are the smaller of the affinity mask and the cgroup v2 `cpu.max` quota, in whole CPUs
+      rounded down, and at least 1. The hub's `linux/scripts/lib/genai-model-threads.py` reads the affinity mask
+      alone today.
+      - Write `shared/contracts/usable-cpus.json` beside the other shared cases (`think-split.json`,
+        `openai-stream-lines.json`). Each case gives the affinity count and the text of `cpu.max`, or none when the
+        file is missing, and the usable count. Cover `max 100000`, a quota of 1.5 CPUs, a quota under one CPU, a
+        quota above the affinity count and a missing file.
+      - A hub test replays the cases through a reference function, as `test-think-split.sh` does, so the file
+        cannot ask a binding for an outcome the rule does not give.
+      - The bindings replay the file at their next pin: Rust (OxidANT `kataglyphis_core::config::usable_cpus`),
+        C++ (AccelerANTgine) and Python (OrchestrANT and `genai-model-threads.py`).
+      - The rule's owning page is [`onnxruntime-single-source.md` § The ORT thread rule](docs/onnxruntime-single-source.md#the-ort-thread-rule),
+        which defines the usable CPUs as the affinity mask today; it gains the quota and links the file.
+      - Open, with a recommendation: whether a parent cgroup's `cpu.max` counts too (recommend the smallest quota
+        on the path, which is what the kernel enforces).
 
 - [ ] **CON280 — github.com/microsoft/onnxruntime answers 404** [S, ★★]. Since about 2026-11-17 22:20Z the
       repository, its API and its release assets are gone, with `onnxruntime-genai` and other Microsoft ONNX repos;

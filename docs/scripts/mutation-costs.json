@@ -695,6 +695,10 @@
   "baseline": 0.27,
   "per_entry": 0.25
  },
+ "bash linux/scripts/tests/test-doc-prose.sh -k hub": {
+  "baseline": 0.42,
+  "per_entry": 0.42
+ },
  "bash linux/scripts/tests/test-doc-prose.sh -k limits": {
   "baseline": 0.49,
   "per_entry": 0.53
@@ -927,9 +931,17 @@
   "baseline": 0.11,
   "per_entry": 0.11
  },
- "bash linux/scripts/tests/test-gstreamer-original-notices.sh": {
-  "baseline": 20.0,
-  "per_entry": 24.47
+ "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice": {
+  "baseline": 2.52,
+  "per_entry": 2.52
+ },
+ "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package": {
+  "baseline": 14.1,
+  "per_entry": 14.1
+ },
+ "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport": {
+  "baseline": 7.87,
+  "per_entry": 7.87
  },
  "bash linux/scripts/tests/test-guard-helpers.sh": {
   "baseline": 0.56,
@@ -2139,9 +2151,33 @@
   "baseline": 3.26,
   "per_entry": 3.23
  },
- "bash linux/scripts/tests/test-readme-length.sh": {
-  "baseline": 1.0,
-  "per_entry": 1.02
+ "bash linux/scripts/tests/test-readme-length.sh -k consumer": {
+  "baseline": 0.59,
+  "per_entry": 0.59
+ },
+ "bash linux/scripts/tests/test-readme-length.sh -k hub": {
+  "baseline": 0.38,
+  "per_entry": 0.38
+ },
+ "bash linux/scripts/tests/test-readme-length.sh -k lines": {
+  "baseline": 1.08,
+  "per_entry": 1.08
+ },
+ "bash linux/scripts/tests/test-readme-length.sh -k ratchet": {
+  "baseline": 1.51,
+  "per_entry": 1.51
+ },
+ "bash linux/scripts/tests/test-readme-length.sh -k width": {
+  "baseline": 0.65,
+  "per_entry": 0.65
+ },
+ "bash linux/scripts/tests/test-readme-length.sh -k wiring": {
+  "baseline": 0.51,
+  "per_entry": 0.51
+ },
+ "bash linux/scripts/tests/test-readme-length.sh -k words": {
+  "baseline": 0.49,
+  "per_entry": 0.49
  },
  "bash linux/scripts/tests/test-recipe-pytest.sh": {
   "baseline": 0.34,

@@ -33,6 +33,22 @@
 - `check-live-site.js --isolated` fails a route whose `crossOriginIsolated` is false and a base URL without
   COOP `same-origin` and COEP `require-corp`.
 
+## 2026-11-24 — README words and width; the owner's NSIS answers
+
+- `readme-length` holds every root README to 700 words and 160 characters a line besides its 100 lines (owner
+  decision). Badge lines and lines that are only a link count for neither. A README already over them keeps rows
+  in `readme-length.census` that may only fall, in the `doc-prose` census format; a consumer only reports until
+  it seeds its census. Suite `test-readme-length.sh` gains `-k` sections and the family 22 recipes.
+- The hub README is an overview again: 98 lines, 563 words and no line over 160 characters, from 2,353 words and
+  28 wider lines (the widest 3,456 characters). The pages it links already held the detail.
+- CON302 records the owner's NSIS answers and a sub-step for the CPack setups that ship LZMA without its
+  CPL-1.0 notice. New: CON304, a shared case file for the usable-CPU rule.
+- The consumer `AGENTS.md` template links `docs/writing-docs.md`.
+- `test-gstreamer-original-notices.sh` has `-k notice|transport|package`, and each of its 73 recipes runs the
+  cheapest section that bites it (34, 21 and 18). Every recipe ran all three suites before, about 30 s on the Pi;
+  the three sections take 3, 10 and 17 s. Run 45421650403 on the fresh cost table was green, but three mutation
+  shards took 27 to 28 of their 30 minutes.
+
 ## 2026-11-24 — the runtime storage guardian refuses a placement FINAL cannot read
 
 - `launch-runtime-storage-guard.py launch` now requires the runtime's host tools checkout and revision and a directory

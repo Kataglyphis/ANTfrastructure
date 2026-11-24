@@ -139,8 +139,10 @@ the version couplings above; those are on you.
 
 ## 6. Docs owned by this repo
 
-**Write docs like a developer: short and precise** (owner, 2026-10-19). Say what a thing does,
-how to run it and what breaks; no filler, no marketing, no repetition.
+**Write docs like a developer: short and precise.** Say what a thing does, how to run it and what
+breaks; no filler, no marketing, no repetition. The rules, each with a before and after, and the
+templates for a page, a failure entry and a "Common tasks" block:
+[`third_party/ANTfrastructure/docs/writing-docs.md`](third_party/ANTfrastructure/docs/writing-docs.md).
 
 <!-- Where the project's own documentation lives, and the rule that a change to
      user-facing behaviour updates its doc in the same PR. -->

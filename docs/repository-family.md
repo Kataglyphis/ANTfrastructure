@@ -57,8 +57,10 @@ read on; everything else has a page of its own. In this order:
 6. **Documentation:** a table with one row per guide, plus the docs site and `AGENTS.md`.
 7. **Footer:** one line to this page for contributing and contact, and the `LICENSE` link.
 
-**Under about 100 lines, badges included:** the `readme-length` gate fails a root README over 100
-lines, in the hub's preflight and in every consumer's lint gates
+**At most 100 lines, 700 words and 160 characters a line.** Badges count toward the lines only. A
+line that is only a link is exempt from the words and the width. The `readme-length` gate checks all
+three, in the hub's preflight and in every consumer's lint gates. A README already over the words or
+the width has census rows that may only fall
 ([`code-quality-tooling.md` § README length](code-quality-tooling.md#readme-length-readme-length)).
 [`README.md.template`](../shared/templates/README.md.template) is that shape, ready to copy.
 
