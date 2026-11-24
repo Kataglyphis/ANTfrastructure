@@ -30,6 +30,10 @@
 - CON302 records the owner's NSIS answers and a sub-step for the CPack setups that ship LZMA without its
   CPL-1.0 notice. New: CON304, a shared case file for the usable-CPU rule.
 - The consumer `AGENTS.md` template links `docs/writing-docs.md`.
+- `test-gstreamer-original-notices.sh` has `-k notice|transport|package`, and each of its 73 recipes runs the
+  cheapest section that bites it (34, 21 and 18). Every recipe ran all three suites before, about 30 s on the Pi;
+  the three sections take 3, 10 and 17 s. Run 45421650403 on the fresh cost table was green, but three mutation
+  shards took 27 to 28 of their 30 minutes.
 
 ## 2026-11-24 — the mutation shard plan has fresh costs
 

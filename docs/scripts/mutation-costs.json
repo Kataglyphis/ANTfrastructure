@@ -931,9 +931,17 @@
   "baseline": 0.11,
   "per_entry": 0.11
  },
- "bash linux/scripts/tests/test-gstreamer-original-notices.sh": {
-  "baseline": 20.0,
-  "per_entry": 24.47
+ "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice": {
+  "baseline": 2.52,
+  "per_entry": 2.52
+ },
+ "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package": {
+  "baseline": 14.1,
+  "per_entry": 14.1
+ },
+ "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport": {
+  "baseline": 7.87,
+  "per_entry": 7.87
  },
  "bash linux/scripts/tests/test-guard-helpers.sh": {
   "baseline": 0.56,
