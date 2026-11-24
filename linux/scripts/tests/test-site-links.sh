@@ -78,6 +78,13 @@ _site base
 _page deep/b.html '<base href="../"><a href="a.html">x</a>'
 t_assert_ok _gate "${SITE}"
 
+t_case "a root-absolute <base href> is served from the site root, as a Flutter app's --base-href is"
+_site base-absolute
+_page app/index.html '<base href="/app/"><a href="main.dart.js">x</a><a href="gone.js">y</a>'
+printf 'x' > "${SITE}/app/main.dart.js"
+t_assert_contains "$(t_out _gate "${SITE}")" "missing  app/gone.js"
+t_assert_eq 1 "$(t_out _gate "${SITE}" | grep -c 'missing  ')" "main.dart.js beside the page resolves"
+
 t_case "a fragment dartdoc injects by script is not a document: its root-relative links are not misread"
 _site fragment
 mkdir -p "${SITE}/lib"

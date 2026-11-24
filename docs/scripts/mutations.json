@@ -842,8 +842,8 @@
  {
   "id": "shellcheck.extensionless-arm",
   "target": "linux/scripts/lint-shell.sh",
-  "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
-  "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+  "find": "    *)\n      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+  "replace": "    *)\n      continue\n      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
   "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
   "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
  },
@@ -1277,7 +1277,7 @@
   "find": "            if m.group(\"sec\") in have:\n                continue",
   "replace": "            if True:\n                continue",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "a bare (\u00a7 1a) pointing at no section must be caught, not merely counted"
+  "why": "a bare (§ 1a) pointing at no section must be caught, not merely counted"
  },
  {
   "id": "doc-links.git-free-floor",
@@ -2978,7 +2978,7 @@
  {
   "id": "pre-commit.fast-tier-aborts",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED \u2014 fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
+  "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED — fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
   "replace": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || true",
   "test": "bash linux/scripts/tests/test-precommit-hook.sh",
   "why": "a failing fast gate must REFUSE the commit, not print and continue"
@@ -3594,7 +3594,7 @@
  {
   "id": "pre-commit.pinned-shellcheck-or-refuse",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck \u2014 see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
+  "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck — see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
   "replace": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || _sc_bin=shellcheck",
   "test": "bash linux/scripts/tests/test-precommit-hook.sh",
   "why": "with no pinned binary the hook must REFUSE; falling back to whatever shellcheck PATH offers lints the commit against an unknown version and calls it green"
@@ -5050,8 +5050,8 @@
  {
   "id": "arg-consistency.gcc-literal-drift-fatal",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
-  "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"",
+  "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
+  "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "these ~25 sites all name the same /opt/gcc-<ver> toolchain, so unlike the generic scan there is no legitimate divergence to be advisory about"
  },
@@ -5090,8 +5090,8 @@
  {
   "id": "arg-consistency.script-drift-advisory",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
-  "replace": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
+  "find": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
+  "replace": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "script defaults legitimately diverge -- a standalone run pins a branch, not the built ref -- so this scan must never be an exit code"
  },
@@ -5309,7 +5309,7 @@
   "find": "            if SECTION_SIGN in line:\n                continue",
   "replace": "            if False:\n                continue",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "`page.md \u00a7 Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
+  "why": "`page.md § Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
  },
  {
   "id": "doc-links.header-stale-row",
@@ -15630,8 +15630,8 @@
  {
   "id": "docs-site.publish-no-tolerance",
   "target": ".github/workflows/build-docs.yml",
-  "find": "      - name: \ud83d\udcc2 Sync files to domain\n",
-  "replace": "      - name: \ud83d\udcc2 Sync files to domain\n        continue-on-error: true\n",
+  "find": "      - name: 📂 Sync files to domain\n",
+  "replace": "      - name: 📂 Sync files to domain\n        continue-on-error: true\n",
   "test": "bash linux/scripts/tests/test-docs-site.sh",
   "why": "a publish that may fail is a site that stops updating while the lane stays green"
  },
@@ -33139,7 +33139,7 @@
  {
   "id": "packaging.gpu-receipt-windows-device-names",
   "target": "shared/python/gpu_artifact_receipt.py",
-  "find": "for digit in \"\u00b9\u00b2\u00b3\"",
+  "find": "for digit in \"¹²³\"",
   "replace": "for digit in \"\"",
   "test": "python3 shared/python/tests/test_gpu_artifact_receipt.py",
   "why": "Windows COM and LPT aliases with superscript digits must not be accepted as portable names"
@@ -61397,7 +61397,7 @@
   "find": "assert invocation['GPU_layers_matched'] == parent['matched_GPU_layers_and_diffIDs'], 'NVIDIA Android GPU coverage differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
-  "why": "The Android profile retains the Media receipt\u2019s matched GPU ancestry."
+  "why": "The Android profile retains the Media receipt’s matched GPU ancestry."
  },
  {
   "id": "compiler-llvm-tools.nvidia-android-disk",
@@ -65230,5 +65230,173 @@
   "replace": "    require(Path(runtime.get('engine_wrapper', '')).resolve(strict=True).parents[2] is not None\n",
   "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
   "why": "FINAL binds the guardian to the runtime host tools checkout, so another checkout must refuse at launch"
+ },
+ {
+  "id": "docs-site.isolated-fileinfo-only",
+  "target": "linux/webserver/templates/flutter-web-isolated.htaccess",
+  "find": "        AddOutputFilterByType DEFLATE application/wasm\n",
+  "replace": "        AddOutputFilterByType DEFLATE application/wasm\n        Options -Indexes\n",
+  "test": "bash linux/scripts/tests/test-flutter-web-isolated-htaccess.sh",
+  "why": "Options needs AllowOverride Options, which nothing proves the host grants; a refused directive is a 500 on every page of the app"
+ },
+ {
+  "id": "docs-site.isolated-guarded",
+  "target": "linux/webserver/templates/flutter-web-isolated.htaccess",
+  "find": "<IfModule mod_setenvif.c>\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-flutter-web-isolated-htaccess.sh",
+  "why": "an unguarded SetEnvIf on a host without mod_setenvif is an unknown directive, a 500 on every page of the app"
+ },
+ {
+  "id": "docs-site.isolated-coop",
+  "target": "linux/webserver/templates/flutter-web-isolated.htaccess",
+  "find": "\"same-origin\"",
+  "replace": "\"same-origin-allow-popups\"",
+  "test": "bash linux/scripts/tests/test-flutter-web-isolated-htaccess.sh",
+  "why": "crossOriginIsolated needs COOP same-origin; without it the app gets no wasm threads"
+ },
+ {
+  "id": "docs-site.isolated-coep",
+  "target": "linux/webserver/templates/flutter-web-isolated.htaccess",
+  "find": "\"require-corp\"",
+  "replace": "\"credentialless\"",
+  "test": "bash linux/scripts/tests/test-flutter-web-isolated-htaccess.sh",
+  "why": "Safari has no credentialless, so the app would not be isolated there"
+ },
+ {
+  "id": "docs-site.isolated-camera",
+  "target": "linux/webserver/templates/flutter-web-isolated.htaccess",
+  "find": "\"camera=(self)\"",
+  "replace": "\"camera=()\"",
+  "test": "bash linux/scripts/tests/test-flutter-web-isolated-htaccess.sh",
+  "why": "camera=() refuses getUserMedia, and the webcam page is the app's showcase"
+ },
+ {
+  "id": "docs-site.isolated-https",
+  "target": "linux/webserver/templates/flutter-web-isolated.htaccess",
+  "find": "    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-flutter-web-isolated-htaccess.sh",
+  "why": "standing alone at a docroot, the app must still move plain http to https: no secure context, no camera and no WebGPU"
+ },
+ {
+  "id": "docs-site.isolated-mjs-type",
+  "target": "linux/webserver/templates/flutter-web-isolated.htaccess",
+  "find": "    AddType text/javascript .mjs\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-flutter-web-isolated-htaccess.sh",
+  "why": "a module script under the host's default type for .mjs is refused, and ORT Web ships .mjs"
+ },
+ {
+  "id": "docs-site.isolated-wasm-type",
+  "target": "linux/webserver/templates/flutter-web-isolated.htaccess",
+  "find": "    AddType application/wasm .wasm\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-flutter-web-isolated-htaccess.sh",
+  "why": "WebAssembly.instantiateStreaming rejects a wasm served under any type but application/wasm"
+ },
+ {
+  "id": "docs-site.isolated-no-cache",
+  "target": "linux/webserver/templates/flutter-web-isolated.htaccess",
+  "find": "    Header set Cache-Control \"no-cache\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-flutter-web-isolated-htaccess.sh",
+  "why": "main.dart.wasm keeps its name across builds, so a cached one would run against a newer main.dart.js"
+ },
+ {
+  "id": "docs-site.isolated-immutable-versioned-only",
+  "target": "linux/webserver/templates/flutter-web-isolated.htaccess",
+  "find": " immutable\" env=VERSIONED_PATH\n",
+  "replace": " immutable\"\n",
+  "test": "bash linux/scripts/tests/test-flutter-web-isolated-htaccess.sh",
+  "why": "immutable on every file pins a returning visitor to an old build for a year"
+ },
+ {
+  "id": "docs-site.isolated-ort-path-hashed",
+  "target": "linux/webserver/templates/flutter-web-isolated.htaccess",
+  "find": "/ort/[^/]+-[0-9a-f]{8,64}/",
+  "replace": "/ort/[^/]+/",
+  "test": "bash linux/scripts/tests/test-flutter-web-isolated-htaccess.sh",
+  "why": "an ORT path without its build hash can change under the same name, and a cached .mjs would meet a new .wasm"
+ },
+ {
+  "id": "docs-site.isolated-model-path-hashed",
+  "target": "linux/webserver/templates/flutter-web-isolated.htaccess",
+  "find": "/models/[0-9a-f]{64}/",
+  "replace": "/models/[^/]+/",
+  "test": "bash linux/scripts/tests/test-flutter-web-isolated-htaccess.sh",
+  "why": "a model path without its SHA-256 can change under the same name"
+ },
+ {
+  "id": "live-site.isolated-page",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "  const isolated = !opts.isolated || (await look('self.crossOriginIsolated === true'));\n",
+  "replace": "  const isolated = true;\n",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "COOP and COEP missing leave crossOriginIsolated false without any console error; only this probe sees it"
+ },
+ {
+  "id": "live-site.isolated-headers",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "      .filter(([name, want]) => res.headers[name] !== want)\n",
+  "replace": "      .filter(([name, want]) => !res.headers[name])\n",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "COEP credentialless isolates Chrome but not Safari; only the header's value tells it from require-corp"
+ },
+ {
+  "id": "live-site.isolated-verdict",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "  if (headers.length) failed++;\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "a header failure printed but not counted exits 0 and the deploy stays green"
+ },
+ {
+  "id": "docs-site.stage-isolated-app",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "  cp \"${DOCS_SITE_HUB}/linux/webserver/templates/flutter-web-isolated.htaccess\" \"$1/$2/.htaccess\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "without it the app is served without COOP and COEP, and crossOriginIsolated stays false"
+ },
+ {
+  "id": "docs-site.stage-isolated-app-needs-page",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "  [ -f \"$1/$2/index.html\" ] || die",
+  "replace": "  true || die",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "an app directory without its page is a build that wrote nothing, and would publish a site with a dead /app/"
+ },
+ {
+  "id": "docs-site.stage-isolated-app-own-refused",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "  [ ! -e \"$1/$2/.htaccess\" ] || die",
+  "replace": "  true || die",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "overwriting an app's own .htaccess silently drops what that app needed it for"
+ },
+ {
+  "id": "docs-site.stage-isolated-app-path-safety",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "  _docs_site_relative \"isolated app\" \"$2\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "a path that climbs out of the site would write the template outside the published tree"
+ },
+ {
+  "id": "docs-site.workflow-isolated-apps",
+  "target": ".github/workflows/build-docs.yml",
+  "find": "          for app in ${apps[@]+\"${apps[@]}\"}; do args+=(--isolated-app \"${app}\"); done\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "an isolated-apps input that never reaches the stager publishes the app without its headers"
+ },
+ {
+  "id": "site-links.base-root-absolute",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "                base = SITE + page.base[1:]\n",
+  "replace": "                pass\n",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "a Flutter app built with --base-href /app/ names the site root; read as the build host's root, every link of the app is reported dead"
  }
 ]

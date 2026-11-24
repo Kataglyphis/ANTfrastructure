@@ -68,6 +68,7 @@ commit changes only docs. The hub's own caller is `.github/workflows/docs.yml`.
 | `site-name` | `docs` | Names the uploaded site and the publish group; a second site of the same repository needs its own |
 | `link-allow` | `''` | The link gate's allow file, relative to the repository root |
 | `htaccess` | `true` | Add the hub's `.htaccess` and 404 page; `false` for a site that ships its own |
+| `isolated-apps` | `''` | Web apps below the site's root, space-separated paths relative to it. Each gets [the isolated-app `.htaccess`](#an-isolated-apps-htaccess); `docs-site.sh stage` refuses a path outside the site, one without an `index.html`, and an app that ships its own `.htaccess` |
 | `publish` | `true` | `false` builds and checks only, and needs no secrets |
 | `publish-on-dispatch` | `false` | Also publish a `workflow_dispatch` run on `develop` or `main` |
 | `publish-timeout-minutes` | `30` | The publish job's limit. An upload it cuts off saves no sync state, so a file too large to finish in time is retried from scratch on every run: BeschleunigerBallett's 61 MB demo scene at about 74 kB/s never landed under 30 |
@@ -131,7 +132,8 @@ What it checks, in every HTML document of the tree:
   rustdoc source range (`lib.rs.html#22-31`) needs both ends;
 - **the root has an `index.html`.**
 
-A `<base href>` moves the links of its page, as in a browser. A file without
+A `<base href>` moves the links of its page, as in a browser. A root-absolute one (`/app/`, as
+Flutter's `--base-href` writes it) names the site's root, as an absolute link does. A file without
 `<!DOCTYPE html>` or `<html>` is not a document: dartdoc's `*-sidebar.html`
 fragments are injected into other pages, so their links are relative to those.
 
@@ -299,3 +301,37 @@ The family image carries no `httpd`, so the directives are checked by
 around the types and the filter, the state-file regex against sample paths, the 404 page
 through the link gate) and by `curl -sI` after the first publish, not by a server in a
 container. The `docs-site.*` mutations prove the suite.
+
+## An isolated app's .htaccess
+
+A web app that needs `crossOriginIsolated` gets `linux/webserver/templates/flutter-web-isolated.htaccess`
+as the `.htaccess` of its own directory. On a docs site, name the app's directory in `isolated-apps`, and
+the stager copies the template there before the link gate runs. Wasm threads, `SharedArrayBuffer` and ORT Web's threaded builds
+need isolation. OmniAccelerANT's `/app/` takes this template below its docs site's root. The root keeps
+`docs-site.htaccess`, and jotrockenmitlocken keeps `flutter-web.htaccess`.
+
+| Directive | Why |
+|---|---|
+| `Header always set Cross-Origin-Opener-Policy "same-origin"` | one of the two headers that isolate the page |
+| `Header always set Cross-Origin-Embedder-Policy "require-corp"` | the other one; Safari has no `credentialless` |
+| `Header always set Permissions-Policy "camera=(self)"` | `getUserMedia` for this origin, and for no embedded frame |
+| `AddType application/wasm .wasm`, `AddType text/javascript .mjs` | the browser refuses a wasm or a module script served under another type |
+| `Header set Cache-Control "no-cache"` | `main.dart.wasm` and `flutter_bootstrap.js` keep their names across builds, so the browser must revalidate them |
+| `SetEnvIf Request_URI ... VERSIONED_PATH` and `Header set Cache-Control "public, max-age=31536000, immutable" env=VERSIONED_PATH` | only `ort/<version>-<build hash>/` and `models/<sha256>/` never change under their name. The guarded line comes after the plain one and overwrites it |
+| The HTTPS redirect, HSTS, `nosniff`, the sync-state `RedirectMatch` and the wasm `DEFLATE` | the root's rules again, so the file also works at a docroot |
+
+The FileInfo rule of the root's file holds here too, with the same `<IfModule>` guards. `SetEnvIf` is in
+FileInfo. `<If>` is not: it needs `AllowOverride All`, so the versioned paths are matched by `SetEnvIf`.
+
+Apache merges `Header` and `AddType` from the root's file into a subdirectory's. Rewrite rules do not
+merge: a subdirectory file with its own `RewriteRule` replaces the root's, so the template repeats the
+redirect.
+
+Under COEP `require-corp` the page loads nothing from another origin that sends no CORS or CORP header.
+Build a Flutter app with `--no-web-resources-cdn`, so CanvasKit comes from the app's own origin.
+
+Suite `linux/scripts/tests/test-flutter-web-isolated-htaccess.sh` checks each directive, the guards, the
+order of the two cache lines and the versioned-path patterns against sample paths. The
+`docs-site.isolated-*` mutations prove it. After a publish, `check-live-site.js <app URL> --isolated`
+checks the headers and `crossOriginIsolated` in Chrome:
+[ftp-deploys.md § The live-site check](ftp-deploys.md#the-live-site-check).

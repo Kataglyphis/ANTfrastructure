@@ -19,6 +19,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — An isolated web app on a docs site
+
+- `linux/webserver/templates/flutter-web-isolated.htaccess` serves a cross-origin-isolated web app: COOP
+  `same-origin`, COEP `require-corp`, `Permissions-Policy: camera=(self)`, the `.wasm` and `.mjs` types,
+  `no-cache`, and `immutable` only under `ort/<version>-<build hash>/` and `models/<sha256>/`. Every directive
+  is in FileInfo. `flutter-web.htaccess` is unchanged. Suite `test-flutter-web-isolated-htaccess.sh`; the
+  htaccess suites share `htaccess-lines.sh`, which also sorts in byte order on any host locale.
+- `build-docs.yml` takes `isolated-apps`: `docs-site.sh stage --isolated-app DIR` puts the template into a
+  web app's directory below the site's root. OmniAccelerANT's `/app/` is the first.
+- The link gate reads a root-absolute `<base href>` (`/app/`) from the site's root; it reported every link of
+  such a page dead.
+- `check-live-site.js --isolated` fails a route whose `crossOriginIsolated` is false and a base URL without
+  COOP `same-origin` and COEP `require-corp`.
+
 ## 2026-11-24 — the runtime storage guardian refuses a placement FINAL cannot read
 
 - `launch-runtime-storage-guard.py launch` now requires the runtime's host tools checkout and revision and a directory

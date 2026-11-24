@@ -99,12 +99,14 @@ _site() {
   printf '<!DOCTYPE html>\n<html><body><a href="index.html">i</a></body></html>\n' > "${SITE}/page.html"
 }
 _stage() { PYTHON="${PREFLIGHT_PYTHON:-python3}" bash "${SCRIPTS}/docs-site.sh" stage "$@"; }
+# _staged <template> <file>: the diff between a hub template and what stage put in the site; empty when they match.
+_staged() { diff "${SCRIPTS}/../webserver/templates/$1" "$2" 2>&1; }
 
 t_case "stage: the hub's .htaccess and 404 page go in, then the link gate passes"
 _site plain
 t_assert_ok _stage "${SITE}"
-t_assert_eq "" "$(diff "${SCRIPTS}/../webserver/templates/docs-site.htaccess" "${SITE}/.htaccess" 2>&1)"
-t_assert_eq "" "$(diff "${SCRIPTS}/../webserver/templates/docs-site-404.html" "${SITE}/404.html" 2>&1)"
+t_assert_eq "" "$(_staged docs-site.htaccess "${SITE}/.htaccess")"
+t_assert_eq "" "$(_staged docs-site-404.html "${SITE}/404.html")"
 
 t_case "stage: a site's own 404 page is kept"
 _site own404
@@ -128,6 +130,29 @@ printf 'missing\tgone.html\n' > "${_tmp}/dead.allow"
 t_assert_ok _stage "${SITE}" --allow "${_tmp}/dead.allow" --no-htaccess
 t_assert_fails _stage "${_tmp}/no-such-site"
 
+t_case "stage: an isolated app gets the isolated-app .htaccess in its own directory, the root keeps its own"
+_site isolated
+app="${SITE}/app"
+mkdir -p "${app}"
+printf '<!DOCTYPE html>\n<html><head><base href="/app/"></head><body><a href="main.dart.js">m</a></body></html>\n' > "${app}/index.html"
+printf 'x' > "${app}/main.dart.js"
+t_assert_ok _stage "${SITE}" --isolated-app app/
+t_assert_eq "" "$(_staged flutter-web-isolated.htaccess "${app}/.htaccess")" "the app's directory gets the isolated template"
+t_assert_eq "" "$(_staged docs-site.htaccess "${SITE}/.htaccess")" "the root keeps the docs site's"
+
+t_case "stage: an isolated app that is missing, ships its own .htaccess or climbs out of the site is refused"
+_site isolated-missing
+t_assert_fails _stage "${SITE}" --isolated-app app
+t_assert_contains "$(t_out _stage "${SITE}" --isolated-app app --no-htaccess)" "has no index.html"
+_site isolated-own
+mkdir -p "${SITE}/app"
+printf '<!DOCTYPE html>\n<html><body>app</body></html>\n' > "${SITE}/app/index.html"
+printf 'Header set X-Own 1\n' > "${SITE}/app/.htaccess"
+t_assert_fails _stage "${SITE}" --isolated-app app
+t_assert_eq "Header set X-Own 1" "$(cat "${SITE}/app/.htaccess")" "refused, not overwritten"
+_site isolated-climb
+t_assert_contains "$(t_out _stage "${SITE}" --isolated-app ../isolated --no-htaccess)" "must be a plain path inside the repository"
+
 # _job <name>: the lines of one job of build-docs.yml, from its key to the next job's.
 _job() { awk -v job="  $1:" '$0 == job { on = 1; next } on && /^  [a-z-]+:$/ { exit } on' "${WORKFLOW}"; }
 
@@ -146,6 +171,12 @@ t_assert_contains "$(_job site)" "include-hidden-files: true"
 t_case "build-docs.yml: the guides reach plan and the build container as an environment name"
 t_assert_contains "$(_job site)" 'DOCS_GUIDES: ${{ inputs.guides }}'
 t_assert_contains "$(_job site)" "extra-args: -e DOCS_COMMAND -e DOCS_BUILDER -e DOCS_GUIDES "
+
+t_case "build-docs.yml: isolated-apps reaches the stager as an environment name, one --isolated-app per path"
+# shellcheck disable=SC2016
+t_assert_contains "$(_job site)" 'DOCS_ISOLATED_APPS: ${{ inputs.isolated-apps }}'
+# shellcheck disable=SC2016
+t_assert_contains "$(_job site)" 'args+=(--isolated-app "${app}")'
 
 t_case "build-docs.yml: clean hosted disks before pulling the family image"
 site="$(_job site)"

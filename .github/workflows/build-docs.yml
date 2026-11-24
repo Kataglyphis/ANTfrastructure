@@ -57,6 +57,12 @@ on:
           ships its own .htaccess.
         type: boolean
         default: true
+      isolated-apps:
+        description: >-
+          Web apps below the site's root, space-separated paths relative to it, that get the hub's
+          isolated-app .htaccess (COOP, COEP, camera, wasm and mjs types, no-cache).
+        type: string
+        default: ''
       publish:
         description: >-
           Publish on a push to develop or main. false builds and checks only, and needs no
@@ -129,6 +135,7 @@ jobs:
       DOCS_HUB: ${{ inputs.hub-path || 'antfrastructure-tools' }}
       DOCS_LINK_ALLOW: ${{ inputs.link-allow }}
       DOCS_HTACCESS: ${{ inputs.htaccess }}
+      DOCS_ISOLATED_APPS: ${{ inputs.isolated-apps }}
     outputs:
       site-dir: ${{ steps.plan.outputs.site-dir }}
     steps:
@@ -190,6 +197,8 @@ jobs:
           args=()
           if [ -n "${DOCS_LINK_ALLOW}" ]; then args+=(--allow "${DOCS_LINK_ALLOW}"); fi
           if [ "${DOCS_HTACCESS}" != 'true' ]; then args+=(--no-htaccess); fi
+          read -ra apps <<< "${DOCS_ISOLATED_APPS}"
+          for app in ${apps[@]+"${apps[@]}"}; do args+=(--isolated-app "${app}"); done
           bash "${DOCS_HUB}/linux/scripts/docs-site.sh" stage "${SITE_DIR}" ${args[@]+"${args[@]}"}
 
       # Hidden files too, or the .htaccess would never reach the server.

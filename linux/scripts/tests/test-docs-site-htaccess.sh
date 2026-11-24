@@ -4,25 +4,16 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 TEMPLATES="$(cd "${TESTS_DIR}/../../webserver/templates" && pwd)"
+# shellcheck disable=SC2034  # read by htaccess-lines.sh
 HTACCESS="${TEMPLATES}/docs-site.htaccess"
 PAGE_404="${TEMPLATES}/docs-site-404.html"
 _tmp="$(mktemp -d)"
 trap 'rm -rf "${_tmp}"' EXIT
 
-# _directives: each directive name the file uses, one per line; a container tag counts as <IfModule.
-_directives() { sed -E 's/^[[:space:]]+//' "${HTACCESS}" | grep -vE '^(#|$)' | awk '{ print $1 }' | sort -u; }
-# _line <ERE>: the one line matching it, leading blanks dropped; empty when none.
-_line() { sed -E 's/^[[:space:]]+//' "${HTACCESS}" | grep -E "$1" | head -n 1; }
-# _guards <ERE>: the modules of every <IfModule> around the first line matching it, sorted, one line.
-_guards() {
-  sed -E 's/^[[:space:]]+//' "${HTACCESS}" | awk -v re="$1" '
-    /^<IfModule / { n++; m[n] = $2; sub(/>$/, "", m[n]); next }
-    /^<\/IfModule>/ { n--; next }
-    $0 ~ re { for (i = 1; i <= n; i++) print m[i]; exit }' | sort | paste -sd' ' -
-}
+source "${TESTS_DIR}/htaccess-lines.sh"
 
 t_case "every directive is in Apache's FileInfo override class, the one the host's .htaccess files are proven to use"
-t_assert_eq "" "$(_directives | grep -vxE '<IfModule|</IfModule>|RewriteEngine|RewriteCond|RewriteRule|Header|RedirectMatch|AddType|AddOutputFilterByType|ErrorDocument')" \
+t_assert_eq "" "$(_directives | grep -vxE "${HTACCESS_FILEINFO}")" \
   "a directive the host's AllowOverride does not grant turns every page of the site into a 500"
 
 t_case "plain http goes to https, permanently, and a TLS proxy cannot loop it"
@@ -41,15 +32,10 @@ t_case "the FTP library's sync-state file is not served, at the root or below"
 rule="$(_line '^RedirectMatch ')"
 t_assert_eq "404" "$(printf '%s\n' "${rule}" | awk '{ print $2 }')" "denied as absent, so the 404 page shows"
 regex="$(printf '%s\n' "${rule}" | awk '{ print $3 }')"
-# Through stdin: Git Bash rewrites a /path argument into a Windows path on its way to python.exe.
-_matches() {
-  printf '%s\n%s\n' "${regex}" "$1" |
-    "${PREFLIGHT_PYTHON:-python3}" -c 'import re, sys; r, s = sys.stdin.read().split("\n")[:2]; print(1 if re.search(r, s) else 0)'
-}
-t_assert_eq 1 "$(_matches /.ftp-deploy-sync-state.json)"
-t_assert_eq 1 "$(_matches /sub/.ftp-deploy-sync-state.json)" "a server-dir below the docroot keeps its own state file"
-t_assert_eq 0 "$(_matches /index.html)"
-t_assert_eq 0 "$(_matches /notes.ftp-deploy-sync-state.json)"
+t_assert_eq 1 "$(_matches "${regex}" /.ftp-deploy-sync-state.json)"
+t_assert_eq 1 "$(_matches "${regex}" /sub/.ftp-deploy-sync-state.json)" "a server-dir below the docroot keeps its own state file"
+t_assert_eq 0 "$(_matches "${regex}" /index.html)"
+t_assert_eq 0 "$(_matches "${regex}" /notes.ftp-deploy-sync-state.json)"
 
 t_case "the WebGPU demo's wasm and glTF files get their registered types"
 t_assert_eq "AddType application/wasm .wasm" "$(_line '^AddType [^ ]+ \.wasm$')" \

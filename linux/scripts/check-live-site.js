@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// check-live-site.js <base URL> [route ...] [--files DIR] [--version V] [--allow-host H] [--scrolls N] [--settle-ms N] [--ready-ms N]: a deployed web app in headless Chrome, its files over HTTP and its version.json. See docs/ftp-deploys.md#the-live-site-check
+// check-live-site.js <base URL> [route ...] [--files DIR] [--version V] [--allow-host H] [--isolated] [--scrolls N] [--settle-ms N] [--ready-ms N]: a deployed web app in headless Chrome, its files over HTTP and its version.json. See docs/ftp-deploys.md#the-live-site-check
 'use strict';
 
 const fs = require('node:fs');
@@ -19,7 +19,7 @@ function fail(message, code = 2) {
 }
 
 function parseArgs(argv) {
-  const opts = { routes: [], files: null, version: null, allow: [], scrolls: 30, settleMs: 5000, readyMs: 30000 };
+  const opts = { routes: [], files: null, version: null, allow: [], isolated: false, scrolls: 30, settleMs: 5000, readyMs: 30000 };
   const value = (i, flag) => {
     if (i >= argv.length) fail(`${flag} needs a value`);
     return argv[i];
@@ -29,6 +29,7 @@ function parseArgs(argv) {
     if (a === '--files') opts.files = value(++i, a);
     else if (a === '--version') opts.version = value(++i, a);
     else if (a === '--allow-host') opts.allow.push(value(++i, a));
+    else if (a === '--isolated') opts.isolated = true;
     else if (a === '--scrolls') opts.scrolls = Number(value(++i, a));
     else if (a === '--settle-ms') opts.settleMs = Number(value(++i, a));
     else if (a === '--ready-ms') opts.readyMs = Number(value(++i, a));
@@ -36,7 +37,7 @@ function parseArgs(argv) {
     else if (!opts.base) opts.base = a;
     else opts.routes.push(a);
   }
-  if (!opts.base || !/^https?:\/\//.test(opts.base)) fail('usage: check-live-site.js <base URL> [route ...] [--files DIR] [--version V] [--allow-host H] [--scrolls N] [--settle-ms N] [--ready-ms N]');
+  if (!opts.base || !/^https?:\/\//.test(opts.base)) fail('usage: check-live-site.js <base URL> [route ...] [--files DIR] [--version V] [--allow-host H] [--isolated] [--scrolls N] [--settle-ms N] [--ready-ms N]');
   if (![opts.scrolls, opts.settleMs, opts.readyMs].every((n) => Number.isInteger(n) && n >= 0)) fail('--scrolls, --settle-ms and --ready-ms take whole numbers');
   if (opts.files && !fs.existsSync(path.join(opts.files, 'index.html'))) fail(`${opts.files} has no index.html`);
   opts.base = opts.base.replace(/\/?$/, '/');
@@ -73,10 +74,13 @@ async function checkRoute(browser, events, opts, route, [w, h]) {
   }
   if (opts.scrolls) await sleep(Math.min(opts.settleMs, 2000));
   const csp = (await look('window.__liveCheckCsp || []')) || [];
+  // An isolated app's wasm threads and SharedArrayBuffer need it; a missing COOP or COEP header leaves it false without an error.
+  const isolated = !opts.isolated || (await look('self.crossOriginIsolated === true'));
   const base = new URL(opts.base).host;
   const third = [...events.hosts].filter((x) => x !== base && !opts.allow.includes(x));
   const problems = [
     ...(ready ? [] : [`no ${READY} after ${opts.readyMs} ms: the app never started`]),
+    ...(isolated ? [] : ['not cross-origin isolated: crossOriginIsolated is false']),
     ...csp.map((c) => `csp-blocked: ${c}`),
     ...third.map((x) => `third-party host: ${x}`),
     ...events.errors,
@@ -109,7 +113,7 @@ function request(url, method) {
     const req = (u.protocol === 'https:' ? https : http).request(u, { method, agent: AGENTS[u.protocol], headers: { 'Cache-Control': 'no-cache' }, timeout: 30000 }, (res) => {
       const body = [];
       res.on('data', (c) => body.push(c));
-      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(body).toString('utf8') }));
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(body).toString('utf8') }));
     });
     req.on('timeout', () => req.destroy(new Error('timed out after 30 s')));
     req.on('error', reject);
@@ -155,6 +159,21 @@ async function checkFiles(opts) {
   };
   await Promise.all(Array.from({ length: FILE_JOBS }, worker));
   return { count: files.length, bad: bad.sort() };
+}
+
+// The isolation headers an isolated app's page must carry, as the hub's flutter-web-isolated.htaccess sets them.
+const ISOLATION_HEADERS = { 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'require-corp' };
+
+async function checkIsolationHeaders(opts) {
+  if (!opts.isolated) return [];
+  try {
+    const res = await request(opts.base, 'GET');
+    return Object.entries(ISOLATION_HEADERS)
+      .filter(([name, want]) => res.headers[name] !== want)
+      .map(([name, want]) => `${name}: ${res.headers[name] ?? 'missing'}, want ${want}`);
+  } catch (e) {
+    return [`isolation headers: ${e.code || e.message}`];
+  }
 }
 
 // version.json as Flutter writes it: the version, and the build number after a +.
@@ -230,6 +249,9 @@ ${problems.map((p) => `     ${p}
     if (bad.length) failed++;
     process.stdout.write(`${bad.length ? 'FAIL' : 'ok  '} ${count} files of ${opts.files}, ${bad.length} not served with 200\n${bad.map((b) => `     ${b}\n`).join('')}`);
   }
+  const headers = await checkIsolationHeaders(opts);
+  if (headers.length) failed++;
+  if (opts.isolated) process.stdout.write(`${headers.length ? 'FAIL' : 'ok  '} isolation headers of ${opts.base}\n${headers.map((h) => `     ${h}\n`).join('')}`);
   const version = await checkVersion(opts);
   for (const agent of Object.values(AGENTS)) agent.destroy();
   if (version) failed++;
