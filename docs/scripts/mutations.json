@@ -62014,5 +62014,29 @@
   "replace": "HOST_ONLY_FILES = frozenset({'linux/scripts/01-core/runtime-build-fns.sh'})",
   "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_runtime_torch_assembly",
   "why": "the torch stage's own assembly script runs only in the runtime lane and must not force a rebuild of verified parents"
+ },
+ {
+  "id": "smoke.cargo-qa-through-cargo",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "$(cargo \"${_t#cargo-}\" --version",
+  "replace": "$(\"${_t}\" --version",
+  "test": "bash linux/scripts/tests/test-runtime-probe-inputs.sh -k cargo_subcommands",
+  "why": "cargo-mutants rejects --version when called directly, so the probe must ask every tool through cargo"
+ },
+ {
+  "id": "smoke.ft-probe-library-shipped",
+  "target": "linux/Dockerfile.torch",
+  "find": "COPY --chmod=755 linux/scripts/03-media/free-threaded-wheels.sh /opt/scripts/03-media/free-threaded-wheels.sh\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-runtime-probe-inputs.sh -k ft_probe_inputs",
+  "why": "the free-threaded store probe sources this library inside the shipped image"
+ },
+ {
+  "id": "smoke.ft-probe-table-shipped",
+  "target": "linux/Dockerfile.torch",
+  "find": "COPY linux/scripts/03-media/free-threaded-twins.txt /opt/scripts/03-media/free-threaded-twins.txt\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-runtime-probe-inputs.sh -k ft_probe_inputs",
+  "why": "the sourced library reads its twin table beside itself"
  }
 ]

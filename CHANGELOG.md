@@ -17,6 +17,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — two runtime smoke probes read the shipped image correctly
+
+- The `cargo-qa-tools` probe now asks `cargo <tool> --version`: `cargo-mutants --version` rejects the flag, so every
+  amd64 image reported `cargo-mutants=` empty although 27.1.0 was installed.
+- `Dockerfile.torch` ships `03-media/free-threaded-wheels.sh` and its twin table to `/opt/scripts/03-media/`; the
+  FT-STORE probe sources them, failed without them and reported "the in-image probe never finished".
+- `test-runtime-probe-inputs.sh` checks both against fake tools and the Dockerfile COPY lines; three mutations.
+
 ## 2026-11-24 — the Linux torch stage checks out OrchestrANT's hub submodule
 
 - Since OrchestrANT 3abd84e (CON289) its `setup.py` copies hub modules from `third_party/ANTfrastructure`, and a clone
