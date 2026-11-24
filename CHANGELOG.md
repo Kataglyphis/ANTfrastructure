@@ -19,6 +19,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — the Windows torch stage checks out the app's hub submodule
+
+- `uv sync` of OrchestrANT failed in `Dockerfile.torch`: since OrchestrANT `3abd84e` its `setup.py` copies hub
+  modules from `third_party/ANTfrastructure`, and `New-TorchAppCheckout` cloned without submodules. It now
+  initializes that one submodule shallowly, without nested ones. `TorchApp.Checkout.Tests.ps1`, one mutation
+  ([failure mode](docs/failure-modes.md#torch-stage-verify_ort_profilepy-is-missing--check-out-the-hub-submodule-before-building)).
+
 ## 2026-11-24 — the TVM branch pins packaging with its build tools
 
 - The Windows media merge refused `packaging` 26.3 from media-core beside 26.4 from TVM: TVM's branch
