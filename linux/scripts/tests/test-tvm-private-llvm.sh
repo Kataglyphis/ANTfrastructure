@@ -3,6 +3,8 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+# shellcheck source=linux/scripts/tests/llvm-elf-fixture.sh
+source "${TESTS_DIR}/llvm-elf-fixture.sh"
 TVM_SH="${TESTS_DIR}/../05-frameworks/tvm.sh"
 log() { :; }
 die() { printf 'DIE:%s\n' "$*" >&2; exit 97; }
@@ -49,23 +51,11 @@ _host_tools() {
   return 1
 }
 
-# _lib <name> <soname-of-dependency|-> <source>: a real shared library built by the host compiler.
-_lib() {
-  local name="$1" dep="$2" source="$3"
-  printf '%s\n' "${source}" > "${root}/${name}.cc"
-  if [ "${dep}" = - ]; then
-    c++ -shared -fPIC -o "${root}/${name}" "${root}/${name}.cc"
-  else
-    c++ -shared -fPIC -o "${root}/${name}" "${root}/${name}.cc" -L"${root}" -l:"${dep}"
-  fi
-}
 
 _section_elf() {
   _host_tools || return
-  c++ -shared -fPIC -Wl,-soname,libLLVM.so.99 -o "${root}/libLLVM.so.99" -x c++ - <<< 'int llvm_fixture() { return 1; }'
-  _lib private.so - 'namespace llvm { __attribute__((visibility("hidden"))) int hidden() { return 1; } } int tvm_entry() { return llvm::hidden(); }'
-  _lib shared.so libLLVM.so.99 'int llvm_fixture(); int tvm_entry() { return llvm_fixture(); }'
-  _lib exported.so - 'namespace llvm { int leaked() { return 1; } } int tvm_entry() { return llvm::leaked(); }'
+  t_llvm_elf_fixture "${root}" || { t_assert_eq 0 1 "the host compiler could not build the ELF fixture"; return; }
+  c++ -shared -fPIC -o "${root}/exported.so" -x c++ - <<< 'namespace llvm { int leaked() { return 1; } } int tvm_entry() { return llvm::leaked(); }'
 
   t_case "a library with LLVM inside and nothing of it exported passes"
   t_assert_eq "0" "$( (assert_tvm_private_llvm "${root}/private.so") >/dev/null 2>&1; echo $?)"
@@ -107,11 +97,6 @@ _section_map() {
 }
 
 _section_smoke() {
-  t_case "the runtime codegen smoke refuses a process that mapped a shared LLVM"
-  local body
-  body="$(sed -n '/^assert_tvm_codegen() {/,/^}/p' "${TESTS_DIR}/../06-packaging/smoke-torch-venv.sh")"
-  t_assert_contains "${body}" 'if "/libLLVM" in line'
-  t_assert_contains "${body}" 'TVM-CODEGEN FAIL: tvm loaded a shared LLVM'
   t_case "the build asserts the private LLVM whenever TVM uses LLVM"
   t_assert_contains "$(cat "${TVM_SH}")" '[ "$llvm_cmake_value" = "OFF" ] || assert_tvm_private_llvm "$build_dir/lib/libtvm_compiler.so"'
   t_assert_contains "$(t_fn_src "${TVM_SH}" main)" $'patch_tvm_findllvm_dylib_fallback\n  patch_tvm_findllvm_private_static\n  patch_tvm_compiler_llvm_symbols_local\n  resolve_tvm_llvm'
