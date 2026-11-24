@@ -1184,10 +1184,9 @@ commit `4d0ac168` rather than back to empty, for the branch reason above.
 
 `import tvm` needs both wheels: its first statement imports `tvm_ffi`, and the app
 venv installs the tvm family `--no-deps`, so a lone `apache-tvm` wheel ships an
-unimportable package. `USE_LLVM=ON` works cross without executing a foreign
-llvm-config because `tvm.sh` reads the target's CMake package in
-`/opt/llvm-cross/<triplet>`; its old fallback to the imported `libLLVM` dylib now
-only feeds the private-LLVM gate below, which fails it. `apache-tvm-ffi` builds its Cython core `WITH_SOABI`, so
+unimportable package. `USE_LLVM=ON` works cross without a foreign llvm-config:
+`tvm.sh` reads the target's CMake package in `/opt/llvm-cross/<triplet>`. Its old
+fallback to the `libLLVM` dylib now only reaches the private-LLVM gate below. `apache-tvm-ffi` builds its Cython core `WITH_SOABI`, so
 it has the IREE/LiteRT host-SOABI problem, and `tvm-python.sh` withdraws staged
 wheels that do not carry the target suffix.
 
@@ -1200,21 +1199,26 @@ would fail every build while the file is absent.
 
 ### TVM links a private static LLVM
 
-`libtvm_compiler.so` links our LLVM's static archives, and upstream TVM hides them
-(`HIDE_PRIVATE_SYMBOLS`, `-Wl,--exclude-libs,ALL`). With the shared
-`libLLVM.so.23.1`, Torch-ROCm's own LLVM (`_rocm_sdk_core`, loaded process-wide)
-interposed 117 of its data references, and `import tvm` crashed in about two of
-three ROCm app smokes ([failure mode](failure-modes.md#segfault-in-llvmaarch64resolvecpualias-during-import-tvm)).
-An installed LLVM package maps the `all` component to nothing, so TVM used to fall
-back to the dylib. `tvm.sh` patches FindLLVM to take the package's static targets
-from `LLVM_AVAILABLE_LIBS`, never `LLVM`, `LTO` or `Remarks`, passes `--link-static`
-on the llvm-config path, links `libtvm_compiler` with a version script that keeps
-`llvm::` symbols local (TVM's own objects instantiate inline LLVM members such as
-`AnalysisManager` destructors, which `--exclude-libs` does not reach), and
-fails the build when the library needs a `libLLVM` or exports an `llvm::` symbol.
-The runtime codegen smoke fails a process that mapped any `libLLVM`. The gates read
-ELF metadata and one process map; they do not prove that no other library shares
-symbols with TVM, and `libtvm_compiler.so` grows by its LLVM archives.
+`libtvm_compiler.so` links our LLVM's static archives. Upstream TVM hides them with
+`HIDE_PRIVATE_SYMBOLS` and `-Wl,--exclude-libs,ALL`.
+
+With the shared `libLLVM.so.23.1`, Torch-ROCm's own LLVM took over 117 of its data
+references. Torch loads that copy (`_rocm_sdk_core`) process-wide. `import tvm` then
+crashed in about two of three ROCm app smokes
+([failure mode](failure-modes.md#segfault-in-llvmaarch64resolvecpualias-during-import-tvm)).
+
+An installed LLVM package maps the `all` component to nothing. TVM therefore fell
+back to the dylib. `tvm.sh` now does four things:
+
+- FindLLVM takes the static targets from `LLVM_AVAILABLE_LIBS`, never `LLVM`, `LTO`
+  or `Remarks`. The llvm-config path gets `--link-static`.
+- A version script keeps every `llvm::` symbol of `libtvm_compiler` local. TVM's own
+  objects instantiate inline LLVM members, which `--exclude-libs` does not reach.
+- The build fails when the library needs a `libLLVM` or exports an `llvm::` symbol.
+- The runtime codegen smoke fails a process that mapped any `libLLVM`.
+
+The gates read ELF metadata and one process map. They do not prove that no other
+library shares symbols with TVM. `libtvm_compiler.so` grows by its LLVM archives.
 
 ### Operational env knobs (not versions.env)
 
