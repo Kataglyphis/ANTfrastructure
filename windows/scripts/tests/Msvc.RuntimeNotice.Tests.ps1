@@ -38,7 +38,8 @@ Describe 'Copy-MsvcRuntimeNotice' {
             Assert-Equal ((Join-Path $f.Bundle 'licenses/msvc-runtime/Redist.txt') -replace '\\', '/') ($staged -replace '\\', '/')
             Assert-Equal 'terms 1033 https://aka.ms/vs/18/redistribution.lic' (Get-Content -Raw -LiteralPath $staged)
             $readme = Get-Content -Raw -LiteralPath (Join-Path $f.Bundle 'licenses/msvc-runtime/README.txt')
-            Assert-Match 'DRAFT' $readme
+            Assert-False ($readme -match 'DRAFT')
+            Assert-Match ([regex]::Escape('https://visualstudio.microsoft.com/license-terms/')) $readme
             Assert-Match ([regex]::Escape('https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution')) $readme
         }
     }

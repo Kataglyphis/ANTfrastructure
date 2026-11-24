@@ -388,7 +388,7 @@ Its PE twin is `Assert-PeHardening -Path <files> [-NoCfg <leaf names>]` in
 `windows/scripts/modules/WindowsPeHardening.Common.psm1`: it reads each file's DllCharacteristics
 and throws naming every PE without DYNAMIC_BASE, NX_COMPAT, HIGH_ENTROPY_VA (PE32+) or GUARD_CF,
 the bit BeschleunigerBallett's binaries lacked before CON290; `-NoCfg` waives CFG for a
-third-party DLL built without it. `windows/scripts/tests/PeHardening.Tests.ps1` holds it on synthetic PEs.
+third-party DLL built without it. `windows/scripts/tests/PeHardening.Tests.ps1` holds it on synthetic PEs. Six refusal mutations check the required bits, header offset and fatal verdict; they do not inspect a real linked consumer binary.
 
 ### glibc travels, and a newer host glibc wins
 
@@ -476,7 +476,7 @@ suites exercise these behaviors, but do not establish GPU compatibility or runti
 `libc6 (<< 2.44)`), so `DEBIAN_DEPENDS` names what the system still brings; it also hands CPack's
 AppImage generator `patchelf-keep-glibc.sh`, because the generator patches every library without a
 RUNPATH, and a patched loader segfaults. AccelerANTgine's `.deb`, tarball and AppImage start on
-Debian 13 (himbeere2) and Ubuntu 26.04 this way. Without `LOADER` the packages need glibc 2.43:
+Debian 13 (a Raspberry Pi 5) and Ubuntu 26.04 this way. Without `LOADER` the packages need glibc 2.43:
 Ubuntu 26.04 and newer.
 
 Native AMD packages load the CPU ORT core and carry `libmigraphx-ep.so` separately. Source

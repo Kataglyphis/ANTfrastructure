@@ -19,6 +19,25 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 # G2's gate: modules\ in the repo, a per-file mount under ortmods\ in the container (never the shared closure).
 Import-Module (Resolve-SourceBuildLeafModule -AssetRoot $scriptAssetRoot -Name 'WindowsOrtProvenance.Build.psm1') -DisableNameChecking
 
+function Get-GenaiExtensionsCommit {
+    param([Parameter(Mandatory)][AllowEmptyString()][string[]]$DepsLine)
+    $rows = @($DepsLine | Where-Object { $_ -match '^onnxruntime_extensions;' })
+    if ($rows.Count -ne 1) { throw 'GenAI extensions must have exactly one dependency row.' }
+    if ($rows[0] -cnotmatch '^onnxruntime_extensions;https://github\.com/microsoft/onnxruntime-extensions\.git;(?<Commit>[0-9a-f]{40})$') {
+        throw 'GenAI extensions must retain the upstream repository and a full lowercase commit.'
+    }
+    return $Matches['Commit']
+}
+
+function Get-GenaiExtensionsCmakeArgs {
+    param([Parameter(Mandatory)][string]$SourceDir)
+    $commit = Get-GenaiExtensionsCommit -DepsLine @(Get-Content -LiteralPath (Join-Path $SourceDir 'cmake/deps.txt'))
+    $extensions = Join-Path $SourceDir 'extensions-source'
+    $null = Invoke-PinnedSourceClone -SourceDir $extensions -RepoUrl 'https://github.com/microsoft/onnxruntime-extensions.git' `
+        -FallbackRepoUrl 'https://github.com/CodeLinaro/onnxruntime-extensions.git' -Ref $commit -ExpectedCommit $commit -MaxAttempts 3 -InitialDelaySeconds 10
+    return "-DFETCHCONTENT_SOURCE_DIR_ONNXRUNTIME_EXTENSIONS:PATH=$($extensions.Replace('\', '/'))"
+}
+
 function Install-GenaiSourcePatches {
     param([string]$SourceDir, [string]$AssetRoot)
 
@@ -237,11 +256,12 @@ Install-CpythonPip -Python $py
 
 # No cmake/ninja here: the image ships both on PATH (scoop).
 Write-Host 'Installing requests, setuptools, wheel via pip...'
-Install-CpythonPipPin -Python $py -Name requests, setuptools, wheel -Option '--no-warn-script-location'
+Install-CpythonPipPin -Python $py -Name requests, setuptools, wheel, packaging -Option '--no-warn-script-location'
 
 Initialize-ToolchainPythonEnvironment | Out-Null
 
-Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime-genai.git' -Tag "v$OnnxGenAiVersion" -SourceDir $SourceDir -Recursive | Out-Null
+Invoke-OrtSourceClone -SourceDir $SourceDir -Version $OnnxGenAiVersion -ExpectedCommit $env:ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT `
+    -RepoUrl 'https://github.com/microsoft/onnxruntime-genai.git' -FallbackRepoUrl 'https://github.com/CodeLinaro/onnxruntime-genai.git' -VersionFile 'VERSION_INFO' | Out-Null
 
 Set-Location $SourceDir
 
@@ -417,6 +437,7 @@ $genaiOrtBlock = Join-Path $SourceDir 'ort-fetch-blocked'
 $null = New-Item -ItemType Directory -Force -Path $genaiOrtBlock
 $genaiOrtArgs = @(Get-GenaiOrtCmakeArgs -OrtHome $genaiOrtHome -FetchBlockDir $genaiOrtBlock)
 $cmakeExtraGenAi += $genaiOrtArgs
+$cmakeExtraGenAi += Get-GenaiExtensionsCmakeArgs -SourceDir $SourceDir
 Write-Host "GenAI ONNX Runtime: the chain's at $genaiOrtRoot through $genaiOrtHome; ortlib/onnxruntime FetchContent blocked at $genaiOrtBlock"
 $genaiCfgLog = Get-PersistentBuildLogPath -FallbackDir $genaiBuildDir -Name 'onnx-genai-configure.log'
 Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -ExtraArgs $cmakeExtraGenAi -InstallPrefix $genaiInstallDir 2>&1 |

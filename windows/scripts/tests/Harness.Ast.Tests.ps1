@@ -177,3 +177,43 @@ Describe 'Typed command arguments' {
         Assert-Equal "'anchor'" (Get-TestCommandArguments -Command $command)['Guard']
     }
 }
+
+Describe 'Required command maps' {
+    It 'retains actual nodes, argument boundaries, selected order and unconditional text' {
+        Invoke-InTestDir -Files @{ 'wire.ps1' = "First-Call -Value 'a b'; Second-Call" } -Body {
+            param($dir)
+            $map = Get-TestScriptCommandMap -ScriptPath (Join-Path $dir 'wire.ps1') -Name @('First-Call', 'Second-Call') `
+                -Order @('First-Call', 'Second-Call') -UnconditionalText @{ 'First-Call' = "First-Call -Value 'a b'" }
+            Assert-Equal 2 $map.Count
+            Assert-Equal "'a b'" (Get-TestCommandArguments -Command $map['First-Call'])['Value']
+        }
+    }
+    It 'refuses both missing and duplicated required sites' {
+        foreach ($mapCaseText in @('Other-Call', 'Required-Call; Required-Call')) {
+            Invoke-InTestDir -Files @{ 'wire.ps1' = $mapCaseText } -Body {
+                param($dir)
+                Assert-Throws { Get-TestScriptCommandMap -ScriptPath (Join-Path $dir 'wire.ps1') -Name 'Required-Call' } -MessagePattern 'one call matching Required-Call'
+            }
+        }
+    }
+    It 'retains caller-selected text filtering before requiring exactly one site' {
+        Invoke-InTestDir -Files @{ 'wire.ps1' = 'Run-Call -Phase prepare; Run-Call -Phase publish' } -Body {
+            param($dir)
+            $map = Get-TestScriptCommandMap -ScriptPath (Join-Path $dir 'wire.ps1') -Name 'Run-Call' -TextContains @{ 'Run-Call' = '-Phase publish' }
+            Assert-Equal 'Run-Call -Phase publish' $map['Run-Call'].Extent.Text
+            Assert-Throws { Get-TestScriptCommandMap -ScriptPath (Join-Path $dir 'wire.ps1') -Name 'Run-Call' -TextContains @{ 'Run-Call' = 'absent' } } -MessagePattern 'one call matching Run-Call'
+        }
+    }
+    It 'rejects reversed source order when the caller requires an order' {
+        Invoke-InTestDir -Files @{ 'wire.ps1' = 'Second-Call; First-Call' } -Body {
+            param($dir)
+            Assert-Throws { Get-TestScriptCommandMap -ScriptPath (Join-Path $dir 'wire.ps1') -Name @('First-Call', 'Second-Call') -Order @('First-Call', 'Second-Call') } -MessagePattern 'source order'
+        }
+    }
+    It 'rejects conditional wiring when the caller requires unconditional execution' {
+        Invoke-InTestDir -Files @{ 'wire.ps1' = 'if ($true) { First-Call }' } -Body {
+            param($dir)
+            Assert-Throws { Get-TestScriptCommandMap -ScriptPath (Join-Path $dir 'wire.ps1') -Name 'First-Call' -UnconditionalText @{ 'First-Call' = 'First-Call' } } -MessagePattern 'unconditional call'
+        }
+    }
+}

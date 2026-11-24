@@ -28,7 +28,7 @@ _slang_compile_output_root() {
   fi
 }
 
-# Manifest reader: python3, not jq (absent from the image); the one place that touches the schema.
+# Manifest reader: python3, not jq (older images lack jq); the one place that touches the schema.
 slang_compile_manifest_query() {
   python3 - "${SLANG_COMPILE_MANIFEST}" "$@" <<'PY'
 import json

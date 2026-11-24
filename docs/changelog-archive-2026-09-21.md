@@ -1248,10 +1248,10 @@ half of its mechanical fixes here; the consumer halves are one commit per repo.
   by `apply-host-config.sh` and `verify-host-config.sh` before they install or
   diff.
 * **CNI plugins: 0 → 18.** Rootless nerdctl resolves plugins under its own
-  `$HOME/.local/libexec/cni`, not under `/usr/local`, so summy-server had been
+  `$HOME/.local/libexec/cni`, not under `/usr/local`, so win-1 had been
   running with none at all — `/usr/local/libexec/cni` held only a LICENSE. The
   install now counts them where nerdctl actually looks and fails the run at zero.
-* **Measured on summy-server (aarch64, Snapdragon X, WSL2).** The relocation was
+* **Measured on win-1 (aarch64, Snapdragon X, WSL2).** The relocation was
   byte-identical: sha256 matched across `nerdctl`, `containerd`, `buildkitd`,
   `rootlesskit`, `runc` and `containerd-rootless.sh`, because `/usr/local` already
   held the same nerdctl-full 2.3.5 bundle. Not a version change — a relocation.

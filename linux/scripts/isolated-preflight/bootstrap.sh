@@ -21,7 +21,7 @@ mkdir -p "${task_source}"
 cp -a /source/. "${task_source}/"
 test "$(git -c safe.directory="${task_source}" -C "${task_source}" rev-parse HEAD)" = "${ISOLATED_PREFLIGHT_REVISION:?}"
 source "${task_source}/linux/scripts/01-core/load-versions-env.sh"
-unset UV_VERSION
+unset UV_VERSION PYTHON_VERSION
 load_versions_env "${task_source}/linux/scripts/01-core/versions.env"
 bash "${task_source}/linux/scripts/01-core/base-image.sh" install-uv --version "${UV_VERSION:?}"
 source "${task_source}/linux/scripts/01-core/downloads.sh"
@@ -32,6 +32,9 @@ uv venv /opt/preflight-venv --python /usr/bin/python3
 uv export --project "${task_source}/quality" --locked --no-dev --no-emit-project \
   --format requirements-txt --output-file /tmp/preflight-quality.txt
 uv pip install --python /opt/preflight-venv/bin/python --require-hashes --requirement /tmp/preflight-quality.txt
+UV_PYTHON_INSTALL_DIR=/opt/preflight-ft-python uv python install "${PYTHON_VERSION:?}t"
+task_ft_python="$(UV_PYTHON_INSTALL_DIR=/opt/preflight-ft-python uv python find --managed-python "${PYTHON_VERSION}t")"
+"${task_ft_python}" -I -c 'import sys; assert sys.version.split()[0] == sys.argv[1]' "${PYTHON_VERSION}"
 bash "${task_source}/linux/scripts/ensure-pe-icon-test-tools.sh" --install-missing
 bash "${task_source}/linux/scripts/ensure-native-worker-test-tools.sh" /opt/preflight-native-tools
 PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/playwright /opt/preflight-venv/bin/python -m playwright install --with-deps chromium
@@ -48,6 +51,7 @@ exec setpriv --reuid 1000 --regid 1000 --init-groups env -i \
   HOME=/tmp/isolated-preflight-home LC_ALL=C PYTHON_CPU_COUNT="${ISOLATED_PREFLIGHT_JOBS:?}" \
   PREFLIGHT_JOBS="${ISOLATED_PREFLIGHT_JOBS}" RUN_TESTS_JOBS="${ISOLATED_PREFLIGHT_JOBS}" \
   LINT_SHELL_JOBS="${ISOLATED_PREFLIGHT_JOBS}" UV_CACHE_DIR=/tmp/isolated-preflight-home/.cache/uv \
+  FT_PYTHON="${task_ft_python}" \
   CHROME_EXECUTABLE=/usr/local/bin/chromium PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/playwright \
   ISOLATED_PREFLIGHT_REVISION="${ISOLATED_PREFLIGHT_REVISION}" \
   /bin/bash "${task_source}/linux/scripts/isolated-preflight/worker.sh"

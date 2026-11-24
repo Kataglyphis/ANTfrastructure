@@ -14,5 +14,6 @@ config/*.log
 config/*.log.*
 config/.ha_run.lock
 config/.HA_VERSION
+config/ip_bans.yaml
 # The Ansible run status (linux/ansible/scripts/run-update.sh): host names and log lines, never published.
 config/ansible/

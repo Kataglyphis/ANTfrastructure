@@ -44,6 +44,9 @@ The two halves of one topic often split:
 | **An error message** — symptom → cause → fix, both lanes | [`failure-modes.md`](failure-modes.md) |
 | **Wiring a new project to this repo** | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) |
 | **The family's repositories** — what each is and who vendors it, how one is laid out, **the README rule**, contributing, licence and contact | [`repository-family.md`](repository-family.md) |
+| Writing docs: where text goes, the style rules with a before and after each, and templates for a topic page, a failure entry and an `AGENTS.md` "Common tasks" block | [`writing-docs.md`](writing-docs.md) |
+| What a family term means: admission, census, chain, closure, companion, floor, lane, phase, proof, ratchet, receipt, seal | [`glossary.md`](glossary.md) |
+| Owner decisions the docs cite, each with its date and reason | [`decisions.md`](decisions.md) |
 | **Models and scenes outside the code** — ModelANT, AssetANT, the SHA-256 lock, the hub's fetcher `fetch-data-lock.py` and `kataglyphis_fetch_data`, what stays tracked | [`data-repositories.md`](data-repositories.md) |
 | **Language AI across the family** — the owner's 2026-10-30 decisions, the one engine (chain GenAI), the text contract every binding offers, ModelANT's model packages and their search order, Llama and Gemma obligations, and the roadmap IDs (`LAI-*`) the backlogs name | [`language-ai.md`](language-ai.md) |
 | What is published, what is in it, the feature matrix | [`overview.md`](overview.md) |
@@ -67,7 +70,7 @@ The two halves of one topic often split:
 | The image itself: what is installed, entrypoint, known traps | [`windows-builds.md`](windows-builds.md) |
 | **ROCm on Windows** (`-Variant rocm`): the layer in the sdk slot, `-rocm` tags, what each media component enables, redistribution | [`windows-rocm.md`](windows-rocm.md) |
 | **NVIDIA runtime evidence** — cached Windows image DLLs, SDK provenance and remaining verification | [`windows-nvidia-runtime-evidence-2026-10-30.md`](windows-nvidia-runtime-evidence-2026-10-30.md) |
-| **Rules you must not regress** when editing the Windows chain (49, grouped) | [`windows-build-invariants.md`](windows-build-invariants.md) |
+| **Rules you must not regress** when editing the Windows chain, grouped | [`windows-build-invariants.md`](windows-build-invariants.md) |
 | **Which lane to build on**: BuildKit, nerdctl, the removed classic docker lane; isolation policy, preflight gates, RDNA4 A/B history | [`windows-build-lanes.md`](windows-build-lanes.md) |
 | CPU/memory envelope, the sccache wiring, GPU in containers, vendor-specific DXGI selection, the 125-layer budget | [`windows-build-resources.md`](windows-build-resources.md) |
 | **sccache across build hosts**: the host's WebDAV as level 0, a shared S3 bucket as level 1, the key as BuildKit secrets, the upload drain, the client scripts | [`windows-build-resources.md` § Two cache levels](windows-build-resources.md#two-cache-levels) |
@@ -80,7 +83,7 @@ The two halves of one topic often split:
 | **The home network's addresses**: placeholders in docs and examples, the real values in the gitignored `site.local.env` | [`site.local.env.example`](../site.local.env.example) |
 | **clang-cl sanitizers**: why `-shared-libsan`, trap-mode UBSan, Microsoft's ASan runtime over LLVM's, and who stages the DLL | [`windows-clang-cl-sanitizers.md`](windows-clang-cl-sanitizers.md) |
 | **The sanitizer modules on every compiler**: Debug-only generator expressions, the defaults, the combinations each toolchain drops, clang-cl's trap-mode UBSan | [`../cmake/README.md`](../cmake/README.md#sanitizers-what-the-modules-actually-do) |
-| Stevedore post-install fixes, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
+| Stevedore post-install fixes, disk inventory, delegated maintenance/new-host limits, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
 | **Local fixes to upstream projects** — every third-party source change the Windows chain carries, graded, and the 12 prepared-but-unsent submissions | [`upstream-windows-patches.md`](upstream-windows-patches.md) |
 | **Building for Windows-on-ARM**: why there is no arm64 image, the clang-cl cross lane, arch gates, what reached runtime parity with amd64 and what stays amd64-only | [`windows-cross-builds.md`](windows-cross-builds.md) |
 | **A consumer's Windows products**: the reusable `container-ci-windows.yml` lane, the product folder and its DLL closure (`Copy-PeImportClosure`), and CPack's `KATAGLYPHIS_PACKAGE_DLL_DIR` | [`windows-cross-builds.md` § Consumer cross lanes](windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml) |
@@ -164,6 +167,7 @@ Wiring a new project: [Start here](#start-here).
 | Which preflight gate has a test, a mutation, or neither — the derived table | [`code-quality-gates.md`](code-quality-gates.md) |
 | **Weekly fleet health** — `fleet-health.py` and `fleet-health.yml`: the AI repos' tree metrics and GitHub state graded against the previous run, exit codes, storage and the owner routine | [`fleet-health.md`](fleet-health.md) |
 | **A consumer page that restates a hub page** — `doc-dupes --against-hub` in `run-lint-gates.sh --ratchets`, off until the consumer seeds `doc-dupes-hub.allow` | [`code-quality-tooling.md`](code-quality-tooling.md#consumer-pages-against-the-hub-doc-dupes---against-hub) |
+| Prose that may only get better: the `doc-prose` ratchet, its census, the limits for a new page and the `AGENTS.md` word budget | [`code-quality-tooling.md`](code-quality-tooling.md#doc-prose-doc-prose) |
 | Which repos consume this hub, and which entry points they actually reach | [`consumer-inventory.md`](consumer-inventory.md) |
 | **Upgrading dependencies** — Renovate as a local CLI, direct submodules initialized on apply and moved to each remote default branch tip, and lock file maintenance (every lock to its newest in-range release) | [`dependency-updates.md`](dependency-updates.md) |
 | Compiling a Slang shader tree to SPIR-V and WGSL | [`slang-shader-compilation.md`](slang-shader-compilation.md) |
@@ -212,6 +216,7 @@ Wiring a new project: [Start here](#start-here).
 | The submodule-pin invariant as a lane a consumer can `uses:` | [`adopting-in-a-new-project.md` § 9](adopting-in-a-new-project.md), `../.github/workflows/submodule-pins.yml` |
 | **Generated output committed to a consumer's index**: the shared `Repo.GeneratedArtifacts.Tests.ps1` and the repo's `generated-artifacts.txt`; why `**/__pycache__/` matches nothing | [`adopting-in-a-new-project.md` § 9](adopting-in-a-new-project.md#9-quality-gates) |
 | Workflow file and display names across the family (`linux-x64.yml`, `Linux x64 · …`), and the 2026-09-24 rename table | [`adopting-in-a-new-project.md` § Workflow file names and display names](adopting-in-a-new-project.md#workflow-file-names-and-display-names) |
+| How long the shared lanes keep package, report and hand-off artifacts (`artifact-retention-days`) | [`python-ci.md` § How long the artifacts live](python-ci.md#how-long-the-artifacts-live) |
 | One Linux arch per caller of the Python lane (`arches`) | [`python-ci.md` § One arch per caller](python-ci.md#one-arch-per-caller-the-arches-input) |
 | **A Python repo's Windows CI build** without a `Build-Windows.ps1` of its own: `Invoke-PythonCiBuild.ps1` and the repo's `scripts\windows\python-ci.psd1` | [`python-ci.md` § The Windows build driver](python-ci.md#the-windows-build-driver) |
 
@@ -228,8 +233,10 @@ owning page above.
 | What to read in a running chain's log | [`build-watch-list.md`](build-watch-list.md) | The 2026-09-05 wave's closure changes, grouped by stage: the log line that proves each one worked and the line that means it failed, plus the read-only probes to run on the shipped bytes afterwards. Why: eleven backlog entries closed on static proof, and a first rebuild attempt still found two build-killing bugs. |
 | Open refactor work, Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | What changed and why, current wave | [`../CHANGELOG.md`](../CHANGELOG.md) |
-| Changelog entries 2026-11-06 … 2026-11-17 | [`changelog-archive-2026-11-17.md`](changelog-archive-2026-11-17.md) | Linux and Windows build, cache, packaging and acceptance history. |
-| Changelog entries 2026-11-06 … 2026-11-12 | [`changelog-archive-2026-11-12.md`](changelog-archive-2026-11-12.md) | Linux and Windows build, cache, packaging and acceptance history. |
+| Changelog entries 2026-11-15 … 2026-11-17 | [`changelog-archive-2026-11-17.md`](changelog-archive-2026-11-17.md) | Preserved Linux and Windows source, workflow and acceptance history. |
+| Changelog entries 2026-11-13 … 2026-11-14 | [`changelog-archive-2026-11-14.md`](changelog-archive-2026-11-14.md) | Preserved Linux and Windows build, test and acceptance history. |
+| Changelog entries 2026-11-07 … 2026-11-12 | [`changelog-archive-2026-11-12.md`](changelog-archive-2026-11-12.md) | Build, cache, packaging, consumer hooks and acceptance history. |
+| Changelog entries 2026-11-05 … 2026-11-06 | [`changelog-archive-2026-11-06.md`](changelog-archive-2026-11-06.md) | Compiler caches, Windows TensorRT acquisition and GPU runtime fixes. |
 | Changelog entries 2026-11-05 | [`changelog-archive-2026-11-05.md`](changelog-archive-2026-11-05.md) |
 | Changelog entries 2026-10-23 … 2026-11-04 | [`changelog-archive-2026-11-04.md`](changelog-archive-2026-11-04.md) | Linux and Windows build, cache, packaging and acceptance history. |
 | Changelog entries 2026-10-20 … 2026-10-22 | [`changelog-archive-2026-10-22.md`](changelog-archive-2026-10-22.md) | Linux and Windows build fixes, shared tooling and CI regression coverage. |
@@ -286,9 +293,9 @@ them.
 
 - **Pre-commit hooks:** run **`make hooks`** once after clone; it points `core.hooksPath` at
   `linux/host-config/git-hooks`. What they run: [`AGENTS.md`](../AGENTS.md) § Validation.
-- **Four gates guard the docs; none is optional.** They exist because this tree lost a licence
+- **These gates guard the docs; none is optional.** They exist because this tree lost a licence
   page, a doc index and ~50 cross-references to silent drift on a single day. Run them with
-  `PREFLIGHT_ONLY=doc-links,doc-dupes,sbom,version-snapshot bash linux/scripts/preflight.sh`.
+  `PREFLIGHT_ONLY=doc-links,doc-dupes,doc-prose,sbom,version-snapshot,readme-length bash linux/scripts/preflight.sh`.
   - `doc-links` — every relative link, deep-link anchor, `file.md § Heading` prose reference,
     and index coverage against BOTH `docs/INDEX.md` and the Sphinx toctree. **Rename a heading
     and this fails**, which is the point.
@@ -298,6 +305,9 @@ them.
     the passage one owner and link to it. `docs/INDEX.md` decides which page owns what.
   - `sbom` / `version-snapshot` — the generated licence pages and the curated SBOM must match
     `deps.json` + `versions.env`.
+  - `readme-length` — a root README over 100 lines fails.
+  - `doc-prose` — a page's prose rates may only fall; a new page meets fixed limits. The style:
+    [`writing-docs.md`](writing-docs.md).
 - **Adding a dependency is a docs change.** A new component needs an entry in
   `docs/deps/deps.json` with an `spdx` id and, if that licence is copyleft, a `source` block, or
   the build fails; a component this repo patches also needs a `modified` marker. Procedure,

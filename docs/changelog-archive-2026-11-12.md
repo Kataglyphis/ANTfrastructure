@@ -1,19 +1,37 @@
-<!--
-Copyright (c) 2026 Kataglyphis
-SPDX-License-Identifier: MIT
--->
+# Changelog archive: 2026-11-07 … 2026-11-12
 
-# Changelog archive — 2026-11-06 … 2026-11-12
+Later entries are in [the 2026-11-13 … 2026-11-14 archive](changelog-archive-2026-11-14.md);
+preceding entries are in [the 2026-11-05 … 2026-11-06 archive](changelog-archive-2026-11-06.md).
 
-Entries moved from the root `CHANGELOG.md` on 2026-11-13 at a complete date
-boundary. Original text is preserved; relative links are rebased to this directory.
-The preceding history is in [the 2026-11-05 archive](changelog-archive-2026-11-05.md).
+## 2026-11-12 — the consumer hook pair: staged checks on a commit, the repo's full gates on a push; mutation staleness is a lint gate (CON243, CON244)
 
-## 2026-11-12 — retain platform checks and FT transport controls during source reconciliation
-
-- Preserve both OpenCV imports, all runtime platform gates, the canonical plugin profile name and both branches' mutation recipes while reconciling isolated WebGPU/MIGraphX work with the owner's updated baseline.
-- Group the three runtime platform calls without hiding shared failure accounting; four executable mutants prove main wiring, order, argument boundaries and failure visibility. The runtime file's frozen size budget shrinks.
-- Correct the FT transport fixture's missing NumPy/architecture inputs, assert the dependency install argv and raw transport status for every ORT branch, and retain failing factory callbacks. Two argument mutants must bite; these doubles do not prove a real dependency install or final image/consumer acceptance.
+- `shared/linux/templates/git-hooks/` holds a `pre-commit` and a new `pre-push`. Both call the repo's own
+  `scripts/linux/run-lint-gates.sh` when it has one and the bare aggregator only when it has none. The old
+  `pre-commit` called the bare aggregator, so it dropped the wrapper's `--ratchets`, and with it the large-file
+  check, and `--agents-drift`. It was also tracked as `100644`: git skips a hook that is not executable with one
+  `hint:` line, so the template ran in no Linux clone. Both files are executable now.
+- `pre-commit` runs the wrapper with `--staged --index <the index of this commit>`: the large-file check, behind
+  `--ratchets`, and the secret scan over the staged blobs. `git commit -a` and `git commit <path>` are graded on the
+  index git builds for them. One staged file took 2.4 and 2.7 s in a scratch clone of OxidANT on the Raspberry Pi 5.
+- `pre-push` runs the wrapper, then `scripts/linux/pre-push-checks.sh` when the repo has that file; the contract is
+  in [`adopting-in-a-new-project.md` § The git hooks, by reference](adopting-in-a-new-project.md#the-git-hooks-by-reference).
+  A push took 130 s in the same clone beside another build, 188 s under more load: the shellcheck warning
+  ratchet 60 s, shellcheck 32 s and gitleaks 26 s of the 130.
+- `run-lint-gates.sh` has an eighth gate, `mutation staleness`, over every tracked
+  `scripts/linux/tests/*mutations*.json`: a stale recipe fails with its id, in every consumer and in the reusable
+  lint lane. It takes `--staged [--index <file>]`, and it prints one warning line when `core.hooksPath` is unset
+  and `CI` is not set.
+- `test-consumer-hooks.sh` drives both hooks with real commits and pushes in throwaway repos, over a hub copy whose
+  downloaded linters are stubs; `test-lint-gates.sh` holds the gate. 22 recipes `lint-gates.*` hold the behaviour,
+  each proved by hand. Not run: the full preflight, CI, and a push from a real consumer clone.
+- A review ran both hooks in scratch clones of OxidANT and OrchestrANT, the hub tree copied over the submodule,
+  pushing to throwaway bare remotes. A clean push passed (127 s and 84 s). A stale recipe and a shellcheck error
+  each stopped the push by name in both, an oversized comment block in OxidANT, and a failing
+  `pre-push-checks.sh` in both. A commit took 3 s, and 5 to 16 s with all four cores busy.
+- Open, `BACKLOG.md` CON269: the four consumer wrappers still carry their own `--stale-check` loop, no hook
+  checks line endings in a consumer, no gate lints the two hook files, and a linked worktree without the hub
+  submodule has no hook and no line that says so. CON270: the hub's own `pre-commit` reads the old index under
+  `git commit -a`.
 
 ## 2026-11-12 — set the amd64 baseline to x86-64-v3 (not built yet)
 
@@ -50,6 +68,12 @@ The preceding history is in [the 2026-11-05 archive](changelog-archive-2026-11-0
 - `BACKLOG.md`: CON234 to CON253 from the audit of the four consumers, CON254 (`New-PortableBundle` leaks its package
   check's output), CON255 (one failed download fails the benchmark-history step) and CON256 (what the consumers'
   move onto the plugin left open on the hub side). CON231's step 2 names the order and the name the owner chose.
+
+## 2026-11-12 — retain platform checks and FT transport controls during source reconciliation
+
+- Preserve both OpenCV imports, all runtime platform gates, the canonical plugin profile name and both branches' mutation recipes while reconciling isolated WebGPU/MIGraphX work with the owner's updated baseline.
+- Group the three runtime platform calls without hiding shared failure accounting; four executable mutants prove main wiring, order, argument boundaries and failure visibility. The runtime file's frozen size budget shrinks.
+- Correct the FT transport fixture's missing NumPy/architecture inputs, assert the dependency install argv and raw transport status for every ORT branch, and retain failing factory callbacks. Two argument mutants must bite; these doubles do not prove a real dependency install or final image/consumer acceptance.
 
 ## 2026-11-12 — admit bounded genuine MIGraphX parser builds
 
@@ -148,6 +172,58 @@ The preceding history is in [the 2026-11-05 archive](changelog-archive-2026-11-0
 - Keep offline installation by default, explicit network opt-in for the pinned dependency, raw child failures and both streams after failures or timeouts. Refuse reused evidence roots and publish the overall receipt only after every requested native/GIL/FT phase succeeds.
 - Synthetic receipt and subprocess controls prove dispatch and failure accounting; actual image, both WASM flavors and final consumer acceptance require separate evidence.
 - The local default-amd64 media index `b6b654b62f92` passes the actual native/GIL/FT factory and negative controls, with the FT GIL disabled, raw zero and checked cleanup/container absence. This covers its CPU prefix, not other products, WASM or final runtime/consumer acceptance.
+
+## 2026-11-11 — record private NVIDIA producer and host acceptance
+
+- Record the completed `a4d31ea5` private NVIDIA chain and image-bound five-run
+  CPU/CUDA/TensorRT-plugin/DirectML evidence. Correct the older backlog claim
+  that the complete chain and host inference were still unproved.
+- Keep compiler-counter measurements, other lanes, consumer adoption and ARM64
+  publication separate. This documentation does not move an image tag or approve
+  the open CON228 notice draft.
+
+## 2026-11-11 — share portable Torch refusal assertions
+
+- Move the wrapped-refusal control into a portable suite and share its assertion
+  with every native installer case. Its mutation runs without Windows batch tools
+  on Linux while retaining the raw exit, normalized reason and no-download guards.
+  Native installer and interpreter execution cases remain discovered separately.
+
+## 2026-11-11 — run ORT census-path mutations on both hosts
+
+- Extract the three census-path cases into a separately discovered portable suite,
+  sharing the wheel-store fixture with native sync tests. Recognise either trailing
+  path separator when mapping a Dockerfile directory destination. The Linux mutation
+  command now exercises its intended cases without requiring a Windows drive.
+- Preserve every native sync case and the inherited-twin negative control; a second
+  mutation checks the directory mapping. These fixtures do not run real inference.
+
+## 2026-11-11 — align the TensorRT installer reference
+
+- Correct the script reference to describe the single CUDA-matched NVIDIA URL,
+  ZIP signature, checksum check and fatal acquisition failure. The installer
+  already follows this policy; the reference still described removed fallbacks.
+
+## 2026-11-11 — isolate native Windows test fixtures
+
+- Share captured child diagnostic normalization between Python CI and Torch
+  refusal fixtures; wrapped ANSI error text retains status, reason and no-download
+  assertions. The ORT census-path fixture clears inherited twin-wheel overrides
+  and proves its own path with both overrides deliberately present.
+
+## 2026-11-11 — Windows ROCm plugin lifetime corrections
+
+- Apply the canonical AMD EP node-cleanup and registry-ownership patches before
+  configuring the Windows plugin. Typed deletion keeps all six C ABI callback
+  adjustments; registry creation is synchronized and its owner releases before
+  data transfer. Only the EP RUN mounts the two shared patch files.
+- Windows source fixtures cover application, idempotence, missing/stale patches,
+  fatal child failures and build wiring. Separate native Windows controls show
+  both original failures and 11 node/41 registry checks after correction. These
+  controls do not replace the complete plugin build or physical GPU acceptance.
+- Share recorded argument and source-order assertions across the AMD EP,
+  TensorRT, disk-probe and chain-log suites. Preserve each caller's diagnostics;
+  the shared checks retain count, value, argument selection and uniqueness controls.
 
 ## 2026-11-11 — prepare verified private QAIRT delivery
 
@@ -283,6 +359,22 @@ The preceding history is in [the 2026-11-05 archive](changelog-archive-2026-11-0
 - Version mutation-unit sealing, cache-status capture and the real tiny MIGraphX ownership probe.
   Preserve the command's raw failure, reject unloaded units and reuse the canonical profile verifier.
 - Add failure fixtures and mutation recipes; historical run scripts and receipts remain immutable evidence.
+
+## 2026-11-10 — require the cuDNN host API smoke control
+
+- NVIDIA smoke now resolves the exact main cuDNN header, import library and
+  versioned runtime with the shared recursive finder. Missing inputs fail
+  instead of skipping after unset-variable errors. Native host-API execution
+  and cross-target link/PE checks retain their existing policies.
+- Four regression cases and six biting mutations cover discovery, required
+  inputs and dispatch. These fixtures use fake compilation; real image SDK
+  linkage, final-source CI and physical GPU acceptance remain separate checks.
+  The corrected full live-script replay against the immutable NVIDIA image
+  passes 319/0/2, including real cuDNN compilation, linkage and host API execution.
+
+- Six existing smoke mutation commands now let the canonical test runner create
+  result directories. This removes a Unix-only mkdir prefix that failed under
+  Windows cmd before the unchanged test or mutant could run.
 
 ## 2026-11-10 — preserve MIGraphX node and registry ownership
 
@@ -439,7 +531,6 @@ The preceding history is in [the 2026-11-05 archive](changelog-archive-2026-11-0
 - Preserved all nine complete 2026-11-05 entries and their relative-link targets in
   the [dated archive](changelog-archive-2026-11-05.md), registered in both docs
   indexes. No physical NVIDIA inference is established by these image/consumer checks.
-
 
 ## 2026-11-09 — repair Linux TensorRT cross builds and CUDA cache parsing
 
@@ -813,6 +904,7 @@ The preceding history is in [the 2026-11-05 archive](changelog-archive-2026-11-0
   finding list as empty, and `Test-Container.ps1` wraps the gap in `@()`. A Smoke.FindingVerdict case and the
   `lib.smoke-finding-empty-if-result` mutation hold it
   ([failure-modes.md](failure-modes.md#a-smoke-check-fails-and-names-no-finding)).
+
 ## 2026-11-07 — `:latest-rocm` ships AMD's plugin MIGraphX EP (CON231, step 1)
 
 - CON153 is proved inside a RUN: the fourth rocm proof chain's media stage logged `asset-mirror| hit` for all ten
@@ -908,114 +1000,3 @@ The preceding history is in [the 2026-11-05 archive](changelog-archive-2026-11-0
   cache hit twice; sccache 0.19 also prints no write count. The nonce is now code, and the probe
   requires a miss, then a hit (`Diagnostics.CudaCacheProbe.Tests.ps1`, two mutations).
   It passed on `bk-windows-toolchain-nvidia`: 4 misses, then 4 hits (CON229).
-
-## 2026-11-06 — IREE builds outside the 20 GB RUN scratch
-
-- The amd64 media-tvm stage failed with `No space left on device` in IREE's compiler wheel while
-  the host had 65 GB free: every Windows RUN gets a sandbox of about 20 GB, and IREE with LLVM
-  in-tree left 0.3 GB. Its build tree now lives on the RUN's `iree-build-winamd64` cache mount at
-  `C:\iree-build`, emptied before configure and after the wheels; a checkout run keeps the old tree.
-  Each wheel logs the free space it starts with. `SourceBuild.IreeScratch.Tests.ps1` and six
-  mutations hold the path on both sides, the resolver and both resets.
-
-## 2026-11-06 — develop is green again after the Windows image fixes
-
-- The push of `b2b906d8` turned Linux preflight, eight mutation shards and the Windows patch-drift
-  job red (#234, #235). The Windows suites behind the new recipes failed on Linux pwsh, where CI
-  proves them: the meson provenance case and the MSVC notice suite now use separators and an
-  interpreter every host has, and the cases that need Windows (cmd.exe, VsDevCmd, the twin builds)
-  moved to `TorchApp.SdistCompilerVs.Tests.ps1`, leaving the recipes on `SourceBuild.IreeTwin.Tests.ps1`.
-- `LIBVPX_MESON_SHA256`, `DIRECTML_NUPKG_SHA256` and `LIBVPX_VERSION` are classified in
-  `bump_versions.py`; `genai-guidance-smoke.py` passes ty. New duplication was refactored away rather
-  than budgeted: `Get-BinDllProvenanceEntry` (OpenSSL and the MSVC runtime), `Add-IreeNinjaTuFlag`,
-  and `WindowsPythonApp.Common` re-exporting the notice API. Two allowlist rows became stale and left.
-- The drift check maps `002-libvpx-clangcl-simd-flags.patch` to the libvpx meson port at
-  `LIBVPX_MESON_COMMIT`, which the wrap applies it to, instead of GStreamer's tree.
-- The libvpx patch's repo now lives in the drift check's one repo map (`Patches`), not a second table
-  whose parameter duplicated another suite's signature; the TensorRT and MSVC-notice recipe families
-  are declared in `gate-proofs.allow`.
-- `wsl-quality.sh check` hands the suites one absolute interpreter path: 108 of them run
-  `"${PREFLIGHT_PYTHON}"` quoted, so the multi-word `uv run ... python` exited 127 in each.
-- Still red until `:winarm64` is published again (#236): the device gate runs the published bundle,
-  which predates libvpx (`no element "vp8enc"`) and the onnxinference wide-path fix (0xC0000005).
-
-## 2026-11-06 — Windows packages carry the MSVC runtime's notice
-
-- A ZIP, MSIX or MSI that carries the VC++ runtime ships `licenses/msvc-runtime/Redist.txt` and a
-  `README.txt` with the end-user notice and the learn.microsoft.com link; the wording is a draft for
-  review. CPack installs both and adds the notice to the WiX licence page; `New-PortableBundle` and
-  the Python app bundle stage them; `Assert-PackageMsvcRuntimeNotice` fails a finished package with
-  the runtime and without the notice (`WindowsMsvcRuntimeNotice.Common.psm1`, CON228;
-  `Msvc.RuntimeNotice.Tests.ps1`, `test-cmake-windows-arch.sh`, four `msvc-notice` recipes).
-
-## 2026-11-06 — ORT's LLM kernels compile through sccache on Windows
-
-- `onnxruntime_providers_cuda_llm`, the last CUDA target on bare nvcc, keeps the sccache launcher:
-  `Get-OrtPtxLauncherExemptArg` and `sccache-ptx-exempt.cmake` are gone. The hub's sccache build
-  carries mozilla/sccache#2809, and in the nvidia toolchain image it compiled `sm_86` plus PTX-only
-  `compute_120` without `Missing "cubin" file output`, warm 5 of 5 from the cache.
-  `SourceBuild.OrtCudaLauncher.Tests.ps1` refuses an exemption's return
-  (`lib.ort-cuda-launcher-no-exemption`, `sccache.ptx-only-pass-runs-uncached`). The chain proof
-  (provider link from hits, smoke gate, `Test-Cache.ps1`) comes with the next nvidia chain.
-- v0.19.0 is exactly `SCCACHE_SOURCE_REV` and carries #2876; #2809 merged on 2026-11-02 and is in no
-  release yet, so the hub's build stays (`shared/upstream/sccache/README.md`).
-
-## 2026-11-06 — The Windows nvidia lane downloads TensorRT and fails without it
-
-- `Install-Tensorrt.ps1` guessed the pre-11.x file names, which 404 for TensorRT 11, so every
-  `-Gpu` image shipped without TensorRT while the log read "Continuing WITHOUT TensorRT". It now
-  downloads `TensorRT-Enterprise-<ver>-Windows-amd64-cuda-<cuda>-Release-external.zip` from
-  `developer.nvidia.com/downloads/compute/machine-learning/tensorrt/`, for the image's CUDA line
-  only, and grades it with the unchanged `TENSORRT_ZIP_SHA256`: the 11.4.0.106 zip fetched on the
-  host on 2026-11-06 hashed to the pin. A staged zip in `windows/downloads/` still wins.
-- No TensorRT now fails the nvidia lane (owner, 2026-11-06): the installer and `Set-TensorrtTree.ps1`
-  throw, and the smoke gate fails an `-ExpectGpu` image with an empty `TENSORRT_ROOT`
-  (`host.trt-url-tensorrt11-scheme`, `host.trt-missing-throws`, `smoke.trt-required-expect-gpu`).
-  The runtime-only rule is unchanged. Windows arm64 TensorRT stays off as an owner decision (CON230).
-## 2026-11-06 — QNN's Hexagon skeletons are DSP payload, and NVIDIA's gst plugins are recorded
-
-- The first green arm64 nvidia package stage reached the runtime-image smoke, which failed on 107 QDSP6 objects
-  under `onnxruntime-cpu/lib/hexagon-v*/`: the HTP backend's skeletons, run by the DSP, never by the image's
-  loader. The tree-arch scanner skips those dirs and names machine 164 `QDSP6` (`tree-arch.hexagon-skels-are-dsp-payload`,
-  `tree-arch.hexagon-filter-is-narrow`). The five `libgstnv*.so` plugins that need the driver's `libcuda.so.1` are
-  recorded per arch in `_PARITY_GST_KNOWN_BROKEN` (`runtime-smoke.nvidia-gst-plugins-recorded`,
-  [failure-modes.md](failure-modes.md#tree-arch-usrlocallibonnxruntime-cpu-ships-107-em164-objects-on-arm64)).
-
-## 2026-11-06 — A required `rustup … add` is retried under qemu-user
-
-- The arm64 package stage of the nvidia chain died in `rustup component add rustfmt` with a qemu-user SIGABRT
-  mid-download, a step the three runs before had passed. `rustup_required` in `install-rust.sh` runs each of the
-  four required adds up to three times and fails the installer after the third (`rust.rustup-required-retries`,
-  `rust.rustup-required-propagates`,
-  [failure-modes.md](failure-modes.md#rustup-component-add-aborts-under-qemu-user)).
-
-## 2026-11-06 — The SBSA RUNPATH starts with `$ORIGIN`, and the CUDA SONAMEs come from the host toolkit too
-
-- The fourth arm64 package stage left 15 closure rows with every element registering: nine were
-  `libnvdsgst_deepstream_bins.so` NEEDing its sibling plugins in `gst-plugins/`, out of reach of a RUNPATH that
-  names `lib/` alone, and six were still bare `libcufft.so`, `libcublas.so`, `libnppial.so` and `libnppist.so`,
-  because the staged arm64 runtime holds only cudart's dev link. `ds_sbsa_runpaths` now writes
-  `RUNPATH=$ORIGIN:…/lib`, as the amd64 Makefiles do, and `ds_sbsa_cuda_soname` reads the SONAME from the target
-  view or the host toolkit of the same version (`deepstream.sbsa-origin-runpath`, `deepstream.sbsa-host-cuda-sonames`,
-  [failure-modes.md](failure-modes.md#broken-libgst-pluginslibgstnvvideoconvertso---libnvbufsurfaceso100-on-the-arm64-package-stage)).
-
-## 2026-11-06 — The SBSA bufferpool is staged under its SONAME, and every bare CUDA NEEDED is rewritten
-
-- The third arm64 package stage left 24 closure rows and four elements that "do not register" from
-  `/nonexistent`: the SBSA container ships `libnvdsbufferpool.so` bare, and nothing that NEEDs
-  `libnvdsbufferpool.so.1.0.0` resolved it; `libcublas.so`, `libnppial.so` and `libnppist.so` were NEEDed
-  bare like `libcufft.so`; and the UCX, Maxine and bare-bufferpool excuses were STALE on a `.deb` without those
-  files. `ds_stage_sbsa_libs` copies the bufferpool under its SONAME with the bare link, `ds_sbsa_runpaths`
-  rewrites every bare NEEDED to the target CUDA dev link's SONAME, and the amd64-only excuses are gated per arch
-  (`deepstream.sbsa-bufferpool-soname`, `deepstream.sbsa-bare-cuda-needs`, `deepstream.sbsa-amd64-excuses`,
-  [failure-modes.md](failure-modes.md#broken-libgst-pluginslibgstnvvideoconvertso---libnvbufsurfaceso100-on-the-arm64-package-stage)).
-
-## 2026-11-06 — The SBSA DeepStream files get RUNPATHs and link TensorRT 10
-
-- The second arm64 package stage failed DeepStream's soname closure (105 rows) and found `nvinfer` linked
-  `libnvinfer.so.11`. The Jetson `.deb`'s files carry no RUNPATH (L4T's `ld.so.conf` has the tegra dir) and NEED a
-  bare `libcufft.so`; `ds_sbsa_runpaths` now sets `RUNPATH=…/deepstream-9.1/lib` on every file without one and
-  rewrites that NEEDED to `libcufft.so.12`, as the amd64 `.deb` carries. The TensorRT 10 SDK's `-L` precedes the
-  sysroot flags on the cross compiler word, and the three VPI consumers are excused on arm64 only
-  (`deepstream.sbsa-trt-sdk-before-sysflags`, `deepstream.sbsa-runpaths-set`, `deepstream.sbsa-vpi-excused`,
-  [failure-modes.md](failure-modes.md#broken-libgst-pluginslibgstnvvideoconvertso---libnvbufsurfaceso100-on-the-arm64-package-stage)).

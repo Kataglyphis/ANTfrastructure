@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# smoke-runtime-image.sh gates, extracted and run with stubbed collaborators because the script needs a live image.
+# Stubbed runtime gates grade control flow and fixture discovery, not live image execution.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

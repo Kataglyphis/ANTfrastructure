@@ -1,5 +1,23 @@
 # Backlog — image gaps
 
+**Complete preflight receipt arguments, 2026-11-22:** source `753e7a05b1dd2becbaefe9111fc160f1288f48cb` completed all 42 canonical groups, 657 suites/33,474 assertions and all 7,720 strict mutation cases with command/capture/cleanup zero. Its original outer sealer returned 2 because the final reader ignored joined `--property=ExecStopPost=...`; preserve that failed assembly and its complete unchanged source logs. The canonical reader now accepts equivalent argument forms and rejects mixed duplicates. Four positive forms, eight refusal cases and six parse-valid mutations pass locally. This tooling change requires a new final-source complete qualification; four Windows producers, hardware, CI and ARM64 digest acceptance remain open. CON228 stays OPEN/DRAFT.
+
+**Isolated preflight transcript, 2026-11-22:** f715 finished its source command and immediate cleanup with raw zero, but its retained attach log lacks the final two outer group verdicts and footer; post-processing failed and the later unit cleanup also failed. All 7,714 mutation cases are byte-verified only, without a complete source seal. Mounted worker logging now preserves both streams before cleanup. Its shared regressions, all eight new/updated semantic mutations and canonical Python lint/type/annotation checks pass; a new exact-source full qualification remains required. Four final Windows lanes, hardware, CI and ARM64 acceptance remain open; CON228 stays OPEN/DRAFT.
+
+**Windows exact-source evidence, 2026-11-22:** private source `79e41b6b814c5bab0e1e225bc3c754c2d804f8a3` has a complete local NVIDIA producer (original raw outcomes `[1,1,1,0]`) and a separate successful canonical CUDA repeat with 605 typed NVCC hits. Exact-image CPU/CUDA/TensorRT MatMul, original plus strict DirectML and default-optimization negative Pad/MaxPool receipts cover their named cases. Both CPU attempts remain raw 1; TVM/IREE succeeded before the second stopped before Media-Merge. The latest fixed-policy non-admin cleanup preserved 22 exact image identities and six compiler caches, freed about 66 GiB and left 95.6 GiB, below the unchanged 100-GiB full-build target. Earlier deployment-pending notes below retain their dates. The integration successor needs its own complete qualification and four-lane/device/hosted-CI/ARM64-digest acceptance; old receipts do not transfer. CON228 remains OPEN/DRAFT. Evidence is indexed in `logs/g5-results.md` and `logs/g2-stage-coverage-current.md`.
+
+**Windows delegated storage, 2026-11-21:** the corrected e416 installation resolves raw image identities and hidden task GUIDs. Its real normal-user preview safely refuses nerdctl's empty process state for the never-started disposable control. The shared parser now validates the complete typed task-absent representation, and canonical removal queries refuse stderr. Corrected protected deployment, normal-user preview/Apply, preservation and actual capacity evidence remain required. Earlier full native e416 qualification stays dated to that source; complete final-source G1-G5 remains open and CON228 stays OPEN/DRAFT.
+
+**Windows shared media module delivery, 2026-11-19:** the complete `2c40a98d` NVIDIA producer and its independent physical CPU/CUDA/TensorRT/DirectML checks passed. Its later admitted CUDA cache repeat ended before compilation because the cached module view was unreadable; no typed hits are claimed. Actual cached/direct controls isolate the same seven module bytes. Media-core and TVM now use the same narrow per-file delivery already used by LiteRT, with TVM's private leaf retained. The successor still needs complete quality, four whole producers, typed repeat, actual devices, hosted CI and approved ARM64 acceptance/promotion; older exact-source results do not transfer. CON228 remains OPEN/DRAFT.
+
+**Windows LiteRT module delivery, 2026-11-19:** complete source67 local qualification passed, but its full NVIDIA run failed before LiteRT compilation: the cached seven-module COPY plus view was present yet unreadable. Actual current-toolchain controls reproduce the failure and prove direct per-file reads/imports in consecutive consumers. Both LiteRT RUNs retain that same narrow closure. A successor needs full source qualification and all four producers; IREE execution, typed CUDA repeat, GPU/device/hosted-CI and ARM64 digest acceptance remain open. CON228 stays OPEN/DRAFT.
+
+**Windows IREE ISA dispatch, 2026-11-19:** the complete 24908390 NVIDIA attempt exported eleven phases through LiteRT, then IREE's AVX512 convolution kernel failed with the global x86-64-v3 floor plus `/arch:AVX512`. A clang-cl control reproduces the precedence in both argument orders. The source patch adds only the matching explicit clang-cl feature flags to the dispatched base target. Full new-source qualification, four full producers, typed CUDA repeat, device/hosted-CI/publication acceptance remain open; CON228 stays OPEN/DRAFT.
+
+**Windows GenAI extensions transport, 2026-11-19:** the full 82c0d0b5 NVIDIA run completed nine phases through Hailo before CMake's extensions clone failed. The exact upstream extensions commit loads through CodeLinaro with a successful object check. Its explicit FetchContent source is being qualified; final-source full builds, typed CUDA repeat, hosted CI and device/publication acceptance remain open. Earlier 82 local QA remains dated to that commit; CON228 stays OPEN/DRAFT.
+
+**Windows CPack mutation targets, 2026-11-18:** the dfbe full native run exposed four recipes targeting a Pester suite, which Linux mutation shards do not install. The cases move to the portable harness with a real export check; all other CMake Pester cases remain. The strict no-Pester registry guard is unchanged. Complete final-source qualification and G1-G5 acceptance remain required; CON228 stays OPEN/DRAFT.
+
 Every known gap in the images this hub publishes (`:latest`, `:winamd64`, the
 `:winarm64` bundle) that a consumer lane hits or works around. The refactoring
 registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
@@ -16,6 +34,10 @@ it is not a fresh assertion about a mutable tag or either GPU variant.
 Earlier Windows and GPU measurements remain dated evidence in their individual entries.
 Decisions and checked closures live in [`docs/image-decisions.md`](docs/image-decisions.md).
 **Re-derive before acting; source completion, image publication and device execution are separate.**
+
+**Windows GenAI source transport, 2026-11-18:** the full bd6 NVIDIA producer exported ONNX, FFmpeg, OpenCV and Hailo, then failed the original GenAI clone. A real CodeLinaro fetch verifies the original 0.19.0 commit/tree; the shared recovery path still requires complete final-source quality, producer, CUDA-repeat and hardware/CI acceptance. CON228 remains OPEN/DRAFT.
+
+**Windows ONNX source transport, 2026-11-18:** a primary-repository 404 prompted an identity-pinned fallback to the original 1.31.1 commit in the AMD-maintained fork. QNN header transport separately retains its original 1.29.0 commit and all six CMake patches. Sparse patch-drift CI shares the original source identity checks and fallback; its actual network result remains a separate requirement. Source transport checks do not complete the outstanding final-source producer, CUDA-repeat, hosted-CI or ARM64-device/publication requirements. CON228 remains OPEN/DRAFT.
 **Digests read 2026-11-02:** `:latest-nvidia` is `70bc45db…`, `:latest-rocm` `05518138…` (created 2026-10-28),
 `:winamd64-nvidia` `b472f91b…` and `:winamd64-rocm` `774af209…`. Entries that cite the older Linux `a5d68fbe…` or
 `0e9dec34…` were not read again on the current digests.
@@ -34,7 +56,149 @@ The agentic loop's format (`docs/windows-agentic-loop.md`):
 
 Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
+## Windows host maintenance portability
+
+- [ ] Accept the repaired real-host v2 inventory and hidden-task lookup. The
+  original setup installed both tasks but failed the post-install image-name
+  query; its normal-user preview refused an unknown hidden instance before any
+  inventory or removal. Preserve both failures, install the reviewed correction
+  and require a fresh preview/Apply GUID, raw scheduler/worker exits, identity
+  preservation and measured capacity. Synthetic controls do not prove deployment.
+
+- [ ] Replay whole qualification with the isolated worker's pinned FT runtime.
+  The `cc284e79` script command returned zero but its real free-threaded extension
+  case printed a missing-interpreter skip. Preserve that limitation; prerequisite
+  fixtures do not replace the completed native and Windows successor results.
+
+- [ ] Accept the complete successor qualification after the QNN fixture ordering
+  correction. The `121e2b86` rootless script gate failed its unchanged 120-case
+  receipt comparison on directory enumeration; its successful Windows quality
+  proof remains scoped to that commit and platform. Preserve the original
+  failure and require a new whole native result; targeted fixture checks do
+  not replace it. See [the diagnosed discrepancy](docs/failure-modes.md#qnn-query-receipts-differ-between-filesystems).
+  Integrating newer develop changes requires complete native and Windows
+  qualification of the resulting commit, including the isolated consumer-hook
+  fixtures; no predecessor result transfers to that merged source.
+
+- [ ] Accept the versioned delegation on the current host: actual UAC setup,
+  ordinary-user preview and Apply, scheduler/ACL readback, retained identities
+  and measured free bytes. The earlier local pilot does not prove v2 acceptance.
+- [ ] Preserve an independent fresh-machine acceptance: real administrator
+  setup, non-admin invocation, ACL/task readback, idle refusal, interrupted
+  setup recovery, before/after identities and actual capacity. Cover an empty
+  initial store and different mount counts. Existing-host success and synthetic
+  task/daemon tests do not prove these facts for another machine.
+
+## Windows resume after completed media branches
+
+- [ ] Verify the explicit `media-merge` boundary in a complete source-bound
+  producer and retain its full ancestry and smoke receipts. At `859eb3b4`, the
+  third CPU request completed all seven media exports, including TVM/IREE, then
+  stopped before merge at 30.7 GiB against its unchanged 45-GiB floor. Replaying
+  the whole fan-out would consume the recovered space again. Source now offers
+  a separate merge selection with all reused-parent, cache and ROCm closure
+  gates. The bounded case helpers passed full Windows qualification at
+  `da7255e9` (353 suites/3,101 tests). Distinct parent-gate phase labels now
+  preserve all three receipts and the final gate separately; the real old
+  collision and a live rollback mutation are covered. Parent probes retain
+  ordinary publication headroom, with real and mutated policy checks. Full qualification
+  of this correction remains required. Functional fixtures and live mutants
+  do not complete producer,
+  hardware, hosted CI or publication acceptance. Preserve all earlier raw1
+  outcomes and keep CON228 open.
+
+## Windows copied-module bind mounts
+
+- [ ] Verify the module source-view correction in complete Windows lanes and
+  after normal regular-cache maintenance. At private `b10ebe57`, four CPU
+  requests ended raw `[1,1,1,1]`: two storage stops before merge and two
+  required-module import failures before compilation. The latter recurred
+  with 99.4 GiB free after cleanup had preserved 22 tags and all six current
+  cache IDs. Source now gives all five copied module stages their own final
+  view layer. Structural/mutation checks and isolated reads do not complete
+  producer, hardware, hosted CI or publication acceptance. Keep CON228 open
+  and retain the historical source-specific evidence. See the [diagnosis](docs/failure-modes.md#a-bind-mount-of-a-branch-image-lists-its-files-but-opens-none).
+
 ## Next image build — GPU consumer findings
+
+**Windows patch drift, 2026-11-16:** the complete local gate at private `3e83d0cc`
+failed on the unmapped torchvision host-cache adapter. The correction maps its
+`torch/utils/cpp_extension.py` target to PyTorch and the existing `PYTORCH_VERSION`
+pin. The full upstream check, catalogue/pin accounting tests and three executable
+mutations pass locally. Full corrected-source qualification, hosted CI and the
+remaining product/device acceptance are still required; earlier image receipts
+retain their original source. See the [patch catalogue](windows/scripts/patches/README.md).
+
+**Private Windows qualification, 2026-11-16:** exact `20509448` passed all 42
+gates and all 4,893 mutations, with 2,503 source blobs and modes verified. Its
+full native Windows run records 3,085/3,087: the MSVC crash fixture could not
+configure on this host, and torchvision lacked its own resolver declaration.
+The entry now declares that resolver; the unchanged parity suite passes 6/6
+and detects its deletion between positive controls. Complete corrected-source
+qualification, hosted CI, new-source products and device acceptance remain open.
+Original failures and source-bound receipts remain in `logs/g5-results.md`.
+
+**Private Windows qualification, 2026-11-15, source `737eb44f`:** all four
+software producers are audited. ROCm retains raw exits 1/1/0, all 18 labels,
+2,496 source blobs before/after and the complete Media-to-Final layer ancestry.
+Its Final manifest is
+`3bc9fc481a5f8295345c8026f286c767916aa7caa6ce8b00b0a08baad81bb6ca`.
+The 286/0/2 smoke summary and additional raw HIP-load skip remain distinct.
+Four private AMD exports pass provenance checks; both native programs pass five
+local CPU runs in one session each. The prepared portable replay also passes its
+CPU mode with all 12,134 runtime files checked before/after. The AMD machine is
+still under Linux; Windows AMD loading and inference remain unproved. ARM device22,
+current publication, final-source integration and required hosted CI remain open.
+Torchvision's measured zero-request compiler-cache gap also stays open; upstream's
+pinned wrapper helper disables automatic wrapping for Windows/HIP. No cache fix
+or new current-source CUDA repeat is implied. See the
+[current producer/device scope](docs/windows-rocm.md#private-737-producer-and-amd-device-scope)
+and [coordination report](https://github.com/Kataglyphis/ANTfrastructure/issues/249#issuecomment-6886786046).
+
+**Qualification finding, 2026-11-14:** native preflight at private `2383a9fb`
+was stopped after lifecycle mutation fixtures reached the real Linux BuildKit
+prune client. The isolated correction disables both host prune permissions and
+adds sentinel-engine coverage. Full qualification of the corrected commit remains
+required; the separate Windows CUDA repeat retains its own unchanged source.
+
+**Windows evidence, 2026-11-14, private source `d9f129af`:** the NVIDIA producer
+passes its audited three-request chain (raw 1/1/0) and 319 smoke assertions with
+two retained skips. Fresh image-bound CPU/CUDA/TensorRT MatMul and negative
+Pad/MaxPool checks each pass five numerical/profile runs; canonical DirectML
+and five strict NVIDIA-adapter runs separately reconcile the two smoke skips.
+See [Issue249](https://github.com/Kataglyphis/ANTfrastructure/issues/249#issuecomment-6884427022)
+and `logs/g5-results.md`. The separate complete d9 CUDA repeat now has actual
+compiler hits, five verified exports and raw exit zero; its primary audit is
+`955e332773ba261b220f1432082c820ca48576f48e30bea9c4a590e424073a88`.
+The [resource page](docs/windows-build-resources.md#completed-d9-cuda-repeat-and-stage-coverage)
+binds its stage coverage and limits. Other final-source lanes, device acceptance,
+hosted CI and current ARM promotion remain separate requirements.
+Local native Windows lint and strict complexity pass; the full suite retains
+its failed result, including missing host MSVC for the real crash fixture.
+The corrected general cleanup fixture still needs complete final-source CI.
+
+**Windows evidence, 2026-11-12, frozen source `5bd443ea`:** the private CPU
+producer passes 289 smoke assertions (two retained skips); ARM64 cross passes
+152 (17 retained skips). NVIDIA passes 319 (two container hardware skips with
+separate image-bound host evidence) through an audited normal full run plus
+its documented Torch/final continuation; the disk-stopped parent's raw exit
+remains 1. Its forced ONNX repeat records 6,304 typed compiler-cache hits,
+zero misses/errors and 605 retained non-cacheable compilations. These are
+compiler executions, distinct from reused image layers and cumulative counters.
+ROCm now completes the audited three-part producer: raw exits 1/1/0 retain the
+two ordinary disk stops; Final passes 286 assertions with two retained skips.
+Its manifest is `fa4bc369a67ea33182e33b42c00e243f71a2c3faf372754fbe14494fcaf5b309`.
+The additional HIP-load skip is outside that summary. The default ROCm spikes
+compile a gfx1201 kernel and pass their checks; physical AMD inference is unproved.
+The negative Pad/MaxPool CPU/NVIDIA controls and actual ARM ZIP transport pass,
+while the reviewed Windows MIGraphX correction is integrated only in the local
+source candidate. The ordinary ROCm runtime now has complete host hash verification;
+its SDK-bound native probe passes five independently profiled CPU runs and rejects
+five corrupt models plus three invalid settings. Its AMD invocation refuses with
+HIP 100 on this host. Final-source CI/builds, Windows AMD inference, the newer private
+ARM device22 and its digest-specific candidate/promotion remain open. No image tag moved.
+See the dated receipts and scope in `logs/g5-results.md` and
+[Issue249](https://github.com/Kataglyphis/ANTfrastructure/issues/249#issuecomment-6841287819).
 
 **Windows evidence, 2026-11-11:** source `a4d31ea5` produced the private final
 NVIDIA manifest `d66fe94e923422d2cf52da458f26f01276eb010c03e1368677e31a84174d87ef`.
@@ -221,6 +385,10 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       it ([`amd64-x86-64-v3-baseline.md` § Windows x64](docs/amd64-x86-64-v3-baseline.md#windows-x64)). Not
       covered: the ROCm lane (PyTorch, llama.cpp HIP, MIGraphX) and OxidANT's MSIX cargo build. Left: build and
       measure with CON264's chain on the owner's go.
+      **2026-11-18 compatibility fix:** the first NVIDIA attempt failed in CPython zlib-ng because
+      global v3 suppressed per-file AVX512. Late per-item v3/v4 selection preserves dispatch;
+      native MSBuild/ClangCL controls reproduce the old failure and compile all four corrected cases.
+      Full producer acceptance and CPU measurements remain open.
       **Owner 2026-11-18:** he records the "before" numbers on the 5950X at the next lab session, with the new lab
       baselines, and then gives the go.
 
@@ -367,7 +535,7 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       `clean-host-package-check` action on `ubuntu-26.04`; linux-build-basics.md § Linux packages
       that run outside the image): the packages start on the image's base and newer. The image's
       loader and glibc travel with `LOADER` since 2026-10-17: AccelerANTgine's `.deb`, tarball and
-      AppImage start on himbeere2's Debian 13, and so does OmniAccelerANT's app through
+      AppImage start on the Pi's Debian 13, and so does OmniAccelerANT's app through
       `bundle-loader.sh --beside` (a window drawn on Debian 13, its flatpak started by the lane),
       OrchestrANT's Python app packages, whose interpreter carries the launcher (2026-10-18,
       their clean hosts start them), and BeschleunigerBallett's 1.5.2 tarball, through its bundled
@@ -375,7 +543,7 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       `dc8ba245`, 2026-10-18). Left: AccelerANTgine's `kataglyphis_inference` wheels, the
       same closure through auditwheel.
 
-      Done when those wheels install and import on himbeere2's Debian 13 and in the clean-host job.
+      Done when those wheels install and import on the Pi's Debian 13 and in the clean-host job.
 
 - [ ] **CON79 — the cp314t chain twins reach the published images, and phase 2** [L, ★★]. Linux native
       **arm64 twin, 2026-11-05:** chain `20261105-024512` failed `Assert-NinjaFreeThreadedDefine`, because ORT's CMake only prints that it enables free-threading and a cross configure got no define.
@@ -462,7 +630,11 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       proved** (CHANGELOG 2026-10-12). Hub c5466f58's rocm chain built every stage without it: MIGraphX with the
       EP, `ggml-hip` (gfx1201 and gfx1200), and torch 2.14.1+rocm10.1.0 with HIP 7.16.26385. Smoke: 265 passed,
       0 failed, 1 skipped, and all eleven rocm-checks passed (`kernel compiled for gfx1201`). Only the GPU
-      runs below are left on Windows.
+      runs below are left on Windows for that historical source generation.
+      The subsequent [zero-pad MaxPool source correction](docs/windows-rocm.md#explicit-zero-padding-before-maxpool)
+      has a real seven-case upstream C++ proof and local Windows patch/wiring tests.
+      A corrected Windows producer and AMD inference are still pending; the Linux
+      packaged dependency needs a coordinated source-build correction too.
       **Both, on a real GPU (RX 9070 XT, gfx1201):** a MIGraphX EP session, torch HIP, and a small model on
       ggml-hip against its CPU result. With no bundled runtime a bare Windows host's loader takes Adrenalin's
       System32 `amdhip64_7.dll` before TheRock's (llama.cpp#26929): prove it serves TheRock 10.1's hipBLAS, or
@@ -1082,7 +1254,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       including real ONNX frames and the cp315t IREE twin. The approved `:winarm64`
       publication now uses digest `9ee61e2f...ac137`; the complete identity and acceptance
       receipt are recorded in [windows-cross-builds.md](docs/windows-cross-builds.md).
-      Consumer model outputs and actual GPU execution remain separate open work.
+      Native public replay 43154553839 on 2026-11-12 again passes 22/22 and real ONNX
+      frames, with the same digest/config. Its workflow source is `d66d3909`, while
+      the image stays `7c575e34`. DirectML reports NoAdapter, so its conditional
+      check supplies no GPU proof. Newer private/final-source ARM acceptance,
+      consumer model outputs and actual GPU execution remain separate open work.
       Cached `:winamd64-nvidia` image digest
       `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777` reports no
       `tensor_transform`, `onnxruntime`, or `tensor_decoder` via `gst-inspect-1.0`.
@@ -2313,7 +2489,7 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
         the first-touch deps - ships in the wheel store since 2026-10-03, SHA-
         pinned; upstream builds no cp314 wheel the bundle's own interpreter
         could use), Flutter, classic TensorRT, TAPPAS.
-      - The bundle EXECUTES on hardware since 2026-10-03 (Snapdragon X, summy-server; the
+      - The bundle EXECUTES on hardware since 2026-10-03 (Snapdragon X, win-1; the
         gate is `windows/scripts/build/Test-Arm64Bundle.ps1`, nine steps then, eighteen and floor eighteen since 2026-10-12):
         HailoRT-CLI 5.4.0, GStreamer 1.29.2 (`gst-inspect` + a videotestsrc->fakesink
         pipeline), `iree-run-module`, and the bundle's own Python 3.14.7 importing
@@ -2368,17 +2544,16 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
         prints `401` (read 2026-11-04; the public package prints `200`, a missing one `403`); `DOCKER_CONFIG="$(mktemp -d)"
         nerdctl pull ghcr.io/kataglyphis/kataglyphis_beschleuniger-stages:cross-media-nvidia-amd64` fails `denied`, while
         a logged-in `nerdctl manifest inspect` of it succeeds.
-      - **For the owner: delete the old public stage tags.** All three still resolve (read 2026-11-04; a delete is
-        restorable for 30 days):
+      - Done (owner approval 2026-11-24): the three old public stage tags are deleted. A dry run first selected
+        exactly these three versions; afterwards all three tags answer 404, and `:winarm64` and `:latest-nvidia`
+        resolve unchanged. The legacy packages `kataglyphis_beschleuniger_windows2025` and `_test` went the same day.
+        The digests, kept for a 30-day restore:
         `cross-toolchain-nvidia-amd64` `sha256:af3245773499e0287ccded76d35aefa3560d34c217635e9ae8fedc8d20c7dffd`,
         `cross-media-nvidia-amd64` `sha256:d2d11dbbb50bc5eb8cb070b7597761428c9123786cd7f42d15ebdfeb02935ce6`,
         `cross-android-nvidia-amd64` `sha256:e495e70dd62456f68f07f92ae2ef409e3ca1a869f609093295b8fa649c2b0e70`.
-        With a PAT holding `read:packages` and `delete:packages` (`GHCR_TOKEN` or `docker login`): `bash
-        linux/host-config/ghcr-delete-tags.sh cross-toolchain-nvidia-amd64 cross-media-nvidia-amd64
-        cross-android-nvidia-amd64` (dry run), then the same with `GHCR_DELETE_TAGS_CONFIRM=1`. Their untagged
-        predecessors go with the weekly `ghcr-cleanup.yml` prune once 14 days old.
-      - Open: `ghcr-cleanup.yml` prunes only the public package; on `-stages` its `MIN_TAGS=10` guard would
-        refuse three tags, so untagged stage versions stay there (private, storage free today).
+        Their untagged predecessors go with the weekly `ghcr-cleanup.yml` prune once 14 days old.
+      - Done (owner decision 2026-11-24): `ghcr-cleanup.yml` also prunes `-stages`, with `MIN_TAGS=3`. A local dry run
+        planned 30 of 36 versions for deletion and kept the 6 tagged ones.
 - [b] **CON42 — DeepStream in `:latest-nvidia`: what is left after the publish** [M, ★]. **Done:** DeepStream 9.1
       ships in every amd64 nvidia build (owner 2026-10-07, full TensorRT 10), published 2026-10-11 (`:latest-nvidia`
       index `810f36b3…`, amd64 `23e3cc9e…`). **The GPU run on the published image passed on 2026-10-12** (RTX 2080,
@@ -2457,16 +2632,19 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       Done 2026-11-21 in BeschleunigerBallett (9dedc393): cppcheck's default is OFF, as the image has no binary and a
       skipped check misleads (D10). (c) Warnings in three steps (D11). Step 1 in source 2026-11-23:
       BeschleunigerBallett adds spdlog and nlohmann_json as SYSTEM subdirectories (a9333e7e), against the 124 and 12
-      header warnings of GCC job 135983570345; its next GCC job's count is the proof. Then a per-repo warning-count
-      ratchet, then `myproject_WARNINGS_AS_ERRORS` for the product targets only. (d) Done 2026-11-21: the
-      pattern-limits doc holds the row for exception-free filesystem calls, which AccelerANTgine and
+      header warnings of GCC job 135983570345; proven in GCC job 137728645203: 0 spdlog and 0 nlohmann warnings, 339
+      warning lines down to 203. Step 2 in the hub 2026-11-23, as the owner chose that day: `verify_warning_census.py`
+      holds each lane's own warnings at a committed count per flag, red on growth and on an unlowered drop;
+      AccelerANTgine's x64 lanes run it (dc50d879, f15f62b2: GCC 16 and clang 48 own warnings, held exactly in CI).
+      Step 3, as the owner chose 2026-11-23 (fix first, then errors): AccelerANTgine fixed its own warnings (b96099a4,
+      the census at 1 per lane, a doxygen note on a fuzz test) and builds its library, CLI and demo with -Werror, /WX
+      under clang-cl (23d91739, f93294de, 4eac5a56; every lane green, x64, arm64, riscv64, Windows x64 and arm64):
+      CMake compiles an imported module's BMI with the importer's flags, so GCC's two TU-local warnings in nlohmann's
+      module and clang's -Wnullability-extension in Abseil stay warnings, and Abseil is SYSTEM outside clang-cl, which
+      misparses its function_ref.h so. Left: BeschleunigerBallett's census lanes and product targets. (d) Done
+      2026-11-21: the pattern-limits doc holds the row for exception-free filesystem calls, which AccelerANTgine and
       BeschleunigerBallett bind; the first version read `current_path(ec)` as throwing and missed the iterator
       declaration, corrected the same day.
-- [ ] **CON299 — an install tree refuses build-time files** [S, ★★]. BeschleunigerBallett's Windows bundle shipped 52
-      gtest and gmock files (found by its CI track, 2026-11-23); it now has an inline "Bundle layout" step, and its
-      `check-deb-layout.sh` is the Linux twin. A shared check, `Assert-InstallTreeLayout` or a `-ForbidBuildTimeFiles`
-      switch on `New-PortableBundle`, refuses `include/`, `lib/cmake/`, `lib/pkgconfig/` and any `.lib` in a shipped
-      tree, with a Linux counterpart, so every consumer's package gets it.
 - [b] **CON296 — a bridge import helper for the first consumer bridge** [S-M; owner D4]. `kataglyphis_import_bridge_crate`
       beside `kataglyphis_configure_corrosion_target`: imports LOCKED, uses an unwinding profile outside Debug and
       checks that at configure time (a runtime test cannot, `cargo test` always unwinds), and lets a superproject
@@ -2474,6 +2652,83 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       `prepare-linux-ci-host`. Blocked until AccelerANTgine's text pilot nears its bridge.
 
 ## Open — hub tooling and the dev host
+
+- [ ] **CON302 — NSIS setup beside MSI and MSIX** [L, ★★]. Owner decisions 2026-11-24. Today only AccelerANTgine
+      and BeschleunigerBallett ship an NSIS setup, built by CPack with whatever makensis the Windows image floats to.
+      OxidANT, OrchestrANT and OmniAccelerANT ship MSI and MSIX only, and no gate reads an NSIS setup.
+      Decided:
+      - Build in the Windows container beside WiX and makeappx. OmniAccelerANT packages its app on the host
+        runners, so it needs a pinned NSIS there as well.
+      - Test-sign now with a per-build test certificate, the setup and its uninstaller both. Use a real certificate
+        with a cloud-HSM key before shipping to end users. The PFX password stays in the environment, never in the
+        `!finalize` command line.
+      - End-user apps only: OxidANT first as the pilot, then OrchestrANT CPU, OmniAccelerANT with ObservANT, then the
+        CMake repos. No libraries (WebDavClient, ModelANT), no GPU variant until it is measured, and
+        jotrockenmitlocken only once it has a Windows lane.
+      - Defaults: an x86 stub on both architectures with an architecture check; per-machine; a setup that finds an
+        MSI install of the same product stops with a message (non-zero exit when silent); the file is
+        `<stem>-setup.exe`; a licence page (LICENSE plus the MSVC notice); CMake repos stay on CPack.
+      - Releases already publish only after every lane is green (`release.yml` needs every lane); the setup joins
+        through the collect pattern.
+      Steps, in order:
+      1. Phase 0, measure in Windows CI (owner: the Windows session, after its four Windows lanes have proven their
+         final commit). The Windows lanes start only on `workflow_dispatch` or `workflow_call`, so
+         dispatch on purpose. Measure the image's makensis version, how 7-Zip lists a setup, whether makensis takes
+         the one-frame PNG `.ico`, time and RAM of `/SOLID lzma` on OrchestrANT's 0.56 GB bundle, the NVIDIA
+         DirectML bundle size, and whether Start-menu shortcuts work in a Server Core container.
+      2. Pin makensis at 3.12 or later (owner: the Windows session, after the same proof; it changes
+         the Windows image files and `versions.env`): 3.11 fixes CVE-2025-43715, 3.12 fixes CVE-2026-42171, Scoop ships 3.13.
+         First read which NSIS built the setups AccelerANTgine and BeschleunigerBallett already released; below
+         3.12 makes this a security fix, and those setups are rebuilt and released again. The pin goes in
+         `versions.env` with a SHA256 and is installed in the final stage of `windows/Dockerfile`, so a bump
+         rebuilds one stage. Record it in the toolchain manifest, give Renovate a custom datasource (the tags are
+         `v313`, not semver), add a `bump_tools.py` spec, and list the stub's licences (zlib, bzip2, CPL-1.0 for
+         LZMA) in `deps.json` and `license_obligations.py`. Pin or record 7-Zip too: the licence reader needs it.
+      3. The hub module `WindowsNsis.Common.psm1` with a template and `kataglyphis-common.nsh`: a stable uninstall
+         key, the upgrade, the MSI guard and the architecture check. Pester tests go through an invoker seam, and
+         `Invoke-PackagerTool` must be exported. `Resolve-MakensisExe` fails on any version but the pin, since
+         GitHub runners carry their own NSIS.
+      4. The gates' NSIS branches: package licence, binary equality, MSVC notice, ORT licences and
+         `New-PortableBundle`, which copies an `.exe` today only beside a same-stem `.msi` or `.zip`. Linux tests
+         use a fake 7z; the real one runs in the Windows lane. The device install job has no checkout, so a module
+         call there needs the module in the artifact or a sparse hub checkout; consumers on old pins keep the
+         inline block. After an uninstall only `Uninstall.exe` may remain.
+      5. `Invoke-AuthenticodeSign`: the signtool part of `Invoke-MsixSign`, format-neutral, with `-Require` so a
+         failed signature stops the build, plus a small script for makensis's `!finalize` and `!uninstfinalize`.
+      6. `CPackCommon.cmake`: a version-free uninstall key (old versioned entries stay once; the release notes say
+         so), `NSIS_DEFAULT ON|OFF` beside `WIX_DEFAULT`, the combined licence page, and a short file name or a path
+         length check. CPack signs through `CPACK_NSIS_EXECUTABLE_PRE_ARGUMENTS`; a hub `NSIS.template.in` is needed
+         only to change `.onInit` or the registry view.
+      7. The pilot, OxidANT: `-SkipNsis` reaches `Invoke-WindowsLane.ps1` and `Build-GpuCandidate.ps1`, the payload
+         is `$payloadFiles` plus the exe, the release pattern is `*/packages/*-setup.exe`. Install the x64 setup on
+         the bare runner (`host-command`), because the image carries every DLL; then arm64 on the device.
+      8. Then OrchestrANT (format `nsis` in the Python packager), OmniAccelerANT (the hub takes
+         `WindowsAppInstallers.Common` with `Manufacturer` as a parameter, a runner action installs pinned WiX and
+         NSIS, and ObservANT's hooks add a local-subnet firewall rule and an all-users Startup shortcut that the
+         uninstaller removes), then the CMake repos.
+      Open for the owner, with a recommendation each: whether the x64 setup refuses to run on ARM64 or only warns
+      (the x64 MSI allows it; recommend refuse, and point to the arm64 setup); whether test-signed setups go into a
+      Release (recommend not until the real certificate); a PATH entry for Python apps (recommend none for the
+      pilot, a pinned EnVar plugin later); the compressor, since LZMA ships CPL-1.0 code that needs a source
+      pointer (recommend zlib until the notice is in place); and OxidANT's Start-menu argument `gui` in MSI and
+      MSIX too (recommend yes, in the same change).
+
+- [ ] **CON303 — the remaining docs phases** [L, ★★]. Owner decisions 2026-11-24, after the docs audit. The first
+      phase is in: the narrowed priority 4, `writing-docs.md`, `glossary.md`, `decisions.md` and the `doc-prose`
+      ratchet. Each later phase lowers the census rows it improves, in the same commit.
+      - Move the dates and ids out of instructions, page by page, into `docs/decisions.md`.
+      - Slim the hub `AGENTS.md` toward 6000 words. Its lines ~42-441 are one-liners appended under "Project
+        priorities"; each moves to the page that owns it, and the "Copied X carries Y" lines become data for the
+        copy-coverage gate.
+      - Split `code-quality-tooling.md`, `failure-modes.md`, `windows-builds.md` and `dependency-updates.md` into
+        pages under about 800 lines.
+      - Bring each consumer's `AGENTS.md` toward 3000 words, with a "Common tasks" block at the top, and seed its
+        census (`verify_doc_prose.py --root . --seed`).
+      - Give `readme-length` a word budget and a line width (the audit recommends 700 words and 160 characters;
+        the owner has not set the numbers).
+      - Let `doc-dupes` also compare passages within one page; a doubled block in `code-quality-tooling.md` went
+        unseen.
+      - Let `agents-drift` also check from docs to tree, so a deleted package the docs still name fails.
 
 - [ ] **CON280 — github.com/microsoft/onnxruntime answers 404** [S, ★★]. Since about 2026-11-17 22:20Z the
       repository, its API and its release assets are gone, with `onnxruntime-genai` and other Microsoft ONNX repos;
@@ -2484,7 +2739,10 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       Pi dev host.
       **Owner decisions 2026-11-18:** (1) once the repos are back, the family keeps private mirrors of the pinned ORT
       and GenAI tags under Kataglyphis, which source builds try first; (2) until then `Test-PatchesApplyClean.ps1`
-      reports a patch whose upstream answers 404 as `NOT CHECKED` with a warning, not a failure (done 2026-11-18).
+      reports a patch whose upstream answers 404 as `NOT CHECKED`; the incoming warning-only verdict is retained
+      here as history, but required acceptance now fails when this evidence remains missing after exact-commit
+      fallback. The original ORT and GenAI commit/version identities are verified through reviewed ROCm and
+      CodeLinaro transports respectively; maintained private mirrors and independent final-source CI remain open.
       Done when the mirrors exist and the builds read them.
 
 - [ ] **CON285 — `run-in-ci-image.sh` takes a memory limit** [S, ★★]. An 8 GB WSL host (BB's dev host since
@@ -2502,10 +2760,35 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
       Left separately, before a release: the installer's licence wording for the end-user terms.
-- [ ] **CON228 — the MSVC runtime notice's end-user paragraph is a draft** [S, ★]. The notice itself shipped
-      2026-11-06 ([`third-party-licenses.md` § The MSVC runtime notice](docs/third-party-licenses.md#the-msvc-runtime-notice));
-      the paragraph on the installers' licence page stays a draft until someone qualified has read it.
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
+  Later measurement, 2026-11-15: the complete `d9f129af` CUDA repeat has 6,304
+  primary hits, including 605 NVCC hits, zero misses/cache errors/compiler failures
+  and 605 unclassified non-cacheable compilations. Its five exports, all parent
+  chains, 2,492 unchanged source files and six cache identities are audited. The
+  same-source full producer supplies HailoRT 246 and GenAI 207 C/C++ hits; GenAI
+  still runs CUDA directly. These dated receipts close the required G2 repeat,
+  while the uncached paths and unexplained GStreamer counters keep CON229 open.
+  The `a7ba976b` standalone HailoRT pass exports successfully but has no aggregate
+  cache counters. Its shared session start, advanced stderr snapshot and upload
+  drain are now explicit; a new product-build measurement is still required.
+  The `0a822337` ROCm TVM/IREE RUN ends with a 9,995-hit WebDAV snapshot and zero
+  misses/cache errors; earlier 3,323 and 9,914 checkpoints are not added. Native
+  and Python CPU gates, ROCm code-object generation and both IREE GIL-disabled
+  imports pass, but the image export fails on import/disk-full retries.
+  The extracted multi-platform QNN SDK was still in that layer. Its required
+  in-layer scrub now has regression and mutation coverage. The `6235d8b4`
+  retry actually exports TVM/IREE with 9,995 cumulative C/C++ hits and zero
+  misses/cache errors/compile failures, then stops before merge at 30.8/45 GiB.
+  Its native TVM-FFI metadata is incorrectly labelled `0.1.dev1`; the scoped
+  version correction and real metadata gate need new product-build receipts.
+  The later `ee49f2dd` prefix passes all 11 images through media merge: TVM-FFI
+  metadata is `0.1.14.post0` in both installations, and TVM retains 9,995 C/C++
+  hits with zero misses/errors/failures. GStreamer reports 4,892 hits, 18 misses,
+  103 cache errors and 32 compilation failures, whose causes remain unclassified.
+  Standalone OpenCV plugin stats/stop wiring needs a new producer receipt; the
+  original full trace was lost by a diagnostic `--no-cache` export. Retained
+  log exports must consume an ARG nonce instead, including read-only mounts.
+  Final-source CI, all complete lanes and device acceptance remain open.
   The full `93019e36` NVIDIA retry records 1,656 C/C++ hits but rejects all 605 CUDA calls on the separated `--std c++20` value. The working repair joins that option without changing C++20, warnings or architectures; a local actual-argv replay now records typed CUDA/PTX/CUBIN/device-code hits. The complete plugin and remote-cache repeat remain open.
   The later `6737933a` ONNX pass compiles and stages the CUDA plugin, with 299 CUDA and 616 CUBIN hits, zero non-cacheable calls and zero cache/compile errors. Both cache levels report 3,733 writes without failure. Its full product run then stops at the protobuf comment defect; a normal full retry and forced CUDA repeat are still required. The [resource page](docs/windows-build-resources.md#persistent-compile-cache-sccache) separates each stage and the retained raw-counter limits.
       Done 2026-11-06: the `cuda_llm` exemption is gone (CHANGELOG). The nvidia chain of 2026-11-06 compiled ORT's CUDA RUN through sccache, MoE kernels included: 4937 compilations, 0 failures, 4330 WebDAV writes; 1663 hits (25 %) on a freshly rebuilt toolchain. `Test-CudaCache.ps1` passed on that toolchain (4 misses, then 4 hits). The warm reruns of 2026-11-07 hit: ORT's CUDA RUN 5993 hits, 0 misses (PTX, CUBIN and nvcc 100 %, 30:26 against 2:00:39 cold), OpenCV's 3355 hits, 1 miss. Still open: 289 failed S3 writes in the cold RUN.
@@ -2513,8 +2796,10 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       rebuilt GStreamer with real compiler hits; after the disk refusal and selected cleanup, the full retry
       passed local smoke and publish gates. Native ARM64 device acceptance remains separate. The
       [resource page](docs/windows-build-resources.md#persistent-compile-cache-sccache) records the counters and limits.
-      The new CUDA-plugin configuration still needs its own initial/repeat compilation proof; the older in-tree
-      NVIDIA runs and cached image layers do not supply it.
+      The source `5bd443ea` forced ONNX repeat now supplies real typed CUDA-plugin configuration hits:
+      6,304 hits, zero misses/errors/failures, with 605 non-cacheable compilations retained.
+      The audited full NVIDIA continuation reaches the final image; its disk-stopped parent
+      still has raw exit 1. These counters do not close the per-stage uncached gaps below.
       What still compiles outside sccache, from the chain logs of 2026-11-05/06 (rocm, nvidia, arm64), longest first:
 
       | Stage | Step | Uncached share | Reason | Possible fix |

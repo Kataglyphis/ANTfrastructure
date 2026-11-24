@@ -333,7 +333,7 @@ GL drivers keep theirs.
 so `sys.executable` is the launcher and `sys.prefix` stays `runtime/`; a `subprocess` of
 `sys.executable`, and `multiprocessing`'s `spawn` and `forkserver` children, all start through
 it again. A launcher on the scripts alone would have let every child fall back to the host's
-glibc. Measured on himbeere2 (Debian 13, glibc 2.41) with OrchestrANT 0.0.32's arm64 packages
+glibc. Measured on a Raspberry Pi 5 (Debian 13, glibc 2.41) with OrchestrANT 0.0.32's arm64 packages
 built this way in `:latest` (2026-10-18): the tarball's and the AppImage's
 `yolo-monitor --self-test` passed, ONNX Runtime 1.30, OpenCV 5.0 and numpy imported, `spawn` and
 `forkserver` children imported ORT through the bundled loader, and `apt-get install --simulate`

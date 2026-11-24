@@ -35,6 +35,7 @@ For an already closed direct owned-wrapper run, use `python3 linux/scripts/local
 | Check baked compiler/SDK selection and native OCI ancestry | `local-proof/compiler-image-qualification.py`, `probe-cross-clang-image.py`, `native-oci-handoff.py` |
 | Export a completed native GPU stage and launch required Media | `local-proof/gpu-oci-handoff.py`, `gpu_handoff_profile.py`, `nvidia_handoff_profile.py`, `launch-normal-media.py` |
 | Prepare all six WebGPU Media command profiles before parent admission | `local-proof/webgpu_media_lanes.py`, `normal_stage_launch.py`; see [Media command profiles](linux-accelerator-images.md#six-webgpu-media-command-profiles) |
+| Upload, accept and promote the Windows ARM64 bundle image by digest | `local-proof/windows-arm64-acceptance.py`; see [Accept an ARM64 image](windows-cross-builds.md#accept-an-arm64-image-before-moving-its-tag) |
 | Launch default amd64 Media from the exact qualified SDK | `local-proof/launch-default-amd64-media.py`, `default_media_launch.py` and the existing SDK/OCI and stage-launch companions; see [default Media admission](#default-amd64-media-admission) |
 | Replay Media profile controls plus the existing source protocol | `local-proof/run-media-lane-controls.sh PROOF_DIRECTORY SELECTED_MUTATIONS`; delegates to `03-media/build/migraphx/source-check.sh` inside the family image |
 | Repeat explicit loader, wrapper, SDK-materializer and refusal controls | `local-proof/replay-native-llvm-loader-profile.py`, `seal-native-llvm-loader-replay.py`, `replay-native-clang-wrappers.py`, `replay-sdk-llvm-materialization.py`, `replay-cross-clang-refusal.py` |
@@ -154,6 +155,39 @@ run-specific selected-tag data; preserve every unselected image and compiler/sou
 cachemount, check before/after identities and recheck the actual ordinary reserve.
 The [host cleanup page](linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches)
 owns this workflow; cleanup does not create source, image or hardware acceptance.
+
+## Proof-workflow fixture companions
+
+The proof-workflow harness carries `tests/proof_workflow_ft_tests.py`,
+`tests/proof_workflow_capture_tests.py` and `tests/proof_workflow_cleanup_tests.py`
+beside `proof_workflow_tests.py`. The
+runner supplies the selected script root and owns each engine fixture lifetime;
+all free-threaded bootstrap and owned-container refusal cases remain in the
+same discovered suite. These fixtures do not qualify a real build or GPU.
+
+## Complete preflight transcripts
+
+The isolated worker redirects both streams of its unchanged `make preflight` command
+into `/evidence/isolated-preflight-command.log`. The evidence bind preserves those
+bytes before container removal. The host retains the engine's attach stream separately
+as `engine-attach.log` and copies the regular mounted transcript byte for byte to
+`preflight.log`. A missing transcript or symlink fails the run even when the engine
+returns zero; original command and cleanup statuses remain separate. This prevents
+an incomplete attach stream from becoming the only retained test output. The observed
+transport cause is not established. Fixtures cover clipped attachment, binary bytes,
+missing/linked transcripts, both redirected streams and raw failed command status;
+they do not prove a real container run. Complete acceptance still requires the existing
+42-group, exact-registry, source, terminal and cleanup checks. Keep earlier incomplete
+logs and failed sealing attempts unchanged; do not add a success footer to them.
+
+The final receipt reader accepts the original `--property=ExecStopPost=...`,
+`--property ExecStopPost=...`, `-p ExecStopPost=...` and joined `-pExecStopPost=...`
+forms. Exactly one cleanup property is required across all forms. Preserve the
+executed argv without rewriting it. The same owner ID, raw cleanup result, strict
+mutation proof and independent engine absence checks still apply. Mixed or repeated
+properties, a missing cleanup, wrong owner or failed cleanup refuse. Synthetic CLI
+fixtures cover those cases and quoted paths with spaces; they do not authenticate
+receipts, execute systemd or establish image acceptance.
 
 ## Media profile source controls
 

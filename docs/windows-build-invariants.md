@@ -26,6 +26,28 @@ run42525202620 (#250), even though a warm runtime could import it. Keep required
 imports unforced and fail on missing companions. Cold closure failure details
 stay on one line so the CI renderer cannot drop the missing function names.
 
+An entry script that reads `$scriptAssetRoot` defines the canonical resolver at
+top level before that use, even when a dot-sourced builder initializes the same
+variable. `ScriptAssetRoot.Parity.Tests.ps1` checks local definitions and canonical
+source form; it does not prove successful source builds or compiler-cache hits.
+
+An explicit `media-merge` selection reuses all three completed branch images.
+Keep their publish gates before the merge, its disk and retry policy, and the
+compiler-cache preflight. ROCm closure checks must treat this selection as media
+so it cannot inherit stale MIGraphX/Llama/Torch parents. A partial branch list
+refuses even a merge-only request. Ordinary `media` retains the full fan-out;
+reused source/digest provenance and complete acceptance remain separate evidence.
+Preserve a unique label for every reused-parent gate; sharing the final gate's
+label truncates its earlier stage logs and replaces timing entries. Parent
+probes retain the ordinary publication disk floor; label changes must not
+reclassify those probes as compilation.
+
+CPython x64 ClangCL floors are applied immediately before `ClCompile`, after upstream
+per-file ISA metadata is known. Ordinary files retain v3; existing AVX512 files retain
+v4 plus their VNNI/VPCLMUL additions. Preserve ARM64 exclusion and every selected source.
+An early global `-march` overrides `/arch:AVX512` and breaks zlib-ng; a global v4 would
+raise the runtime CPU requirement. XML wiring tests do not prove native compilation.
+
 ## Contents
 
 **Shell and PowerShell discipline**
@@ -245,7 +267,11 @@ keeps must end in `| Out-Host`, or the caller receives an array. The ROCm TVM br
 LLVM log as its `llvm-config` path, and `cmd.exe` refused the command line built from it (2026-10-29); the
 nvidia and CPU lanes find `llvm-config` on PATH and never build that LLVM. `SourceBuild.NinjaReturnLeak.Tests.ps1`
 fails a value-returning function that leaves `Invoke-NinjaBuildWithRetry` uncaptured while a caller keeps its
-result; it does not cover other native calls.
+result; it does not cover other native calls. `New-PortableBundle` also routes successful
+package-check output to the host. Its callback tests require one returned bundle object
+and preserve checker exceptions; they do not validate MSI or ZIP contents. Keep their
+mutation baseline host-portable and import its shared fixture directly. The native
+Windows CMake/batch suite remains separately discovered by Windows CI.
 
 ### Windows stage scripts must end with an explicit `exit 0`
 
@@ -337,6 +363,8 @@ that means a link-clean `litert_lm_main.exe` that aborts on every run.
 non-source replace opts out with a `patch-assert-exempt` marker AND a reason.
 
 ### AVX-512/AMX flags never go in global CXX flags
+
+IREE's dispatched x86 AVX512-base target also needs explicit clang-cl `/clang:-mavx512{f,vl,cd,bw,dq}` options. The global `/clang:-march=x86-64-v3` takes precedence over upstream `/arch:AVX512` in either order. `Set-IreeX86KernelCmakeFlags` adds only that target's CLANG_CL branch before native and cross-host configuration; GNU and MSVC choices stay intact. A missing or changed source block fails; a repeat application preserves the bytes. Do not remove the global baseline, enable extra ISA features globally or disable the kernels to make the build pass.
 
 **AVX-512/AMX flags NEVER go in global CXX flags (final polarity, settled 2026-08-03).** Globally, clang may emit AVX-512 anywhere — the in-tree protoc AND `onnxruntime.dll`'s static initializers both crashed with `STATUS_ILLEGAL_INSTRUCTION` at run/load time on the AVX2-only build host (the import assert catches this). But entirely without the flags, MLAS's arch TUs fail to COMPILE (clang-cl gates intrinsics behind target features; MSVC doesn't). The settled design: `Build-OnnxFromSource.ps1` appends `Get-WindowsTargetKernelSimdFlags -Arch` per-TU (the name this line carried until 2026-08-24, `Get-WindowsX86Avx512Flags`, was a zero-caller compat shim until its deletion on 2026-08-26) to exactly the MLAS arch `FLAGS =` lines in build.ninja post-configure (runtime-dispatched kernels — the only code allowed to assume the features) and **asserts the tagged count against `Get-MlasKernelTuMinimum` — a THROW, not a log**. Two field lessons shape that floor: on aarch64 the x86 pattern matches nothing and a no-match patch *succeeds* (why the pattern is arch-parameterized), and on 2026-08-24 the amd64 lane broke with the floor PRESENT but too low — ORT v1.29.0 added six AVX-512 TUs outside `intrinsics/`, the stale pattern still matched 5 ≥ floor 4, and five kernels failed to compile. Floor rule: **it must be high enough that the previous broken state trips it** (now 8, against the 11 that v1.29.0 matched; the stale pattern's 5 fails loudly). When bumping `ONNXRUNTIME_VERSION`, re-measure BOTH arches' patterns against the new MLAS tree — the 1.29 bump re-measured only aarch64 and amd64 paid for it. Don't "simplify" in either direction.
 
@@ -503,6 +531,16 @@ the newest sample before trusting the aggregate.
 
 ### A daemon's log is only as durable as its last flush
 
+The standalone OpenCV GStreamer plugin writes its component stats, then calls
+`Complete-SccacheServerSession` before deleting its source. Its automatic server
+start must append to the preceding GStreamer log; an explicit
+`Start-SccacheServerSession` would truncate that evidence. The structural suite
+`SourceBuild.OpencvPluginCache.Tests.ps1` proves call order, not runtime flushes.
+
+Never pass `--no-cache` to a retained cache-log export, even with `readonly`:
+BuildKit 0.33 resets cache-mount associations before that command executes.
+Use a consumed per-run ARG nonce to force the copy without discarding the mount.
+
 **A daemon's log is only as durable as its last flush — stop the server before
 the RUN ends.** `SCCACHE_ERROR_LOG` is written by the sccache SERVER, and
 `SCCACHE_IDLE_TIMEOUT=0` means it never exits on its own, so BuildKit tears
@@ -594,6 +632,12 @@ own process in the base layer, so `C:\temp\cpython` and the mounted
 script/patch trees are never touched. **Check that before widening it
 further**: a scrub of `C:\temp` would delete the CPython tree the merge stage
 fans in.
+
+The default QNN extraction at `TEMP_DIR/qnn-sdk-extract` is a separate required
+scrub after all selected source components have copied their runtime payloads.
+Remove only that leaf, retain the cached SDK archive and CPython tree, and fail
+before export on a relative root, reparse metadata, a removal error or a remaining
+extraction tree. Other container-profile scratch remains best-effort.
 
 ### A committed layer can never be shrunk later
 
@@ -818,6 +862,57 @@ in Dockerfile.media-builder / .media-merge-builder). Verify a from-stage
 mount with a `Test-Path` assertion through it, NOT with `Get-ChildItem` — an
 empty mount lists cleanly and exits 0, so a bare listing proves nothing.
 
+### Copied module stages need a readable view
+
+End every stage that copies a narrow module closure into `C:\bkmods` with
+`RUN cmd /c exit 0`, after its last `COPY`. This includes shared media,
+TVM-private, merge, MIGraphX and llama module stages. Media-core and both LiteRT
+build RUNs mount the same seven shared modules as individual checkout files;
+TVM adds its private leaf module. Other consumers retain their source views.
+Do not replace direct delivery with a cached directory view or a whole host
+module-directory mount.
+An external-image module stage still redeclares
+`ARG WINDOWS_TARGET_ARCH=amd64` before its view `RUN`; the TVM-private stage
+inherits that scope from the shared module stage. Product stages retain their
+existing parents, so these intermediate
+layers do not enter delivered image ancestry. Do not widen a closure or replace
+the workaround with `--no-cache`, a compiler-cache reset or a daemon restart.
+
+On 2026-11-17 the seven cached modules were listed but could not be opened
+before Hailo and ONNX compilation. The failure recurred after a successful
+regular-only cleanup that retained all image tags and compiler-cache IDs.
+An empty source-view layer made the same module bytes readable; the kernel
+cause and a causal link to pruning remain unproven. The structural suite checks
+all five module stages and the final instruction order; only an engine probe
+and subsequent real builds establish mounted-file readability and image acceptance.
+The portable [mount harness](../windows/scripts/tests/BuildKit.MountStub.Tests.ps1)
+executes the view mutations on Linux and Windows; the Pester module-closure
+suite remains part of the complete Windows run. ROCm structure checks read
+module COPYs from their named source stage and pin defaults from the compiling
+stage; arguments or comments between FROM and COPY do not end a closure.
+
+On 2026-11-19 the complete NVIDIA run failed before LiteRT compilation even
+with the cached COPY and final view RUN present. An engine control reproduced
+the unreadable view on the actual pinned toolchain. Delivering the identical
+seven modules per file allowed reads and imports, including in an inherited
+RUN. Both `Build-LitertAll.ps1` and `Build-LitertWheelBazel.ps1` therefore use
+direct file mounts at `C:\bkmnt\modules`; all other source views remain.
+The portable harness checks both complete closures and rejects the cached
+directory form. These structural and read/import controls do not prove a
+complete LiteRT build, all architectures or a kernel cause.
+The portable `Rocm.Structure.Tests.ps1` and full Windows ROCm suites call the
+same structural helpers; real Windows DLL tests remain in the full suites.
+
+The later current `2c40a98d` CUDA diagnostic repeat failed before ONNX
+compilation on the same shared view. An isolated cached/direct comparison on
+its pinned NVIDIA toolchain found all seven directory-mounted modules unreadable
+and read, hashed and imported the identical seven per-file modules successfully.
+The comparison mounted no compiler caches. All five media-core RUNs now use
+that same direct closure, and TVM adds only `WindowsTvm.Common.psm1`.
+Product parents, pins, compiler settings and cache identities stay unchanged.
+The structural gate covers all eight media RUNs; read controls do not prove
+the new full products, TVM execution or typed CUDA cache hits.
+
 ### A whole-directory `modules` mount puts EVERY module in the cache key
 
 **Never bind-mount `windows/scripts/modules` as a DIRECTORY — mount the
@@ -911,5 +1006,11 @@ question, not these modules'
 **vcpkg ships zlib ONLY (protobuf removed 2026-08-03).** Nothing consumed vcpkg protobuf — every source build brings its own (ONNX `_deps`, LiteRT-LM's `protobuf_external` + downloaded version-matched protoc), and LiteRT-LM even had to hide vcpkg's protobuf headers to avoid version skew. Don't re-add it "for convenience"; it costs ~15 min of base build and creates header-leak hazards.
 
 ### Python bindings plumbing is load-bearing
+
+TVM-FFI native GIL and twin builds use the shared cross-lane version selector
+and a distribution-specific SCM override. Verify actual installed/archive
+metadata before accepting the build; an import alone can hide an incompatible
+development version. Restore the process environment on every exit.
+[Mechanism and coverage](windows-build-resources.md#tvm-ffi-wheel-versions-in-tagless-checkouts).
 
 **Python bindings plumbing is load-bearing (added 2026-07-13; full detail in `docs/windows-builds.md` § What is verified: native vs. Python).** (1) The `sitecustomize.py` shim written by `Initialize-PythonPlatformTag` fixes clang-built CPython's win32 platform misreport (pip pulls 32-bit wheels without it) AND registers native DLL dirs (`os.add_dll_directory`; python ignores PATH for pyd deps) — never remove it. (2) OpenCV must keep `WITH_MSMF=OFF` **and** `WITH_OBSENSOR=OFF`: both hard-import Media Foundation, absent on Server Core — either ON makes videoio and the cv2 pyd unloadable. (3) Always `@()`-wrap `Save-PythonWheel` results: PS unwraps a 1-element array so `[0]` becomes the first *character* and pip once installed the PyPI package literally named `c`. (4) Binding asserts go through `Test-PythonImport` (cmd.exe-shielded): tvm writes warnings to stderr on successful imports, which raw `&` under EAP=Stop turns into false failures. (5) Wheels live at `C:\runtime\wheels` (`PYTHON_WHEELS`); the OrchestrANT torch step resolves the app's LATEST tag per build and its wheel-smoke suite gates the final docker build — both amd64-lane facts. On arm64 (#120, 2026-08-24) the target CPython ships at `C:\runtime\python` (source-built, `PCbuild\build.bat -e -p ARM64`, ClangCL props, PE `0xAA64` verified in-stage) and the wheel store holds the `onnxruntime`/`onnxruntime_genai_directml`/`av` wheels tagged `cp314-win_arm64` plus `cv2.cp314-win_arm64.pyd` in the target site-packages — **staged, never installed or imported** (nothing here can run aarch64). Load-bearing rules on that lane: the HOST interpreter runs every build and the TARGET import lib is linked (`Get-TargetBuildPython` — `.Exe` host, `.Lib` target; never conflate them); wheels go through `Invoke-PythonWheelBuild -CrossStage` (one call for both lanes: on cross it appends the target `--plat-name`, stages, and runs `Assert-WheelTargetArch` — PE machine + `EXT_SUFFIX` name tag of every member; natively it installs + import-asserts); the shim pins `EXT_SUFFIX` to the target while `get_platform()` stays host — two different facts (what this interpreter *builds* vs what pip may *download*); ORT/GenAI take `Python_*` hints (GenAI additionally the legacy `PYTHON_*` trio for vendored pybind11) — `Python3_*` is silently ignored, see `SourceBuild.FindPythonPrefix.Tests.ps1`. The GenAI wheel's ORT requirement is rewritten to plain `onnxruntime` before packing (both lanes, #126): upstream's `setup.py.in` derives `onnxruntime-directml`/`-gpu` from the package name, but our combined ORT wheel is named `onnxruntime` — unpatched, the edge is unsatisfiable on arm64 (no `win_arm64` `onnxruntime-directml` exists) and pulls a second ORT over ours on amd64. The cross merge then stages the target's runtime deps (`Copy-TargetPythonDeps.ps1`: host pip `download --platform win_arm64 --python-version 3.14` for what the bundle does not provide; gate: every wheel pure or `win_arm64`, every `Requires-Dist` resolves inside `C:\runtime\wheels`) and the arch gate walks every PE's import table (`Test-TargetArch.ps1 -ImportWalk`, #127: each import must resolve to a bundle DLL, an `api-ms-`/System32 name — CRT DLLs excluded from System32 on cross — the driver allowlist, or the client-OS list `-ClientOsPattern` for DLLs a Windows client SKU ships but Server Core does not: `dsound`, `mf*`, `winspool.drv`). Its first run (arm64 run 13) found 13 real unresolved imports — the OpenSSL runtime DLLs nobody installed, the client-OS set, and `vcruntime140_threads.dll` — so treat a green walk as the gate it is, not decoration. It is a hard gate on cross lanes only: on the native lane the deliverable is the image, whose PATH carries the host CPython, scoop's OpenSSL and the toolkits, so the same walk reports (amd64: 186× `python314.dll` + 8× `python3.dll` from the host interpreter outside the roots, 6× `libcrypto/libssl-4-x64`) and never throws. (6) PyAV is built from sdist against OUR FFmpeg (`setup.py --ffmpeg-dir`) — PyPI's `av` wheel is unloadable on Server Core (bundled avdevice imports desktop-only `AVICAP32.dll`); in headless code request software encoders by name (`mpeg4`) — the generic `h264` alias resolves to the hardware `h264_d3d12va`. (7) IREE (media-tvm branch, TVM→IREE chain) is a shallow-submodule git clone (release tarballs lack LLVM); its wheels come from the ninja build tree's synthesized `compiler/`+`runtime` pip dirs with `--no-build-isolation` — plain `pip wheel` of the repo would rebuild all of LLVM in an isolated tree. Native tools at `IREE_ROOT` (`C:\runtime\iree`); CUDA HAL/target need no nvcc (PTX via NVPTX, driver dlopens nvcuda.dll).

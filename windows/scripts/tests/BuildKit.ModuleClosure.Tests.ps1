@@ -104,14 +104,14 @@ Describe 'BuildKit module closure' {
         $stages = Get-ModuleStages -DockerfilePath $script:mediaDf
         $stages.Keys | Should -Contain 'buildmods'
         $stages.Keys | Should -Contain 'tvmmods' -Because 'the TVM-private module stage is what #134 bought; without it the leaf is back in the shared closure'
-        # Every media RUN mounts buildmods, so a TVM-only module there re-keys the ONNX branch.
+        # A TVM-only module in the shared closure re-keys unrelated media branches.
         @($stages['buildmods']) | Should -Not -Contain 'WindowsTvm.Common' `
             -Because 'WindowsTvm.Common belongs to tvmmods; in buildmods it re-keys ONNX, OpenCV and FFmpeg for a TVM-only change'
         @($stages['tvmmods']) | Should -Contain 'WindowsTvm.Common'
     }
 
-    It 'mounts tvmmods from exactly one RUN' {
-        $consumers = @(Get-RunMounts -DockerfilePath $script:mediaDf | Where-Object { $_.FromStages -contains 'tvmmods' })
+    It 'mounts the private TVM leaf from exactly one RUN' {
+        $consumers = @(Get-RunMounts -DockerfilePath $script:mediaDf | Where-Object { $_.SingleModules -contains 'WindowsTvm.Common' })
         # A second consumer means the code is shared and belongs in buildmods.
         $consumers.Count | Should -Be 1 -Because 'a second tvmmods consumer means the code is shared and belongs in buildmods; widening this stage spends the cache win silently'
         $consumers[0].Scripts | Should -Contain 'Build-MediaTvmAll' -Because 'tvmmods exists for the media-tvm branch'

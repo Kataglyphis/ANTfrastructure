@@ -3,8 +3,8 @@
   description: >-
     The OmniAccelerANT cat cams post each arrival, finished clip and departure to a
     webhook of their own (notify_url in /etc/omni-accelerant/catcam.toml): the office's
-    (Büro, on this host), the feeding trough's (Futtertrog, tabblscatcam) and the living
-    room's (Wohnzimmer, mintberrycrunch). An arrival
+    (Büro, on this host), the feeding trough's (Futtertrog, catcam-2) and the living
+    room's (Wohnzimmer, sbc-1). An arrival
     it is at least 45 % sure of is counted and goes to the phone with the frame it was
     confirmed on; its clip adds a tap to the video and its departure how long the cat
     stayed, both by updating that camera's notification. Below 0.45 were the false visits

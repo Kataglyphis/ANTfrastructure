@@ -12,11 +12,11 @@ SSH config for this machine's fleet live here.
 | --- | --- | --- |
 | `pi-1` | Raspberry Pi 5 (control node, Home Assistant) | local |
 | `pi-2` | Raspberry Pi 3, Debian 13 | SSH |
-| `tabblscatcam` | Raspberry Pi 5 (cat cam), Debian 13 | SSH |
+| `catcam-2` | Raspberry Pi 5 (cat cam), Debian 13 | SSH |
 | `pi-3` | Raspberry Pi 4, Debian 13 | SSH |
 | `srv-1` | Ubuntu 26.04 server, reached over WireGuard | SSH (as root) |
-| `mintberrycrunch` | SpacemiT K3 (riscv-class SBC), Ubuntu 26.04 | SSH |
-| `summy-server` | Windows 11 ARM Pro | SSH + PowerShell (`ansible.windows`) |
+| `sbc-1` | SpacemiT K3 (riscv-class SBC), Ubuntu 26.04 | SSH |
+| `win-1` | Windows 11 ARM Pro | SSH + PowerShell (`ansible.windows`) |
 
 ## What is installed (2026-10-02)
 
@@ -83,7 +83,7 @@ from this directory is required — `ansible.cfg`, `ssh_config` and the
 | --- | --- |
 | `playbooks/update.yml` | first pings every host and skips one that does not answer; then per host: apt safe-upgrade + autoremove, then (host_vars flags) container-stack update, nerdctl drift report, Tasmota device report, venv upgrade; reboot only when required |
 | `playbooks/update-tasmota.yml` | stock Tasmota plugs: REAL gated updates — the version comparison is OURS (the native `Upgrade 1` re-flashes even at the same version, probed live); flash + wait + MQTT health only when the release differs |
-| `playbooks/update-windows.yml` | summy-server: Windows Update via PSWindowsUpdate (`-AcceptAll -IgnoreReboot`), reboot inline only when pending |
+| `playbooks/update-windows.yml` | win-1: Windows Update via PSWindowsUpdate (`-AcceptAll -IgnoreReboot`), reboot inline only when pending |
 | `playbooks/update-bitshake.yml` | on-demand: the bitShake SmartMeterReader firmware + SMR app (HTTP-driven, never scheduled — a failed flash kills the energy data). Procedure + traps: [HA README § bitShake](../homeassistant/README.md#the-bitshake-smartmeterreader-firmware-updates) |
 | `playbooks/backup.yml` | weekly: copies the Nextcloud AIO Borg repo, Home Assistant's newest backup and each host's secrets to the NAS ([Backups to the NAS](#backups-to-the-nas)) |
 | `playbooks/bootstrap-fleet.yml` | one-time per new host: passwordless sudo for the ansible user |
@@ -103,7 +103,7 @@ from this directory is required — `ansible.cfg`, `ssh_config` and the
 | `update_garage` | the Garage S3 store, a binary outside apt (`tasks/update-garage.yml`): the newest stable release of the installed major version, from Garage's release list and download server. Before the swap a metadata snapshot; after it Garage must report itself healthy, on the new version, with its S3 port open, or the previous binary goes back and the run goes on. A new major is only reported (`GARAGE: v… is out`), since Garage needs its own migration between majors. Garage publishes no checksums, so the check is that the download reports the version it was fetched as. Paths and port: `garage_binary`, `garage_config_file`, `garage_systemd_unit`, `garage_s3_api_port` |
 | `manage_ansible_venv` | `pip install -U ansible` into `~/venvs/ansible`, runs LAST so a broken release cannot take down the run that installs it |
 
-**Adding a new host** (the `pi-2` and `mintberrycrunch` slots were filled
+**Adding a new host** (the `pi-2` and `sbc-1` slots were filled
 this way; any apt-based Linux works, not only Pis):
 
 ```bash
@@ -179,7 +179,7 @@ A host that answers but fails during its update still stops the run, as before.
   This host runs `v8-16k+` while `ls -1v /lib/modules | tail -1` answers
   `v8-rt+` — a naive cross-flavor comparison would report "stale" forever
   and reboot-loop the Pi every Sunday. Debian Pis have no
-  `/var/run/reboot-required` marker; Ubuntu hosts (mintberrycrunch) DO write
+  `/var/run/reboot-required` marker; Ubuntu hosts (sbc-1) DO write
   it, and it is the primary reboot signal there — Ubuntu kernel packages
   change the ABI suffix, which the flavor match alone would miss.
 
@@ -289,7 +289,7 @@ was taken over. That user cannot delete a snapshot.
    sudo install -d -m 700 /etc/ansible-backup
    sudo install -m 600 /dev/null /etc/ansible-backup/nas.credentials
    sudoedit /etc/ansible-backup/nas.credentials   # two lines: username=..., password=...
-   sudo mount -t cifs //192.168.188.135/AutoBackups /mnt/nas-backup \
+   sudo mount -t cifs //<nas-address>/AutoBackups /mnt/nas-backup \
      -o credentials=/etc/ansible-backup/nas.credentials,uid=$(id -u),gid=$(id -g)
    touch /mnt/nas-backup/.t && rm /mnt/nas-backup/.t && sudo umount /mnt/nas-backup
    ```

@@ -33,6 +33,12 @@ if ARGS and ARGS[0] == "run":
         STATE.write_text(ARGS[ARGS.index("--label") + 1])
         if MODE != "no-cid":
             Path(ARGS[ARGS.index("--cidfile") + 1]).write_text(OWNED + "\n")
+    if reports is not None and MODE != "missing-transcript":
+        transcript = Path(reports) / "isolated-preflight-command.log"
+        if MODE == "transcript-symlink":
+            transcript.symlink_to(TRACE)
+        else:
+            transcript.write_bytes(b"worker\xff\n" + (b"final footer\n" if MODE == "clipped-attach" else b""))
     sys.stdout.buffer.write(b"worker\xff\n")
     raise SystemExit(37 if MODE == "worker-failure" else 0)
 if ARGS and ARGS[0] == "ps":

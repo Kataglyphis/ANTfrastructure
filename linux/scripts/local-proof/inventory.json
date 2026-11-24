@@ -589,6 +589,36 @@
       "canonical": "linux/scripts/local-proof/complete-direct-preflight.py",
       "original_sha256": "8d5e38f136edb0dbae32a1653220b456cb3754a7a62ced44dfb26cdb98584e58",
       "reason": "Recurring direct owned-wrapper complete source receipt assembly; original driver evidence remains separate."
+    },
+    {
+      "name": "publish-arm64-candidate-by-digest.ps1",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/windows-arm64-acceptance.py",
+      "original_sha256": "97d3f8ef03b814ddea1af74416df4fab5aec6842ffe851224406fa2ccc67641e"
+    },
+    {
+      "name": "read-arm64-registry-reference.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/windows-arm64-acceptance.py",
+      "original_sha256": "a2538701af51db9f016761445e67dfe2509de7f4a3b090bc71423c6a6c595dbb"
+    },
+    {
+      "name": "arm64_registry.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/windows-arm64-acceptance.py",
+      "original_sha256": "36293bd378f0218a0fea2a5c99e51da7cf2721acc6dc8a7361387fece8753b59"
+    },
+    {
+      "name": "fetch_arm64_acceptance.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/windows-arm64-acceptance.py",
+      "original_sha256": "19cde8965a70078791dfb217a3a68b0f20ba196754a1e15d4dc993a73ec3d067"
+    },
+    {
+      "name": "promote_arm64_acceptance.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/windows-arm64-acceptance.py",
+      "original_sha256": "d04192469cc0f7ea0641a0b1c6efb47f489ccacbb5536f07dcac12f846e40095"
     }
   ],
   "new_canonical_files": [
@@ -617,6 +647,7 @@
     "linux/scripts/local-proof/buildcache_transfer.py",
     "linux/scripts/local-proof/seed-buildkit-cache.py",
     "linux/scripts/local-proof/gpu_source_profile.py",
-    "linux/scripts/local-proof/media_source_profile.py"
+    "linux/scripts/local-proof/media_source_profile.py",
+    "linux/scripts/local-proof/windows-arm64-acceptance.py"
   ]
 }

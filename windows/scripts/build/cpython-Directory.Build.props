@@ -1,18 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Dropped into C:\temp\cpython\PCbuild\ by Dockerfile.toolchain-builder:
-     forces the ClangCL PlatformToolset for the CPython source build. A real
-     checked-in file since 2026-08-21 (#127) — the previous inline Set-Content
-     one-liner had to single-quote all XML attributes to dodge the dockerfile
-     frontend's double-quote stripping, and was neither greppable nor
-     diffable. -->
+<!-- Clang's -march overrides /arch, so dispatched files need their own floor. -->
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <PlatformToolset>ClangCL</PlatformToolset>
   </PropertyGroup>
-  <!-- The amd64 floor (CON265), x64 only: Build-TargetCpython builds ARM64 with this same file. -->
-  <ItemDefinitionGroup Condition="'$(Platform)' == 'x64'">
-    <ClCompile>
-      <AdditionalOptions>/clang:-march=x86-64-v3 %(AdditionalOptions)</AdditionalOptions>
-    </ClCompile>
-  </ItemDefinitionGroup>
+  <Target Name="ApplyCpythonIsaFloor" BeforeTargets="ClCompile"
+          Condition="'$(Platform)' == 'x64' and '$(PlatformToolset)' == 'ClangCL'">
+    <ItemGroup>
+      <ClCompile>
+        <AdditionalOptions Condition="'%(ClCompile.EnableEnhancedInstructionSet)' != 'AdvancedVectorExtensions512'">/clang:-march=x86-64-v3 %(ClCompile.AdditionalOptions)</AdditionalOptions>
+        <AdditionalOptions Condition="'%(ClCompile.EnableEnhancedInstructionSet)' == 'AdvancedVectorExtensions512'">/clang:-march=x86-64-v4 %(ClCompile.AdditionalOptions)</AdditionalOptions>
+      </ClCompile>
+    </ItemGroup>
+  </Target>
 </Project>

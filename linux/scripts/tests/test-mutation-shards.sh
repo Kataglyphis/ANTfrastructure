@@ -12,6 +12,7 @@ GATE="${SCRIPTS}/verify_mutations.py"
 
 # _plan_py <code>: run Python with the planner importable and a 40-entry manifest over 9 commands as `entries`.
 _plan_py() {
+  local code="$1"; shift
   (cd "${SCRIPTS}" && "${PY}" -c '
 import json, sys
 from mutation_shards import Cost, plan, describe, default_cost, read_cost_lines, table
@@ -20,7 +21,7 @@ entries = []
 for c, w in enumerate(weights):
     entries += [dict(id=f"e.{c}.{i}", test=f"bash t{c}.sh") for i in range(w)]
 costs = {f"bash t{c}.sh": Cost(2.0 + c, 1.5) for c in range(8)}
-'"$1")
+'"${code}" "$@")
 }
 
 t_case "for any N the plan partitions the selection: every entry once, none dropped"
@@ -75,7 +76,7 @@ printf '%s\n' \
   '[1/4]   cost    wall=9.00s baseline=1.00s entries=4 test=bash t0.sh' \
   '[1/4]   bites   e.0.1  why' > "${_work}/gate.log"
 t_assert_eq "{'bash t0.sh': {'baseline': 2.0, 'per_entry': 2.0}, 'bash t1.sh --flag': {'baseline': 1.0, 'per_entry': 2.0}}" \
-  "$(_plan_py "print(table(read_cost_lines(open('${_work}/gate.log')), ['bash t0.sh', 'bash t1.sh --flag', 'bash gone.sh']))")" \
+  "$(_plan_py "print(table(read_cost_lines(open(sys.argv[1])), ['bash t0.sh', 'bash t1.sh --flag', 'bash gone.sh']))" "${_work}/gate.log")" \
   "the median of each command's observations, per entry net of its baseline, only for commands the manifest runs"
 printf '[{"id":"a","target":"x","find":"a","replace":"b","test":"bash t0.sh","why":"w"}]\n' > "${_work}/m.json"
 t_assert_ok "${PY}" "${SCRIPTS}/mutation_shards.py" --from-log "${_work}/gate.log" --manifest "${_work}/m.json" --write "${_work}/costs.json"
@@ -98,10 +99,11 @@ _bitten() { printf '%s\n' "$1" | sed -n 's/^\(\[[0-9]*\/[0-9]*\] \)\{0,1\}  bite
 
 t_case "the gate's planned shards prove every entry exactly once, and each command's baseline once"
 _gate_fixture 12
+_cost_table_path="$(_plan_py 'print(sys.argv[1])' "${_work}/costs.json" | tr -d '\r')"
 _ids=""
 for _k in 0 1 2; do
   _out="$("${PY}" "${GATE}" --manifest "${_work}/m.json" --root "${_work}" --jobs 2 --shard "${_k}/3" --shard-costs "${_work}/costs.json" 2>&1)"
-  t_assert_contains "${_out}" "shard plan: ${_k}/3 from ${_work}/costs.json: 3 test command(s), 0 without a recorded cost" "each job names its plan"
+  t_assert_contains "${_out}" "shard plan: ${_k}/3 from ${_cost_table_path}: 3 test command(s), 0 without a recorded cost" "each job names its plan"
   _ids+="$(_bitten "${_out}")"$'\n'
 done
 t_assert_eq "$(seq 1 12 | sed 's/^/probe./' | LC_ALL=C sort)" "$(printf '%s' "${_ids}" | sed '/^$/d' | LC_ALL=C sort)" \

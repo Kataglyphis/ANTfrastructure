@@ -61,7 +61,7 @@ would delete it.
 - The 455 MB `core` dump from 2025-03-19 was deleted during the move; the
   `.gitignore` `core` pattern keeps any future dump out of git.
 - **The MQTT broker is the host's Mosquitto** (`apt install mosquitto`), not a container. The
-  stock Tasmota plugs report through it, and HA's MQTT integration points at `himbeere2:1883`.
+  stock Tasmota plugs report through it, and HA's MQTT integration points at `<mqtt-host>:1883`.
   `/etc/mosquitto/mosquitto.conf` adds two lines to Debian's default: `listener 1883 0.0.0.0`
   and `allow_anonymous true`.
 
@@ -138,8 +138,8 @@ one click in the device's web UI — `bitShake SMR öffnen` → `Update`.
 ## The cat cams
 
 Three OmniAccelerANT cat cams post each arrival, finished clip and departure to a webhook of their
-own: the office's (on this host), the feeding trough's (`tabblscatcam`) and the living room's
-(`mintberrycrunch`). Their webhook ids and addresses are in `secrets.yaml` (`catcam_*`).
+own: the office's (on this host), the feeding trough's (`catcam-2`) and the living room's
+(`sbc-1`). Their webhook ids and addresses are in `secrets.yaml` (`catcam_*`).
 
 | File | What |
 | --- | --- |
@@ -152,11 +152,11 @@ Each cam's own settings are in `/etc/omni-accelerant/observant.toml` on its host
 
 | Host | `name` | `rotate` | `notify_url` |
 | --- | --- | --- | --- |
-| pi-1 (`.98`) | `Cat Cam Büro` | `180` | `http://127.0.0.1:8123/api/webhook/<catcam_webhook_id>` |
-| tabblscatcam (`.151`) | `Cat Cam Futtertrog` | `270`, the Pi lies on its side | `http://192.168.188.98:8123/api/webhook/<catcam_futtertrog_webhook_id>` |
-| mintberrycrunch (`.145`) | the default | the default | `http://192.168.188.98:8123/api/webhook/<catcam_mintberry_webhook_id>` |
+| pi-1 | `Cat Cam Büro` | `180` | `http://127.0.0.1:8123/api/webhook/<catcam_webhook_id>` |
+| catcam-2 | `Cat Cam Futtertrog` | `270`, the Pi lies on its side | `http://<pi-1>:8123/api/webhook/<catcam_futtertrog_webhook_id>` |
+| sbc-1 | the default | the default | `http://<pi-1>:8123/api/webhook/<catcam_mintberry_webhook_id>` |
 
-`peers` lists the other hosts as `http://192.168.188.<n>:8080`, `.108` and `.50` included.
+`peers` lists every other cam as `http://<host>:8080`.
 
 ## The Ansible page
 

@@ -221,11 +221,9 @@ function Invoke-TvmCrossPythonWheels {
         # Assembled in the layout each package's libinfo expects: core.pyd beside tvm_ffi\, DLLs under <pkg>\lib.
         Switch-BuildPhase '5b. runtime python wheels (cross, assembled)'
         $tvmFfiSrc = Join-Path $SourceDir '3rdparty\tvm-ffi'
-        $describe = & git -C $tvmFfiSrc describe --tags --abbrev=0 --match 'v*' 2>&1 | Out-String
-        $global:LASTEXITCODE = 0
         $tvmPyproject = [System.IO.File]::ReadAllText((Join-Path $SourceDir 'pyproject.toml'))
         $ffiPyproject = [System.IO.File]::ReadAllText((Join-Path $tvmFfiSrc 'pyproject.toml'))
-        $ffiVersion = Get-VendoredTvmFfiVersion -DescribeOutput $describe -TvmPyprojectText $tvmPyproject
+        $ffiVersion = Get-TvmFfiSourceVersion -SourceDir $SourceDir
         $ffiDeps = Get-PyprojectDependencies -PyprojectText $ffiPyproject
         $tvmPyVersion = ($TvmVersion -replace '^v', '')
         $wantExt = Get-PythonWheelTag
@@ -325,7 +323,7 @@ function Install-TvmNativePythonWheel {
     # 64-bit platform tag BEFORE any pip resolution (clang-built CPython self-reports win32).
     Initialize-PythonPlatformTag | Out-Null
     # cython: tvm_ffi's core.pyx is transpiled by a CMake step shelling out to `python -m cython`.
-    Install-CpythonPipPin -Python $py -Name scikit-build-core, setuptools-scm, wheel, cython
+    Install-CpythonPipPin -Python $py -Name packaging, scikit-build-core, setuptools-scm, wheel, cython
     # The clone may lack tags, so pin the scm version; restored after, since stages run in-process.
     $prevScmPretendVersion = $env:SETUPTOOLS_SCM_PRETEND_VERSION
     # A commit hash is not PEP 440, so the pretend version falls back to TVM_REF's tag.
@@ -355,7 +353,9 @@ function Install-TvmNativePythonWheel {
         # FindPython reads Include\pyconfig.h, which in-tree Windows CPython keeps only at PC\.
         Copy-CpythonPyConfigHeader
         Write-Host "Building + installing tvm_ffi from vendored source ($tvmFfiSrc)..."
-        Invoke-CpythonPip -Python $py -Arguments @('install', '--no-build-isolation', '--force-reinstall', '--no-deps', $tvmFfiSrc)
+        Invoke-TvmFfiPythonBuild -Python $py -SourceDir $SourceDir -Build {
+            Invoke-CpythonPip -Python $py -Arguments @('install', '--no-build-isolation', '--force-reinstall', '--no-deps', $tvmFfiSrc)
+        }
     } else {
         Write-Warning "vendored tvm-ffi source not at $tvmFfiSrc - falling back to the PyPI apache-tvm-ffi (import may fail 127)"
     }
@@ -367,9 +367,11 @@ function Install-TvmNativePythonWheel {
     Test-PythonImport -Python $py -ModuleName 'tvm'
     # The GIL tvm_ffi installs in place, its twin is a wheel; its own scikit-build tree, as the GIL one caches that interpreter.
     $ffiFtDist = Join-Path $SourceDir 'dist-tvm-ffi-ft'
-    [void](Invoke-FreeThreadedTwinWheel -GilPython $py -Distribution 'apache-tvm-ffi' -ModuleName 'tvm_ffi' -WorkingDir $tvmFfiSrc -DistDir $ffiFtDist `
+    [void](Invoke-TvmFfiPythonBuild -Python $py -SourceDir $SourceDir -Wheel -Build {
+        Invoke-FreeThreadedTwinWheel -GilPython $py -Distribution 'apache-tvm-ffi' -ModuleName 'tvm_ffi' -WorkingDir $tvmFfiSrc -DistDir $ffiFtDist `
             -Package pip, scikit-build-core, setuptools-scm, cython, wheel `
-            -Arguments "-m pip wheel . --no-deps --no-build-isolation -w ""$ffiFtDist"" --config-settings=build-dir=build-$(Get-FreeThreadedAbiTag)")
+            -Arguments "-m pip wheel . --no-deps --no-build-isolation -w ""$ffiFtDist"" --config-settings=build-dir=build-$(Get-FreeThreadedAbiTag)"
+    })
     return $py
 }
 
@@ -433,7 +435,7 @@ function Get-TvmPythonBuildPlan {
         Install-CpythonPip -Python $py
         Initialize-PythonPlatformTag | Out-Null
         # cython transpiles core.pyx and wheel packs it; the one pinned Cython, as the fan-in refuses two versions.
-        Install-CpythonPipPin -Python $py -Name cython, wheel
+        Install-CpythonPipPin -Python $py -Name cython, wheel, packaging
         # FindPython reads Include\pyconfig.h; the in-tree CPython keeps it at PC\.
         Copy-CpythonPyConfigHeader
         Write-Host "TVM cross: runtime python wheels ON (#133) -- host interpreter $($py.Exe), TARGET import lib $($tvmTargetPy.Lib); the compiler and its codegen stay ABSENT"

@@ -24,8 +24,19 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+
 # The torch builder's helpers and module imports; dot-sourced, it returns before its own build.
 . (Join-Path $PSScriptRoot 'Build-TorchRocmFromSource.ps1') -OutputDir $OutputDir -WorkDir $WorkDir
+
+function Enable-TorchvisionRocmCompilerCache {
+    # PyTorch skips automatic compiler wrappers on Windows/HIP; only this venv's host CXX needs one.
+    param([string]$WorkDir, [System.Collections.IDictionary]$BuildEnv, [AllowEmptyString()][string]$SccachePath, [string]$PatchRoot)
+    if (-not $SccachePath) { return }
+    Invoke-RequiredSourcePatch -PatchFile (Join-Path $PatchRoot 'pytorch\001-torchvision-host-sccache.patch') `
+        -SourceDir (Join-Path $WorkDir 'venv\Lib\site-packages')
+    $BuildEnv['TORCHVISION_CXX_COMPILER_LAUNCHER'] = $SccachePath
+}
 
 if ($MyInvocation.InvocationName -eq '.') { return }
 
@@ -54,7 +65,11 @@ try {
     Set-TorchRocmBootstrapEnvironment -GpuTargets $build.GpuTargets
     $pyTag = Get-TorchRocmPythonTag -Python $venvPy
     $common = Get-TorchRocmCommonEnv -RocmRoot $build.RocmRoot -GpuTargets $build.GpuTargets
-    Set-TorchRocmProcessEnv -Env (Get-TorchRocmVisionEnv -Common $common -BuildVersion $visionVersion -Jobs $jobs)
+    $visionEnv = Get-TorchRocmVisionEnv -Common $common -BuildVersion $visionVersion -Jobs $jobs
+    $sccache = Get-Command sccache.exe -ErrorAction SilentlyContinue
+    $sccachePath = if ($sccache) { $sccache.Source } else { '' }
+    Enable-TorchvisionRocmCompilerCache -WorkDir $WorkDir -BuildEnv $visionEnv -SccachePath $sccachePath -PatchRoot (Join-Path $scriptAssetRoot 'patches')
+    Set-TorchRocmProcessEnv -Env $visionEnv
     $env:PATH = "$(Join-Path $build.RocmRoot 'bin');$env:PATH"
     Invoke-TorchRocmLogged -CommandLine """$venvPy"" setup.py bdist_wheel" -WorkingDir $visionSrc -LogName 'torchvision-rocm-wheel.log'
     $visionWheel = Install-TorchRocmBuiltWheel -Python $venvPy -SourceDir $visionSrc -Distribution 'torchvision' -BuildVersion $visionVersion `

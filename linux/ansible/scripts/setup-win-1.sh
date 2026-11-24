@@ -6,7 +6,7 @@ cd "$REPO_ROOT" || exit 1
 KEY=linux/ansible/.ssh/id_ed25519.pub
 DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$DIR/hostvars-lib.sh"
-read_hostvars "$DIR/../inventory/host_vars/summy-server.yml"
+read_hostvars "$DIR/../inventory/host_vars/win-1.yml"
 USERHOST="${USER}@${ADDR}"
 
 PUB=$(cat "$KEY")

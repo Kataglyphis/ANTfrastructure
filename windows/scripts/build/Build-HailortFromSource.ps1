@@ -191,6 +191,9 @@ Get-ChildItem (Join-Path $sourceRoot 'hailort\external') -Directory -Filter '*-b
 Get-ChildItem (Join-Path $sourceRoot 'hailort\external') -Directory -Filter '*-install' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $BuildDir -Recurse -Force -ErrorAction SilentlyContinue
 
+# The direct RUN bypasses the chain's counter reset and upload drain.
+Start-SccacheServerSession
+
 Invoke-CmakeConfigure -SourceDir $sourceRoot -BuildDir $BuildDir -InstallPrefix $InstallDir `
     -BuildType $BuildType -ExtraArgs $cmakeExtra -TargetArch $targetArch
 
@@ -198,6 +201,8 @@ $jobs = Get-BuildJobCount
 Write-Host "Building HailoRT (jobs=$jobs)"
 # Not piped to Out-Null: ninja's output, compiler errors included, is on the success stream.
 Invoke-NinjaBuildWithRetry -BuildDir $BuildDir -Install -InstallConfig $BuildType
+Write-SccacheStatsToStderr -Advanced -RequireRemote
+Complete-SccacheServerSession
 
 # Verify
 $hailortDll = Get-ChildItem -Path $InstallDir -Filter 'libhailort.dll' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1

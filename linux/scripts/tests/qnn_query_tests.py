@@ -3,6 +3,8 @@
 import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -10,15 +12,25 @@ import unittest
 from itertools import product
 from pathlib import Path
 from typing import TypedDict
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS = Path(sys.argv.pop(1)).resolve()
 DRIVER = r"""set -uo pipefail
-find() { printf '%s\0' "$@" >> "$WORK/find"; command find "$@"; local rc=$?; [ "$FIND_STATUS" = 0 ] && return "$rc"; return "$FIND_STATUS"; }
+find() {
+    local result="$WORK/find-output.$BASHPID" rc
+    printf '%s\0' "$@" >> "$WORK/find"
+    command find "$@" > "$result"
+    rc=$?
+    LC_ALL=C sort "$result"
+    [ "$FIND_STATUS" = 0 ] && return "$rc"
+    return "$FIND_STATUS"
+}
 grep() { printf '%s\0' "$@" >> "$WORK/grep"; command grep "$@"; local rc=$?; [ "$GREP_STATUS" = 0 ] && return "$rc"; return "$GREP_STATUS"; }
 info() { printf 'INFO:%s\n' "$*"; }
 err() { printf 'ERROR:%s\n' "$*" >&2; exit 1; }
 """
+
 
 class QueryResult(TypedDict):
     rc: int
@@ -131,9 +143,7 @@ def run(
         normalize = lambda value: value.replace(directory, "WORK")
         tree = stage_tree(work) if domain == "stage" else []
         tool_output = {
-            tool: normalize((work / tool).read_text())
-            if (work / tool).exists()
-            else ""
+            tool: normalize((work / tool).read_text()) if (work / tool).exists() else ""
             for tool in ("find", "grep")
         }
         return {
@@ -183,6 +193,40 @@ class QnnRuntimeQuery(unittest.TestCase):
         )
         self.assertEqual(120, len(expected))
         self.assertEqual(expected, capture())
+
+    def test_receipts_ignore_directory_order_and_detect_sort_removal(self) -> None:
+        expected = json.loads(
+            Path(__file__).with_name("qnn-query-receipts.json").read_text()
+        )
+        real_find = shutil.which("find")
+        if real_find is None:
+            raise AssertionError("The real find is required for the ordering control.")
+        with tempfile.TemporaryDirectory(prefix="ant-qnn-find-order-") as directory:
+            tools = Path(directory) / "tools [*]"
+            tools.mkdir()
+            fake = tools / "find"
+            fake.write_text(
+                "#!/usr/bin/env bash\nset -o pipefail\n"
+                + shlex.quote(real_find)
+                + ' "$@" | LC_ALL=C sort -r\n'
+            )
+            fake.chmod(0o755)
+            with patch.dict(
+                os.environ, {"PATH": str(tools) + os.pathsep + os.environ["PATH"]}
+            ):
+                self.assertEqual(expected, capture())
+                before = 'LC_ALL=C sort "$result"'
+                self.assertEqual(1, DRIVER.count(before))
+                mutant = DRIVER.replace(before, 'cat "$result"', 1)
+                syntax = subprocess.run(
+                    ["bash", "-n", "-c", mutant],
+                    check=False,
+                    capture_output=True,
+                    timeout=5,
+                )
+                self.assertEqual(0, syntax.returncode, syntax.stderr)
+                with patch.dict(run.__globals__, {"DRIVER": mutant}):
+                    self.assertNotEqual(expected, capture())
 
     def test_independent_shallow_regular_policy(self) -> None:
         staged = run("stage", "missing", None, "direct", True)

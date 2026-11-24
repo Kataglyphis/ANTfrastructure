@@ -8,7 +8,7 @@ param(
     # Actually delete. Without it this script only reports.
     [switch]$Apply,
 
-    # Minimum-free target for the buildkit store lever, in GB.
+    # Match the GiB units used by the build admission probes.
     [int]$KeepGB = 100,
 
     # Younger temp entries are left alone: a build in flight owns its temp.
@@ -28,6 +28,8 @@ param(
     [switch]$StevedoreOnly,
     [string[]]$ImageTag = @(),
     [string[]]$ExpectedImageId = @(),
+    [string[]]$ContainerId = @(),
+    [string[]]$ExpectedContainerImageId = @(),
     [switch]$RegularCache,
     [string]$StevedoreNamespace = 'buildkit',
     [string]$BuildkitAddress = 'npipe:////./pipe/buildkitd',
@@ -108,8 +110,7 @@ function Test-HasReparsePoint {
     # A junction or symlink lets a recursive delete tunnel out of the allowlist; cannot tell = unsafe.
     param([Parameter(Mandatory)][string]$Path)
     try {
-        $self = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
-        if ($self.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $true }
+        $self = Get-HostNonReparseItem -Path $Path
         if (-not $self.PSIsContainer) { return $false }
         $links = @(Get-ChildItem -LiteralPath $Path -Recurse -Force -Attributes ReparsePoint -ErrorAction Stop)
         return ($links.Count -gt 0)
@@ -180,6 +181,12 @@ function Write-ReclaimPlanSummary {
 
 }
 
+function Get-BuildkitFreeTargetMB {
+    # Buildctl uses decimal MB while PowerShell disk admission uses GiB.
+    param([int]$GiB)
+    return [long][math]::Ceiling(([decimal]$GiB * 1GB) / 1000000)
+}
+
 function Write-DaemonPruneAdvice {
     param([bool]$DaemonPrune, [int]$KeepGB)
     if ($daemonPrune) {
@@ -189,7 +196,7 @@ function Write-DaemonPruneAdvice {
             if ($LASTEXITCODE -eq 0) { $df | ForEach-Object { Write-Host ('  ' + $_) } }
             else { Write-HostMaintenanceMessage '  docker reachable but `system df` failed - run it in an elevated shell for the layer report.' 'DarkGray' }
         } catch { Write-HostMaintenanceMessage '  docker not on PATH in this shell - no layer report (the prune levers below still apply).' 'DarkGray' }
-        Write-HostMaintenanceMessage ('levers: buildctl prune --free-storage {0}  |  docker image prune -f' -f ($KeepGB * 1024))
+        Write-HostMaintenanceMessage ('levers: buildctl prune --free-storage {0}  |  docker image prune -f' -f (Get-BuildkitFreeTargetMB -GiB $KeepGB))
         Write-HostMaintenanceMessage 'Cache hits do not refresh lastUsedAt, so a size or age prune can evict a warm chain''s base. See docs\failure-modes.md.'
         Write-HostMaintenanceMessage 'The file allowlist excludes compile caches; daemon GC is separate. Use -StoreHusksOnly to disable it.' 'DarkGray'
     }
@@ -200,7 +207,7 @@ function Invoke-ReclaimDaemonPrune {
     param([bool]$DaemonPrune, [int]$KeepGB)
     if ($daemonPrune) {
         Write-HostMaintenanceMessage '== pruning unused container layers ==' 'Cyan'
-        $freeTargetMB = $KeepGB * 1024
+        $freeTargetMB = Get-BuildkitFreeTargetMB -GiB $KeepGB
         try {
             & buildctl prune --free-storage $freeTargetMB
             Write-HostMaintenanceMessage ('  buildctl exit: ' + $LASTEXITCODE)
@@ -215,25 +222,43 @@ function Invoke-ReclaimDaemonPrune {
 
 # Main
 function Get-StevedoreTargets {
-    param([string[]]$Tags, [string[]]$Ids)
-    if ($Tags.Count -ne $Ids.Count) { throw 'Each image tag needs one expected image ID.' }
-    $seen = @{}
+    param([string[]]$Tags, [string[]]$Ids, [switch]$Container)
+    $kind = if ($Container) { 'container' } else { 'image tag' }
+    Assert-HostIdentityPairs -Values $Tags -ExpectedIds $Ids -Kind $kind
     for ($i = 0; $i -lt $Tags.Count; $i++) {
-        # Explicit tagged references only: no globs, digest selectors, options or untagged names.
-        if ($Tags[$i] -cnotmatch '^[a-z0-9][a-z0-9._:/-]*:[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$') {
-            throw "Invalid explicit image tag: $($Tags[$i])"
+        if ($Container) {
+            if ($Tags[$i] -cnotmatch '^[0-9a-f]{64}$' -or $Ids[$i] -cnotmatch '^sha256:[0-9a-f]{64}$') { throw 'Full container and image IDs are required.' }
+            [pscustomobject]@{ Id = $Tags[$i]; Image = $Ids[$i] }
+        } else {
+            if ($Tags[$i] -cnotmatch '^[a-z0-9][a-z0-9._:/-]*:[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$') { throw "Invalid explicit image tag: $($Tags[$i])" }
+            if ($Ids[$i] -cnotmatch '^sha256:[0-9a-f]{64}$') { throw 'Expected image ID must be a full lowercase sha256 ID.' }
+            [pscustomobject]@{ Tag = $Tags[$i]; Id = $Ids[$i] }
         }
-        if ($Ids[$i] -cnotmatch '^sha256:[0-9a-f]{64}$') { throw 'Expected image ID must be a full lowercase sha256 ID.' }
-        if ($seen.ContainsKey($Tags[$i])) { throw "Duplicate image tag: $($Tags[$i])" }
-        $seen[$Tags[$i]] = $true
-        [pscustomobject]@{ Tag = $Tags[$i]; Id = $Ids[$i] }
+    }
+}
+
+function Get-StevedoreInspection {
+    param($Store, [string]$Kind, [string]$Value)
+    $raw = @(Invoke-StevedoreRead -Store $Store -Arguments @($Kind, 'inspect', $Value) -FailureMessage "$Kind inspection failed: $Value")
+    $items = @(ConvertFrom-StevedoreJson -Raw $raw -Context "$Kind inspection")
+    if ($items.Count -ne 1) { throw "$Kind inspection is incomplete." }
+    return $items[0]
+}
+
+function Assert-StevedoreContainerTarget {
+    param($Store, $Target)
+    $record = ConvertTo-HostContainerRecord -Container (Get-StevedoreInspection -Store $Store -Kind 'container' -Value $Target.Id)
+    if ($record.Id -cne $Target.Id -or $record.Image -cne $Target.Image -or $record.Running -or -not $record.Disposable -or $record.Status -cnotin @('created', 'exited', 'stopped', 'dead')) {
+        throw 'Container changed, is active, or is not explicitly disposable.'
     }
 }
 
 function Invoke-StevedoreRead {
     param($Store, [string[]]$Arguments, [string]$FailureMessage)
-    $output = @(& $Store.Tool --address $Store.Address --namespace $Store.Namespace @Arguments)
-    if ($LASTEXITCODE -ne 0) { throw $FailureMessage }
+    $output = @(& $Store.Tool --address $Store.Address --namespace $Store.Namespace @Arguments 2>&1)
+    $raw = $LASTEXITCODE
+    $diagnostics = @($output | Where-Object { $_ -is [Management.Automation.ErrorRecord] })
+    if ($raw -ne 0 -or $diagnostics.Count) { throw "$FailureMessage (exit ${raw}): $($diagnostics -join "`n")" }
     return $output
 }
 
@@ -270,11 +295,9 @@ function Assert-StevedoreIdle {
 
 function Get-StevedoreImageId {
     param($Store, [string]$Tag)
-    $raw = @(Invoke-StevedoreRead -Store $Store -Arguments @('image', 'inspect', $Tag) -FailureMessage "Cannot inspect image: $Tag")
-    if (-not $raw.Count) { throw "Cannot inspect image: $Tag" }
-    $items = @(ConvertFrom-StevedoreJson -Raw $raw -Context "image inspection: $Tag")
-    if ($items.Count -ne 1 -or $null -eq $items[0].PSObject.Properties['Id']) { throw "Unexpected image inspection: $Tag" }
-    return $items[0].Id
+    $item = Get-StevedoreInspection -Store $Store -Kind 'image' -Value $Tag
+    if ($null -eq $item.PSObject.Properties['Id']) { throw "Unexpected image inspection: $Tag" }
+    return $item.Id
 }
 
 function Assert-StevedoreTarget {
@@ -285,14 +308,15 @@ function Assert-StevedoreTarget {
 }
 
 function Invoke-StevedoreRemoval {
-    param($Store, [string]$Tag)
-    & $Store.Tool --address $Store.Address --namespace $Store.Namespace rmi $Tag | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "Image removal failed: $Tag" }
+    param($Store, [string]$Tag, [switch]$Container)
+    $command = if ($Container) { 'rm' } else { 'rmi' }
+    & $Store.Tool --address $Store.Address --namespace $Store.Namespace $command $Tag | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "Selected $command removal failed: $Tag" }
 }
 
 function Invoke-StevedoreRegularPrune {
     param([string]$Buildctl, [string]$Address, [int]$TargetGB)
-    & $Buildctl --addr $Address prune --filter 'type==regular' --free-storage ($TargetGB * 1024) | Out-Host
+    & $Buildctl --addr $Address prune --filter 'type==regular' --free-storage (Get-BuildkitFreeTargetMB -GiB $TargetGB) | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'Regular BuildKit cache prune failed.' }
 }
 
@@ -301,24 +325,36 @@ function Assert-StevedoreAdmin {
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Administrator rights are required.' }
 }
 
-function Invoke-StevedoreReclaim {
-    param([object[]]$Targets, [bool]$PruneRegular, [int]$TargetGB, [bool]$DoApply,
-        [string]$Nerdctl, [string]$Buildctl, [string]$Namespace, [string]$Address, [string]$ContainerdAddress)
-    if (-not $Targets.Count -and -not $PruneRegular) { throw 'Select image tags or -RegularCache.' }
+function Assert-StevedoreReclaimOptions {
+    param([object[]]$Targets, [object[]]$Containers, [bool]$PruneRegular, [int]$TargetGB, [string]$Namespace, [string]$Address, [string]$ContainerdAddress)
+    if (-not $Targets.Count -and -not $PruneRegular -and -not $Containers.Count) { throw 'Select image tags or -RegularCache.' }
     if ($TargetGB -lt 1 -or $TargetGB -gt 2097151) { throw 'KeepGB is outside the supported range.' }
     if ($Namespace -cnotmatch '^[a-zA-Z0-9][a-zA-Z0-9_.-]*$') { throw 'Invalid Stevedore namespace.' }
     if ($Address -notmatch '^(npipe|unix|tcp)://\S+$') { throw 'Invalid BuildKit address.' }
     if ($ContainerdAddress -notmatch '^(?:(npipe|unix|tcp)://\S+|\\\\\.\\pipe\\[^\s]+)$') { throw 'Invalid containerd address.' }
+}
+
+function Invoke-StevedoreReclaim {
+    param([object[]]$Targets, [bool]$PruneRegular, [int]$TargetGB, [bool]$DoApply,
+        [string]$Nerdctl, [string]$Buildctl, [string]$Namespace, [string]$Address, [string]$ContainerdAddress, [object[]]$Containers = @())
+    Assert-StevedoreReclaimOptions -Targets $Targets -Containers $Containers -PruneRegular $PruneRegular -TargetGB $TargetGB -Namespace $Namespace -Address $Address -ContainerdAddress $ContainerdAddress
     $store = [pscustomobject]@{ Tool = $Nerdctl; Namespace = $Namespace; Address = $ContainerdAddress }
+    foreach ($container in $Containers) { Assert-StevedoreContainerTarget -Store $store -Target $container }
     foreach ($target in $Targets) {
         Assert-StevedoreTarget -Store $store -Target $target
         Write-HostMaintenanceMessage ("Stevedore tag: {0} ({1})" -f $target.Tag, $target.Id)
     }
-    if ($PruneRegular) { Write-HostMaintenanceMessage ("Unused regular BuildKit cache: free-space target {0} GB; cache mounts excluded." -f $TargetGB) }
+    if ($PruneRegular) { Write-HostMaintenanceMessage ("Unused regular BuildKit cache: free-space target {0} GiB; cache mounts excluded." -f $TargetGB) }
     if (-not $DoApply) { Write-HostMaintenanceMessage 'REPORT ONLY. Re-run with -Apply after review.'; return }
     Assert-StevedoreAdmin
     Assert-StevedoreIdle -Buildctl $Buildctl -Address $Address -Store $store
+    foreach ($container in $Containers) {
+        Assert-StevedoreIdle -Buildctl $Buildctl -Address $Address -Store $store
+        Assert-StevedoreContainerTarget -Store $store -Target $container
+        Invoke-StevedoreRemoval -Store $store -Tag $container.Id -Container
+    }
     foreach ($target in $Targets) {
+        Assert-StevedoreIdle -Buildctl $Buildctl -Address $Address -Store $store
         Assert-StevedoreTarget -Store $store -Target $target
         Invoke-StevedoreRemoval -Store $store -Tag $target.Tag
     }
@@ -331,7 +367,7 @@ function Invoke-StevedoreReclaim {
 function Assert-StevedoreSelectors {
     param([bool]$Selected, [string[]]$BoundParameters)
     if (-not $Selected) {
-        foreach ($name in @('ImageTag', 'ExpectedImageId', 'RegularCache', 'StevedoreNamespace', 'BuildkitAddress', 'ContainerdAddress')) {
+        foreach ($name in @('ImageTag', 'ExpectedImageId', 'ContainerId', 'ExpectedContainerImageId', 'RegularCache', 'StevedoreNamespace', 'BuildkitAddress', 'ContainerdAddress')) {
             if ($name -in $BoundParameters) { throw "$name requires -StevedoreOnly." }
         }
     }
@@ -340,10 +376,11 @@ function Assert-StevedoreSelectors {
 function Invoke-StevedoreOnlyMode {
     if ($AllowDuringBuild -or $NoDaemonPrune -or $StoreHusksOnly) { throw 'StevedoreOnly cannot be combined with other cleanup selectors.' }
     $targets = @(Get-StevedoreTargets -Tags $ImageTag -Ids $ExpectedImageId)
+    $containers = @(Get-StevedoreTargets -Tags $ContainerId -Ids $ExpectedContainerImageId -Container)
     $bin = Join-Path $env:ProgramFiles 'Stevedore\bin'
     Invoke-StevedoreReclaim -Targets $targets -PruneRegular ([bool]$RegularCache) -TargetGB $KeepGB -DoApply ([bool]$Apply) `
         -Nerdctl (Join-Path $bin 'nerdctl.exe') -Buildctl (Join-Path $bin 'buildctl.exe') `
-        -Namespace $StevedoreNamespace -Address $BuildkitAddress -ContainerdAddress $ContainerdAddress
+        -Namespace $StevedoreNamespace -Address $BuildkitAddress -ContainerdAddress $ContainerdAddress -Containers $containers
     return 0
 }
 

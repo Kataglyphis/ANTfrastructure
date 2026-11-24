@@ -397,7 +397,7 @@ script that runs twice must not carry a build-breaking assert; the pkg-config
 `verify_consumer_dev_surface` gate is the authority).
 
 `preflight.sh` keeps its check list in one place — the `KNOWN_SLUGS` array
-(`preflight.sh:38-58`, 42 slugs), which is also the vocabulary
+(`preflight.sh:38-58`, 43 slugs), which is also the vocabulary
 `PREFLIGHT_ONLY=` and `PREFLIGHT_SKIP=` accept. **That array is the authority for
 both membership and run order** — the table below groups them by kind and will
 drift if a slug is added without touching it.
@@ -417,6 +417,7 @@ drift if a slug is added without touching it.
 | `advert-keys` | `verify_advertised_keys.py` | a version-shaped `ENV`/`ARG` the runtime image advertises that the smoke neither checks nor excuses with a written reason |
 | `doc-links` | `docs/scripts/verify_doc_links.py` | broken relative links, dead anchors, `file.md § Heading` refs, missing `INDEX.md`/toctree coverage |
 | `doc-dupes` | `docs/scripts/verify_doc_dupes.py` | a passage copied into a second page; deliberate overlap is budgeted in `docs/scripts/doc-dupes.allow`, which itself fails when an entry goes stale |
+| `doc-prose` | `verify_doc_prose.py` | a page whose prose rates grew past its row in `docs/scripts/doc-prose.census`, a row not lowered after a fall, a new page over the fixed limits, and an `AGENTS.md` over its word count; `run-lint-gates.sh` runs it over every consumer, report-only until seeded |
 | `sbom` | `docs/scripts/generate_sbom.py --check` | the committed curated SBOM drifting from `deps.json` + `versions.env` |
 | `env-knobs` | `lint-env-knobs.sh` | a consumed `${VAR:-}` knob with no owner; advisory unless `KNOB_GATE=1` — stale allow rows always fail |
 | `mirror-consistency` | `01-core/verify-ubuntu-mirror-consistency.sh` | class 8 — a Dockerfile missing the canonical Ubuntu mirror ARGs |
@@ -450,7 +451,7 @@ drift if a slug is added without touching it.
 Every check with a script is runnable standalone (same command); `crlf-guard`
 and `stage-graph` are inline in `preflight.sh` and have no separate entry point.
 The pre-commit hook (`linux/host-config/git-hooks/pre-commit`) runs the
-whole-tree gates that are cheap — `PREFLIGHT_ONLY=` the 21 fast slugs in
+whole-tree gates that are cheap — `PREFLIGHT_ONLY=` the 22 fast slugs in
 `_FAST_SLUGS` (`:107-110`), 6.4 s combined — and then three blocks scoped to the
 STAGED content, so nothing slow runs over the whole tree: `shellcheck -S error`
 plus the warning ratchet on staged `.sh` files (`:121-138`, the binary resolved

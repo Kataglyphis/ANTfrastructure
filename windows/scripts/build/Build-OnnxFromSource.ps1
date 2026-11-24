@@ -877,7 +877,8 @@ Write-Host "=== ONNX Runtime source build (Ninja + clang-cl + GPU: $(if ($env:GP
 # EAP=Stop makes every failure terminating, so the trap stamps the open phase and rethrows.
 trap { Complete-SourceBuildFailure -Label 'onnx' -ErrorRecord $_; break }
 Switch-BuildPhase '1. clone + source patches (DML clang-cl, rc filter)'
-Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime.git' -Tag "v$OnnxVersion" -SourceDir $SourceDir -Recursive | Out-Null
+Invoke-OrtSourceClone -SourceDir $SourceDir -Version $OnnxVersion -ExpectedCommit $env:ONNXRUNTIME_WINDOWS_SOURCE_COMMIT | Out-Null
+Write-Host "ONNX source pin verified: version=$OnnxVersion commit=$env:ONNXRUNTIME_WINDOWS_SOURCE_COMMIT"
 
 $cmakeSrc = if (Test-Path "$SourceDir\cmake\CMakeLists.txt") { "$SourceDir\cmake" } else { $SourceDir }
 $buildDir = "$SourceDir\build"

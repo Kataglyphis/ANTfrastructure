@@ -1,6 +1,6 @@
 ---
 # Reboot only when pending — its own play so the Linux serial/reboot logic never sees Windows.
-- name: Keep summy-server (Windows 11 ARM) up to date
+- name: Keep win-1 (Windows 11 ARM) up to date
   hosts: windows
   gather_facts: false
   tasks:
@@ -108,7 +108,7 @@
       register: win_reboot_check
       changed_when: false
 
-    - name: Reboot and wait (summy-server is not the control node — inline is fine)
+    - name: Reboot and wait (win-1 is not the control node — inline is fine)
       ansible.windows.win_reboot:
         reboot_timeout: 1800
       when: "'yes' in win_reboot_check.stdout"

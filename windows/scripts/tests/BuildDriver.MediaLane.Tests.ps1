@@ -23,6 +23,11 @@ $script:WbtTrtEpPins = @{
     ORT_TENSORRT_EP_FLATBUFFERS_VERSION = 'trtfb-50'; ORT_TENSORRT_EP_FLATBUFFERS_SHA256 = 'trtfbsha-51'
 }
 
+$script:WbtSourcePins = @{
+    ONNXRUNTIME_WINDOWS_SOURCE_COMMIT = 'ort-commit-52'
+    ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT = 'genai-commit-53'
+}
+
 function New-WbtFakeMediaVersionTable {
     $table = @{
         ONNXRUNTIME_VERSION       = 'ort-1'
@@ -38,6 +43,7 @@ function New-WbtFakeMediaVersionTable {
         QNN_SDK_VERSION           = 'qnnver-27'
         ORT_QNN_EP_VERSION        = 'qnnep-28'
         ORT_QNN_EP_SOURCE_SHA256  = 'qnnepsha-29'
+        ORT_QNN_EP_CORE_COMMIT = 'qnn-core-commit-29'
         LITERT_VERSION            = 'lrt-7'
         LITERT_LM_VERSION         = 'lm-8'
         TVM_REF                   = 'tvm-9'
@@ -58,7 +64,7 @@ function New-WbtFakeMediaVersionTable {
         # The one Cython both branches install into the host CPython (CON80).
         PY_CYTHON_VERSION                   = 'cy-26'
     }
-    return $table + $script:WbtCodecPins + $script:WbtBazelToolPins + $script:WbtTrtEpPins
+    return $table + $script:WbtCodecPins + $script:WbtBazelToolPins + $script:WbtTrtEpPins + $script:WbtSourcePins
 }
 
 Describe 'Get-MediaBranchVersionArg' {
@@ -82,6 +88,7 @@ Describe 'Get-MediaBranchVersionArg' {
                     QNN_SDK_VERSION           = 'qnnver-27'
                     ORT_QNN_EP_VERSION        = 'qnnep-28'
                     ORT_QNN_EP_SOURCE_SHA256  = 'qnnepsha-29'
+        ORT_QNN_EP_CORE_COMMIT = 'qnn-core-commit-29'
                     AMF_HEADERS_VERSION       = 'amf-15'
                     AMF_HEADERS_SHA256        = 'amfsha-16'
                 }
@@ -112,7 +119,7 @@ Describe 'Get-MediaBranchVersionArg' {
             }
         )
         # media-core also forwards FFmpeg's codec pins, from the one table the fixture merges too.
-        $cases[0].Expected += $script:WbtCodecPins + $script:WbtTrtEpPins
+        $cases[0].Expected += $script:WbtCodecPins + $script:WbtTrtEpPins + $script:WbtSourcePins
         $cases[1].Expected += $script:WbtBazelToolPins
         foreach ($case in $cases) {
             $actual = Get-MediaBranchVersionArg -Branch $case.Branch -VersionTable $table
@@ -155,6 +162,8 @@ Describe 'Get-MediaMergeVersionArg' {
         ) -join ','
         Assert-Equal $expectedKeys (@($merge.Keys | Sort-Object) -join ',') 'exact merge key set'
         # Compile-only core inputs the merge Dockerfile declares no ARG for:
+        Assert-False ($merge.Contains('ONNXRUNTIME_WINDOWS_SOURCE_COMMIT')) 'the source commit is a compile-only input'
+        Assert-False ($merge.Contains('ORT_QNN_EP_CORE_COMMIT')) 'the QNN header commit is a compile-only input'
         Assert-False ($merge.Contains('NV_CODEC_HEADERS_REF')) 'NV_CODEC_HEADERS_REF is excluded from the merge env'
         Assert-False ($merge.Contains('CUDA_ARCHITECTURES')) 'CUDA_ARCHITECTURES is excluded from the merge env'
         Assert-False ($merge.Contains('AMF_HEADERS_VERSION')) 'AMF_HEADERS_VERSION is excluded from the merge env'

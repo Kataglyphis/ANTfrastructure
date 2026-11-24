@@ -39,11 +39,12 @@ run_check
 t_assert_eq 1 "${RC}" "bad JSON turns the gate red"
 printf '{"extends":["github>Kataglyphis/ANTfrastructure"]}\n' > "${REPO}/.github/renovate.json"
 
-t_case "a wrapper that drops argv fails"
-printf '#!/usr/bin/env bash\nexec bash "$ANTFRASTRUCTURE_DIR/linux/scripts/renovate-local.sh"\n' > "${REPO}/scripts/linux/renovate-local.sh"
+t_case "a wrapper that drops argv fails before it can execute"
+printf '#!/usr/bin/env bash\n# The linux/scripts/renovate-local.sh marker cannot justify running a rejected wrapper.\nprintf unsafe > "%s"\n' "${WORK}/invalid-wrapper-ran" > "${REPO}/scripts/linux/renovate-local.sh"
 run_check
 t_assert_eq 1 "${RC}" "dropping --apply turns the gate red"
 t_assert_contains "${OUT}" '"$@"' "the missing forwarding is named"
+t_assert_ok test ! -e "${WORK}/invalid-wrapper-ran"
 
 t_case "a wrapper that bypasses the shared driver fails"
 printf '#!/usr/bin/env bash\nexec bash local-copy.sh "$@"\n' > "${REPO}/scripts/linux/renovate-local.sh"

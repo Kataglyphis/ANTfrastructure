@@ -8,6 +8,13 @@ permissions:
 on:
   workflow_call:
     inputs:
+      artifact-retention-days:
+        description: >-
+          Days to keep this lane's package and report artifacts. 0, the
+          default, keeps them 30 days on main, 14 on develop and 5 on any other ref.
+        required: false
+        type: number
+        default: 0
       image:
         description: >-
           Windows container image to build inside. The default is the family
@@ -308,6 +315,7 @@ jobs:
           overwrite: ${{ inputs.overwrite-artifact }}
           if-no-files-found: error
           path: ${{ inputs.artifact-paths }}
+          retention-days: ${{ inputs.artifact-retention-days || (github.ref == 'refs/heads/main' && 30) || (github.ref == 'refs/heads/develop' && 14) || 5 }}
 
   # The device has no image, so :winarm64's interpreters and toolchain stage everything it runs (CON113).
   stage-python-for-windows-arm64:
@@ -373,6 +381,8 @@ jobs:
           path: ${{ steps.prep.outputs.workspace }}/dist/windows-arm64-python
           include-hidden-files: true
           if-no-files-found: error
+          # Only the arm64 test job of this run reads the stage.
+          retention-days: 1
 
   test-python-on-windows-arm64:
     if: ${{ inputs.arm64-tests }}
@@ -408,6 +418,7 @@ jobs:
           name: packages-windows-arm64-wheels
           path: stage/wheels/*.whl
           if-no-files-found: error
+          retention-days: ${{ inputs.artifact-retention-days || (github.ref == 'refs/heads/main' && 30) || (github.ref == 'refs/heads/develop' && 14) || 5 }}
 
   # Independent of the build: a syntax error in the build scripts is exactly when this gate matters.
   lint-powershell:

@@ -7,9 +7,10 @@
 Set-StrictMode -Version Latest
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsNative.Common.psm1') -ErrorAction Stop
+Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -ErrorAction Stop
 
 
-# The submodule's nearest v* tag, else TVM's apache-tvm-ffi>= bound: the version both assembled wheels resolve against.
+# Tagless checkouts need TVM's FFI bound instead of setuptools-scm's development fallback.
 function Get-VendoredTvmFfiVersion {
     param(
         [string]$DescribeOutput = '',
@@ -25,6 +26,56 @@ function Get-VendoredTvmFfiVersion {
     if ($m.Success) { return $m.Groups[1].Value }
     throw 'Get-VendoredTvmFfiVersion: neither a v* tag on the tvm-ffi submodule nor an apache-tvm-ffi>= bound in TVM''s pyproject.toml'
 }
+
+function Get-TvmFfiSourceVersion {
+    param([Parameter(Mandatory)][string]$SourceDir)
+    $ffiSource = Join-Path $SourceDir '3rdparty\tvm-ffi'
+    $tag = Invoke-NativeProbeProcess -FilePath git -ArgumentList @('-C', $ffiSource, 'describe', '--tags', '--abbrev=0', '--match', 'v*')
+    $describe = if ($tag.ExitCode -eq 0) { $tag.Text } else { '' }
+    $pyproject = [IO.File]::ReadAllText((Join-Path $SourceDir 'pyproject.toml'))
+    return Get-VendoredTvmFfiVersion -DescribeOutput $describe -TvmPyprojectText $pyproject
+}
+
+Export-ModuleMember -Function Get-TvmFfiSourceVersion
+
+# Selected-version metadata does not prove dependency resolution, ABI, importability or inference.
+function Assert-TvmFfiPackageVersion {
+    param([Parameter(Mandatory)][hashtable]$Python, [Parameter(Mandatory)][string]$ExpectedVersion, [string]$WheelPath = '')
+    $source = @'
+import importlib.metadata as metadata
+import json
+import re
+import sys
+
+expected, wheel = sys.argv[1:]
+distributions = list(metadata.distributions(path=[wheel])) if wheel else list(metadata.distributions(name="apache-tvm-ffi"))
+if len(distributions) != 1 or re.sub(r"[-_.]+", "-", distributions[0].metadata["Name"]).lower() != "apache-tvm-ffi":
+    raise RuntimeError("Expected exactly one apache-tvm-ffi distribution")
+version = distributions[0].version
+if version != expected:
+    raise RuntimeError(f"apache-tvm-ffi metadata {version} differs from selected {expected}")
+print(json.dumps({"version": version, "wheel": wheel}))
+'@
+    $report = Invoke-PythonJsonProbe -Python $Python.Exe -Source $source -Prefix 'tvm-ffi-version' -InterpreterArgument @('-I') `
+        -ArgumentList @($ExpectedVersion, $WheelPath) -DiagnosticTail -FailurePrefix 'TVM-FFI metadata'
+    Write-Host "TVM-FFI metadata OK ($($report.version); wheel='$WheelPath')"
+}
+
+Export-ModuleMember -Function Assert-TvmFfiPackageVersion
+
+function Invoke-TvmFfiPythonBuild {
+    param([Parameter(Mandatory)][hashtable]$Python, [Parameter(Mandatory)][string]$SourceDir,
+        [Parameter(Mandatory)][scriptblock]$Build, [switch]$Wheel)
+    $ffiVersion = Get-TvmFfiSourceVersion -SourceDir $SourceDir
+    $buildResult = Invoke-WithProcessEnvironment -Environment @{ SETUPTOOLS_SCM_PRETEND_VERSION_FOR_APACHE_TVM_FFI = $ffiVersion } -ScriptBlock $Build
+    if (-not $Wheel -or $buildResult) {
+        $wheelPath = if ($Wheel) { $buildResult } else { '' }
+        Assert-TvmFfiPackageVersion -Python $Python -ExpectedVersion $ffiVersion -WheelPath $wheelPath
+    }
+    return $buildResult
+}
+
+Export-ModuleMember -Function Invoke-TvmFfiPythonBuild
 
 # Writes the dist-info for a hand-assembled wheel; `python -m wheel pack` then adds RECORD and the archive.
 function Write-AssembledWheelDistInfo {

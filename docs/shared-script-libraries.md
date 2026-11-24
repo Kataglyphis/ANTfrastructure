@@ -323,7 +323,7 @@ per-file detail, the deletion history and the consumer-surface notes are here.
 
 ```
 linux/scripts/
-├── 01-core/             shared utilities (62 as of 2026-09-01 — `ls linux/scripts/01-core/*.sh | wc -l`; the literal said 48 for long enough that README repeated it, so treat any count here as indicative: versions.env, logging, platform, cross-env, cross-gcc, cross-meson, cross-apt, compiler-resolution, tag-naming, stage-defs, digest-pinning, ancestry, build-helpers, cli-parsers, …)
+├── 01-core/             shared utilities (`ls linux/scripts/01-core/*.sh | wc -l` counts them; among them versions.env, logging, platform, cross-env, cross-gcc, cross-meson, cross-apt, compiler-resolution, tag-naming, stage-defs, digest-pinning, ancestry, build-helpers, cli-parsers, …)
 ├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds
 ├── 03-media/            media library build scripts
 │   ├── core/common.sh   single DRY bootstrap — sourced by every media script
@@ -1409,7 +1409,7 @@ package and OxidANT a Rust crate, neither has a single `.py`, and refusing an em
 Python scope made both lanes exit 1 on every push for a reason nothing in either tree
 could change. A permanently red lane is a tolerated failure by construction.
 
-### `run-lint-gates.sh` — ten gates over a consumer tree, plus the opt-in ratchets
+### `run-lint-gates.sh` — the gates over a consumer tree, plus the opt-in ratchets
 
 ```bash
 bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD"
@@ -1420,7 +1420,7 @@ bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD" --ratche
 shellcheck, actionlint (+ the CI image-ref check), gitleaks, ruff (error tier),
 the shared-config drift check, the consumer pin-forwarding check, the
 [README length](code-quality-tooling.md#readme-length-readme-length), the
-[pattern limits](code-quality-tooling.md#pattern-limits-pattern-limits) and mutation
+[doc prose](code-quality-tooling.md#doc-prose-doc-prose), the [pattern limits](code-quality-tooling.md#pattern-limits-pattern-limits) and mutation
 staleness, in one command, every gate running even after one fails. Three consumers had grown their own copy
 — two of them as `run:` blocks inside a workflow, so the gate blocking their
 deploy could not be reproduced locally at all.
@@ -1446,6 +1446,9 @@ same commit as the gates it calls.
 (by `lint-shell.sh --list-files`, so a hook without a suffix counts) with `w/crlf`, `w/mixed` or
 `w/-text`. The staged checks run it with `--staged`, which reads the `i/` column of the staged
 scripts: the bytes the commit carries.
+
+Doc prose runs `verify_doc_prose.py --root <consumer-root>`. It only reports until the consumer
+seeds `<consumer-root>/doc-prose.census`; from then on a page's prose may only get better.
 
 **Pattern limits** runs `verify_pattern_limits.py --root <consumer-root>`: a
 `quality-report.toml` row `kind = "pattern"` with `max = 0` fails on its first match and prints
