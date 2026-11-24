@@ -13,7 +13,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import TypeAlias
+from typing import NamedTuple, TypeAlias
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gate_scope
@@ -74,6 +74,17 @@ Census: TypeAlias = dict[tuple[str, str], float]
 
 class CensusError(ValueError):
     """A census file the gate cannot read, or a write it must refuse."""
+
+
+class CensusSpec(NamedTuple):
+    """One census file: its header line, its metrics in row order, and which of them are whole counts."""
+
+    header: str
+    metrics: tuple[str, ...]
+    counts: frozenset[str]
+
+
+PROSE = CensusSpec(HEADER, (*METRICS, WORDS), frozenset({WORDS}))
 
 
 class Blocks:
@@ -229,7 +240,7 @@ def measure(root: Path) -> dict[str, Metrics]:
     return measured
 
 
-def load_census(path: Path) -> Census:
+def load_census(path: Path, spec: CensusSpec = PROSE) -> Census:
     """`<page> | <metric> | <value>` rows; a malformed or repeated row is an error, never a skip."""
     rows: Census = {}
     for num, raw in enumerate(path.read_text(encoding="utf-8").split("\n"), 1):
@@ -237,7 +248,7 @@ def load_census(path: Path) -> Census:
         if not line or line.startswith("#"):
             continue
         parts = [p.strip() for p in line.split("|")]
-        if len(parts) != 3 or parts[1] not in (*METRICS, WORDS) or not re.fullmatch(r"\d+(\.\d)?", parts[2]):
+        if len(parts) != 3 or parts[1] not in spec.metrics or not re.fullmatch(r"\d+(\.\d)?", parts[2]):
             raise CensusError(f"{path.name}:{num}: expected '<page> | <metric> | <value>', got {line!r}")
         if (parts[0], parts[1]) in rows:
             raise CensusError(f"{path.name}:{num}: a second {parts[1]} row for {parts[0]}; one of them is unread")
@@ -245,11 +256,11 @@ def load_census(path: Path) -> Census:
     return rows
 
 
-def render(rows: Census) -> str:
-    order = {metric: i for i, metric in enumerate((*METRICS, WORDS))}
-    lines = [HEADER]
+def render(rows: Census, spec: CensusSpec = PROSE) -> str:
+    order = {metric: i for i, metric in enumerate(spec.metrics)}
+    lines = [spec.header]
     for (page, metric), value in sorted(rows.items(), key=lambda kv: (kv[0][0], order[kv[0][1]])):
-        lines.append(f"{page} | {metric} | {int(value) if metric == WORDS else f'{value:.1f}'}")
+        lines.append(f"{page} | {metric} | {int(value) if metric in spec.counts else f'{value:.1f}'}")
     return "\n".join(lines) + "\n"
 
 

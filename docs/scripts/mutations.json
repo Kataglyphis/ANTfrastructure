@@ -14950,9 +14950,9 @@
  {
   "id": "readme-length.limit-enforced",
   "target": "linux/scripts/verify_readme_length.py",
-  "find": "    if count > LIMIT:",
-  "replace": "    if False:",
-  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "find": "    problems = [] if count <= LIMIT else",
+  "replace": "    problems = [] if True else",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k lines",
   "why": "a README over 100 lines must fail, not print OK"
  },
  {
@@ -14960,15 +14960,15 @@
   "target": "linux/scripts/verify_readme_length.py",
   "find": "    return data.count(b\"\\n\") + (1 if data and not data.endswith(b\"\\n\") else 0)",
   "replace": "    return data.count(b\"\\n\")",
-  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k lines",
   "why": "a last line without a newline is still a line; counting newlines alone lets a 101-line README through"
  },
  {
   "id": "readme-length.missing-readme-fails",
   "target": "linux/scripts/verify_readme_length.py",
-  "find": "    if not os.path.isfile(readme):",
+  "find": "    if not readme.is_file():",
   "replace": "    if False:",
-  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k lines",
   "why": "a missing README is not a short one; without the check the gate crashes or reads green over nothing"
  },
  {
@@ -14976,7 +14976,7 @@
   "target": "linux/scripts/run-lint-gates.sh",
   "find": "  _lint_gates_hub linux/scripts/verify_readme_length.py || return 1",
   "replace": "  return 0",
-  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k wiring",
   "why": "the consumer half must run the gate and return its verdict, or lint-gates.yml passes every consumer README"
  },
  {
@@ -14984,8 +14984,184 @@
   "target": "linux/scripts/run-lint-gates.sh",
   "find": "  run_gate \"README length\" _lint_gates_readme\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k wiring",
   "why": "a gate function nothing registers never runs in a consumer lane"
+ },
+ {
+  "id": "readme-length.word-limit",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "LIMITS = {\"words\": 700,",
+  "replace": "LIMITS = {\"words\": 701,",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k words",
+  "why": "700 words is the owner's limit; the 701st must fail"
+ },
+ {
+  "id": "readme-length.token-needs-letter",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "WORD = re.compile(r\"[^\\W_]\")",
+  "replace": "WORD = re.compile(r\"\\S\")",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k words",
+  "why": "a table pipe or a dash is no word; counting them fails a README for its markup"
+ },
+ {
+  "id": "readme-length.limit-binds-without-row",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "            if now > LIMITS[metric]:",
+  "replace": "            if False:",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k words",
+  "why": "a figure without a census row meets its limit, or a new README has none"
+ },
+ {
+  "id": "readme-length.census-graded",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        problems += grade(values, census)",
+  "replace": "        problems += []",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k words",
+  "why": "a seeded census must be graded, or seeding turns the gate off"
+ },
+ {
+  "id": "readme-length.width-limit",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "WIDTH = 160",
+  "replace": "WIDTH = 161",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k width",
+  "why": "160 characters is the owner's limit; the 161st must fail"
+ },
+ {
+  "id": "readme-length.wide-is-over-160",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        if len(line) > WIDTH:",
+  "replace": "        if len(line) >= WIDTH:",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k width",
+  "why": "a line of exactly 160 characters is within the limit"
+ },
+ {
+  "id": "readme-length.wide-lines-named",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        sys.stderr.write(\"\".join(f\"      {README}:{n}: {chars} characters\\n\" for n, chars in wide))\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k width",
+  "why": "a width finding names each wide line, or the author hunts for it"
+ },
+ {
+  "id": "readme-length.badge-exempt",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        if BADGE_LINE.match(line) or LINK_LINE.match(line):",
+  "replace": "        if LINK_LINE.match(line):",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k width",
+  "why": "a badge line is exempt from the words and the width"
+ },
+ {
+  "id": "readme-length.link-line-exempt",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        if BADGE_LINE.match(line) or LINK_LINE.match(line):",
+  "replace": "        if BADGE_LINE.match(line):",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k width",
+  "why": "a line that is only a link is exempt from the words and the width"
+ },
+ {
+  "id": "readme-length.list-link-exempt",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "LINK_LINE = re.compile(rf\"^\\s*(?:[-*+]\\s+)?(?:",
+  "replace": "LINK_LINE = re.compile(rf\"^\\s*(?:",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k width",
+  "why": "a list item that holds one link is a link-only line"
+ },
+ {
+  "id": "readme-length.overflow-counted",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "\"overflow\": sum(n - WIDTH for _, n in wide)",
+  "replace": "\"overflow\": len(wide)",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "overflow counts the characters past 160, so a wide line cannot grow unseen"
+ },
+ {
+  "id": "readme-length.grew-fails",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        elif now > was:",
+  "replace": "        elif False:",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "a figure above its row is the regression the census exists to stop"
+ },
+ {
+  "id": "readme-length.fell-fails",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        elif now < was:",
+  "replace": "        elif False:",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "a fallen figure must be written down, or the next commit may grow back into the slack"
+ },
+ {
+  "id": "readme-length.write-never-raises",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "    rows: Census = {key: min(was, values[key[1]]) for key",
+  "replace": "    rows: Census = {key: values[key[1]] for key",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "--write that raises a row turns the ratchet into a recorder"
+ },
+ {
+  "id": "readme-length.write-drops-met-rows",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "    return {key: value for key, value in rows.items() if value > LIMITS[key[1]]}",
+  "replace": "    return rows",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "a row at its limit goes, so the fixed limit binds again"
+ },
+ {
+  "id": "readme-length.stale-rows-fail",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "if page != README or was <= LIMITS[metric]]",
+  "replace": "if False]",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "a row of another page or at its limit holds nothing and must not sit in the census"
+ },
+ {
+  "id": "readme-length.seed-refuses-existing",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "    if census_path.exists():\n        raise CensusError(f\"{census_path} exists;",
+  "replace": "    if False:\n        raise CensusError(f\"{census_path} exists;",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "--seed over a census would raise every row at once"
+ },
+ {
+  "id": "readme-length.census-spec-read",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "parts[1] not in spec.metrics",
+  "replace": "parts[1] not in PROSE.metrics",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "the README census has its own metrics; the shared reader must take them from the spec"
+ },
+ {
+  "id": "readme-length.census-counts-whole",
+  "target": "linux/scripts/verify_doc_prose.py",
+  "find": "int(value) if metric in spec.counts else",
+  "replace": "int(value) if metric == WORDS else",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k ratchet",
+  "why": "the README figures are whole counts and are written as such"
+ },
+ {
+  "id": "readme-length.seed-only-over-limit",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "float(v) for m, v in values.items() if v > LIMITS[m]}",
+  "replace": "float(v) for m, v in values.items()}",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k consumer",
+  "why": "a seed writes rows only for figures over their limit"
+ },
+ {
+  "id": "readme-length.consumer-off-until-seeded",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        if hub:\n            raise CensusError(f\"{census_path} is missing",
+  "replace": "        if True:\n            raise CensusError(f\"{census_path} is missing",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k consumer",
+  "why": "an unseeded consumer is reported, not failed; otherwise the next pin bump reds every consumer at once"
+ },
+ {
+  "id": "readme-length.hub-census-required",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "        if hub:\n            raise CensusError(f\"{census_path} is missing",
+  "replace": "        if False:\n            raise CensusError(f\"{census_path} is missing",
+  "test": "bash linux/scripts/tests/test-readme-length.sh -k hub",
+  "why": "the hub grades its own README against its census; a missing one is an error"
  },
  {
   "id": "lint-gates.pattern-limits-limit-enforced",
@@ -59772,7 +59948,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "policy.get(\"release\") == version",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "A requested build pin must match the reviewed release policy."
  },
  {
@@ -59780,7 +59956,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "isinstance(profile[\"files\"], dict) and set(profile[\"files\"]) == expected",
   "replace": "isinstance(profile[\"files\"], dict)",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "A policy cannot drop a required selected original silently."
  },
  {
@@ -59788,7 +59964,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "revision == profile[\"commit\"]",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The actual checkout must match the reviewed release commit."
  },
  {
@@ -59796,7 +59972,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "selected == revision",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The selected release tag cannot point at another commit."
  },
  {
@@ -59804,7 +59980,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "hashlib.sha256(data).hexdigest() == expected",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The exact original notice hash must match its reviewed source policy."
  },
  {
@@ -59812,7 +59988,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "git(tree, \"show\", \"HEAD:\" + relative) == data",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "A changed working original is not an original Git file even if a supplied hash agrees."
  },
  {
@@ -59820,7 +59996,7 @@
   "target": "linux/scripts/01-core/source_originals.py",
   "find": "stat.S_ISREG(info.st_mode) and info.st_nlink == 1",
   "replace": "info.st_nlink == 1",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "A symlink is not a selected original regular file."
  },
  {
@@ -59828,7 +60004,7 @@
   "target": "linux/scripts/01-core/source_originals.py",
   "find": "stat.S_ISREG(info.st_mode) and info.st_nlink == 1",
   "replace": "stat.S_ISREG(info.st_mode)",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "Shared original inodes are refused before staging."
  },
  {
@@ -59836,7 +60012,7 @@
   "target": "linux/scripts/01-core/source_originals.py",
   "find": "int(not allow_empty) <= info.st_size <= max_bytes",
   "replace": "0 <= info.st_size <= max_bytes",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "An empty committed original with a matching hash still cannot satisfy the notice contract."
  },
  {
@@ -59844,7 +60020,7 @@
   "target": "linux/scripts/01-core/source_originals.py",
   "find": "int(not allow_empty) <= info.st_size <= max_bytes",
   "replace": "int(not allow_empty) <= info.st_size",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "Selected notice inputs stay bounded before reading."
  },
  {
@@ -59852,7 +60028,7 @@
   "target": "linux/scripts/01-core/source_originals.py",
   "find": "    plain_parents(path)\n",
   "replace": "    pass\n",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "A selected notice cannot traverse a symlinked source directory."
  },
  {
@@ -59860,7 +60036,7 @@
   "target": "linux/scripts/01-core/source_originals.py",
   "find": "    plain_parents(destination)\n",
   "replace": "    pass\n",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "A linked output parent cannot redirect the original-text payload."
  },
  {
@@ -59868,7 +60044,7 @@
   "target": "linux/scripts/01-core/source_originals.py",
   "find": "    destination.mkdir()",
   "replace": "    destination.mkdir(exist_ok=True)",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "An existing output cannot be refreshed while retaining stale provenance or payloads."
  },
  {
@@ -59876,7 +60052,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "version == profile[\"gtk4_package_version\"]",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The Rust workspace package version remains distinct from the GStreamer release tag."
  },
  {
@@ -59884,7 +60060,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "package[\"license\"] == profile[\"gtk4_license_expression\"]",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The GTK4 manifest license expression must match its reviewed source metadata."
  },
  {
@@ -59892,7 +60068,7 @@
   "target": "linux/scripts/01-core/source_originals.py",
   "find": "len(result) == len(pairs)",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "Duplicate policy keys cannot hide replaced review inputs."
  },
  {
@@ -59900,7 +60076,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "        == str(tree),",
   "replace": "        is not None,",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "A nested directory cannot borrow its parent repository identity."
  },
  {
@@ -59908,7 +60084,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "not destination.is_relative_to(source)",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "Staged originals must survive deletion of the temporary source tree."
  },
  {
@@ -59916,7 +60092,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "len(patch) <= 8 * 1024 * 1024",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "Tracked patch retention refuses oversized input before allocation."
  },
  {
@@ -59924,7 +60100,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "\"binary_linkage_or_complete_license_source_closure_proven\": False",
   "replace": "\"binary_linkage_or_complete_license_source_closure_proven\": True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "Selected original texts must never certify complete binary licence or source closure."
  },
  {
@@ -59932,7 +60108,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "payloads[\"source.patch\"] = patch",
   "replace": "payloads[\"source.patch\"] = b\"\"",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The actual tracked patch bytes are retained rather than an empty placeholder."
  },
  {
@@ -59940,7 +60116,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
   "find": "stage_gstreamer_original_notices \"${BUILD_DIR}/gstreamer\" monorepo monorepo || exit \"$?\"",
   "replace": "stage_gstreamer_original_notices \"${BUILD_DIR}/gstreamer\" monorepo monorepo",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The actual selected handoff must fail before cleanup even when setup is conditionally sourced."
  },
  {
@@ -59948,7 +60124,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
   "find": "  stage_gstreamer_original_notices \"${BUILD_DIR}/gstreamer/subprojects/gst-plugins-rs\" rust rust-monorepo || exit \"$?\"",
   "replace": "  stage_gstreamer_original_notices \"${BUILD_DIR}/gstreamer/subprojects/gst-plugins-rs\" rust rust-monorepo",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The actual selected handoff must fail before cleanup even when setup is conditionally sourced."
  },
  {
@@ -59956,7 +60132,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
   "find": "  stage_gstreamer_original_notices /opt/gst-plugins-rs rust rust-standalone || exit \"$?\"",
   "replace": "  stage_gstreamer_original_notices /opt/gst-plugins-rs rust rust-standalone",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The actual selected handoff must fail before cleanup even when setup is conditionally sourced."
  },
  {
@@ -59964,7 +60140,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "if relative in CONTEXT_PATHS[kind]:",
   "replace": "if False:",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "Build-context changes retain the reviewed upstream original while preserving the actual working bytes separately."
  },
  {
@@ -59972,7 +60148,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "payloads.update(",
   "replace": "dict.fromkeys(",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The actual selected build context must be preserved as payloads, not only recorded as metadata."
  },
  {
@@ -59980,7 +60156,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "rust_package(working_context, profile)",
   "replace": "rust_package(originals, profile)",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The actual working Cargo package identity is checked even when original upstream manifests remain unchanged."
  },
  {
@@ -59988,7 +60164,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "policy.get(\"release\") == version",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "A different GCC version refuses before output allocation."
  },
  {
@@ -59996,7 +60172,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "sha(payloads[name]) == expected",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "A rewritten original GCC notice cannot pass transport."
  },
  {
@@ -60004,7 +60180,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "payloads[\"source.sha512\"] == checksum.encode()",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "The image archive record must match the reviewed official checksum."
  },
  {
@@ -60012,7 +60188,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "payloads[\"source.url\"] == url.encode()",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "The original source URL record must match the selected release."
  },
  {
@@ -60020,7 +60196,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "actual == names",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "Missing and unexpected original tree members fail transport."
  },
  {
@@ -60028,7 +60204,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "all(record.get(name) == value for name, value in expected.items())",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "A changed GStreamer source record is rejected."
  },
  {
@@ -60036,7 +60212,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "record.get(\"binary_linkage_or_complete_license_source_closure_proven\") is False",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "An input record must not certify complete binary or source closure."
  },
  {
@@ -60044,7 +60220,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "set(record[\"files\"]) == set(profile[\"files\"])",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "Every selected original needs a matching record."
  },
  {
@@ -60052,7 +60228,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "sha(data) == expected",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "Modified GStreamer original bytes must fail."
  },
  {
@@ -60060,7 +60236,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "record[\"files\"][name]\n            == {\"sha256\": expected, \"bytes\": len(data), \"kind\": role}",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "The file record must match the original bytes and role."
  },
  {
@@ -60068,7 +60244,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "{name: sha(data) for name, data in working.items()}\n        == record[\"working_context_sha256\"]",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "Changed working manifest bytes must be detected."
  },
  {
@@ -60076,7 +60252,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "_gst[\"rust_package\"](working, profile) == record.get(\"gtk4_package\")",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "The GTK4 identity record must match the actual working manifests."
  },
  {
@@ -60084,7 +60260,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "sha(payloads[\"source.patch\"]) == record.get(\"source_patch_sha256\")",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "An altered source patch must not be transported as the original."
  },
  {
@@ -60092,7 +60268,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "max_bytes=8 * 1024 * 1024",
   "replace": "max_bytes=16 * 1024 * 1024",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "Oversized source patches refuse independently of their recorded hash."
  },
  {
@@ -60100,7 +60276,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "len(rust) == 1 and children == {\"monorepo\"} | rust",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "Ambiguous or missing Rust producer trees must fail."
  },
  {
@@ -60108,7 +60284,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "(prefix is None) == (version is None)",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "An explicitly selected component also needs its version."
  },
  {
@@ -60116,7 +60292,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "\"binary_linkage_or_complete_license_source_closure_proven\": False",
   "replace": "\"binary_linkage_or_complete_license_source_closure_proven\": True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "Transported originals cannot certify binary or full licence acceptance."
  },
  {
@@ -60124,7 +60300,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "_shared.get(\"SOURCE_ORIGINALS_API\") != 1",
   "replace": "False",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "An incompatible required original-file module fails before entrypoint parsing."
  },
  {
@@ -60132,7 +60308,7 @@
   "target": "linux/scripts/03-media/build/gstreamer/common/stage-original-notices.py",
   "find": "not callable(_shared.get(_name))",
   "replace": "False",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The required module exports are checked even for a help-only entry."
  },
  {
@@ -60140,7 +60316,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "not destination.is_relative_to(prefix.absolute())",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "An output inside a selected image prefix refuses before writing."
  },
  {
@@ -60148,7 +60324,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "args.gcc_prefix is not None or args.gstreamer_prefix is not None",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "An empty component selection cannot produce a successful receipt."
  },
  {
@@ -60156,7 +60332,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "_gst.get(\"GSTREAMER_SOURCE_NOTICES_API\") != 1",
   "replace": "False",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "An incompatible required GStreamer contract refuses before parsing."
  },
  {
@@ -60164,7 +60340,7 @@
   "target": "linux/scripts/06-packaging/stage-image-source-originals.py",
   "find": "not callable(_gst.get(_name))",
   "replace": "False",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k transport",
   "why": "Missing required GStreamer contract functions refuse before parsing."
  },
  {
@@ -60172,7 +60348,7 @@
   "target": "linux/Dockerfile.media",
   "find": "    --mount=type=bind,source=linux/scripts/01-core/source_originals.py,target=/opt/scripts/01-core/source_originals.py,readonly \\\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The producer's selected media RUN carries the required original-file module at its actual import location."
  },
  {
@@ -60180,7 +60356,7 @@
   "target": "linux/Dockerfile.media",
   "find": "COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packaging/",
   "replace": "COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packaging/",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The merged smoke closure still ships its shared companion."
  },
  {
@@ -60188,7 +60364,7 @@
   "target": "linux/Dockerfile.media",
   "find": "COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packaging/",
   "replace": "COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The merged smoke closure still ships its selected caller."
  },
  {
@@ -60196,7 +60372,7 @@
   "target": "linux/scripts/01-core/source_originals.py",
   "find": "not Path(relative).is_absolute()\n            and all(part not in (\"\", \".\", \"..\") for part in relative.split(\"/\"))",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "The shared fresh writer rejects absolute and traversing payload paths before allocation."
  },
  {
@@ -60204,7 +60380,7 @@
   "target": "linux/scripts/01-core/source_originals.py",
   "find": "len(data) == info.st_size",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k notice",
   "why": "A changed read size must fail even when the regular-file metadata was initially valid."
  },
  {
@@ -60244,7 +60420,7 @@
   "target": "linux/scripts/verify_package_binary.py",
   "find": "elif args.package.suffix.lower() == \".flatpak\":",
   "replace": "elif args.package.suffix.lower() == \".unused\":",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "Exact Flatpak bytes use the shared private checkout rather than an unsupported fallback."
  },
  {
@@ -60260,7 +60436,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "_module.get(_api) != 1",
   "replace": "False",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "An incompatible required companion is rejected before argument parsing."
  },
  {
@@ -60268,7 +60444,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "not callable(_module.get(_name))",
   "replace": "False",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "Required companion callables are validated even for help."
  },
  {
@@ -60276,7 +60452,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "record.get(\"status\") == \"selected-image-source-originals-preserved\"",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "An unrelated record status cannot certify source-original transport."
  },
  {
@@ -60284,7 +60460,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "record.get(\"binary_linkage_or_complete_license_source_closure_proven\") is False",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "A source-original record must retain its explicit limited scope."
  },
  {
@@ -60292,7 +60468,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "isinstance(files, dict) and bool(files)",
   "replace": "isinstance(files, dict)",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "A metadata-only package cannot satisfy a selected original payload proof."
  },
  {
@@ -60300,7 +60476,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "expected == {\"sha256\": _originals[\"sha\"](data), \"bytes\": len(data)}",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "Changing both staged and packaged bytes still fails the retained original-file record."
  },
  {
@@ -60308,7 +60484,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "type(expected.get(\"bytes\")) is int",
   "replace": "True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "Boolean byte counts cannot masquerade as an integer file-size record."
  },
  {
@@ -60316,7 +60492,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "allow_empty=patch",
   "replace": "allow_empty=True",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "Even a matching zero-size record cannot permit an empty GNU notice."
  },
  {
@@ -60324,7 +60500,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "max_bytes=8 * 1024 * 1024 if patch",
   "replace": "max_bytes=16 * 1024 * 1024 if patch",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "A recorded and packaged oversized source patch still refuses before artifact verification."
  },
  {
@@ -60332,7 +60508,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "_originals[\"exact_tree\"](root, set(files) | {\"source-originals.json\"})",
   "replace": "None",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "Unlisted staged input files cannot be silently excluded from the selected proof."
  },
  {
@@ -60340,7 +60516,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "    rules.append(\n        (prefix + \"/source-originals.json\", root / \"source-originals.json\", False)\n    )",
   "replace": "    pass",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "The original staging record itself must be read back from the artifact."
  },
  {
@@ -60348,7 +60524,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "native = Path(__file__).with_name(\"verify-native-appimage-binary.sh\")\n        for member, source, empty in rules:",
   "replace": "native = Path(__file__).with_name(\"verify-native-appimage-binary.sh\")\n        for member, source, empty in rules[:1]:",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "Native readback checks later empty-patch and record members as well as the first notice."
  },
  {
@@ -60356,7 +60532,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "command = [sys.executable, \"-B\", str(BINARY), str(args.package)]\n        for member, source, empty in rules:",
   "replace": "command = [sys.executable, \"-B\", str(BINARY), str(args.package)]\n        for member, source, empty in rules[:1]:",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "Every selected archive member reaches the shared byte verifier."
  },
  {
@@ -60364,7 +60540,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "command.append(\"--allow-empty-source\")",
   "replace": "None",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "The native reader receives the explicit empty-patch permission."
  },
  {
@@ -60372,7 +60548,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "command.extend((\"--allow-empty\", member))",
   "replace": "None",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "The generic reader receives the explicit permission for each recorded empty patch."
  },
  {
@@ -60380,7 +60556,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "            if result.returncode:\n                return result.returncode",
   "replace": "            if result.returncode:\n                return 0",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "Native extraction or byte-verifier failure remains fatal with its raw status."
  },
  {
@@ -60388,7 +60564,7 @@
   "target": "linux/scripts/06-packaging/verify-image-source-originals.py",
   "find": "        if result.returncode:\n            return result.returncode",
   "replace": "        if result.returncode:\n            return 0",
-  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh",
+  "test": "bash linux/scripts/tests/test-gstreamer-original-notices.sh -k package",
   "why": "A failed shared archive verifier cannot become a green source-original receipt."
  },
  {
@@ -64986,7 +65162,7 @@
  {
   "id": "doc-prose.malformed-row-refused",
   "target": "linux/scripts/verify_doc_prose.py",
-  "find": "        if len(parts) != 3 or parts[1] not in (*METRICS, WORDS) or not re.fullmatch(r\"\\d+(\\.\\d)?\", parts[2]):",
+  "find": "        if len(parts) != 3 or parts[1] not in spec.metrics or not re.fullmatch(r\"\\d+(\\.\\d)?\", parts[2]):",
   "replace": "        if len(parts) < 2:",
   "test": "bash linux/scripts/tests/test-doc-prose.sh -k ratchet",
   "why": "a row the gate cannot read is an error, never a skip"

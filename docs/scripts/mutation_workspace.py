@@ -65,3 +65,14 @@ def relative_file_path(path: str, label: str) -> str:
             or any(part in ("", ".", "..") for part in path.split("/"))):
         raise ValueError(f"{label} must be a normalized relative path inside the mutation root")
     return path
+
+
+def drop_bytecode(path: str) -> None:
+    """Python trusts a cached .pyc whose source size and mtime second match, so a same-size mutant can run stale code."""
+    stem, ext = os.path.splitext(os.path.basename(path))
+    if ext != ".py":
+        return
+    cache = os.path.join(os.path.dirname(path), "__pycache__")
+    for name in os.listdir(cache) if os.path.isdir(cache) else ():
+        if name.startswith(stem + ".") and name.endswith(".pyc"):
+            os.unlink(os.path.join(cache, name))

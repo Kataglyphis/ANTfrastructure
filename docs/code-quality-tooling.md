@@ -1298,7 +1298,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **8154 entries** over **964 distinct test commands**; both digits are
+manifest holds **8176 entries** over **972 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1445,8 +1445,8 @@ nothing (the common commit) copies nothing at all.
 
 Python reuses a cached `.pyc` when its source has the same size and the same
 mtime second. Two same-size mutants of one module, run back to back in one
-worker, could therefore run the first mutant's code for the second, which then
-survived only on fast hosts (`handoff.runtime-source-selected-checkout`, seen
+worker, could therefore run the first mutant's code for the second. That mutant
+then survived only on fast hosts (`handoff.runtime-source-selected-checkout`, seen
 in the pre-push hook). `apply_and_run` deletes the target's `__pycache__`
 entries after it writes the mutant and after it restores the original. Other
 importers of the target are not covered; they read their own unchanged files.
@@ -2012,21 +2012,50 @@ verify-media-artifacts case it was meant to catch is recorded in
 
 ## README length (`readme-length`)
 
-The README rule caps a README at about 100 lines, badges included
-([`repository-family.md` § The README rule](repository-family.md#the-readme-rule)).
-`linux/scripts/verify_readme_length.py` fails a root `README.md` over 100 lines and names the
-rule's page; a missing `README.md` fails too.
+The README rule holds a root README to 100 lines, badges included, 700 words and 160 characters a
+line ([`repository-family.md` § The README rule](repository-family.md#the-readme-rule)).
+`linux/scripts/verify_readme_length.py` checks all three and names the rule's page. A missing
+`README.md` fails too.
 
-- **Where it runs.** Here as a preflight slug in the commit hook's fast set; in every consumer
-  through `run-lint-gates.sh`, so `lint-gates.yml` and the consumers' pre-push template run it.
-- **Counting.** Newline characters, plus an unterminated last line: what an editor numbers.
-- **Not covered.** Any other README (`docs/`, `linux/llm-stack/`, a crate's), and the order and
-  content of its sections.
+Fix a finding by moving a procedure, table or piece of history to `docs/` and linking it:
 
-Fix a finding by moving a procedure, table or piece of history to `docs/` and linking it; there
-is no allowlist. `tests/test-readme-length.sh` drives both halves; the `readme-length.*`
-mutations prove the limit, the unterminated last line, the missing file, and that
-`run-lint-gates.sh` registers the gate and returns its verdict.
+- `lines`: over 100 lines fails at once. No census row can hold it.
+- `grew`: move the new detail to the page that owns it.
+- `fell`: lower the row in the same commit with
+  `python3 linux/scripts/verify_readme_length.py --write`. It lowers rows and deletes a row that
+  reached its limit. It never raises a row or adds one.
+- `over the … a README without a row may have`: shorten the README until it fits.
+
+| metric | what it counts | limit |
+| --- | --- | --- |
+| `words` | tokens that hold a letter or a digit | 700 |
+| `long-lines` | lines over 160 characters | 0 |
+| `overflow` | the characters past 160, summed over those lines | 0 |
+
+- Lines: newline characters, plus an unterminated last line, as an editor numbers them.
+- Exempt lines: a line of badges, and a line that is one link (alone, in a list item, as an
+  autolink, a bare URL or a link definition). They count neither words nor width.
+- The census: a README over a limit has a row for that figure, in the format of the `doc-prose`
+  census. A row may only fall. A figure without a row meets its limit. A row at its limit, or a
+  row of another page, fails until `--write` deletes it.
+
+Where it runs:
+
+- Here as a preflight slug in the commit hook's fast set, against
+  `docs/scripts/readme-length.census`. The hub fails without its census.
+- In every consumer through `run-lint-gates.sh`, so `lint-gates.yml` and the consumers' pre-push
+  template run it. The line limit binds at once. Words and width only report until the consumer
+  seeds `<root>/readme-length.census` with
+  `python3 third_party/ANTfrastructure/linux/scripts/verify_readme_length.py --root . --seed`. A
+  seed writes a row for each figure over its limit and refuses to overwrite a census.
+
+Not covered: any other README (`docs/`, `linux/llm-stack/`, a crate's), and the order and content
+of its sections.
+
+`tests/test-readme-length.sh` drives fixture repos and a fixture hub; `-k <section>` picks one
+group. The `readme-length.*` mutations prove the three limits, the exempt lines, the ratchet in
+both directions, `--write` and `--seed`, the missing file and census, and the `run-lint-gates.sh`
+wiring.
 
 ## Pattern limits (`pattern-limits`)
 

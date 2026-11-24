@@ -305,7 +305,8 @@ them.
     the passage one owner and link to it. `docs/INDEX.md` decides which page owns what.
   - `sbom` / `version-snapshot` — the generated licence pages and the curated SBOM must match
     `deps.json` + `versions.env`.
-  - `readme-length` — a root README over 100 lines fails.
+  - `readme-length` — a root README fails over 100 lines. Over 700 words or 160 characters a line
+    fails too, unless a census row holds it.
   - `doc-prose` — a page's prose rates may only fall; a new page meets fixed limits. The style:
     [`writing-docs.md`](writing-docs.md).
 - **Adding a dependency is a docs change.** A new component needs an entry in

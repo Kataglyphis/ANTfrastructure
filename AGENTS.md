@@ -1980,11 +1980,10 @@ gate holds each page to a census that may only fall.
 - **A consumer page that restates a hub page fails too**, once the consumer seeds
   `doc-dupes-hub.allow`: `doc-dupes --against-hub` in `run-lint-gates.sh --ratchets`
   ([`code-quality-tooling.md`](docs/code-quality-tooling.md#consumer-pages-against-the-hub-doc-dupes---against-hub)).
-- **A README is an overview, in this repo and every consumer.** Procedures go to `docs/`,
-  family-wide facts to this hub, and the README links to both:
-  [`docs/repository-family.md` § The README rule](docs/repository-family.md#the-readme-rule). The
-  `readme-length` gate fails a root README over 100 lines, here and through `run-lint-gates.sh` in
-  every consumer.
+- **A README is an overview, here and in every consumer:** at most 100 lines, 700 words and 160
+  characters a line. Procedures go to `docs/`, family facts to this hub, and the README links to
+  both: [`docs/repository-family.md` § The README rule](docs/repository-family.md#the-readme-rule).
+  The `readme-length` gate checks it.
 - **The theme and the brand belong to DocumANTation.** Change `custom.css` there, not here.
 - **Keep the docs lock current.** Local docs builds sync `docs/uv.lock` through Astral uv; the
   image build checks it offline while using its shipped Sphinx stack. Change
