@@ -188,10 +188,10 @@ docs/python-app-bundles.md | avg-sentence | 17.9
 docs/python-app-bundles.md | long-share | 6.7
 docs/python-app-bundles.md | ids-per-k | 3.9
 docs/python-app-bundles.md | bold-per-k | 8.1
-docs/python-ci.md | avg-sentence | 19.6
-docs/python-ci.md | long-share | 13.8
-docs/python-ci.md | ids-per-k | 5.3
-docs/python-ci.md | bold-per-k | 9.6
+docs/python-ci.md | avg-sentence | 19.5
+docs/python-ci.md | long-share | 13.5
+docs/python-ci.md | ids-per-k | 5.2
+docs/python-ci.md | bold-per-k | 9.5
 docs/qnn-linux.md | avg-sentence | 23.6
 docs/qnn-linux.md | long-share | 25.3
 docs/qnn-linux.md | ids-per-k | 3.7
@@ -285,7 +285,7 @@ docs/windows-container-build-performance.md | long-share | 15.7
 docs/windows-container-build-performance.md | ids-per-k | 2.6
 docs/windows-container-build-performance.md | bold-per-k | 13.5
 docs/windows-cross-builds.md | avg-sentence | 22.4
-docs/windows-cross-builds.md | long-share | 22.9
+docs/windows-cross-builds.md | long-share | 22.8
 docs/windows-cross-builds.md | ids-per-k | 7.9
 docs/windows-cross-builds.md | bold-per-k | 15.1
 docs/windows-host-setup.md | avg-sentence | 19.9

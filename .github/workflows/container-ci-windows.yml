@@ -11,6 +11,13 @@ permissions:
 on:
   workflow_call:
     inputs:
+      artifact-retention-days:
+        description: >-
+          Days to keep this lane's package and report artifacts. 0, the
+          default, keeps them 30 days on main, 14 on develop and 5 on any other ref.
+        required: false
+        type: number
+        default: 0
       target-arch:
         description: >-
           amd64 builds in the family Windows image; arm64 builds in the arm64
@@ -359,6 +366,7 @@ jobs:
           name: ${{ inputs.artifact-name }}
           path: ${{ steps.prep.outputs.workspace }}/${{ inputs.artifact-dir }}
           if-no-files-found: error
+          retention-days: ${{ inputs.artifact-retention-days || (github.ref == 'refs/heads/main' && 30) || (github.ref == 'refs/heads/develop' && 14) || 5 }}
 
       # Hidden files too: the arch gate inspected them, and a staged .github/ is test data (OrchestrANT's viewer-job test).
       - name: Upload the tests
@@ -369,6 +377,8 @@ jobs:
           path: ${{ steps.prep.outputs.workspace }}/${{ inputs.test-artifact-dir }}
           include-hidden-files: true
           if-no-files-found: error
+          # Only the run-arm64 job of this run reads the tests.
+          retention-days: 1
 
   run-arm64:
     name: run on windows-11-arm
@@ -492,3 +502,4 @@ jobs:
           path: tests/${{ inputs.test-results-path }}
           # A test-command that produced no results is a staging regression, not a warn.
           if-no-files-found: error
+          retention-days: ${{ inputs.artifact-retention-days || (github.ref == 'refs/heads/main' && 30) || (github.ref == 'refs/heads/develop' && 14) || 5 }}

@@ -402,7 +402,8 @@ python linux/scripts/local-proof/windows-arm64-acceptance.py promote --run-id <r
   --gate-source <run-commit> --candidate sha256:<digest> --candidate-receipt <receipt.json> --require-ci-run <id> --apply
 ```
 
-The gate source may be a later `develop` commit than the image source. The tool accepts it only
+A manual candidate run keeps its bundle artifact 14 days, and promotion checks that artifact, so
+promote inside that window. The gate source may be a later `develop` commit than the image source. The tool accepts it only
 when no path between the two lies in the Windows build closure. That closure is `windows/`, the two
 pin files the driver reads on the host (`versions.env`, `tool-pins.env`), `.dockerignore`, and every
 context path a Windows Dockerfile copies or bind-mounts, read from both commits. A whole-context or

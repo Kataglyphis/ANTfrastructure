@@ -65110,5 +65110,29 @@
   "test": "python3 linux/scripts/tests/windows_arm64_acceptance_tests.py InstructionTests.test_only_context_copies_and_bind_mounts_are_inputs",
   "replace": "if spec.get('type', 'bind') == 'bind' and 'from' in spec:",
   "why": "a file a Windows RUN mounts from the build context belongs to the image closure even though it lives outside windows/"
+ },
+ {
+  "find": "retention-days: ${{ github.event_name == 'workflow_dispatch' && 14 || 2 }}",
+  "replace": "retention-days: 14",
+  "test": "python3 linux/scripts/tests/artifact_retention_tests.py RetentionTests.test_the_arm64_bundle_lives_long_enough_only_for_a_manual_candidate",
+  "target": ".github/workflows/windows-arm64.yml",
+  "id": "windows-lane.arm64-bundle-retention-by-trigger",
+  "why": "the daily device replay re-uploads a ~2 GB bundle that only its own gate job reads"
+ },
+ {
+  "find": "          # Only the arm64 test job of this run reads the stage.\n          retention-days: 1\n",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/artifact_retention_tests.py RetentionTests.test_every_reusable_upload_keeps_the_ref_policy_or_is_a_same_run_handoff",
+  "target": ".github/workflows/python-ci-windows.yml",
+  "id": "windows-lane.handoff-retention-one-day",
+  "why": "a same-run handoff must not keep its bytes for the 90-day default"
+ },
+ {
+  "find": "        type: number\n        default: 0\n",
+  "replace": "        type: number\n        default: 90\n",
+  "test": "python3 linux/scripts/tests/artifact_retention_tests.py RetentionTests.test_reusable_lanes_take_an_override_that_defaults_to_the_ref_policy",
+  "target": ".github/workflows/python-ci-linux.yml",
+  "id": "python-ci.retention-input-default-by-ref",
+  "why": "a nonzero default would bypass the by-ref policy for every consumer that calls the lane at @develop"
  }
 ]

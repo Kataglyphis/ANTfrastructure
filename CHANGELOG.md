@@ -40,6 +40,16 @@
   remaining docs phases).
 - Home Assistant's runtime `config/ip_bans.yaml` is ignored, so it is never committed.
 
+## 2026-11-24 — CI artifacts keep days, not the 90-day maximum
+
+- An audit of the 13 public repositories found 1.64 TB of Actions artifacts. Every package upload of the
+  shared lanes kept the 90-day maximum. `python-ci-linux.yml`, `python-ci-windows.yml` and
+  `container-ci-windows.yml` now keep package and report artifacts 30 days on `main`, 14 on `develop` and
+  5 elsewhere; the new `artifact-retention-days` input overrides it. Same-run hand-offs keep 1 day, and
+  `winarm64-bundle` 2 days on its daily run and 14 on a manual candidate run. `artifact_retention_tests.py`
+  and three mutations hold it ([policy](docs/python-ci.md#how-long-the-artifacts-live)). Existing artifacts
+  keep their old expiry.
+
 ## 2026-11-24 — the ARM64 acceptance tool is versioned
 
 - `linux/scripts/local-proof/windows-arm64-acceptance.py` replaces five ignored handoff scripts. It uploads

@@ -89,6 +89,21 @@ path set fails the job. Linux uploads `logs/test-results/`; Windows defaults to
 is missing, so the build driver still checks the distribution artifacts.
 The optional Windows lint-only call skips the build job and its upload.
 
+## How long the artifacts live
+
+Package and report artifacts of `python-ci-linux.yml`, `python-ci-windows.yml` and
+`container-ci-windows.yml` follow the calling ref. They stay 30 days on `main`, 14 on
+`develop` and 5 on any other branch or pull request. The `artifact-retention-days` input
+overrides that for one caller. Release jobs collect their files in the same run, so a
+release never needs an old artifact. A lane that has not run for longer than its window
+has no package to download; run it again.
+
+Hand-offs that only a later job of the same run reads keep 1 day: the arm64 Python stage,
+the `-tests` tree of the Windows cross lane and the `sccache-release.yml` binaries.
+Re-run the whole workflow after that, not one job. The hub's `winarm64-bundle` keeps
+2 days on its daily run and 14 on a manual candidate run, which must be promoted inside
+that window. `artifact_retention_tests.py` holds the policy.
+
 ## Positional arguments: empty means default
 
 Every driver reads its positionals as `"${N:-default}"`, which treats an **empty** argument like

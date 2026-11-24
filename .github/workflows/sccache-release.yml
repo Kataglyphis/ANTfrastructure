@@ -55,6 +55,8 @@ jobs:
           name: sccache-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
+          # Only the publish job of this run reads the binaries; the release keeps them.
+          retention-days: 1
 
   release:
     name: publish
