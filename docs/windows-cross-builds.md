@@ -468,6 +468,16 @@ shape check or GPU inference. The newer private `5bd443ea` image and final
 integrated source still need their own device receipt and approved promotion.
 
 
+**Accepted publication at 946c1637:** the image built at `946c1637` passed its smoke gate
+(152 passed, 17 cross-lane skips) and candidate run
+[45397953361](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/45397953361), 22 of 22 device
+steps, at gate source `e57fc83d`. That source changed no Windows closure path. `windows-arm64-acceptance.py
+promote --apply` then moved `:winarm64` to manifest
+`sha256:f0a860faba4629ff51897ffacef8de1905928902011c062459102991b6260a75`, config
+`sha256:aabbc1531259e1e4ad80e449bc7053c7f64b96f6b2d051645017d9f2109cf601`. It required green Linux x64,
+Windows x64, Docs and Security runs on closure-neutral commits. The platform stayed windows/amd64 at
+OS 10.0.26100.33674. This adds no GPU execution proof.
+
 Consumer lanes hosted it
 from 2026-10-03 to 2026-10-11, until a WebRTC defect turned BeschleunigerBallett's renderer lane red
 and skipped its GPU suites over a component the renderer never uses.
