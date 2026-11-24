@@ -336,22 +336,38 @@ configure_tvm_cmake() {
   [ "$llvm_cmake_value" = "OFF" ] || assert_tvm_llvm_version_matches_pin "$configure_log"
 }
 
-# <out-var> <marker> <what>: names FindLLVM.cmake and returns 1 when it already carries the marker.
-_tvm_findllvm_unpatched() {
-  local -n _tvm_findllvm_out="$1"
-  _tvm_findllvm_out="${tvm_dir}/cmake/utils/FindLLVM.cmake"
-  [ -f "${_tvm_findllvm_out}" ] || die "TVM FindLLVM.cmake not found at ${_tvm_findllvm_out}"
-  if grep -q -e "$2" "${_tvm_findllvm_out}"; then
-    log "TVM FindLLVM.cmake already patched for $3"
+# <out-var> <relative-file> <marker> <what>: names a TVM source file and returns 1 when it already carries the marker.
+_tvm_source_unpatched() {
+  local -n _tvm_source_out="$1"
+  _tvm_source_out="${tvm_dir}/$2"
+  [ -f "${_tvm_source_out}" ] || die "TVM $2 not found at ${_tvm_source_out}"
+  if grep -q -e "$3" "${_tvm_source_out}"; then
+    log "TVM $2 already patched for $4"
     return 1
   fi
+  return 0
+}
+
+# <file> <anchor-line> <marker> <line...>: inserts the lines after the one exact anchor, or dies.
+_tvm_insert_after_anchor() {
+  local file="$1" anchor="$2" marker="$3"
+  shift 3
+  [ "$(grep -c -x -F -e "$anchor" "$file" || true)" = 1 ] \
+    || die "TVM ${file##*/}: expected one line '${anchor}' (TVM ${ref} layout changed?)"
+  printf '%s\n' "$@" > "${file}.insert" || die "Failed to stage the TVM ${file##*/} patch"
+  awk -v anchor="$anchor" -v insert="${file}.insert" \
+    '{ print } $0 == anchor { while ((getline line < insert) > 0) print line }' "$file" > "${file}.patched" \
+    || die "Failed to patch TVM ${file##*/}"
+  mv "${file}.patched" "$file"
+  rm -f "${file}.insert"
+  grep -q -e "$marker" "$file" || die "Failed to patch TVM ${file##*/}"
   return 0
 }
 
 # A dylib LLVM package leaves LLVM_LIBS empty and FindLLVM runs the target llvm-config; link the LLVM target.
 patch_tvm_findllvm_dylib_fallback() {
   local findllvm
-  _tvm_findllvm_unpatched findllvm 'cross-dylib fallback' 'the dylib fallback' || return 0
+  _tvm_source_unpatched findllvm cmake/utils/FindLLVM.cmake 'cross-dylib fallback' 'the dylib fallback' || return 0
   grep -q 'set(LLVM_CONFIG .*llvm-config")' "$findllvm" \
     || die "TVM FindLLVM.cmake: expected llvm-config fallback line not found (TVM ${ref} layout changed?)"
   sed -i \
@@ -364,31 +380,34 @@ patch_tvm_findllvm_dylib_fallback() {
 
 # A shared LLVM lets another process-wide LLVM interpose its data; see docs/linux-cross-builds.md#tvm-links-a-private-static-llvm
 patch_tvm_findllvm_private_static() {
-  local findllvm anchor='    llvm_map_components_to_libnames(LLVM_LIBS "all")'
-  _tvm_findllvm_unpatched findllvm 'private static LLVM' 'a private static LLVM' || return 0
-  [ "$(grep -c -x -F -e "$anchor" "$findllvm" || true)" = 1 ] \
-    || die "TVM FindLLVM.cmake: expected one LLVM component map line (TVM ${ref} layout changed?)"
-  awk -v anchor="$anchor" '
-    { print }
-    $0 == anchor {
-      print "    # private static LLVM: an installed package maps \"all\" to nothing, so pick its static targets"
-      print "    if(NOT LLVM_LIBS)"
-      print "      set(LLVM_LIBS ${LLVM_AVAILABLE_LIBS})"
-      print "    endif()"
-      print "    set(_tvm_llvm_static \"\")"
-      print "    foreach(_tvm_llvm_lib IN LISTS LLVM_LIBS)"
-      print "      if(TARGET ${_tvm_llvm_lib})"
-      print "        get_target_property(_tvm_llvm_type ${_tvm_llvm_lib} TYPE)"
-      print "        if(_tvm_llvm_type STREQUAL \"STATIC_LIBRARY\")"
-      print "          list(APPEND _tvm_llvm_static ${_tvm_llvm_lib})"
-      print "        endif()"
-      print "      endif()"
-      print "    endforeach()"
-      print "    set(LLVM_LIBS ${_tvm_llvm_static})"
-    }' "$findllvm" > "${findllvm}.private" || die "Failed to patch TVM FindLLVM.cmake for a private static LLVM"
-  mv "${findllvm}.private" "$findllvm"
-  grep -q 'private static LLVM' "$findllvm" || die "Failed to patch TVM FindLLVM.cmake for a private static LLVM"
+  local findllvm
+  _tvm_source_unpatched findllvm cmake/utils/FindLLVM.cmake 'private static LLVM' 'a private static LLVM' || return 0
+  _tvm_insert_after_anchor "$findllvm" '    llvm_map_components_to_libnames(LLVM_LIBS "all")' 'private static LLVM' \
+    '    # private static LLVM: an installed package maps "all" to nothing, so pick its static targets' \
+    '    if(NOT LLVM_LIBS)' \
+    '      set(LLVM_LIBS ${LLVM_AVAILABLE_LIBS})' \
+    '    endif()' \
+    '    set(_tvm_llvm_static "")' \
+    '    foreach(_tvm_llvm_lib IN LISTS LLVM_LIBS)' \
+    '      if(TARGET ${_tvm_llvm_lib})' \
+    '        get_target_property(_tvm_llvm_type ${_tvm_llvm_lib} TYPE)' \
+    '        if(_tvm_llvm_type STREQUAL "STATIC_LIBRARY")' \
+    '          list(APPEND _tvm_llvm_static ${_tvm_llvm_lib})' \
+    '        endif()' \
+    '      endif()' \
+    '    endforeach()' \
+    '    set(LLVM_LIBS ${_tvm_llvm_static})'
   log "Patched TVM FindLLVM.cmake: link only the static LLVM targets"
+}
+
+# Inline LLVM members instantiated in TVM's own objects stay exported despite the hidden archives.
+patch_tvm_compiler_llvm_symbols_local() {
+  local cmakelists
+  _tvm_source_unpatched cmakelists CMakeLists.txt 'private-llvm.map' 'local llvm:: symbols' || return 0
+  printf '%s\n' '{' '  local: _ZN4llvm*; _ZNK4llvm*;' '};' > "${tvm_dir}/private-llvm.map"
+  _tvm_insert_after_anchor "$cmakelists" 'set_property(TARGET tvm_compiler APPEND PROPERTY LINK_OPTIONS "${TVM_VISIBILITY_FLAG}")' 'private-llvm.map' \
+    'set_property(TARGET tvm_compiler APPEND PROPERTY LINK_OPTIONS "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/private-llvm.map")'
+  log "Patched TVM CMakeLists.txt: libtvm_compiler keeps its llvm:: symbols local"
 }
 
 # <libtvm_compiler.so>: fails unless LLVM is linked in statically and none of it is exported.
@@ -400,8 +419,8 @@ assert_tvm_private_llvm() {
   case "$dynamic" in
     *'Shared library: [libLLVM'*) die "TVM private LLVM: ${lib} needs a shared libLLVM" ;;
   esac
-  exported="$(printf '%s\n' "$symbols" | awk '$7 != "UND" && $8 ~ /^_ZN4llvm/ { n++ } END { print n + 0 }')"
-  [ "$exported" -eq 0 ] || die "TVM private LLVM: ${lib} exports ${exported} llvm:: symbol(s)"
+  exported="$(printf '%s\n' "$symbols" | awk '$7 != "UND" && $8 ~ /^_ZN4llvm/ { print $8 }')"
+  [ -z "$exported" ] || die "TVM private LLVM: ${lib} exports $(printf '%s\n' "$exported" | wc -l) llvm:: symbol(s): $(printf '%s\n' "$exported" | head -n 20 | tr '\n' ' ')"
   log "TVM private LLVM: ${lib} links LLVM statically and exports none of it"
   return 0
 }
@@ -451,6 +470,7 @@ main() {
   fetch_tvm_source
   patch_tvm_findllvm_dylib_fallback
   patch_tvm_findllvm_private_static
+  patch_tvm_compiler_llvm_symbols_local
   resolve_tvm_llvm
 
   if [ "$do_clean" -eq 1 ]; then

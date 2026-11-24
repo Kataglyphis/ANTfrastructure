@@ -65234,15 +65234,15 @@
  {
   "id": "tvm-llvm.private-static-filter",
   "target": "linux/scripts/05-frameworks/tvm.sh",
-  "find": "      print \"        if(_tvm_llvm_type STREQUAL \\\"STATIC_LIBRARY\\\")\"\n",
-  "replace": "      print \"        if(NOT _tvm_llvm_type STREQUAL \\\"INTERFACE_LIBRARY\\\")\"\n",
+  "find": "    '        if(_tvm_llvm_type STREQUAL \"STATIC_LIBRARY\")' \\\n",
+  "replace": "    '        if(NOT _tvm_llvm_type STREQUAL \"INTERFACE_LIBRARY\")' \\\n",
   "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k patch",
   "why": "only static LLVM targets may reach LLVM_LIBS, or TVM links the libLLVM another LLVM can interpose"
  },
  {
   "id": "tvm-llvm.private-static-layout",
   "target": "linux/scripts/05-frameworks/tvm.sh",
-  "find": "  [ \"$(grep -c -x -F -e \"$anchor\" \"$findllvm\" || true)\" = 1 ] \\\n",
+  "find": "  [ \"$(grep -c -x -F -e \"$anchor\" \"$file\" || true)\" = 1 ] \\\n",
   "replace": "  true \\\n",
   "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k patch",
   "why": "a moved upstream anchor must refuse, not build silently against the shared LLVM"
@@ -65258,8 +65258,8 @@
  {
   "id": "tvm-llvm.private-static-exported",
   "target": "linux/scripts/05-frameworks/tvm.sh",
-  "find": "  [ \"$exported\" -eq 0 ] || die",
-  "replace": "  [ \"$exported\" -ge 0 ] || die",
+  "find": "  [ -z \"$exported\" ] || die",
+  "replace": "  [ -n \"$exported\" ] || die",
   "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k elf",
   "why": "an exported llvm:: symbol lets another LLVM bind to TVM's copy and must fail the build"
  },
@@ -65274,8 +65274,8 @@
  {
   "id": "tvm-llvm.private-static-main",
   "target": "linux/scripts/05-frameworks/tvm.sh",
-  "find": "  patch_tvm_findllvm_private_static\n  resolve_tvm_llvm\n",
-  "replace": "  resolve_tvm_llvm\n",
+  "find": "  patch_tvm_findllvm_private_static\n  patch_tvm_compiler_llvm_symbols_local\n",
+  "replace": "  patch_tvm_compiler_llvm_symbols_local\n",
   "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k smoke",
   "why": "the FindLLVM patch must run before configure"
  },
@@ -65290,9 +65290,33 @@
  {
   "id": "tvm-llvm.private-static-available",
   "target": "linux/scripts/05-frameworks/tvm.sh",
-  "find": "      print \"      set(LLVM_LIBS ${LLVM_AVAILABLE_LIBS})\"\n",
+  "find": "    '      set(LLVM_LIBS ${LLVM_AVAILABLE_LIBS})' \\\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k patch",
   "why": "an installed package maps all to nothing, so the static targets must come from LLVM_AVAILABLE_LIBS"
+ },
+ {
+  "id": "tvm-llvm.compiler-symbols-map-local",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "  printf '%s\\n' '{' '  local: _ZN4llvm*; _ZNK4llvm*;' '};' > \"${tvm_dir}/private-llvm.map\"\n",
+  "replace": "  printf '%s\\n' '{' '  local: _ZN4llvm_none*;' '};' > \"${tvm_dir}/private-llvm.map\"\n",
+  "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k map",
+  "why": "the map must keep the inline llvm:: members TVM instantiates local"
+ },
+ {
+  "id": "tvm-llvm.compiler-symbols-map-linked",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "    'set_property(TARGET tvm_compiler APPEND PROPERTY LINK_OPTIONS \"-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/private-llvm.map\")'\n",
+  "replace": "    ''\n",
+  "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k map",
+  "why": "libtvm_compiler must link with the map, or its inline llvm:: members stay exported"
+ },
+ {
+  "id": "tvm-llvm.compiler-symbols-main",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "  patch_tvm_compiler_llvm_symbols_local\n  resolve_tvm_llvm\n",
+  "replace": "  resolve_tvm_llvm\n",
+  "test": "bash linux/scripts/tests/test-tvm-private-llvm.sh -k smoke",
+  "why": "the version-script patch must run before configure"
  }
 ]

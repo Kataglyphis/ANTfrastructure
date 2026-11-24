@@ -1208,7 +1208,9 @@ three ROCm app smokes ([failure mode](failure-modes.md#segfault-in-llvmaarch64re
 An installed LLVM package maps the `all` component to nothing, so TVM used to fall
 back to the dylib. `tvm.sh` patches FindLLVM to take the package's static targets
 from `LLVM_AVAILABLE_LIBS`, never `LLVM`, `LTO` or `Remarks`, passes `--link-static`
-on the llvm-config path, and
+on the llvm-config path, links `libtvm_compiler` with a version script that keeps
+`llvm::` symbols local (TVM's own objects instantiate inline LLVM members such as
+`AnalysisManager` destructors, which `--exclude-libs` does not reach), and
 fails the build when the library needs a `libLLVM` or exports an `llvm::` symbol.
 The runtime codegen smoke fails a process that mapped any `libLLVM`. The gates read
 ELF metadata and one process map; they do not prove that no other library shares

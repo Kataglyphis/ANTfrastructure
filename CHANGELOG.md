@@ -25,7 +25,8 @@
   interposed 117 references inside the shared `libLLVM.so.23.1` that TVM linked. `tvm.sh` now links the LLVM
   archives, which TVM hides, fails a `libtvm_compiler.so` that needs a `libLLVM` or exports `llvm::` symbols, and
   the runtime codegen smoke fails a process that mapped any `libLLVM`. An installed LLVM package maps `all` to
-  nothing, so the patch takes the static targets from `LLVM_AVAILABLE_LIBS`. Two suites, eight mutations.
+  nothing, so the patch takes the static targets from `LLVM_AVAILABLE_LIBS`; a version script keeps the inline
+  `llvm::` members TVM's own objects instantiate local. Two suites, eleven mutations.
 
 ## 2026-11-24 — the runtime storage guardian refuses a placement FINAL cannot read
 
