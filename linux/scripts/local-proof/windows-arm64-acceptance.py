@@ -33,7 +33,7 @@ def transport() -> ModuleType:
     spec = importlib.util.spec_from_file_location('windows_arm64_registry', ROOT / 'linux/scripts/image-acceptance.py')
     if spec is None or spec.loader is None:
         raise ValueError('image-acceptance.py is missing')
-    module = importlib.util.module_from_spec(spec)
+    module: Any = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     # Windows final tags are single manifests, while the shared client asks for indexes by default.
