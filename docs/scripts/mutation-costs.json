@@ -1,875 +1,1287 @@
 {
+ "LC_ALL=C bash linux/scripts/tests/test-app-venv-plugin-eps.sh": {
+  "baseline": 2.94,
+  "per_entry": 2.59
+ },
  "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh": {
-  "baseline": 5.24,
-  "per_entry": 9.09
+  "baseline": 5.98,
+  "per_entry": 10.82
  },
  "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh": {
-  "baseline": 11.15,
-  "per_entry": 9.81
+  "baseline": 11.77,
+  "per_entry": 10.19
  },
  "bash linux/scripts/tests/test-advertised-keys.sh": {
-  "baseline": 3.21,
-  "per_entry": 2.95
+  "baseline": 2.58,
+  "per_entry": 2.76
  },
  "bash linux/scripts/tests/test-agentic-loop.sh": {
-  "baseline": 1.17,
-  "per_entry": 1.16
- },
- "bash linux/scripts/tests/test-agentic-phases.sh": {
-  "baseline": 0.6,
-  "per_entry": 0.67
- },
- "bash linux/scripts/tests/test-ancestry.sh": {
-  "baseline": 0.5,
-  "per_entry": 0.45
- },
- "bash linux/scripts/tests/test-android-cmake-target.sh": {
-  "baseline": 0.05,
-  "per_entry": 0.05
- },
- "bash linux/scripts/tests/test-android-image-core-paths.sh": {
-  "baseline": 0.12,
-  "per_entry": 0.1
- },
- "bash linux/scripts/tests/test-android-patch-dispatch.sh": {
-  "baseline": 0.18,
-  "per_entry": 0.18
- },
- "bash linux/scripts/tests/test-android-sdk-retry.sh": {
-  "baseline": 0.27,
-  "per_entry": 0.27
- },
- "bash linux/scripts/tests/test-android-stage-parity.sh": {
-  "baseline": 0.5,
-  "per_entry": 0.57
- },
- "bash linux/scripts/tests/test-ansible-backup.sh": {
   "baseline": 1.06,
   "per_entry": 1.07
  },
- "bash linux/scripts/tests/test-ansible-run-status.sh": {
-  "baseline": 27.33,
-  "per_entry": 29.6
- },
- "bash linux/scripts/tests/test-app-packaging-api.sh": {
-  "baseline": 0.89,
-  "per_entry": 0.83
- },
- "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh": {
-  "baseline": 0.62,
-  "per_entry": 0.65
- },
- "bash linux/scripts/tests/test-app-packaging-flatpak.sh": {
-  "baseline": 4.31,
-  "per_entry": 4.88
- },
- "bash linux/scripts/tests/test-app-venv-frontend.sh": {
-  "baseline": 1.36,
-  "per_entry": 1.15
- },
- "bash linux/scripts/tests/test-apt-list-cleanup.sh": {
-  "baseline": 0.13,
-  "per_entry": 0.16
- },
- "bash linux/scripts/tests/test-apt-update-selection.sh": {
-  "baseline": 5.24,
-  "per_entry": 5.14
- },
- "bash linux/scripts/tests/test-arg-consistency.sh": {
-  "baseline": 3.96,
-  "per_entry": 5.05
- },
- "bash linux/scripts/tests/test-artifact-copy-completeness.sh": {
-  "baseline": 0.23,
-  "per_entry": 0.2
- },
- "bash linux/scripts/tests/test-asset-mirror-setup.sh": {
+ "bash linux/scripts/tests/test-agentic-phases.sh": {
   "baseline": 1.17,
-  "per_entry": 1.14
+  "per_entry": 1.23
  },
- "bash linux/scripts/tests/test-asset-mirror.sh": {
-  "baseline": 1.25,
-  "per_entry": 1.1
+ "bash linux/scripts/tests/test-agents-drift.sh backlog": {
+  "baseline": 0.81,
+  "per_entry": 0.77
  },
- "bash linux/scripts/tests/test-base-image-parse-options.sh": {
-  "baseline": 2.38,
-  "per_entry": 2.32
+ "bash linux/scripts/tests/test-agents-drift.sh basic docs": {
+  "baseline": 1.13,
+  "per_entry": 1.21
  },
- "bash linux/scripts/tests/test-bind-mount-ownership.sh": {
+ "bash linux/scripts/tests/test-agents-drift.sh docs": {
+  "baseline": 0.99,
+  "per_entry": 1.08
+ },
+ "bash linux/scripts/tests/test-agents-drift.sh duplicates": {
+  "baseline": 0.4,
+  "per_entry": 0.28
+ },
+ "bash linux/scripts/tests/test-agents-drift.sh headings": {
+  "baseline": 0.3,
+  "per_entry": 0.31
+ },
+ "bash linux/scripts/tests/test-agents-drift.sh hub": {
+  "baseline": 0.33,
+  "per_entry": 0.34
+ },
+ "bash linux/scripts/tests/test-agents-drift.sh json": {
   "baseline": 0.34,
-  "per_entry": 0.33
+  "per_entry": 0.34
  },
- "bash linux/scripts/tests/test-binfmt-arches.sh": {
-  "baseline": 15.66,
-  "per_entry": 13.94
+ "bash linux/scripts/tests/test-agents-drift.sh lintgates": {
+  "baseline": 0.4,
+  "per_entry": 0.35
  },
- "bash linux/scripts/tests/test-binfmt-probes.sh": {
-  "baseline": 4.63,
-  "per_entry": 2.29
+ "bash linux/scripts/tests/test-agents-drift.sh section1": {
+  "baseline": 0.55,
+  "per_entry": 0.58
  },
- "bash linux/scripts/tests/test-build-docs.sh": {
-  "baseline": 0.54,
+ "bash linux/scripts/tests/test-agents-drift.sh section5": {
+  "baseline": 1.03,
+  "per_entry": 1.05
+ },
+ "bash linux/scripts/tests/test-amd64-isa-gate.sh": {
+  "baseline": 0.38,
+  "per_entry": 0.4
+ },
+ "bash linux/scripts/tests/test-ancestry.sh": {
+  "baseline": 0.56,
   "per_entry": 0.53
  },
- "bash linux/scripts/tests/test-build-python-variants.sh": {
-  "baseline": 0.6,
-  "per_entry": 0.63
+ "bash linux/scripts/tests/test-android-cmake-target.sh": {
+  "baseline": 0.03,
+  "per_entry": 0.03
  },
- "bash linux/scripts/tests/test-bump-versions.sh": {
-  "baseline": 3.19,
-  "per_entry": 3.49
+ "bash linux/scripts/tests/test-android-handoff.sh": {
+  "baseline": 0.3,
+  "per_entry": 0.34
  },
- "bash linux/scripts/tests/test-cache-readiness.sh": {
-  "baseline": 1.33,
-  "per_entry": 1.47
+ "bash linux/scripts/tests/test-android-image-core-paths.sh": {
+  "baseline": 0.08,
+  "per_entry": 0.07
  },
- "bash linux/scripts/tests/test-cargo-build-doc.sh": {
-  "baseline": 0.53,
-  "per_entry": 0.53
+ "bash linux/scripts/tests/test-android-patch-dispatch.sh": {
+  "baseline": 0.32,
+  "per_entry": 0.25
  },
- "bash linux/scripts/tests/test-cargo-license-tree.sh": {
-  "baseline": 2.49,
-  "per_entry": 2.07
+ "bash linux/scripts/tests/test-android-sdk-retry.sh": {
+  "baseline": 0.28,
+  "per_entry": 0.22
  },
- "bash linux/scripts/tests/test-cargo-wrapper.sh": {
-  "baseline": 0.61,
+ "bash linux/scripts/tests/test-android-stage-parity.sh": {
+  "baseline": 0.66,
   "per_entry": 0.68
  },
+ "bash linux/scripts/tests/test-ansible-backup.sh": {
+  "baseline": 0.97,
+  "per_entry": 1.11
+ },
+ "bash linux/scripts/tests/test-ansible-run-status.sh": {
+  "baseline": 21.37,
+  "per_entry": 21.19
+ },
+ "bash linux/scripts/tests/test-app-packaging-api.sh": {
+  "baseline": 1.19,
+  "per_entry": 1.1
+ },
+ "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh": {
+  "baseline": 0.76,
+  "per_entry": 0.6
+ },
+ "bash linux/scripts/tests/test-app-packaging-entrypoint.sh": {
+  "baseline": 1.47,
+  "per_entry": 1.44
+ },
+ "bash linux/scripts/tests/test-app-packaging-flatpak.sh": {
+  "baseline": 5.51,
+  "per_entry": 5.37
+ },
+ "bash linux/scripts/tests/test-app-ref.sh": {
+  "baseline": 0.28,
+  "per_entry": 0.24
+ },
+ "bash linux/scripts/tests/test-app-venv-frontend.sh": {
+  "baseline": 1.07,
+  "per_entry": 0.91
+ },
+ "bash linux/scripts/tests/test-apt-list-cleanup.sh": {
+  "baseline": 0.16,
+  "per_entry": 0.17
+ },
+ "bash linux/scripts/tests/test-apt-update-selection.sh": {
+  "baseline": 4.58,
+  "per_entry": 6.22
+ },
+ "bash linux/scripts/tests/test-arch-pipeline.sh -k disk": {
+  "baseline": 1.35,
+  "per_entry": 1.34
+ },
+ "bash linux/scripts/tests/test-arch-pipeline.sh -k driver": {
+  "baseline": 3.06,
+  "per_entry": 3.54
+ },
+ "bash linux/scripts/tests/test-arch-pipeline.sh -k order": {
+  "baseline": 0.56,
+  "per_entry": 2.77
+ },
+ "bash linux/scripts/tests/test-arch-pipeline.sh -k validate": {
+  "baseline": 0.07,
+  "per_entry": 0.07
+ },
+ "bash linux/scripts/tests/test-arg-consistency.sh": {
+  "baseline": 4.25,
+  "per_entry": 3.95
+ },
+ "bash linux/scripts/tests/test-artifact-copy-completeness.sh": {
+  "baseline": 0.29,
+  "per_entry": 0.23
+ },
+ "bash linux/scripts/tests/test-asset-mirror-setup.sh": {
+  "baseline": 1.03,
+  "per_entry": 1.61
+ },
+ "bash linux/scripts/tests/test-asset-mirror.sh": {
+  "baseline": 1.15,
+  "per_entry": 1.13
+ },
+ "bash linux/scripts/tests/test-base-image-parse-options.sh": {
+  "baseline": 1.48,
+  "per_entry": 1.51
+ },
+ "bash linux/scripts/tests/test-bench-history.sh -k action": {
+  "baseline": 0.03,
+  "per_entry": 0.04
+ },
+ "bash linux/scripts/tests/test-bench-history.sh -k criterion": {
+  "baseline": 0.65,
+  "per_entry": 0.66
+ },
+ "bash linux/scripts/tests/test-bench-history.sh -k fetch": {
+  "baseline": 0.89,
+  "per_entry": 4.92
+ },
+ "bash linux/scripts/tests/test-bench-history.sh -k fetch_failures": {
+  "baseline": 0.36,
+  "per_entry": 5.39
+ },
+ "bash linux/scripts/tests/test-bench-history.sh -k inputs": {
+  "baseline": 0.52,
+  "per_entry": 0.48
+ },
+ "bash linux/scripts/tests/test-bind-mount-ownership.sh": {
+  "baseline": 0.43,
+  "per_entry": 0.42
+ },
+ "bash linux/scripts/tests/test-binfmt-arches.sh": {
+  "baseline": 16.71,
+  "per_entry": 16.14
+ },
+ "bash linux/scripts/tests/test-binfmt-probes.sh": {
+  "baseline": 4.65,
+  "per_entry": 2.51
+ },
+ "bash linux/scripts/tests/test-build-docs.sh": {
+  "baseline": 0.85,
+  "per_entry": 0.84
+ },
+ "bash linux/scripts/tests/test-build-python-variants.sh": {
+  "baseline": 0.55,
+  "per_entry": 0.56
+ },
+ "bash linux/scripts/tests/test-buildcache-transfer.sh": {
+  "baseline": 0.24,
+  "per_entry": 0.3
+ },
+ "bash linux/scripts/tests/test-bump-versions.sh": {
+  "baseline": 3.74,
+  "per_entry": 4.13
+ },
+ "bash linux/scripts/tests/test-cache-readiness.sh": {
+  "baseline": 1.67,
+  "per_entry": 1.89
+ },
+ "bash linux/scripts/tests/test-capture-sccache-command.sh": {
+  "baseline": 0.36,
+  "per_entry": 0.32
+ },
+ "bash linux/scripts/tests/test-cargo-build-doc.sh": {
+  "baseline": 0.78,
+  "per_entry": 0.64
+ },
+ "bash linux/scripts/tests/test-cargo-license-tree.sh": {
+  "baseline": 3.89,
+  "per_entry": 4.12
+ },
+ "bash linux/scripts/tests/test-cargo-native-helper.sh": {
+  "baseline": 0.29,
+  "per_entry": 0.29
+ },
+ "bash linux/scripts/tests/test-cargo-release-messages.sh": {
+  "baseline": 1.09,
+  "per_entry": 1.62
+ },
+ "bash linux/scripts/tests/test-cargo-test-junit.sh": {
+  "baseline": 0.48,
+  "per_entry": 0.48
+ },
+ "bash linux/scripts/tests/test-cargo-wrapper.sh": {
+  "baseline": 0.8,
+  "per_entry": 0.79
+ },
  "bash linux/scripts/tests/test-cerbero-fetch-retry.sh": {
-  "baseline": 0.06,
-  "per_entry": 0.06
+  "baseline": 0.08,
+  "per_entry": 0.08
  },
  "bash linux/scripts/tests/test-cerbero-source-redirect.sh": {
-  "baseline": 0.1,
-  "per_entry": 0.1
+  "baseline": 0.17,
+  "per_entry": 0.16
+ },
+ "bash linux/scripts/tests/test-chain-lifecycle-engine-isolation.sh": {
+  "baseline": 1.79,
+  "per_entry": 2.15
  },
  "bash linux/scripts/tests/test-chain-lifecycle.sh": {
-  "baseline": 1.48,
-  "per_entry": 1.79
+  "baseline": 1.92,
+  "per_entry": 2.14
  },
  "bash linux/scripts/tests/test-chain-sibling-pid.sh": {
-  "baseline": 4.88,
-  "per_entry": 0.51
+  "baseline": 4.31,
+  "per_entry": 0.48
  },
  "bash linux/scripts/tests/test-chain-wheels-installed.sh": {
-  "baseline": 0.73,
-  "per_entry": 0.61
+  "baseline": 0.62,
+  "per_entry": 0.64
  },
  "bash linux/scripts/tests/test-check-dart-coverage.sh": {
-  "baseline": 0.17,
-  "per_entry": 0.18
+  "baseline": 0.11,
+  "per_entry": 0.12
+ },
+ "bash linux/scripts/tests/test-check-install-tree.sh": {
+  "baseline": 0.11,
+  "per_entry": 0.1
  },
  "bash linux/scripts/tests/test-check-live-site.sh": {
-  "baseline": 62.55,
-  "per_entry": 55.34
+  "baseline": 67.41,
+  "per_entry": 58.55
  },
  "bash linux/scripts/tests/test-check-web-artefacts.sh": {
-  "baseline": 2.31,
-  "per_entry": 2.21
+  "baseline": 2.21,
+  "per_entry": 2.32
  },
  "bash linux/scripts/tests/test-chrome-and-emulator.sh": {
-  "baseline": 2.46,
-  "per_entry": 3.42
+  "baseline": 2.13,
+  "per_entry": 3.07
  },
  "bash linux/scripts/tests/test-chrome-close.sh": {
-  "baseline": 0.55,
-  "per_entry": 0.52
+  "baseline": 2.21,
+  "per_entry": 0.48
+ },
+ "bash linux/scripts/tests/test-ci-image-leg.sh": {
+  "baseline": 0.22,
+  "per_entry": 0.25
  },
  "bash linux/scripts/tests/test-ci-image-ref.sh": {
-  "baseline": 2.41,
-  "per_entry": 2.43
+  "baseline": 1.33,
+  "per_entry": 1.54
  },
  "bash linux/scripts/tests/test-clang-cross-wrappers.sh": {
-  "baseline": 0.06,
-  "per_entry": 0.05
+  "baseline": 0.07,
+  "per_entry": 0.08
  },
  "bash linux/scripts/tests/test-clang-embedded-version.sh": {
   "baseline": 0.22,
-  "per_entry": 0.21
+  "per_entry": 0.2
  },
  "bash linux/scripts/tests/test-clang-job-policy.sh": {
-  "baseline": 0.48,
-  "per_entry": 0.62
+  "baseline": 0.51,
+  "per_entry": 0.55
  },
  "bash linux/scripts/tests/test-cli-help-exit.sh": {
-  "baseline": 0.81,
-  "per_entry": 2.11
+  "baseline": 1.27,
+  "per_entry": 1.67
  },
  "bash linux/scripts/tests/test-cli-parsers.sh": {
-  "baseline": 0.1,
-  "per_entry": 0.11
+  "baseline": 0.12,
+  "per_entry": 0.13
  },
  "bash linux/scripts/tests/test-cli-value-options.sh": {
-  "baseline": 1.94,
-  "per_entry": 2.51
+  "baseline": 1.48,
+  "per_entry": 2.35
  },
  "bash linux/scripts/tests/test-cmake-cache-launcher.sh": {
-  "baseline": 0.11,
-  "per_entry": 0.11
- },
- "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh": {
-  "baseline": 1.04,
-  "per_entry": 0.31
- },
- "bash linux/scripts/tests/test-cmake-crash-dump.sh": {
-  "baseline": 6.61,
-  "per_entry": 0.91
- },
- "bash linux/scripts/tests/test-cmake-format.sh": {
-  "baseline": 2.81,
-  "per_entry": 2.23
- },
- "bash linux/scripts/tests/test-cmake-package-license.sh": {
-  "baseline": 2.5,
-  "per_entry": 0.41
- },
- "bash linux/scripts/tests/test-cmake-windows-arch.sh": {
-  "baseline": 0.6,
-  "per_entry": 0.22
- },
- "bash linux/scripts/tests/test-code-complexity.sh": {
-  "baseline": 9.52,
-  "per_entry": 11.06
- },
- "bash linux/scripts/tests/test-code-dupes.sh": {
-  "baseline": 11.65,
-  "per_entry": 12.84
- },
- "bash linux/scripts/tests/test-code-quality-report-workflow.sh": {
-  "baseline": 2.29,
-  "per_entry": 2.42
- },
- "bash linux/scripts/tests/test-code-quality-iwyu.sh": {
-  "baseline": 0.3,
-  "per_entry": 0.3
- },
- "bash linux/scripts/tests/test-code-quality-walk.sh": {
-  "baseline": 0.23,
-  "per_entry": 0.22
- },
- "bash linux/scripts/tests/test-code-size.sh": {
-  "baseline": 3.02,
-  "per_entry": 3.15
- },
- "bash linux/scripts/tests/test-codec-so-map-convergence.sh": {
-  "baseline": 0.21,
-  "per_entry": 0.19
- },
- "bash linux/scripts/tests/test-collect-release-assets.sh": {
-  "baseline": 4.33,
-  "per_entry": 4.32
- },
- "bash linux/scripts/tests/test-command-callback-scope.sh": {
-  "baseline": 0.75,
-  "per_entry": 0.29
- },
- "bash linux/scripts/tests/test-compile-governor.sh": {
-  "baseline": 8.32,
-  "per_entry": 8.38
- },
- "bash linux/scripts/tests/test-compiler-cache-companions.sh": {
-  "baseline": 0.2,
-  "per_entry": 0.25
- },
- "bash linux/scripts/tests/test-compiler-cache-launcher.sh": {
-  "baseline": 0.2,
-  "per_entry": 0.22
- },
- "bash linux/scripts/tests/test-compiler-cache-policy.sh": {
-  "baseline": 0.83,
-  "per_entry": 0.77
- },
- "bash linux/scripts/tests/test-compiler-cache.sh": {
-  "baseline": 1.11,
-  "per_entry": 0.86
- },
- "bash linux/scripts/tests/test-compiler-candidates.sh": {
-  "baseline": 1.73,
-  "per_entry": 1.76
- },
- "bash linux/scripts/tests/test-compiler-elf-policy.sh": {
-  "baseline": 2.09,
-  "per_entry": 2.17
- },
- "bash linux/scripts/tests/test-compiler-foreign-target.sh": {
-  "baseline": 0.23,
+  "baseline": 0.25,
   "per_entry": 0.24
  },
- "bash linux/scripts/tests/test-compiler-llvm-tools.sh": {
-  "baseline": 0.24,
-  "per_entry": 0.23
+ "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh": {
+  "baseline": 0.38,
+  "per_entry": 0.38
  },
- "bash linux/scripts/tests/test-compiler-signatures.sh": {
-  "baseline": 0.33,
+ "bash linux/scripts/tests/test-cmake-crash-dump.sh": {
+  "baseline": 3.71,
+  "per_entry": 1.12
+ },
+ "bash linux/scripts/tests/test-cmake-format.sh": {
+  "baseline": 4.43,
+  "per_entry": 2.77
+ },
+ "bash linux/scripts/tests/test-cmake-hardening-linux.sh": {
+  "baseline": 0.58,
+  "per_entry": 0.25
+ },
+ "bash linux/scripts/tests/test-cmake-package-license.sh": {
+  "baseline": 1.23,
+  "per_entry": 0.4
+ },
+ "bash linux/scripts/tests/test-cmake-windows-arch.sh": {
+  "baseline": 0.62,
   "per_entry": 0.37
  },
- "bash linux/scripts/tests/test-compiler-smoke-command.sh": {
-  "baseline": 0.15,
+ "bash linux/scripts/tests/test-coco-classes.sh": {
+  "baseline": 0.04,
+  "per_entry": 0.04
+ },
+ "bash linux/scripts/tests/test-code-complexity.sh": {
+  "baseline": 11.88,
+  "per_entry": 12.25
+ },
+ "bash linux/scripts/tests/test-code-dupes.sh": {
+  "baseline": 14.18,
+  "per_entry": 14.44
+ },
+ "bash linux/scripts/tests/test-code-quality-iwyu.sh": {
+  "baseline": 0.35,
+  "per_entry": 0.36
+ },
+ "bash linux/scripts/tests/test-code-quality-report-workflow.sh": {
+  "baseline": 3.59,
+  "per_entry": 3.29
+ },
+ "bash linux/scripts/tests/test-code-quality-report-workflow.sh -k grade": {
+  "baseline": 0.1,
+  "per_entry": 0.1
+ },
+ "bash linux/scripts/tests/test-code-quality-walk.sh": {
+  "baseline": 0.4,
+  "per_entry": 0.28
+ },
+ "bash linux/scripts/tests/test-code-size.sh": {
+  "baseline": 2.78,
+  "per_entry": 3.41
+ },
+ "bash linux/scripts/tests/test-codec-so-map-convergence.sh": {
+  "baseline": 0.13,
+  "per_entry": 0.13
+ },
+ "bash linux/scripts/tests/test-collect-release-assets.sh": {
+  "baseline": 2.27,
+  "per_entry": 2.45
+ },
+ "bash linux/scripts/tests/test-command-callback-scope.sh": {
+  "baseline": 0.65,
+  "per_entry": 0.28
+ },
+ "bash linux/scripts/tests/test-compile-governor.sh": {
+  "baseline": 9.04,
+  "per_entry": 8.36
+ },
+ "bash linux/scripts/tests/test-compiler-cache-companions.sh": {
+  "baseline": 0.37,
+  "per_entry": 0.35
+ },
+ "bash linux/scripts/tests/test-compiler-cache-launcher.sh": {
+  "baseline": 0.51,
+  "per_entry": 0.49
+ },
+ "bash linux/scripts/tests/test-compiler-cache-policy.sh": {
+  "baseline": 0.78,
+  "per_entry": 0.78
+ },
+ "bash linux/scripts/tests/test-compiler-cache.sh": {
+  "baseline": 0.79,
+  "per_entry": 0.83
+ },
+ "bash linux/scripts/tests/test-compiler-candidates.sh": {
+  "baseline": 1.31,
+  "per_entry": 1.68
+ },
+ "bash linux/scripts/tests/test-compiler-defaults.sh": {
+  "baseline": 0.26,
+  "per_entry": 0.26
+ },
+ "bash linux/scripts/tests/test-compiler-elf-policy.sh": {
+  "baseline": 1.96,
+  "per_entry": 1.98
+ },
+ "bash linux/scripts/tests/test-compiler-foreign-target.sh": {
+  "baseline": 0.3,
+  "per_entry": 0.34
+ },
+ "bash linux/scripts/tests/test-compiler-llvm-tools.sh": {
+  "baseline": 0.25,
+  "per_entry": 0.21
+ },
+ "bash linux/scripts/tests/test-compiler-plan-profile.sh": {
+  "baseline": 0.2,
+  "per_entry": 0.28
+ },
+ "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh": {
+  "baseline": 0.17,
   "per_entry": 0.16
+ },
+ "bash linux/scripts/tests/test-compiler-signatures.sh": {
+  "baseline": 0.68,
+  "per_entry": 0.4
+ },
+ "bash linux/scripts/tests/test-compiler-smoke-command.sh": {
+  "baseline": 0.4,
+  "per_entry": 0.2
  },
  "bash linux/scripts/tests/test-compiler-target-verdicts.sh": {
   "baseline": 0.2,
-  "per_entry": 0.18
+  "per_entry": 0.2
  },
  "bash linux/scripts/tests/test-compiler-tool-toggles.sh": {
-  "baseline": 10.55,
-  "per_entry": 11.09
+  "baseline": 10.71,
+  "per_entry": 10.67
+ },
+ "bash linux/scripts/tests/test-compiler-unique-profile.sh": {
+  "baseline": 0.3,
+  "per_entry": 0.44
+ },
+ "bash linux/scripts/tests/test-complete-preflight-receipt.sh": {
+  "baseline": 2.56,
+  "per_entry": 2.74
+ },
+ "bash linux/scripts/tests/test-consumer-hooks.sh": {
+  "baseline": 16.92,
+  "per_entry": 15.78
+ },
+ "bash linux/scripts/tests/test-consumer-hooks.sh -k commit": {
+  "baseline": 3.26,
+  "per_entry": 2.63
+ },
+ "bash linux/scripts/tests/test-consumer-hooks.sh -k extension": {
+  "baseline": 1.67,
+  "per_entry": 1.51
+ },
+ "bash linux/scripts/tests/test-consumer-hooks.sh -k notice": {
+  "baseline": 1.79,
+  "per_entry": 1.88
+ },
+ "bash linux/scripts/tests/test-consumer-hooks.sh -k push": {
+  "baseline": 2.69,
+  "per_entry": 2.43
  },
  "bash linux/scripts/tests/test-consumer-inventory.sh": {
-  "baseline": 1.62,
-  "per_entry": 1.65
+  "baseline": 2.03,
+  "per_entry": 2.47
+ },
+ "bash linux/scripts/tests/test-consumer-inventory.sh -k declared": {
+  "baseline": 0.12,
+  "per_entry": 0.13
+ },
+ "bash linux/scripts/tests/test-consumer-inventory.sh -k namesake": {
+  "baseline": 0.2,
+  "per_entry": 0.2
  },
  "bash linux/scripts/tests/test-consumer-pins-toml.sh": {
   "baseline": 0.12,
-  "per_entry": 0.12
+  "per_entry": 0.11
  },
  "bash linux/scripts/tests/test-consumer-quality-wiring.sh": {
-  "baseline": 0.4,
-  "per_entry": 0.41
+  "baseline": 0.35,
+  "per_entry": 0.34
  },
  "bash linux/scripts/tests/test-consumer-required-facts.sh": {
-  "baseline": 2.96,
-  "per_entry": 3.21
+  "baseline": 3.68,
+  "per_entry": 4.21
  },
  "bash linux/scripts/tests/test-copied-gate-fixture.sh": {
   "baseline": 0.09,
-  "per_entry": 0.12
+  "per_entry": 0.11
  },
  "bash linux/scripts/tests/test-core-owner-behavior.sh": {
-  "baseline": 0.43,
-  "per_entry": 0.5
+  "baseline": 0.48,
+  "per_entry": 0.46
+ },
+ "bash linux/scripts/tests/test-cpu-baseline-check.sh": {
+  "baseline": 0.14,
+  "per_entry": 0.15
  },
  "bash linux/scripts/tests/test-cpython-ext-table.sh": {
-  "baseline": 0.05,
-  "per_entry": 0.05
+  "baseline": 0.06,
+  "per_entry": 0.07
  },
  "bash linux/scripts/tests/test-critical-fixes.sh": {
-  "baseline": 11.86,
-  "per_entry": 13.79
+  "baseline": 11.8,
+  "per_entry": 11.32
  },
  "bash linux/scripts/tests/test-critical-source-pattern.sh": {
-  "baseline": 0.27,
+  "baseline": 0.29,
   "per_entry": 0.25
  },
  "bash linux/scripts/tests/test-crlf-guard.sh": {
-  "baseline": 0.86,
-  "per_entry": 0.66
+  "baseline": 1.12,
+  "per_entry": 1.01
  },
  "bash linux/scripts/tests/test-cross-active-registration.sh": {
-  "baseline": 3.83,
-  "per_entry": 1.55
+  "baseline": 3.33,
+  "per_entry": 1.51
  },
  "bash linux/scripts/tests/test-cross-apt.sh": {
-  "baseline": 0.77,
-  "per_entry": 0.75
+  "baseline": 0.64,
+  "per_entry": 0.61
  },
  "bash linux/scripts/tests/test-cross-arch-smoke-probes.sh": {
-  "baseline": 0.27,
-  "per_entry": 0.29
+  "baseline": 0.44,
+  "per_entry": 0.4
  },
  "bash linux/scripts/tests/test-cross-cmake-argv.sh": {
   "baseline": 0.04,
   "per_entry": 0.04
  },
  "bash linux/scripts/tests/test-cross-fallback-parity.sh": {
-  "baseline": 0.73,
-  "per_entry": 0.76
+  "baseline": 0.9,
+  "per_entry": 0.89
  },
  "bash linux/scripts/tests/test-cross-oci-handoff.sh": {
-  "baseline": 0.16,
-  "per_entry": 0.16
+  "baseline": 0.17,
+  "per_entry": 0.14
  },
  "bash linux/scripts/tests/test-cross-python-paths.sh": {
-  "baseline": 0.21,
+  "baseline": 0.27,
   "per_entry": 0.23
  },
  "bash linux/scripts/tests/test-cross-python-version.sh": {
-  "baseline": 0.04,
-  "per_entry": 0.04
+  "baseline": 0.07,
+  "per_entry": 0.07
  },
  "bash linux/scripts/tests/test-cross-stage-build-cmd.sh": {
-  "baseline": 1.01,
-  "per_entry": 0.99
+  "baseline": 1.04,
+  "per_entry": 1.09
  },
  "bash linux/scripts/tests/test-cross-verification-targets.sh": {
-  "baseline": 0.12,
-  "per_entry": 0.11
+  "baseline": 0.19,
+  "per_entry": 0.18
  },
  "bash linux/scripts/tests/test-cuda-cross-sbsa.sh": {
-  "baseline": 0.15,
-  "per_entry": 0.15
+  "baseline": 0.28,
+  "per_entry": 0.25
  },
  "bash linux/scripts/tests/test-cuda-runtime-payload.sh": {
-  "baseline": 1.0,
-  "per_entry": 1.02
+  "baseline": 0.71,
+  "per_entry": 0.76
  },
  "bash linux/scripts/tests/test-curated-sbom.sh": {
-  "baseline": 1.64,
-  "per_entry": 2.16
+  "baseline": 1.39,
+  "per_entry": 1.83
  },
  "bash linux/scripts/tests/test-dartdoc-guides.sh": {
-  "baseline": 2.67,
-  "per_entry": 2.45
+  "baseline": 2.75,
+  "per_entry": 2.67
  },
  "bash linux/scripts/tests/test-dartdoc-python.sh": {
-  "baseline": 0.9,
-  "per_entry": 0.8
+  "baseline": 1.02,
+  "per_entry": 0.99
  },
  "bash linux/scripts/tests/test-dartdoc-tool.sh": {
-  "baseline": 0.46,
-  "per_entry": 0.41
+  "baseline": 0.42,
+  "per_entry": 0.44
  },
  "bash linux/scripts/tests/test-dead-functions.sh": {
-  "baseline": 30.94,
-  "per_entry": 31.68
+  "baseline": 46.89,
+  "per_entry": 47.96
  },
  "bash linux/scripts/tests/test-deb-control-rendering.sh": {
-  "baseline": 1.23,
-  "per_entry": 1.16
+  "baseline": 0.97,
+  "per_entry": 0.92
  },
  "bash linux/scripts/tests/test-deepstream.sh": {
-  "baseline": 5.96,
-  "per_entry": 3.33
+  "baseline": 8.41,
+  "per_entry": 5.67
+ },
+ "bash linux/scripts/tests/test-default-handoff.sh": {
+  "baseline": 0.72,
+  "per_entry": 0.74
+ },
+ "bash linux/scripts/tests/test-default-media-launch.sh": {
+  "baseline": 1.35,
+  "per_entry": 0.75
  },
  "bash linux/scripts/tests/test-delete-guard.sh": {
-  "baseline": 1.29,
-  "per_entry": 1.46
+  "baseline": 1.62,
+  "per_entry": 1.55
+ },
+ "bash linux/scripts/tests/test-detector-parity.sh": {
+  "baseline": 8.57,
+  "per_entry": 9.25
+ },
+ "bash linux/scripts/tests/test-detector-tensor-summary.sh": {
+  "baseline": 0.51,
+  "per_entry": 0.54
+ },
+ "bash linux/scripts/tests/test-dev-doctor.sh": {
+  "baseline": 3.25,
+  "per_entry": 3.43
  },
  "bash linux/scripts/tests/test-develop-red.sh": {
-  "baseline": 4.14,
-  "per_entry": 5.09
+  "baseline": 3.39,
+  "per_entry": 4.57
+ },
+ "bash linux/scripts/tests/test-direct-preflight-receipt.sh": {
+  "baseline": 2.78,
+  "per_entry": 2.74
  },
  "bash linux/scripts/tests/test-directory-visitor.sh": {
-  "baseline": 18.68,
-  "per_entry": 19.89
+  "baseline": 17.94,
+  "per_entry": 17.77
  },
  "bash linux/scripts/tests/test-disk-guard.sh": {
-  "baseline": 8.19,
-  "per_entry": 8.5
+  "baseline": 9.66,
+  "per_entry": 11.5
  },
  "bash linux/scripts/tests/test-disk-slug-removal.sh": {
-  "baseline": 0.2,
-  "per_entry": 0.21
+  "baseline": 0.21,
+  "per_entry": 0.22
  },
  "bash linux/scripts/tests/test-disk-threshold-policies.sh": {
-  "baseline": 3.04,
-  "per_entry": 3.69
+  "baseline": 2.98,
+  "per_entry": 3.58
+ },
+ "bash linux/scripts/tests/test-dispatch-consumer-lanes.sh": {
+  "baseline": 0.32,
+  "per_entry": 0.38
  },
  "bash linux/scripts/tests/test-doc-dupes.sh": {
-  "baseline": 4.03,
-  "per_entry": 4.21
+  "baseline": 3.63,
+  "per_entry": 3.69
  },
  "bash linux/scripts/tests/test-doc-links.sh": {
-  "baseline": 5.7,
-  "per_entry": 6.52
+  "baseline": 3.59,
+  "per_entry": 4.65
  },
  "bash linux/scripts/tests/test-doc-numbers.sh": {
-  "baseline": 17.37,
-  "per_entry": 16.98
+  "baseline": 21.19,
+  "per_entry": 21.04
+ },
+ "bash linux/scripts/tests/test-doc-prose.sh -k agents": {
+  "baseline": 0.45,
+  "per_entry": 0.43
+ },
+ "bash linux/scripts/tests/test-doc-prose.sh -k consumer": {
+  "baseline": 0.27,
+  "per_entry": 0.25
+ },
+ "bash linux/scripts/tests/test-doc-prose.sh -k limits": {
+  "baseline": 0.49,
+  "per_entry": 0.53
+ },
+ "bash linux/scripts/tests/test-doc-prose.sh -k ratchet": {
+  "baseline": 1.3,
+  "per_entry": 1.3
+ },
+ "bash linux/scripts/tests/test-doc-prose.sh -k records": {
+  "baseline": 0.28,
+  "per_entry": 0.28
+ },
+ "bash linux/scripts/tests/test-doc-prose.sh -k split": {
+  "baseline": 0.67,
+  "per_entry": 0.66
+ },
+ "bash linux/scripts/tests/test-doc-prose.sh -k wiring": {
+  "baseline": 0.22,
+  "per_entry": 0.16
  },
  "bash linux/scripts/tests/test-dockerfile-context-paths.sh": {
-  "baseline": 1.58,
-  "per_entry": 1.72
+  "baseline": 1.48,
+  "per_entry": 1.51
  },
  "bash linux/scripts/tests/test-dockerfile-env-order.sh": {
-  "baseline": 2.56,
-  "per_entry": 2.17
+  "baseline": 2.3,
+  "per_entry": 1.86
  },
  "bash linux/scripts/tests/test-dockerfile-step-labels.sh": {
-  "baseline": 0.32,
-  "per_entry": 0.34
+  "baseline": 0.34,
+  "per_entry": 0.36
  },
  "bash linux/scripts/tests/test-docs-sidebars.sh": {
-  "baseline": 105.53,
-  "per_entry": 102.24
+  "baseline": 100.0,
+  "per_entry": 97.15
  },
  "bash linux/scripts/tests/test-docs-site-htaccess.sh": {
-  "baseline": 0.34,
-  "per_entry": 0.32
+  "baseline": 0.5,
+  "per_entry": 0.52
  },
  "bash linux/scripts/tests/test-docs-site.sh": {
-  "baseline": 1.26,
-  "per_entry": 1.58
+  "baseline": 2.47,
+  "per_entry": 2.34
  },
  "bash linux/scripts/tests/test-download-verified-install.sh": {
-  "baseline": 0.29,
+  "baseline": 0.26,
   "per_entry": 0.26
  },
  "bash linux/scripts/tests/test-duplicate-build-helpers.sh": {
-  "baseline": 0.15,
+  "baseline": 0.11,
   "per_entry": 0.13
  },
  "bash linux/scripts/tests/test-elf-closure.sh": {
-  "baseline": 5.73,
-  "per_entry": 5.48
+  "baseline": 5.0,
+  "per_entry": 2.64
  },
  "bash linux/scripts/tests/test-elf-strip.sh": {
-  "baseline": 0.29,
-  "per_entry": 0.3
+  "baseline": 0.35,
+  "per_entry": 0.29
  },
  "bash linux/scripts/tests/test-embedded-python-extract.sh": {
-  "baseline": 2.92,
-  "per_entry": 2.92
+  "baseline": 5.4,
+  "per_entry": 5.05
  },
  "bash linux/scripts/tests/test-env-knobs.sh": {
-  "baseline": 15.43,
-  "per_entry": 14.01
+  "baseline": 12.29,
+  "per_entry": 14.33
  },
  "bash linux/scripts/tests/test-fetch-data-lock.sh": {
-  "baseline": 3.73,
-  "per_entry": 4.09
+  "baseline": 3.8,
+  "per_entry": 4.17
  },
  "bash linux/scripts/tests/test-fetch-fallback-fonts.sh": {
-  "baseline": 1.25,
-  "per_entry": 1.41
+  "baseline": 1.57,
+  "per_entry": 1.23
  },
  "bash linux/scripts/tests/test-ffmpeg-dnn-contract.sh": {
-  "baseline": 0.25,
-  "per_entry": 0.24
+  "baseline": 0.23,
+  "per_entry": 0.21
  },
  "bash linux/scripts/tests/test-ffmpeg-makedef.sh": {
-  "baseline": 0.39,
-  "per_entry": 0.36
+  "baseline": 0.7,
+  "per_entry": 0.46
  },
  "bash linux/scripts/tests/test-ffmpeg-probes.sh": {
-  "baseline": 0.4,
-  "per_entry": 0.33
+  "baseline": 0.38,
+  "per_entry": 0.29
  },
  "bash linux/scripts/tests/test-ffmpeg-runtime-artifacts.sh": {
-  "baseline": 3.54,
-  "per_entry": 3.66
+  "baseline": 2.79,
+  "per_entry": 3.61
  },
  "bash linux/scripts/tests/test-fixture-drivers.sh": {
-  "baseline": 0.12,
-  "per_entry": 0.17
+  "baseline": 0.15,
+  "per_entry": 0.14
  },
  "bash linux/scripts/tests/test-fixture-tool-portability.sh": {
-  "baseline": 2.87,
-  "per_entry": 2.63
+  "baseline": 5.7,
+  "per_entry": 5.1
  },
  "bash linux/scripts/tests/test-fleet-dependencies.sh": {
-  "baseline": 8.3,
-  "per_entry": 2.69
+  "baseline": 6.11,
+  "per_entry": 2.15
+ },
+ "bash linux/scripts/tests/test-fleet-health.sh": {
+  "baseline": 3.03,
+  "per_entry": 3.28
  },
  "bash linux/scripts/tests/test-flutter-checks-platform.sh": {
-  "baseline": 0.62,
-  "per_entry": 0.64
+  "baseline": 0.83,
+  "per_entry": 0.68
  },
  "bash linux/scripts/tests/test-flutter-lane-api.sh": {
   "baseline": 0.35,
-  "per_entry": 0.33
+  "per_entry": 0.37
  },
  "bash linux/scripts/tests/test-flutter-nginx-integration.sh": {
   "baseline": 0.35,
-  "per_entry": 0.34
+  "per_entry": 0.35
  },
  "bash linux/scripts/tests/test-flutter-smoke-test.sh": {
-  "baseline": 2.5,
-  "per_entry": 1.89
+  "baseline": 2.17,
+  "per_entry": 2.11
+ },
+ "bash linux/scripts/tests/test-free-threaded-probe-deps.sh": {
+  "baseline": 0.26,
+  "per_entry": 0.24
  },
  "bash linux/scripts/tests/test-free-threaded-store.sh": {
-  "baseline": 11.56,
-  "per_entry": 10.69
+  "baseline": 13.31,
+  "per_entry": 17.89
  },
  "bash linux/scripts/tests/test-free-threaded-sysconfig-tools.sh": {
-  "baseline": 0.55,
-  "per_entry": 0.56
+  "baseline": 0.53,
+  "per_entry": 0.52
  },
  "bash linux/scripts/tests/test-free-threaded-wheels.sh": {
-  "baseline": 3.95,
-  "per_entry": 3.76
+  "baseline": 2.07,
+  "per_entry": 2.31
  },
  "bash linux/scripts/tests/test-gate-registry.sh": {
-  "baseline": 8.44,
-  "per_entry": 8.09
+  "baseline": 6.12,
+  "per_entry": 6.42
+ },
+ "bash linux/scripts/tests/test-gates-annotations.sh": {
+  "baseline": 0.06,
+  "per_entry": 0.06
  },
  "bash linux/scripts/tests/test-gcc-cross-launch.sh": {
   "baseline": 0.15,
-  "per_entry": 0.16
+  "per_entry": 0.14
  },
  "bash linux/scripts/tests/test-gcc-release-downloads.sh": {
-  "baseline": 0.29,
-  "per_entry": 0.31
+  "baseline": 0.34,
+  "per_entry": 0.3
+ },
+ "bash linux/scripts/tests/test-gcc-runtime-notices.sh": {
+  "baseline": 0.45,
+  "per_entry": 0.54
  },
  "bash linux/scripts/tests/test-genai-artifact-gate.sh": {
-  "baseline": 0.38,
-  "per_entry": 0.44
+  "baseline": 0.46,
+  "per_entry": 0.47
  },
  "bash linux/scripts/tests/test-genai-ort.sh": {
-  "baseline": 3.44,
-  "per_entry": 3.93
+  "baseline": 4.47,
+  "per_entry": 4.38
  },
  "bash linux/scripts/tests/test-genai-smoke-payload.sh": {
-  "baseline": 1.74,
-  "per_entry": 1.44
+  "baseline": 1.81,
+  "per_entry": 1.77
  },
  "bash linux/scripts/tests/test-ghcr-delete-tags.sh": {
-  "baseline": 0.33,
-  "per_entry": 0.46
+  "baseline": 0.36,
+  "per_entry": 0.45
  },
  "bash linux/scripts/tests/test-ghcr-prune-keepset.sh": {
-  "baseline": 1.42,
-  "per_entry": 0.92
+  "baseline": 1.55,
+  "per_entry": 0.86
  },
  "bash linux/scripts/tests/test-ghost-watch.sh": {
-  "baseline": 0.11,
-  "per_entry": 0.11
+  "baseline": 0.12,
+  "per_entry": 0.13
  },
  "bash linux/scripts/tests/test-gi-cross-detect.sh": {
   "baseline": 0.05,
   "per_entry": 0.05
  },
+ "bash linux/scripts/tests/test-gpu-handoff.sh": {
+  "baseline": 0.6,
+  "per_entry": 0.56
+ },
  "bash linux/scripts/tests/test-gpu-repo-setup.sh": {
-  "baseline": 6.21,
-  "per_entry": 6.28
+  "baseline": 5.88,
+  "per_entry": 6.0
  },
  "bash linux/scripts/tests/test-gpu-runtime-check.sh": {
-  "baseline": 1.48,
-  "per_entry": 1.47
+  "baseline": 1.13,
+  "per_entry": 1.33
+ },
+ "bash linux/scripts/tests/test-gpu-source-profile.sh": {
+  "baseline": 0.13,
+  "per_entry": 0.12
  },
  "bash linux/scripts/tests/test-gpu-variant.sh": {
-  "baseline": 13.38,
-  "per_entry": 13.6
+  "baseline": 11.66,
+  "per_entry": 12.68
  },
  "bash linux/scripts/tests/test-gst-validate-ssim.sh": {
-  "baseline": 0.81,
-  "per_entry": 0.78
+  "baseline": 1.22,
+  "per_entry": 1.09
  },
  "bash linux/scripts/tests/test-gstreamer-cargo-bindings.sh": {
-  "baseline": 0.29,
-  "per_entry": 0.3
+  "baseline": 0.26,
+  "per_entry": 0.24
  },
  "bash linux/scripts/tests/test-gstreamer-cross-prepare.sh": {
-  "baseline": 0.21,
-  "per_entry": 0.22
+  "baseline": 0.26,
+  "per_entry": 0.2
  },
  "bash linux/scripts/tests/test-gstreamer-debug-logs-knob.sh": {
-  "baseline": 0.05,
-  "per_entry": 0.06
+  "baseline": 0.08,
+  "per_entry": 0.08
  },
  "bash linux/scripts/tests/test-gstreamer-env.sh": {
-  "baseline": 0.62,
-  "per_entry": 0.5
+  "baseline": 0.68,
+  "per_entry": 0.37
  },
  "bash linux/scripts/tests/test-gstreamer-meson-flags.sh": {
   "baseline": 0.11,
-  "per_entry": 0.12
+  "per_entry": 0.11
+ },
+ "bash linux/scripts/tests/test-gstreamer-original-notices.sh": {
+  "baseline": 20.0,
+  "per_entry": 24.47
  },
  "bash linux/scripts/tests/test-guard-helpers.sh": {
-  "baseline": 0.44,
-  "per_entry": 0.45
+  "baseline": 0.56,
+  "per_entry": 0.61
  },
  "bash linux/scripts/tests/test-guarded-links.sh": {
-  "baseline": 3.65,
-  "per_entry": 3.63
+  "baseline": 1.71,
+  "per_entry": 1.95
  },
  "bash linux/scripts/tests/test-hailo-build.sh": {
-  "baseline": 7.77,
-  "per_entry": 7.8
+  "baseline": 3.63,
+  "per_entry": 4.14
  },
  "bash linux/scripts/tests/test-hailo-source-staging.sh": {
-  "baseline": 0.12,
-  "per_entry": 0.12
+  "baseline": 0.09,
+  "per_entry": 0.08
  },
  "bash linux/scripts/tests/test-harness-guards.sh": {
-  "baseline": 0.38,
-  "per_entry": 0.41
+  "baseline": 0.59,
+  "per_entry": 0.57
+ },
+ "bash linux/scripts/tests/test-harness-suite-driver.sh -k empty": {
+  "baseline": 0.88,
+  "per_entry": 0.99
+ },
+ "bash linux/scripts/tests/test-harness-suite-driver.sh -k error": {
+  "baseline": 1.62,
+  "per_entry": 1.67
+ },
+ "bash linux/scripts/tests/test-harness-suite-driver.sh -k failed": {
+  "baseline": 1.4,
+  "per_entry": 1.5
  },
  "bash linux/scripts/tests/test-header-discovery.sh": {
-  "baseline": 2.02,
-  "per_entry": 2.59
+  "baseline": 1.87,
+  "per_entry": 1.9
  },
  "bash linux/scripts/tests/test-host-arch-resolution.sh": {
-  "baseline": 0.17,
-  "per_entry": 0.17
+  "baseline": 0.14,
+  "per_entry": 0.15
  },
  "bash linux/scripts/tests/test-host-cargo-preparation.sh": {
-  "baseline": 4.87,
-  "per_entry": 4.17
+  "baseline": 5.28,
+  "per_entry": 3.08
  },
  "bash linux/scripts/tests/test-host-payload.sh": {
-  "baseline": 0.53,
-  "per_entry": 0.54
- },
- "bash linux/scripts/tests/test-host-python-pins.sh": {
-  "baseline": 2.63,
-  "per_entry": 3.06
- },
- "bash linux/scripts/tests/test-host-skips.sh": {
-  "baseline": 1.57,
-  "per_entry": 1.4
- },
- "bash linux/scripts/tests/test-hub-reuse.sh": {
-  "baseline": 1.5,
-  "per_entry": 1.75
- },
- "bash linux/scripts/tests/test-ifs-safety.sh": {
-  "baseline": 0.04,
-  "per_entry": 0.04
- },
- "bash linux/scripts/tests/test-image-acceptance.sh": {
-  "baseline": 0.34,
-  "per_entry": 0.33
- },
- "bash linux/scripts/tests/test-image-consumer-bootstrap.sh": {
-  "baseline": 0.58,
-  "per_entry": 0.51
- },
- "bash linux/scripts/tests/test-image-env.sh": {
-  "baseline": 3.65,
-  "per_entry": 3.77
- },
- "bash linux/scripts/tests/test-image-ref-cli.sh": {
-  "baseline": 1.12,
-  "per_entry": 1.13
- },
- "bash linux/scripts/tests/test-invocation-lints.sh": {
-  "baseline": 8.47,
-  "per_entry": 8.77
- },
- "bash linux/scripts/tests/test-iree-android-profile.sh": {
-  "baseline": 0.36,
-  "per_entry": 0.34
- },
- "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh": {
-  "baseline": 1.9,
-  "per_entry": 1.98
- },
- "bash linux/scripts/tests/test-large-files.sh": {
-  "baseline": 2.13,
-  "per_entry": 2.39
- },
- "bash linux/scripts/tests/test-lavapipe-vector-width.sh": {
-  "baseline": 0.55,
-  "per_entry": 0.56
- },
- "bash linux/scripts/tests/test-layer-order.sh": {
-  "baseline": 1.49,
-  "per_entry": 1.56
- },
- "bash linux/scripts/tests/test-lib-app-runner.sh": {
-  "baseline": 0.36,
-  "per_entry": 0.39
- },
- "bash linux/scripts/tests/test-lib-cmake-build.sh": {
   "baseline": 0.59,
   "per_entry": 0.62
  },
+ "bash linux/scripts/tests/test-host-python-pins.sh": {
+  "baseline": 2.38,
+  "per_entry": 3.66
+ },
+ "bash linux/scripts/tests/test-host-skips.sh": {
+  "baseline": 1.56,
+  "per_entry": 1.54
+ },
+ "bash linux/scripts/tests/test-hub-reuse.sh": {
+  "baseline": 1.76,
+  "per_entry": 1.68
+ },
+ "bash linux/scripts/tests/test-ifs-safety.sh": {
+  "baseline": 0.1,
+  "per_entry": 0.08
+ },
+ "bash linux/scripts/tests/test-image-acceptance-ci.sh": {
+  "baseline": 0.32,
+  "per_entry": 0.32
+ },
+ "bash linux/scripts/tests/test-image-acceptance-local.sh": {
+  "baseline": 0.79,
+  "per_entry": 0.84
+ },
+ "bash linux/scripts/tests/test-image-acceptance.sh": {
+  "baseline": 0.38,
+  "per_entry": 0.38
+ },
+ "bash linux/scripts/tests/test-image-consumer-bootstrap.sh": {
+  "baseline": 0.62,
+  "per_entry": 0.52
+ },
+ "bash linux/scripts/tests/test-image-env.sh": {
+  "baseline": 2.23,
+  "per_entry": 2.51
+ },
+ "bash linux/scripts/tests/test-image-ref-cli.sh": {
+  "baseline": 1.29,
+  "per_entry": 1.13
+ },
+ "bash linux/scripts/tests/test-intel-gpu-userspace.sh": {
+  "baseline": 0.15,
+  "per_entry": 0.15
+ },
+ "bash linux/scripts/tests/test-invocation-lints.sh": {
+  "baseline": 11.02,
+  "per_entry": 11.69
+ },
+ "bash linux/scripts/tests/test-iree-android-profile.sh": {
+  "baseline": 0.33,
+  "per_entry": 0.27
+ },
+ "bash linux/scripts/tests/test-iree-host-once.sh -k failure": {
+  "baseline": 0.4,
+  "per_entry": 0.39
+ },
+ "bash linux/scripts/tests/test-iree-host-once.sh -k key": {
+  "baseline": 0.3,
+  "per_entry": 0.24
+ },
+ "bash linux/scripts/tests/test-iree-host-once.sh -k lock": {
+  "baseline": 6.35,
+  "per_entry": 16.23
+ },
+ "bash linux/scripts/tests/test-iree-host-once.sh -k shared": {
+  "baseline": 2.17,
+  "per_entry": 3.19
+ },
+ "bash linux/scripts/tests/test-iree-host-once.sh -k switch": {
+  "baseline": 0.26,
+  "per_entry": 0.27
+ },
+ "bash linux/scripts/tests/test-iree-host-once.sh -k wiring": {
+  "baseline": 0.02,
+  "per_entry": 0.02
+ },
+ "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh": {
+  "baseline": 2.05,
+  "per_entry": 2.03
+ },
+ "bash linux/scripts/tests/test-isolated-helper-cache.sh": {
+  "baseline": 2.91,
+  "per_entry": 2.02
+ },
+ "bash linux/scripts/tests/test-isolated-helper-clock.sh": {
+  "baseline": 1.29,
+  "per_entry": 2.34
+ },
+ "bash linux/scripts/tests/test-knob-order.sh": {
+  "baseline": 4.23,
+  "per_entry": 4.22
+ },
+ "bash linux/scripts/tests/test-lang-units.sh": {
+  "baseline": 0.1,
+  "per_entry": 0.11
+ },
+ "bash linux/scripts/tests/test-large-files.sh": {
+  "baseline": 2.6,
+  "per_entry": 2.79
+ },
+ "bash linux/scripts/tests/test-lavapipe-vector-width.sh": {
+  "baseline": 0.5,
+  "per_entry": 0.49
+ },
+ "bash linux/scripts/tests/test-layer-order.sh": {
+  "baseline": 1.28,
+  "per_entry": 1.14
+ },
+ "bash linux/scripts/tests/test-lib-app-runner.sh": {
+  "baseline": 0.41,
+  "per_entry": 0.35
+ },
+ "bash linux/scripts/tests/test-lib-cmake-build.sh": {
+  "baseline": 1.23,
+  "per_entry": 1.05
+ },
  "bash linux/scripts/tests/test-lib-compile-db.sh": {
-  "baseline": 0.29,
-  "per_entry": 0.29
+  "baseline": 0.58,
+  "per_entry": 0.53
  },
  "bash linux/scripts/tests/test-lib-coverage.sh": {
-  "baseline": 0.43,
+  "baseline": 0.39,
   "per_entry": 0.4
  },
  "bash linux/scripts/tests/test-lib-ctest-run.sh": {
-  "baseline": 0.33,
-  "per_entry": 0.3
+  "baseline": 4.21,
+  "per_entry": 3.46
  },
  "bash linux/scripts/tests/test-lib-docs-build.sh": {
-  "baseline": 0.41,
-  "per_entry": 0.38
+  "baseline": 0.66,
+  "per_entry": 0.75
  },
  "bash linux/scripts/tests/test-lib-modules.sh": {
-  "baseline": 1.84,
-  "per_entry": 1.45
+  "baseline": 1.49,
+  "per_entry": 1.48
  },
  "bash linux/scripts/tests/test-lib-smoke.sh": {
-  "baseline": 2.29,
-  "per_entry": 2.12
+  "baseline": 2.17,
+  "per_entry": 2.32
  },
  "bash linux/scripts/tests/test-lib-wasm-tools.sh": {
-  "baseline": 0.27,
-  "per_entry": 0.28
+  "baseline": 0.73,
+  "per_entry": 0.67
  },
  "bash linux/scripts/tests/test-libcamera-report.sh": {
-  "baseline": 2.2,
-  "per_entry": 0.86
+  "baseline": 1.41,
+  "per_entry": 0.77
  },
  "bash linux/scripts/tests/test-linker-select.sh": {
-  "baseline": 0.6,
-  "per_entry": 0.7
+  "baseline": 0.85,
+  "per_entry": 0.86
+ },
+ "bash linux/scripts/tests/test-lint-gates-secret-jobs.sh": {
+  "baseline": 1.47,
+  "per_entry": 5.03
+ },
+ "bash linux/scripts/tests/test-lint-gates-workflow.sh": {
+  "baseline": 1.52,
+  "per_entry": 1.36
  },
  "bash linux/scripts/tests/test-lint-gates.sh": {
-  "baseline": 2.73,
-  "per_entry": 2.69
+  "baseline": 2.54,
+  "per_entry": 2.93
  },
  "bash linux/scripts/tests/test-lint-scope-handshake.sh": {
-  "baseline": 0.05,
+  "baseline": 0.07,
   "per_entry": 0.03
  },
  "bash linux/scripts/tests/test-lint-scope-init.sh": {
-  "baseline": 0.22,
-  "per_entry": 0.19
- },
- "bash linux/scripts/tests/test-lint-shell-parallel.sh": {
-  "baseline": 0.62,
-  "per_entry": 22.41
- },
- "bash linux/scripts/tests/test-lint-shell-scope.sh": {
-  "baseline": 2.62,
-  "per_entry": 1.93
- },
- "bash linux/scripts/tests/test-lint-shell-verdicts.sh": {
-  "baseline": 0.43,
-  "per_entry": 0.45
- },
- "bash linux/scripts/tests/test-lint-tool-release.sh": {
-  "baseline": 0.21,
-  "per_entry": 0.25
- },
- "bash linux/scripts/tests/test-lint-tools.sh": {
-  "baseline": 0.62,
-  "per_entry": 0.63
- },
- "bash linux/scripts/tests/test-linux-closure-install.sh": {
-  "baseline": 21.89,
-  "per_entry": 18.45
- },
- "bash linux/scripts/tests/test-linux-x64-concurrency.sh": {
-  "baseline": 0.12,
-  "per_entry": 0.13
- },
- "bash linux/scripts/tests/test-litert-qairt-guard.sh": {
-  "baseline": 0.14,
-  "per_entry": 0.14
- },
- "bash linux/scripts/tests/test-litert-qairt-headers.sh": {
-  "baseline": 0.06,
-  "per_entry": 0.06
- },
- "bash linux/scripts/tests/test-litert-web-vendor.sh": {
-  "baseline": 0.21,
-  "per_entry": 0.22
- },
- "bash linux/scripts/tests/test-lld-literal-false-policy.sh": {
-  "baseline": 7.08,
-  "per_entry": 7.47
- },
- "bash linux/scripts/tests/test-llvm-builder-path.sh": {
-  "baseline": 0.05,
-  "per_entry": 0.07
- },
- "bash linux/scripts/tests/test-llvm-cross-stanza.sh": {
-  "baseline": 0.24,
-  "per_entry": 0.24
- },
- "bash linux/scripts/tests/test-llvm-source-cache.sh": {
-  "baseline": 0.17,
+  "baseline": 0.18,
   "per_entry": 0.15
  },
+ "bash linux/scripts/tests/test-lint-shell-parallel.sh": {
+  "baseline": 0.74,
+  "per_entry": 23.2
+ },
+ "bash linux/scripts/tests/test-lint-shell-scope.sh": {
+  "baseline": 1.98,
+  "per_entry": 1.96
+ },
+ "bash linux/scripts/tests/test-lint-shell-verdicts.sh": {
+  "baseline": 0.61,
+  "per_entry": 0.51
+ },
+ "bash linux/scripts/tests/test-lint-tool-release.sh": {
+  "baseline": 0.22,
+  "per_entry": 0.23
+ },
+ "bash linux/scripts/tests/test-lint-tools.sh": {
+  "baseline": 0.76,
+  "per_entry": 0.85
+ },
+ "bash linux/scripts/tests/test-linux-closure-install.sh": {
+  "baseline": 21.33,
+  "per_entry": 19.37
+ },
+ "bash linux/scripts/tests/test-linux-immutable-helpers.sh": {
+  "baseline": 13.95,
+  "per_entry": 9.34
+ },
+ "bash linux/scripts/tests/test-linux-x64-concurrency.sh": {
+  "baseline": 0.15,
+  "per_entry": 0.14
+ },
+ "bash linux/scripts/tests/test-litecore-pin.sh": {
+  "baseline": 0.08,
+  "per_entry": 0.06
+ },
+ "bash linux/scripts/tests/test-litert-qairt-guard.sh": {
+  "baseline": 0.11,
+  "per_entry": 0.12
+ },
+ "bash linux/scripts/tests/test-litert-qairt-headers.sh": {
+  "baseline": 0.04,
+  "per_entry": 0.04
+ },
+ "bash linux/scripts/tests/test-litert-web-vendor.sh": {
+  "baseline": 0.29,
+  "per_entry": 0.28
+ },
+ "bash linux/scripts/tests/test-live-cache-capture.sh": {
+  "baseline": 0.23,
+  "per_entry": 1.04
+ },
+ "bash linux/scripts/tests/test-live-configure-snapshot.sh": {
+  "baseline": 0.1,
+  "per_entry": 0.12
+ },
+ "bash linux/scripts/tests/test-lld-literal-false-policy.sh": {
+  "baseline": 6.74,
+  "per_entry": 6.45
+ },
+ "bash linux/scripts/tests/test-llvm-alternatives.sh": {
+  "baseline": 0.26,
+  "per_entry": 0.31
+ },
+ "bash linux/scripts/tests/test-llvm-builder-path.sh": {
+  "baseline": 0.04,
+  "per_entry": 0.05
+ },
+ "bash linux/scripts/tests/test-llvm-cross-stanza.sh": {
+  "baseline": 0.41,
+  "per_entry": 0.31
+ },
+ "bash linux/scripts/tests/test-llvm-host-selection.sh": {
+  "baseline": 0.39,
+  "per_entry": 0.4
+ },
+ "bash linux/scripts/tests/test-llvm-loader-path.sh": {
+  "baseline": 0.09,
+  "per_entry": 0.11
+ },
+ "bash linux/scripts/tests/test-llvm-source-cache.sh": {
+  "baseline": 0.14,
+  "per_entry": 0.15
+ },
+ "bash linux/scripts/tests/test-llvm-target-aliases.sh": {
+  "baseline": 0.64,
+  "per_entry": 0.52
+ },
  "bash linux/scripts/tests/test-llvm-target-prefix.sh": {
-  "baseline": 1.32,
-  "per_entry": 1.46
+  "baseline": 1.44,
+  "per_entry": 1.75
+ },
+ "bash linux/scripts/tests/test-llvm-wrapper-sysroot.sh": {
+  "baseline": 0.71,
+  "per_entry": 0.82
+ },
+ "bash linux/scripts/tests/test-local-final-launch.sh": {
+  "baseline": 0.77,
+  "per_entry": 0.87
+ },
+ "bash linux/scripts/tests/test-local-proof-tools.sh": {
+  "baseline": 9.96,
+  "per_entry": 9.72
+ },
+ "bash linux/scripts/tests/test-local-proof-tools.sh -k current_compiler_profile": {
+  "baseline": 0.11,
+  "per_entry": 0.11
+ },
+ "bash linux/scripts/tests/test-local-proof-tools.sh -k direct_failure_audit": {
+  "baseline": 0.83,
+  "per_entry": 0.88
+ },
+ "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals": {
+  "baseline": 0.38,
+  "per_entry": 0.43
+ },
+ "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_launch_transport": {
+  "baseline": 2.93,
+  "per_entry": 2.5
+ },
+ "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals": {
+  "baseline": 0.23,
+  "per_entry": 0.32
  },
  "bash linux/scripts/tests/test-log-dir-consumer.sh": {
-  "baseline": 8.16,
-  "per_entry": 2.94
+  "baseline": 10.85,
+  "per_entry": 3.39
  },
  "bash linux/scripts/tests/test-log-fallbacks.sh": {
-  "baseline": 1.46,
-  "per_entry": 1.47
+  "baseline": 1.26,
+  "per_entry": 1.53
  },
  "bash linux/scripts/tests/test-logging-err-trap.sh": {
   "baseline": 0.15,
@@ -877,38 +1289,46 @@
  },
  "bash linux/scripts/tests/test-logging-format.sh": {
   "baseline": 0.15,
-  "per_entry": 0.16
+  "per_entry": 0.15
  },
  "bash linux/scripts/tests/test-manifest-acceptance.sh": {
-  "baseline": 0.05,
-  "per_entry": 0.05
+  "baseline": 0.06,
+  "per_entry": 0.07
  },
  "bash linux/scripts/tests/test-manifest-gates-only.sh": {
   "baseline": 0.35,
-  "per_entry": 0.35
+  "per_entry": 0.39
  },
  "bash linux/scripts/tests/test-manifest-wrapper-gate.sh": {
-  "baseline": 0.22,
-  "per_entry": 0.23
+  "baseline": 0.32,
+  "per_entry": 0.25
  },
  "bash linux/scripts/tests/test-masked-assignments.sh": {
-  "baseline": 1.23,
-  "per_entry": 0.72
+  "baseline": 1.03,
+  "per_entry": 0.85
  },
  "bash linux/scripts/tests/test-media-dev-symlinks.sh": {
-  "baseline": 2.44,
-  "per_entry": 2.75
+  "baseline": 3.47,
+  "per_entry": 3.4
  },
  "bash linux/scripts/tests/test-media-file-selection.sh": {
-  "baseline": 0.18,
+  "baseline": 0.22,
   "per_entry": 0.21
  },
  "bash linux/scripts/tests/test-media-file-sets.sh": {
-  "baseline": 1.38,
-  "per_entry": 1.24
+  "baseline": 1.54,
+  "per_entry": 1.58
+ },
+ "bash linux/scripts/tests/test-media-finalize.sh": {
+  "baseline": 0.17,
+  "per_entry": 0.18
+ },
+ "bash linux/scripts/tests/test-media-handoff.sh": {
+  "baseline": 0.17,
+  "per_entry": 0.22
  },
  "bash linux/scripts/tests/test-media-install-strip.sh": {
-  "baseline": 0.15,
+  "baseline": 0.12,
   "per_entry": 0.14
  },
  "bash linux/scripts/tests/test-media-jobs.sh": {
@@ -916,1071 +1336,2463 @@
   "per_entry": 0.06
  },
  "bash linux/scripts/tests/test-media-onnx-policy.sh": {
-  "baseline": 0.1,
-  "per_entry": 0.09
+  "baseline": 0.09,
+  "per_entry": 0.07
  },
  "bash linux/scripts/tests/test-media-payload-inventory.sh": {
-  "baseline": 0.67,
-  "per_entry": 0.74
+  "baseline": 0.81,
+  "per_entry": 0.94
  },
  "bash linux/scripts/tests/test-media-pin-advisory.sh": {
-  "baseline": 1.07,
-  "per_entry": 1.25
+  "baseline": 1.11,
+  "per_entry": 1.33
  },
  "bash linux/scripts/tests/test-media-platform-bootstrap.sh": {
-  "baseline": 0.37,
-  "per_entry": 0.4
+  "baseline": 0.55,
+  "per_entry": 0.52
  },
  "bash linux/scripts/tests/test-media-python-dependencies.sh": {
-  "baseline": 0.32,
-  "per_entry": 0.31
+  "baseline": 0.36,
+  "per_entry": 0.3
  },
  "bash linux/scripts/tests/test-media-python-probes.sh": {
-  "baseline": 0.25,
-  "per_entry": 0.27
+  "baseline": 0.23,
+  "per_entry": 0.25
  },
  "bash linux/scripts/tests/test-media-python-probes.sh && bash linux/scripts/tests/test-gstreamer-cargo-bindings.sh": {
+  "baseline": 0.65,
+  "per_entry": 0.31
+ },
+ "bash linux/scripts/tests/test-media-source-profile.sh -k test_change_under_an_expanded": {
+  "baseline": 0.31,
+  "per_entry": 0.32
+ },
+ "bash linux/scripts/tests/test-media-source-profile.sh -k test_closure_member": {
+  "baseline": 0.31,
+  "per_entry": 0.3
+ },
+ "bash linux/scripts/tests/test-media-source-profile.sh -k test_copied_directory": {
+  "baseline": 0.61,
+  "per_entry": 0.51
+ },
+ "bash linux/scripts/tests/test-media-source-profile.sh -k test_handoff_rechecks": {
+  "baseline": 0.33,
+  "per_entry": 0.36
+ },
+ "bash linux/scripts/tests/test-media-source-profile.sh -k test_launcher_binds": {
+  "baseline": 0.26,
+  "per_entry": 0.33
+ },
+ "bash linux/scripts/tests/test-media-source-profile.sh -k test_launcher_requires": {
+  "baseline": 0.43,
+  "per_entry": 0.5
+ },
+ "bash linux/scripts/tests/test-media-source-profile.sh -k test_media_only_change": {
+  "baseline": 0.37,
+  "per_entry": 0.38
+ },
+ "bash linux/scripts/tests/test-media-source-profile.sh -k test_mounted_file": {
+  "baseline": 0.22,
+  "per_entry": 0.23
+ },
+ "bash linux/scripts/tests/test-media-source-profile.sh -k test_only_reviewed": {
+  "baseline": 0.22,
+  "per_entry": 0.36
+ },
+ "bash linux/scripts/tests/test-media-source-profile.sh -k test_parent_source_must": {
+  "baseline": 0.37,
+  "per_entry": 0.33
+ },
+ "bash linux/scripts/tests/test-media-source-profile.sh -k test_runtime_change_to_any": {
+  "baseline": 0.57,
+  "per_entry": 0.65
+ },
+ "bash linux/scripts/tests/test-media-source-profile.sh -k test_runtime_host_only_change": {
+  "baseline": 0.38,
+  "per_entry": 0.33
+ },
+ "bash linux/scripts/tests/test-media-source-profile.sh -k test_runtime_stage_naming": {
+  "baseline": 0.24,
+  "per_entry": 0.28
+ },
+ "bash linux/scripts/tests/test-media-source-profile.sh -k test_upstream_dockerfile": {
   "baseline": 0.47,
-  "per_entry": 0.26
+  "per_entry": 0.46
  },
  "bash linux/scripts/tests/test-merge-mutation-recipes.sh": {
-  "baseline": 1.06,
-  "per_entry": 1.07
+  "baseline": 0.99,
+  "per_entry": 1.03
  },
  "bash linux/scripts/tests/test-meson-bound-providers.sh": {
-  "baseline": 0.52,
-  "per_entry": 0.39
+  "baseline": 0.32,
+  "per_entry": 0.33
  },
  "bash linux/scripts/tests/test-meson-dispatch.sh": {
-  "baseline": 3.54,
-  "per_entry": 3.61
+  "baseline": 2.96,
+  "per_entry": 2.85
+ },
+ "bash linux/scripts/tests/test-migraphx-backend-build.sh": {
+  "baseline": 1.32,
+  "per_entry": 1.41
+ },
+ "bash linux/scripts/tests/test-migraphx-configure-launcher.sh": {
+  "baseline": 0.26,
+  "per_entry": 0.26
+ },
+ "bash linux/scripts/tests/test-migraphx-hip-compiler.sh": {
+  "baseline": 1.21,
+  "per_entry": 1.2
+ },
+ "bash linux/scripts/tests/test-migraphx-image.sh": {
+  "baseline": 0.62,
+  "per_entry": 0.59
+ },
+ "bash linux/scripts/tests/test-migraphx-padding.sh": {
+  "baseline": 3.05,
+  "per_entry": 2.55
+ },
+ "bash linux/scripts/tests/test-migraphx-plugin-ep.sh": {
+  "baseline": 1.41,
+  "per_entry": 1.39
+ },
+ "bash linux/scripts/tests/test-migraphx-rocmlir-build.sh": {
+  "baseline": 3.78,
+  "per_entry": 4.04
+ },
+ "bash linux/scripts/tests/test-migraphx-sdk-closure.sh": {
+  "baseline": 0.68,
+  "per_entry": 0.4
+ },
+ "bash linux/scripts/tests/test-migraphx-source-deps.sh": {
+  "baseline": 0.91,
+  "per_entry": 0.87
+ },
+ "bash linux/scripts/tests/test-migraphx-source-plan.sh": {
+  "baseline": 0.92,
+  "per_entry": 1.15
+ },
+ "bash linux/scripts/tests/test-migraphx-stack.sh": {
+  "baseline": 2.06,
+  "per_entry": 1.17
  },
  "bash linux/scripts/tests/test-mirror-consistency.sh": {
-  "baseline": 7.04,
-  "per_entry": 6.88
+  "baseline": 7.31,
+  "per_entry": 7.69
  },
  "bash linux/scripts/tests/test-module-bootstrap.sh": {
-  "baseline": 0.81,
-  "per_entry": 0.86
+  "baseline": 1.05,
+  "per_entry": 1.34
  },
  "bash linux/scripts/tests/test-module-resolution.sh": {
   "baseline": 0.03,
   "per_entry": 0.04
  },
+ "bash linux/scripts/tests/test-mutation-cache.sh": {
+  "baseline": 3.35,
+  "per_entry": 3.35
+ },
  "bash linux/scripts/tests/test-mutation-gate.sh": {
-  "baseline": 24.01,
-  "per_entry": 29.47
+  "baseline": 23.91,
+  "per_entry": 29.89
  },
  "bash linux/scripts/tests/test-mutation-parse.sh": {
-  "baseline": 3.91,
-  "per_entry": 4.67
+  "baseline": 4.54,
+  "per_entry": 4.83
  },
  "bash linux/scripts/tests/test-mutation-pester-targets.sh": {
-  "baseline": 0.23,
-  "per_entry": 0.22
+  "baseline": 0.29,
+  "per_entry": 0.27
  },
  "bash linux/scripts/tests/test-mutation-pipe-reaping.sh": {
-  "baseline": 0.37,
-  "per_entry": 5.27
+  "baseline": 0.35,
+  "per_entry": 5.23
+ },
+ "bash linux/scripts/tests/test-mutation-push.sh": {
+  "baseline": 5.63,
+  "per_entry": 5.44
  },
  "bash linux/scripts/tests/test-mutation-shards.sh": {
-  "baseline": 1.73,
-  "per_entry": 1.7
+  "baseline": 2.31,
+  "per_entry": 2.36
+ },
+ "bash linux/scripts/tests/test-mutation-workspaces.sh": {
+  "baseline": 1.42,
+  "per_entry": 1.51
  },
  "bash linux/scripts/tests/test-native-builder-cache-cli.sh": {
   "baseline": 0.21,
-  "per_entry": 0.22
+  "per_entry": 0.25
+ },
+ "bash linux/scripts/tests/test-native-cxx-probe.sh": {
+  "baseline": 0.18,
+  "per_entry": 0.2
  },
  "bash linux/scripts/tests/test-native-gcc-env.sh": {
-  "baseline": 0.99,
-  "per_entry": 1.33
- },
- "bash linux/scripts/tests/test-native-gcc-multiarch.sh": {
-  "baseline": 0.14,
-  "per_entry": 0.14
- },
- "bash linux/scripts/tests/test-native-gcc-sanitizers.sh": {
-  "baseline": 4.08,
-  "per_entry": 4.23
- },
- "bash linux/scripts/tests/test-nerdctl-service-helpers.sh": {
-  "baseline": 1.69,
-  "per_entry": 1.9
- },
- "bash linux/scripts/tests/test-no-libunwind.sh": {
-  "baseline": 0.27,
-  "per_entry": 0.3
- },
- "bash linux/scripts/tests/test-npm-python-transport.sh": {
-  "baseline": 9.79,
-  "per_entry": 9.63
- },
- "bash linux/scripts/tests/test-numeric-version-imports.sh": {
-  "baseline": 2.22,
-  "per_entry": 2.52
- },
- "bash linux/scripts/tests/test-numeric-version-policy.sh": {
-  "baseline": 25.3,
-  "per_entry": 25.33
- },
- "bash linux/scripts/tests/test-oci-layers-extract.sh": {
-  "baseline": 1.33,
-  "per_entry": 1.46
- },
- "bash linux/scripts/tests/test-onnx-build-summary.sh": {
-  "baseline": 0.14,
-  "per_entry": 0.14
- },
- "bash linux/scripts/tests/test-onnx-cross-staging.sh": {
-  "baseline": 0.52,
-  "per_entry": 0.38
- },
- "bash linux/scripts/tests/test-onnx-fetch-receipts.sh": {
-  "baseline": 0.32,
-  "per_entry": 0.3
- },
- "bash linux/scripts/tests/test-onnx-library-companion.sh": {
-  "baseline": 0.02,
-  "per_entry": 0.03
- },
- "bash linux/scripts/tests/test-onnx-native-licenses.sh": {
-  "baseline": 0.2,
-  "per_entry": 0.2
- },
- "bash linux/scripts/tests/test-onnx-native-lifecycle.sh": {
-  "baseline": 0.35,
-  "per_entry": 0.41
- },
- "bash linux/scripts/tests/test-onnx-wasm-passes.sh": {
-  "baseline": 2.09,
-  "per_entry": 1.95
- },
- "bash linux/scripts/tests/test-onnx-web-build.sh": {
-  "baseline": 0.59,
-  "per_entry": 0.74
- },
- "bash linux/scripts/tests/test-opencv-riscv64-seams.sh": {
-  "baseline": 0.04,
-  "per_entry": 0.04
- },
- "bash linux/scripts/tests/test-optional-function-fixtures.sh": {
-  "baseline": 0.02,
-  "per_entry": 0.03
- },
- "bash linux/scripts/tests/test-ordered-jobs-lifecycle.sh": {
-  "baseline": 3.55,
-  "per_entry": 11.64
- },
- "bash linux/scripts/tests/test-ordered-jobs-watchdog-fds.sh": {
-  "baseline": 1.13,
-  "per_entry": 1.16
- },
- "bash linux/scripts/tests/test-ort-census.sh": {
-  "baseline": 4.07,
-  "per_entry": 3.96
- },
- "bash linux/scripts/tests/test-ort-chain-build-gates.sh": {
-  "baseline": 2.24,
-  "per_entry": 2.3
- },
- "bash linux/scripts/tests/test-ort-chain-digests.sh": {
-  "baseline": 0.47,
-  "per_entry": 0.45
- },
- "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh": {
-  "baseline": 0.29,
-  "per_entry": 0.28
- },
- "bash linux/scripts/tests/test-ort-fetchcontent-directories.sh": {
-  "baseline": 0.9,
-  "per_entry": 0.94
- },
- "bash linux/scripts/tests/test-ort-host-runtime.sh": {
-  "baseline": 0.95,
-  "per_entry": 0.87
- },
- "bash linux/scripts/tests/test-ort-name-selection.sh": {
-  "baseline": 4.15,
-  "per_entry": 3.79
- },
- "bash linux/scripts/tests/test-ort-provenance-build.sh": {
-  "baseline": 19.4,
-  "per_entry": 19.54
- },
- "bash linux/scripts/tests/test-ort-runtime-bundle.sh": {
-  "baseline": 0.1,
-  "per_entry": 0.1
- },
- "bash linux/scripts/tests/test-ort-venv-census.sh": {
-  "baseline": 5.59,
-  "per_entry": 5.63
- },
- "bash linux/scripts/tests/test-ort-wheel-licenses.sh": {
-  "baseline": 6.69,
-  "per_entry": 3.26
- },
- "bash linux/scripts/tests/test-package-archive.sh": {
-  "baseline": 1.17,
-  "per_entry": 0.94
- },
- "bash linux/scripts/tests/test-package-image-wiring.sh": {
-  "baseline": 1.64,
-  "per_entry": 1.72
- },
- "bash linux/scripts/tests/test-package-license-verifier.sh": {
-  "baseline": 4.08,
-  "per_entry": 3.56
- },
- "bash linux/scripts/tests/test-package-names.sh": {
-  "baseline": 2.08,
-  "per_entry": 2.09
- },
- "bash linux/scripts/tests/test-packaging-deps.sh": {
-  "baseline": 0.18,
-  "per_entry": 0.21
- },
- "bash linux/scripts/tests/test-packaging-execution.sh": {
-  "baseline": 2.72,
-  "per_entry": 2.73
- },
- "bash linux/scripts/tests/test-parallel-loop.sh": {
-  "baseline": 0.31,
-  "per_entry": 0.31
- },
- "bash linux/scripts/tests/test-parallelism.sh": {
-  "baseline": 0.18,
-  "per_entry": 0.2
- },
- "bash linux/scripts/tests/test-patch-integrity.sh": {
   "baseline": 1.27,
   "per_entry": 1.24
  },
- "bash linux/scripts/tests/test-path-containment.sh": {
-  "baseline": 0.16,
-  "per_entry": 0.16
+ "bash linux/scripts/tests/test-native-gcc-multiarch.sh": {
+  "baseline": 0.33,
+  "per_entry": 0.23
  },
- "bash linux/scripts/tests/test-pe-icon-tool-setup.sh": {
-  "baseline": 0.06,
-  "per_entry": 0.07
+ "bash linux/scripts/tests/test-native-gcc-sanitizers.sh": {
+  "baseline": 5.73,
+  "per_entry": 5.6
  },
- "bash linux/scripts/tests/test-perf-reports.sh": {
-  "baseline": 0.99,
-  "per_entry": 0.91
+ "bash linux/scripts/tests/test-native-oci-seed.sh": {
+  "baseline": 2.55,
+  "per_entry": 2.97
  },
- "bash linux/scripts/tests/test-pinned-clang-format.sh": {
+ "bash linux/scripts/tests/test-native-tensor-pair.sh": {
+  "baseline": 1.04,
+  "per_entry": 1.04
+ },
+ "bash linux/scripts/tests/test-native-worker-tools.sh": {
+  "baseline": 0.8,
+  "per_entry": 0.82
+ },
+ "bash linux/scripts/tests/test-nerdctl-service-helpers.sh": {
+  "baseline": 1.67,
+  "per_entry": 1.64
+ },
+ "bash linux/scripts/tests/test-no-libunwind.sh": {
+  "baseline": 0.33,
+  "per_entry": 0.3
+ },
+ "bash linux/scripts/tests/test-normal-runtime-launch.sh": {
+  "baseline": 1.21,
+  "per_entry": 0.85
+ },
+ "bash linux/scripts/tests/test-normal-stage-launch.sh": {
   "baseline": 0.34,
-  "per_entry": 0.33
+  "per_entry": 0.34
  },
- "bash linux/scripts/tests/test-pinned-repository.sh": {
-  "baseline": 0.24,
-  "per_entry": 0.22
+ "bash linux/scripts/tests/test-npm-python-transport.sh": {
+  "baseline": 7.74,
+  "per_entry": 7.95
  },
- "bash linux/scripts/tests/test-pipefail-safety.sh": {
-  "baseline": 1.75,
-  "per_entry": 1.69
+ "bash linux/scripts/tests/test-numeric-version-imports.sh": {
+  "baseline": 2.17,
+  "per_entry": 2.63
  },
- "bash linux/scripts/tests/test-pkgconfig-file.sh": {
-  "baseline": 0.27,
-  "per_entry": 0.27
+ "bash linux/scripts/tests/test-numeric-version-policy.sh": {
+  "baseline": 21.19,
+  "per_entry": 22.64
  },
- "bash linux/scripts/tests/test-precommit-hook.sh": {
-  "baseline": 1.99,
-  "per_entry": 2.0
+ "bash linux/scripts/tests/test-nvidia-handoff.sh": {
+  "baseline": 1.53,
+  "per_entry": 1.36
  },
- "bash linux/scripts/tests/test-preflight-parallel.sh": {
-  "baseline": 23.39,
-  "per_entry": 21.27
+ "bash linux/scripts/tests/test-oci-archive-dedup.sh": {
+  "baseline": 0.66,
+  "per_entry": 0.8
  },
- "bash linux/scripts/tests/test-preflight-slugs.sh": {
-  "baseline": 0.1,
-  "per_entry": 0.12
+ "bash linux/scripts/tests/test-oci-layers-extract.sh": {
+  "baseline": 1.28,
+  "per_entry": 1.23
  },
- "bash linux/scripts/tests/test-prepush-hook.sh": {
-  "baseline": 0.9,
-  "per_entry": 0.97
+ "bash linux/scripts/tests/test-onnx-build-summary.sh": {
+  "baseline": 0.58,
+  "per_entry": 0.51
  },
- "bash linux/scripts/tests/test-prevention-gates.sh": {
-  "baseline": 1.76,
+ "bash linux/scripts/tests/test-onnx-cross-staging.sh": {
+  "baseline": 0.3,
+  "per_entry": 0.35
+ },
+ "bash linux/scripts/tests/test-onnx-cuda-standard.sh": {
+  "baseline": 0.38,
+  "per_entry": 0.28
+ },
+ "bash linux/scripts/tests/test-onnx-fetch-receipts.sh": {
+  "baseline": 1.12,
+  "per_entry": 0.86
+ },
+ "bash linux/scripts/tests/test-onnx-library-companion.sh": {
+  "baseline": 0.04,
+  "per_entry": 0.04
+ },
+ "bash linux/scripts/tests/test-onnx-native-licenses.sh": {
+  "baseline": 0.26,
+  "per_entry": 0.19
+ },
+ "bash linux/scripts/tests/test-onnx-native-lifecycle.sh": {
+  "baseline": 0.41,
+  "per_entry": 0.4
+ },
+ "bash linux/scripts/tests/test-onnx-tensor-preparation.sh": {
+  "baseline": 0.17,
+  "per_entry": 0.14
+ },
+ "bash linux/scripts/tests/test-onnx-wasm-passes.sh": {
+  "baseline": 7.88,
+  "per_entry": 7.62
+ },
+ "bash linux/scripts/tests/test-onnx-web-build.sh": {
+  "baseline": 0.86,
+  "per_entry": 0.81
+ },
+ "bash linux/scripts/tests/test-onnx-web-cache.sh": {
+  "baseline": 19.21,
+  "per_entry": 19.27
+ },
+ "bash linux/scripts/tests/test-onnx-webgpu-acceptance.sh": {
+  "baseline": 3.92,
+  "per_entry": 3.99
+ },
+ "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh": {
+  "baseline": 3.93,
+  "per_entry": 4.63
+ },
+ "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh": {
+  "baseline": 10.83,
+  "per_entry": 11.07
+ },
+ "bash linux/scripts/tests/test-onnx-webgpu-media.sh": {
+  "baseline": 3.14,
+  "per_entry": 3.24
+ },
+ "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh": {
+  "baseline": 0.16,
+  "per_entry": 0.18
+ },
+ "bash linux/scripts/tests/test-onnx-webgpu-native.sh": {
+  "baseline": 3.51,
+  "per_entry": 2.23
+ },
+ "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh": {
+  "baseline": 2.01,
+  "per_entry": 2.41
+ },
+ "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh": {
+  "baseline": 1.42,
+  "per_entry": 1.22
+ },
+ "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh": {
+  "baseline": 4.14,
+  "per_entry": 2.77
+ },
+ "bash linux/scripts/tests/test-openai-stream-lines.sh": {
+  "baseline": 0.03,
+  "per_entry": 0.13
+ },
+ "bash linux/scripts/tests/test-opencv-cuda-cache.sh": {
+  "baseline": 1.65,
   "per_entry": 1.84
  },
- "bash linux/scripts/tests/test-project-env.sh": {
+ "bash linux/scripts/tests/test-opencv-riscv64-seams.sh": {
+  "baseline": 0.04,
+  "per_entry": 0.05
+ },
+ "bash linux/scripts/tests/test-operational-memory.sh": {
+  "baseline": 0.26,
+  "per_entry": 0.24
+ },
+ "bash linux/scripts/tests/test-optional-function-fixtures.sh": {
+  "baseline": 0.02,
+  "per_entry": 0.01
+ },
+ "bash linux/scripts/tests/test-ordered-jobs-lifecycle.sh": {
+  "baseline": 3.6,
+  "per_entry": 11.61
+ },
+ "bash linux/scripts/tests/test-ordered-jobs-watchdog-fds.sh": {
+  "baseline": 1.21,
+  "per_entry": 1.16
+ },
+ "bash linux/scripts/tests/test-ort-appimage-payload.sh": {
+  "baseline": 1.84,
+  "per_entry": 2.1
+ },
+ "bash linux/scripts/tests/test-ort-census.sh": {
+  "baseline": 5.86,
+  "per_entry": 5.54
+ },
+ "bash linux/scripts/tests/test-ort-chain-build-gates.sh": {
+  "baseline": 1.78,
+  "per_entry": 2.09
+ },
+ "bash linux/scripts/tests/test-ort-chain-digests.sh": {
+  "baseline": 0.5,
+  "per_entry": 0.47
+ },
+ "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh": {
+  "baseline": 0.32,
+  "per_entry": 0.32
+ },
+ "bash linux/scripts/tests/test-ort-fetchcontent-directories.sh": {
+  "baseline": 1.01,
+  "per_entry": 1.17
+ },
+ "bash linux/scripts/tests/test-ort-host-runtime.sh": {
+  "baseline": 1.5,
+  "per_entry": 1.37
+ },
+ "bash linux/scripts/tests/test-ort-migraphx-factory.sh": {
+  "baseline": 5.35,
+  "per_entry": 4.75
+ },
+ "bash linux/scripts/tests/test-ort-migraphx-nodes.sh": {
+  "baseline": 1.53,
+  "per_entry": 1.29
+ },
+ "bash linux/scripts/tests/test-ort-name-selection.sh": {
+  "baseline": 4.41,
+  "per_entry": 4.04
+ },
+ "bash linux/scripts/tests/test-ort-package-proof.sh": {
+  "baseline": 2.4,
+  "per_entry": 2.95
+ },
+ "bash linux/scripts/tests/test-ort-plugin-native-mutation-controls.sh": {
+  "baseline": 17.37,
+  "per_entry": 13.44
+ },
+ "bash linux/scripts/tests/test-ort-plugin-native.sh": {
+  "baseline": 3.15,
+  "per_entry": 3.37
+ },
+ "bash linux/scripts/tests/test-ort-plugin-registration.sh": {
   "baseline": 0.14,
-  "per_entry": 0.16
+  "per_entry": 0.18
  },
- "bash linux/scripts/tests/test-prune-safe.sh": {
-  "baseline": 0.71,
-  "per_entry": 0.73
+ "bash linux/scripts/tests/test-ort-plugin-rust.sh": {
+  "baseline": 20.18,
+  "per_entry": 2.44
  },
- "bash linux/scripts/tests/test-python-app-bundle-license.sh": {
-  "baseline": 1.58,
-  "per_entry": 2.08
+ "bash linux/scripts/tests/test-ort-provenance-build.sh": {
+  "baseline": 17.79,
+  "per_entry": 17.02
  },
- "bash linux/scripts/tests/test-python-app-cli.sh": {
+ "bash linux/scripts/tests/test-ort-runtime-bundle.sh": {
+  "baseline": 0.1,
+  "per_entry": 0.14
+ },
+ "bash linux/scripts/tests/test-ort-source-fetch.sh -k bad_pins": {
+  "baseline": 0.16,
+  "per_entry": 0.15
+ },
+ "bash linux/scripts/tests/test-ort-source-fetch.sh -k commit_only": {
+  "baseline": 0.31,
+  "per_entry": 0.28
+ },
+ "bash linux/scripts/tests/test-ort-source-fetch.sh -k deps": {
+  "baseline": 0.15,
+  "per_entry": 0.17
+ },
+ "bash linux/scripts/tests/test-ort-source-fetch.sh -k fallback": {
+  "baseline": 0.22,
+  "per_entry": 0.19
+ },
+ "bash linux/scripts/tests/test-ort-source-fetch.sh -k moved_tag": {
+  "baseline": 0.1,
+  "per_entry": 0.11
+ },
+ "bash linux/scripts/tests/test-ort-source-fetch.sh -k primary": {
+  "baseline": 0.12,
+  "per_entry": 0.21
+ },
+ "bash linux/scripts/tests/test-ort-source-fetch.sh -k stale_pin": {
+  "baseline": 0.23,
+  "per_entry": 0.22
+ },
+ "bash linux/scripts/tests/test-ort-source-fetch.sh -k unavailable": {
+  "baseline": 0.18,
+  "per_entry": 0.18
+ },
+ "bash linux/scripts/tests/test-ort-source-fetch.sh -k wiring": {
+  "baseline": 0.21,
+  "per_entry": 0.15
+ },
+ "bash linux/scripts/tests/test-ort-venv-census.sh": {
+  "baseline": 4.68,
+  "per_entry": 4.72
+ },
+ "bash linux/scripts/tests/test-ort-wheel-licenses.sh": {
+  "baseline": 7.62,
+  "per_entry": 4.63
+ },
+ "bash linux/scripts/tests/test-owned-nerdctl.sh": {
+  "baseline": 0.33,
+  "per_entry": 0.31
+ },
+ "bash linux/scripts/tests/test-package-archive.sh": {
+  "baseline": 1.14,
+  "per_entry": 1.09
+ },
+ "bash linux/scripts/tests/test-package-binary-linux.sh": {
+  "baseline": 5.64,
+  "per_entry": 6.19
+ },
+ "bash linux/scripts/tests/test-package-binary-verifier.sh": {
+  "baseline": 5.42,
+  "per_entry": 5.54
+ },
+ "bash linux/scripts/tests/test-package-image-wiring.sh": {
+  "baseline": 2.28,
+  "per_entry": 2.27
+ },
+ "bash linux/scripts/tests/test-package-license-verifier.sh": {
+  "baseline": 3.6,
+  "per_entry": 3.31
+ },
+ "bash linux/scripts/tests/test-package-names.sh": {
+  "baseline": 1.27,
+  "per_entry": 1.35
+ },
+ "bash linux/scripts/tests/test-package-staging-cleanup.sh": {
   "baseline": 0.17,
   "per_entry": 0.18
  },
- "bash linux/scripts/tests/test-python-app-package-licenses.sh": {
-  "baseline": 5.28,
-  "per_entry": 5.01
- },
- "bash linux/scripts/tests/test-python-app-packages.sh": {
-  "baseline": 0.83,
-  "per_entry": 0.84
- },
- "bash linux/scripts/tests/test-python-app-selftest.sh": {
-  "baseline": 1.36,
-  "per_entry": 1.52
- },
- "bash linux/scripts/tests/test-python-callback-scope.sh": {
-  "baseline": 0.14,
-  "per_entry": 0.13
- },
- "bash linux/scripts/tests/test-python-ci-defaults.sh": {
-  "baseline": 4.76,
-  "per_entry": 4.87
- },
- "bash linux/scripts/tests/test-python-ci-packaging-arm.sh": {
-  "baseline": 2.12,
-  "per_entry": 1.73
- },
- "bash linux/scripts/tests/test-python-deb-depends.sh": {
-  "baseline": 15.68,
-  "per_entry": 13.6
- },
- "bash linux/scripts/tests/test-python-free-threaded-wheel.sh": {
-  "baseline": 4.05,
-  "per_entry": 3.62
- },
- "bash linux/scripts/tests/test-python-lint-gate.sh": {
-  "baseline": 11.09,
-  "per_entry": 9.93
- },
- "bash linux/scripts/tests/test-python-path-policies.sh": {
-  "baseline": 0.41,
-  "per_entry": 0.41
- },
- "bash linux/scripts/tests/test-python-probes.sh": {
-  "baseline": 0.21,
-  "per_entry": 0.23
- },
- "bash linux/scripts/tests/test-python-provider-context.sh": {
-  "baseline": 0.95,
-  "per_entry": 0.44
- },
- "bash linux/scripts/tests/test-python-relocate.sh": {
-  "baseline": 3.42,
-  "per_entry": 3.18
- },
- "bash linux/scripts/tests/test-python-static-analysis.sh": {
-  "baseline": 0.37,
-  "per_entry": 0.37
- },
- "bash linux/scripts/tests/test-python-types.sh": {
-  "baseline": 10.08,
-  "per_entry": 5.28
- },
- "bash linux/scripts/tests/test-qnn-runtime-query.sh": {
-  "baseline": 7.77,
-  "per_entry": 8.01
- },
- "bash linux/scripts/tests/test-quality-cli-arguments.sh": {
-  "baseline": 0.1,
-  "per_entry": 0.09
- },
- "bash linux/scripts/tests/test-quality-cli-companions.sh": {
-  "baseline": 0.11,
-  "per_entry": 0.09
- },
- "bash linux/scripts/tests/test-raw-pin-reader.sh": {
-  "baseline": 4.21,
-  "per_entry": 3.93
- },
- "bash linux/scripts/tests/test-readme-length.sh": {
-  "baseline": 1.38,
-  "per_entry": 1.16
- },
- "bash linux/scripts/tests/test-reconcile-local-wheels.sh": {
-  "baseline": 0.82,
-  "per_entry": 0.8
- },
- "bash linux/scripts/tests/test-renovate-annotations.sh": {
-  "baseline": 0.21,
+ "bash linux/scripts/tests/test-packaging-deps.sh": {
+  "baseline": 0.2,
   "per_entry": 0.21
  },
- "bash linux/scripts/tests/test-renovate-audit.sh": {
-  "baseline": 11.3,
-  "per_entry": 10.38
+ "bash linux/scripts/tests/test-packaging-execution.sh": {
+  "baseline": 3.42,
+  "per_entry": 3.47
  },
- "bash linux/scripts/tests/test-renovate-bootstrap.sh": {
-  "baseline": 5.01,
-  "per_entry": 5.66
+ "bash linux/scripts/tests/test-parallel-loop.sh": {
+  "baseline": 0.45,
+  "per_entry": 0.26
  },
- "bash linux/scripts/tests/test-renovate-cli.sh": {
-  "baseline": 0.06,
-  "per_entry": 0.05
+ "bash linux/scripts/tests/test-parallelism.sh": {
+  "baseline": 0.26,
+  "per_entry": 0.31
  },
- "bash linux/scripts/tests/test-renovate-cmake.sh": {
-  "baseline": 11.44,
-  "per_entry": 11.94
+ "bash linux/scripts/tests/test-patch-integrity.sh": {
+  "baseline": 1.91,
+  "per_entry": 1.55
  },
- "bash linux/scripts/tests/test-renovate-collateral.sh": {
-  "baseline": 46.75,
-  "per_entry": 47.11
+ "bash linux/scripts/tests/test-path-containment.sh": {
+  "baseline": 0.26,
+  "per_entry": 0.17
  },
- "bash linux/scripts/tests/test-renovate-exit.sh": {
-  "baseline": 24.08,
-  "per_entry": 23.22
- },
- "bash linux/scripts/tests/test-renovate-fixture-protocols.sh": {
-  "baseline": 0.23,
-  "per_entry": 0.24
- },
- "bash linux/scripts/tests/test-renovate-git.sh": {
+ "bash linux/scripts/tests/test-pe-icon-tool-setup.sh": {
   "baseline": 0.07,
   "per_entry": 0.07
  },
- "bash linux/scripts/tests/test-renovate-local.sh": {
-  "baseline": 62.02,
-  "per_entry": 56.18
+ "bash linux/scripts/tests/test-perf-reports.sh": {
+  "baseline": 1.12,
+  "per_entry": 1.06
  },
- "bash linux/scripts/tests/test-renovate-lockmaint.sh": {
-  "baseline": 16.61,
-  "per_entry": 16.67
+ "bash linux/scripts/tests/test-pinned-clang-format.sh": {
+  "baseline": 0.41,
+  "per_entry": 0.33
  },
- "bash linux/scripts/tests/test-renovate-reporting.sh": {
-  "baseline": 0.4,
-  "per_entry": 0.51
- },
- "bash linux/scripts/tests/test-renovate-submodule-default.sh": {
-  "baseline": 41.45,
-  "per_entry": 40.08
- },
- "bash linux/scripts/tests/test-renovate-template-bootstrap.sh": {
-  "baseline": 3.92,
-  "per_entry": 3.85
- },
- "bash linux/scripts/tests/test-renovate-uv-exports.sh": {
-  "baseline": 24.13,
-  "per_entry": 24.43
- },
- "bash linux/scripts/tests/test-renovate-uv-exports.sh && bash linux/scripts/tests/test-renovate-lockmaint.sh": {
-  "baseline": 35.86,
-  "per_entry": 23.09
- },
- "bash linux/scripts/tests/test-repository-refresh.sh": {
-  "baseline": 0.12,
-  "per_entry": 0.11
- },
- "bash linux/scripts/tests/test-resource-monitor.sh": {
-  "baseline": 0.23,
-  "per_entry": 0.26
- },
- "bash linux/scripts/tests/test-reusable-linux-lane.sh": {
-  "baseline": 1.9,
-  "per_entry": 2.5
- },
- "bash linux/scripts/tests/test-reusable-windows-lane.sh": {
-  "baseline": 4.94,
-  "per_entry": 4.64
- },
- "bash linux/scripts/tests/test-riscv64-cross.sh": {
-  "baseline": 0.92,
-  "per_entry": 0.69
- },
- "bash linux/scripts/tests/test-rocm-packages.sh": {
-  "baseline": 0.36,
-  "per_entry": 0.4
- },
- "bash linux/scripts/tests/test-run-tests-reaping.sh": {
-  "baseline": 7.0,
-  "per_entry": 9.71
- },
- "bash linux/scripts/tests/test-run-tests.sh": {
-  "baseline": 9.12,
-  "per_entry": 28.45
- },
- "bash linux/scripts/tests/test-runtime-child-stop.sh": {
-  "baseline": 0.98,
-  "per_entry": 0.89
- },
- "bash linux/scripts/tests/test-runtime-drop-pushed.sh": {
-  "baseline": 0.1,
-  "per_entry": 0.1
- },
- "bash linux/scripts/tests/test-runtime-flow-preparation.sh": {
-  "baseline": 4.55,
-  "per_entry": 4.75
- },
- "bash linux/scripts/tests/test-runtime-heartbeat.sh": {
-  "baseline": 6.46,
-  "per_entry": 7.03
- },
- "bash linux/scripts/tests/test-runtime-image-gates.sh": {
-  "baseline": 14.71,
-  "per_entry": 14.88
- },
- "bash linux/scripts/tests/test-runtime-input-preflight.sh": {
-  "baseline": 2.18,
-  "per_entry": 2.13
- },
- "bash linux/scripts/tests/test-runtime-needed-verdicts.sh": {
-  "baseline": 0.77,
-  "per_entry": 0.7
- },
- "bash linux/scripts/tests/test-runtime-paths.sh": {
-  "baseline": 2.7,
-  "per_entry": 2.7
- },
- "bash linux/scripts/tests/test-runtime-probe-transport.sh": {
-  "baseline": 2.52,
-  "per_entry": 2.34
- },
- "bash linux/scripts/tests/test-runtime-probe-verdicts.sh": {
-  "baseline": 1.59,
-  "per_entry": 1.36
- },
- "bash linux/scripts/tests/test-runtime-push-queue.sh": {
-  "baseline": 18.31,
-  "per_entry": 62.37
- },
- "bash linux/scripts/tests/test-runtime-push-selectors.sh": {
-  "baseline": 0.55,
-  "per_entry": 0.6
- },
- "bash linux/scripts/tests/test-runtime-reuse.sh": {
-  "baseline": 5.32,
-  "per_entry": 4.71
- },
- "bash linux/scripts/tests/test-runtime-sdk-help.sh": {
-  "baseline": 2.51,
-  "per_entry": 2.61
- },
- "bash linux/scripts/tests/test-runtime-smoke-gate.sh": {
-  "baseline": 0.02,
-  "per_entry": 0.02
- },
- "bash linux/scripts/tests/test-runtime-smoke-overlap.sh": {
-  "baseline": 12.79,
-  "per_entry": 20.02
- },
- "bash linux/scripts/tests/test-runtime-wheels-context.sh": {
-  "baseline": 0.24,
+ "bash linux/scripts/tests/test-pinned-repository.sh": {
+  "baseline": 0.27,
   "per_entry": 0.23
  },
- "bash linux/scripts/tests/test-runtime-wheels-source.sh": {
-  "baseline": 2.66,
-  "per_entry": 3.2
+ "bash linux/scripts/tests/test-pipefail-safety.sh": {
+  "baseline": 1.18,
+  "per_entry": 1.22
  },
- "bash linux/scripts/tests/test-sccache-launcher.sh": {
-  "baseline": 0.27,
-  "per_entry": 0.27
- },
- "bash linux/scripts/tests/test-sccache-s3-level.sh": {
-  "baseline": 6.27,
-  "per_entry": 6.12
- },
- "bash linux/scripts/tests/test-script-copy-coverage.sh": {
-  "baseline": 1.1,
-  "per_entry": 0.98
- },
- "bash linux/scripts/tests/test-secret-scan.sh": {
-  "baseline": 8.19,
-  "per_entry": 14.07
- },
- "bash linux/scripts/tests/test-setup-package-image.sh": {
-  "baseline": 5.12,
-  "per_entry": 5.02
- },
- "bash linux/scripts/tests/test-shared-config-sync.sh": {
-  "baseline": 2.83,
-  "per_entry": 3.3
- },
- "bash linux/scripts/tests/test-shellcheck-batching.sh": {
-  "baseline": 0.13,
-  "per_entry": 0.2
- },
- "bash linux/scripts/tests/test-site-links.sh": {
-  "baseline": 2.02,
-  "per_entry": 2.17
- },
- "bash linux/scripts/tests/test-slang-compile.sh": {
-  "baseline": 3.21,
-  "per_entry": 3.36
- },
- "bash linux/scripts/tests/test-smoke-arch-parity.sh": {
-  "baseline": 8.03,
-  "per_entry": 7.84
- },
- "bash linux/scripts/tests/test-smoke-elf-owner.sh": {
-  "baseline": 0.35,
-  "per_entry": 0.35
- },
- "bash linux/scripts/tests/test-smoke-genai-flavour.sh": {
-  "baseline": 1.6,
-  "per_entry": 1.79
- },
- "bash linux/scripts/tests/test-smoke-native-dispatch.sh": {
-  "baseline": 12.75,
-  "per_entry": 10.8
- },
- "bash linux/scripts/tests/test-smoke-object-lifecycle.sh": {
+ "bash linux/scripts/tests/test-pkgconfig-file.sh": {
   "baseline": 0.34,
-  "per_entry": 0.35
+  "per_entry": 0.28
  },
- "bash linux/scripts/tests/test-smoke-query-contract.sh": {
-  "baseline": 9.66,
-  "per_entry": 4.21
+ "bash linux/scripts/tests/test-precommit-hook.sh": {
+  "baseline": 4.43,
+  "per_entry": 4.76
  },
- "bash linux/scripts/tests/test-stage-cargo-licenses.sh": {
-  "baseline": 3.13,
-  "per_entry": 2.57
+ "bash linux/scripts/tests/test-preflight-parallel.sh": {
+  "baseline": 23.74,
+  "per_entry": 21.45
  },
- "bash linux/scripts/tests/test-stage-defs.sh": {
-  "baseline": 0.45,
-  "per_entry": 0.44
+ "bash linux/scripts/tests/test-preflight-slugs.sh": {
+  "baseline": 0.12,
+  "per_entry": 0.16
  },
- "bash linux/scripts/tests/test-stdout-returns.sh": {
-  "baseline": 1.5,
-  "per_entry": 1.55
+ "bash linux/scripts/tests/test-prepush-hook.sh": {
+  "baseline": 3.09,
+  "per_entry": 2.98
  },
- "bash linux/scripts/tests/test-storage-sdk-refactors.sh": {
-  "baseline": 0.23,
-  "per_entry": 0.26
+ "bash linux/scripts/tests/test-preserve-consumer-sources.sh": {
+  "baseline": 7.9,
+  "per_entry": 8.97
  },
- "bash linux/scripts/tests/test-stream-receipt-fixture.sh": {
-  "baseline": 0.15,
-  "per_entry": 0.14
+ "bash linux/scripts/tests/test-prevention-gates.sh": {
+  "baseline": 1.8,
+  "per_entry": 2.04
  },
- "bash linux/scripts/tests/test-submodule-cycles.sh": {
-  "baseline": 0.99,
-  "per_entry": 1.02
- },
- "bash linux/scripts/tests/test-sudo-policy-closures.sh": {
+ "bash linux/scripts/tests/test-project-env.sh": {
   "baseline": 0.18,
   "per_entry": 0.19
  },
- "bash linux/scripts/tests/test-sudo-policy.sh": {
-  "baseline": 60.82,
-  "per_entry": 40.58
+ "bash linux/scripts/tests/test-proof-workflows.sh": {
+  "baseline": 13.16,
+  "per_entry": 12.89
  },
- "bash linux/scripts/tests/test-tag-mode-rejection.sh": {
-  "baseline": 8.5,
-  "per_entry": 8.41
+ "bash linux/scripts/tests/test-prune-safe.sh": {
+  "baseline": 0.78,
+  "per_entry": 0.78
  },
- "bash linux/scripts/tests/test-target-cargo-pipeline.sh": {
-  "baseline": 14.6,
-  "per_entry": 3.35
+ "bash linux/scripts/tests/test-python-app-bundle-license.sh": {
+  "baseline": 1.45,
+  "per_entry": 1.59
  },
- "bash linux/scripts/tests/test-target-rust-callback-scope.sh": {
+ "bash linux/scripts/tests/test-python-app-cli.sh": {
+  "baseline": 0.22,
+  "per_entry": 0.24
+ },
+ "bash linux/scripts/tests/test-python-app-data.sh": {
+  "baseline": 0.35,
+  "per_entry": 0.44
+ },
+ "bash linux/scripts/tests/test-python-app-package-licenses.sh": {
+  "baseline": 2.95,
+  "per_entry": 3.07
+ },
+ "bash linux/scripts/tests/test-python-app-packages.sh": {
+  "baseline": 0.73,
+  "per_entry": 0.72
+ },
+ "bash linux/scripts/tests/test-python-app-selftest.sh": {
+  "baseline": 1.01,
+  "per_entry": 1.17
+ },
+ "bash linux/scripts/tests/test-python-callback-scope.sh": {
+  "baseline": 0.11,
+  "per_entry": 0.11
+ },
+ "bash linux/scripts/tests/test-python-ci-bench.sh": {
+  "baseline": 0.5,
+  "per_entry": 0.51
+ },
+ "bash linux/scripts/tests/test-python-ci-compiler-cache.sh": {
+  "baseline": 0.23,
+  "per_entry": 0.34
+ },
+ "bash linux/scripts/tests/test-python-ci-defaults.sh": {
+  "baseline": 3.07,
+  "per_entry": 3.39
+ },
+ "bash linux/scripts/tests/test-python-ci-packaging-arm.sh": {
+  "baseline": 2.13,
+  "per_entry": 2.39
+ },
+ "bash linux/scripts/tests/test-python-deb-depends.sh": {
+  "baseline": 29.33,
+  "per_entry": 26.18
+ },
+ "bash linux/scripts/tests/test-python-free-threaded-wheel.sh": {
+  "baseline": 5.02,
+  "per_entry": 4.51
+ },
+ "bash linux/scripts/tests/test-python-lint-gate.sh": {
+  "baseline": 11.45,
+  "per_entry": 11.08
+ },
+ "bash linux/scripts/tests/test-python-path-policies.sh": {
+  "baseline": 0.38,
+  "per_entry": 0.35
+ },
+ "bash linux/scripts/tests/test-python-probes.sh": {
+  "baseline": 0.23,
+  "per_entry": 0.26
+ },
+ "bash linux/scripts/tests/test-python-proof-fixture.sh": {
+  "baseline": 1.18,
+  "per_entry": 1.12
+ },
+ "bash linux/scripts/tests/test-python-provider-context.sh": {
+  "baseline": 0.76,
+  "per_entry": 0.43
+ },
+ "bash linux/scripts/tests/test-python-relocate.sh": {
+  "baseline": 3.35,
+  "per_entry": 3.38
+ },
+ "bash linux/scripts/tests/test-python-static-analysis.sh": {
+  "baseline": 0.24,
+  "per_entry": 0.29
+ },
+ "bash linux/scripts/tests/test-python-static-workflow.sh -k contract": {
+  "baseline": 0.62,
+  "per_entry": 0.53
+ },
+ "bash linux/scripts/tests/test-python-static.sh": {
+  "baseline": 0.88,
+  "per_entry": 0.86
+ },
+ "bash linux/scripts/tests/test-python-types.sh": {
+  "baseline": 16.0,
+  "per_entry": 7.7
+ },
+ "bash linux/scripts/tests/test-qairt-key-handoff.sh": {
+  "baseline": 4.33,
+  "per_entry": 4.99
+ },
+ "bash linux/scripts/tests/test-qnn-community-zip.sh": {
+  "baseline": 0.41,
+  "per_entry": 0.36
+ },
+ "bash linux/scripts/tests/test-qnn-plugin-ep.sh": {
+  "baseline": 0.94,
+  "per_entry": 0.98
+ },
+ "bash linux/scripts/tests/test-qnn-runtime-query.sh": {
+  "baseline": 24.95,
+  "per_entry": 19.7
+ },
+ "bash linux/scripts/tests/test-quality-cli-arguments.sh": {
+  "baseline": 0.08,
+  "per_entry": 0.1
+ },
+ "bash linux/scripts/tests/test-quality-cli-companions.sh": {
+  "baseline": 0.15,
+  "per_entry": 0.15
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh": {
+  "baseline": 12.89,
+  "per_entry": 2.07
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_auto": {
+  "baseline": 0.21,
+  "per_entry": 0.23
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_busy_host_is_refused": {
+  "baseline": 0.29,
+  "per_entry": 0.82
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_copy_fixes": {
+  "baseline": 0.24,
+  "per_entry": 0.3
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_dirty_tree_is_refused": {
+  "baseline": 0.2,
+  "per_entry": 0.68
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_fewer_tokens_per_second_regresses": {
+  "baseline": 1.39,
+  "per_entry": 1.24
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_image_runs_as": {
+  "baseline": 0.61,
+  "per_entry": 0.79
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_limit_is_three_spreads": {
+  "baseline": 1.11,
+  "per_entry": 1.12
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_missing_baseline_is_incomplete": {
+  "baseline": 1.53,
+  "per_entry": 1.7
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_noisy_update_is_refused": {
+  "baseline": 0.57,
+  "per_entry": 0.62
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_one_outlier_run_holds": {
+  "baseline": 1.09,
+  "per_entry": 1.2
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_running_chain_is_refused": {
+  "baseline": 0.16,
+  "per_entry": 0.43
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_unavailable_provider_is_not_collected": {
+  "baseline": 0.96,
+  "per_entry": 0.87
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_update_writes_twenty_samples": {
+  "baseline": 0.69,
+  "per_entry": 0.47
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_zero_value_is_incomplete": {
+  "baseline": 0.54,
+  "per_entry": 0.75
+ },
+ "bash linux/scripts/tests/test-quality-report.sh": {
+  "baseline": 7.96,
+  "per_entry": 8.35
+ },
+ "bash linux/scripts/tests/test-quality-report.sh -k Grading": {
+  "baseline": 0.16,
+  "per_entry": 0.15
+ },
+ "bash linux/scripts/tests/test-quality-report.sh -k test_absent_artifact": {
+  "baseline": 1.14,
+  "per_entry": 0.67
+ },
+ "bash linux/scripts/tests/test-quality-report.sh -k test_added_duplicate_regresses_and_queues": {
+  "baseline": 1.51,
+  "per_entry": 1.8
+ },
+ "bash linux/scripts/tests/test-quality-report.sh -k test_agents_drift_is_measured_with_its_rows": {
+  "baseline": 0.93,
+  "per_entry": 0.99
+ },
+ "bash linux/scripts/tests/test-quality-report.sh -k test_agents_drift_without_a_docs_table_is_not_collected": {
+  "baseline": 0.93,
+  "per_entry": 1.02
+ },
+ "bash linux/scripts/tests/test-quality-report.sh -k test_agents_drift_without_agents_md_is_not_collected": {
+  "baseline": 0.99,
+  "per_entry": 1.25
+ },
+ "bash linux/scripts/tests/test-quality-report.sh -k test_moved_set_member_holds": {
+  "baseline": 1.96,
+  "per_entry": 1.36
+ },
+ "bash linux/scripts/tests/test-raw-pin-reader.sh": {
+  "baseline": 3.26,
+  "per_entry": 3.23
+ },
+ "bash linux/scripts/tests/test-readme-length.sh": {
+  "baseline": 1.0,
+  "per_entry": 1.02
+ },
+ "bash linux/scripts/tests/test-recipe-pytest.sh": {
+  "baseline": 0.34,
+  "per_entry": 0.38
+ },
+ "bash linux/scripts/tests/test-reconcile-local-wheels.sh": {
+  "baseline": 0.84,
+  "per_entry": 0.83
+ },
+ "bash linux/scripts/tests/test-relocate-quality-venv.sh": {
+  "baseline": 1.59,
+  "per_entry": 1.47
+ },
+ "bash linux/scripts/tests/test-renovate-annotations.sh": {
+  "baseline": 0.14,
+  "per_entry": 0.16
+ },
+ "bash linux/scripts/tests/test-renovate-audit.sh": {
+  "baseline": 9.87,
+  "per_entry": 9.62
+ },
+ "bash linux/scripts/tests/test-renovate-bootstrap.sh": {
+  "baseline": 5.75,
+  "per_entry": 6.39
+ },
+ "bash linux/scripts/tests/test-renovate-cli.sh": {
+  "baseline": 0.07,
+  "per_entry": 0.07
+ },
+ "bash linux/scripts/tests/test-renovate-cmake.sh": {
+  "baseline": 9.18,
+  "per_entry": 9.05
+ },
+ "bash linux/scripts/tests/test-renovate-collateral.sh": {
+  "baseline": 26.86,
+  "per_entry": 31.73
+ },
+ "bash linux/scripts/tests/test-renovate-entrypoint.sh": {
+  "baseline": 0.86,
+  "per_entry": 0.81
+ },
+ "bash linux/scripts/tests/test-renovate-exit.sh": {
+  "baseline": 24.02,
+  "per_entry": 23.09
+ },
+ "bash linux/scripts/tests/test-renovate-fixture-protocols.sh": {
+  "baseline": 0.2,
+  "per_entry": 0.28
+ },
+ "bash linux/scripts/tests/test-renovate-git.sh": {
+  "baseline": 0.06,
+  "per_entry": 0.07
+ },
+ "bash linux/scripts/tests/test-renovate-local.sh": {
+  "baseline": 70.0,
+  "per_entry": 66.27
+ },
+ "bash linux/scripts/tests/test-renovate-lockmaint.sh": {
+  "baseline": 19.0,
+  "per_entry": 18.99
+ },
+ "bash linux/scripts/tests/test-renovate-pin-sweep.sh": {
+  "baseline": 0.09,
+  "per_entry": 0.11
+ },
+ "bash linux/scripts/tests/test-renovate-reporting.sh": {
+  "baseline": 0.61,
+  "per_entry": 0.56
+ },
+ "bash linux/scripts/tests/test-renovate-submodule-default.sh": {
+  "baseline": 32.85,
+  "per_entry": 29.13
+ },
+ "bash linux/scripts/tests/test-renovate-template-bootstrap.sh": {
+  "baseline": 3.68,
+  "per_entry": 3.62
+ },
+ "bash linux/scripts/tests/test-renovate-uv-exports.sh": {
+  "baseline": 21.2,
+  "per_entry": 21.64
+ },
+ "bash linux/scripts/tests/test-renovate-uv-exports.sh && bash linux/scripts/tests/test-renovate-lockmaint.sh": {
+  "baseline": 21.71,
+  "per_entry": 12.28
+ },
+ "bash linux/scripts/tests/test-repository-refresh.sh": {
+  "baseline": 0.17,
+  "per_entry": 0.16
+ },
+ "bash linux/scripts/tests/test-require-mutation-recipes.sh": {
+  "baseline": 0.14,
+  "per_entry": 0.14
+ },
+ "bash linux/scripts/tests/test-resource-monitor.sh": {
+  "baseline": 0.36,
+  "per_entry": 0.34
+ },
+ "bash linux/scripts/tests/test-retry-disk-refusal.sh": {
+  "baseline": 0.29,
+  "per_entry": 0.27
+ },
+ "bash linux/scripts/tests/test-reusable-linux-lane.sh": {
+  "baseline": 3.33,
+  "per_entry": 3.3
+ },
+ "bash linux/scripts/tests/test-reusable-windows-lane.sh": {
+  "baseline": 4.26,
+  "per_entry": 4.3
+ },
+ "bash linux/scripts/tests/test-riscv64-cross.sh": {
+  "baseline": 1.16,
+  "per_entry": 0.64
+ },
+ "bash linux/scripts/tests/test-rocm-loader-paths.sh": {
+  "baseline": 0.21,
+  "per_entry": 0.25
+ },
+ "bash linux/scripts/tests/test-rocm-packages.sh": {
+  "baseline": 0.34,
+  "per_entry": 0.39
+ },
+ "bash linux/scripts/tests/test-run-tests-reaping.sh": {
+  "baseline": 6.42,
+  "per_entry": 9.82
+ },
+ "bash linux/scripts/tests/test-run-tests.sh": {
+  "baseline": 9.24,
+  "per_entry": 23.88
+ },
+ "bash linux/scripts/tests/test-runtime-child-stop.sh": {
+  "baseline": 0.83,
+  "per_entry": 0.81
+ },
+ "bash linux/scripts/tests/test-runtime-drop-pushed.sh": {
+  "baseline": 0.09,
+  "per_entry": 0.1
+ },
+ "bash linux/scripts/tests/test-runtime-flow-preparation.sh": {
+  "baseline": 2.05,
+  "per_entry": 2.27
+ },
+ "bash linux/scripts/tests/test-runtime-heartbeat.sh": {
+  "baseline": 6.39,
+  "per_entry": 6.93
+ },
+ "bash linux/scripts/tests/test-runtime-image-gates.sh": {
+  "baseline": 13.13,
+  "per_entry": 12.96
+ },
+ "bash linux/scripts/tests/test-runtime-input-preflight.sh": {
+  "baseline": 2.42,
+  "per_entry": 2.29
+ },
+ "bash linux/scripts/tests/test-runtime-needed-verdicts.sh": {
+  "baseline": 0.94,
+  "per_entry": 0.83
+ },
+ "bash linux/scripts/tests/test-runtime-paths.sh": {
+  "baseline": 2.1,
+  "per_entry": 2.32
+ },
+ "bash linux/scripts/tests/test-runtime-probe-transport.sh": {
+  "baseline": 3.78,
+  "per_entry": 2.77
+ },
+ "bash linux/scripts/tests/test-runtime-probe-verdicts.sh": {
+  "baseline": 2.1,
+  "per_entry": 2.45
+ },
+ "bash linux/scripts/tests/test-runtime-push-queue.sh": {
+  "baseline": 17.36,
+  "per_entry": 61.55
+ },
+ "bash linux/scripts/tests/test-runtime-push-selectors.sh": {
+  "baseline": 0.67,
+  "per_entry": 0.68
+ },
+ "bash linux/scripts/tests/test-runtime-push.sh": {
+  "baseline": 0.16,
+  "per_entry": 0.17
+ },
+ "bash linux/scripts/tests/test-runtime-reuse.sh": {
+  "baseline": 5.59,
+  "per_entry": 5.42
+ },
+ "bash linux/scripts/tests/test-runtime-sdk-help.sh": {
+  "baseline": 2.29,
+  "per_entry": 2.05
+ },
+ "bash linux/scripts/tests/test-runtime-smoke-gate.sh": {
+  "baseline": 0.03,
+  "per_entry": 0.02
+ },
+ "bash linux/scripts/tests/test-runtime-smoke-overlap.sh": {
+  "baseline": 13.09,
+  "per_entry": 20.55
+ },
+ "bash linux/scripts/tests/test-runtime-storage-guard.sh": {
+  "baseline": 0.28,
+  "per_entry": 0.34
+ },
+ "bash linux/scripts/tests/test-runtime-terminal.sh": {
+  "baseline": 0.54,
+  "per_entry": 0.52
+ },
+ "bash linux/scripts/tests/test-runtime-wheels-context.sh": {
+  "baseline": 0.34,
+  "per_entry": 0.49
+ },
+ "bash linux/scripts/tests/test-runtime-wheels-source.sh": {
+  "baseline": 3.35,
+  "per_entry": 3.38
+ },
+ "bash linux/scripts/tests/test-scanner-json.sh -k ComplexityJson": {
+  "baseline": 0.64,
+  "per_entry": 0.59
+ },
+ "bash linux/scripts/tests/test-scanner-json.sh -k DupesJson": {
+  "baseline": 0.97,
+  "per_entry": 0.96
+ },
+ "bash linux/scripts/tests/test-scanner-json.sh -k HubReuseJson": {
+  "baseline": 0.53,
+  "per_entry": 0.49
+ },
+ "bash linux/scripts/tests/test-scanner-json.sh -k SizeJson": {
+  "baseline": 0.83,
+  "per_entry": 0.89
+ },
+ "bash linux/scripts/tests/test-sccache-evict.sh": {
+  "baseline": 2.13,
+  "per_entry": 2.41
+ },
+ "bash linux/scripts/tests/test-sccache-launcher.sh": {
+  "baseline": 0.28,
+  "per_entry": 0.26
+ },
+ "bash linux/scripts/tests/test-sccache-probe-stats.sh": {
+  "baseline": 0.03,
+  "per_entry": 0.03
+ },
+ "bash linux/scripts/tests/test-sccache-s3-level-environment.sh": {
+  "baseline": 4.37,
+  "per_entry": 4.96
+ },
+ "bash linux/scripts/tests/test-sccache-s3-level.sh": {
+  "baseline": 4.02,
+  "per_entry": 4.24
+ },
+ "bash linux/scripts/tests/test-script-copy-coverage.sh": {
+  "baseline": 4.2,
+  "per_entry": 4.1
+ },
+ "bash linux/scripts/tests/test-seal-command-unit.sh": {
   "baseline": 0.19,
   "per_entry": 0.2
+ },
+ "bash linux/scripts/tests/test-secret-scan.sh": {
+  "baseline": 8.52,
+  "per_entry": 12.39
+ },
+ "bash linux/scripts/tests/test-security-audit.sh -k kinds": {
+  "baseline": 1.18,
+  "per_entry": 1.23
+ },
+ "bash linux/scripts/tests/test-security-audit.sh -k push": {
+  "baseline": 1.36,
+  "per_entry": 1.03
+ },
+ "bash linux/scripts/tests/test-security-audit.sh -k scanner": {
+  "baseline": 0.11,
+  "per_entry": 0.12
+ },
+ "bash linux/scripts/tests/test-security-audit.sh -k severity": {
+  "baseline": 1.02,
+  "per_entry": 1.04
+ },
+ "bash linux/scripts/tests/test-select-disk-cleanup.sh": {
+  "baseline": 0.17,
+  "per_entry": 0.2
+ },
+ "bash linux/scripts/tests/test-setup-package-image.sh": {
+  "baseline": 4.99,
+  "per_entry": 4.81
+ },
+ "bash linux/scripts/tests/test-shared-config-sync.sh": {
+  "baseline": 12.09,
+  "per_entry": 15.56
+ },
+ "bash linux/scripts/tests/test-shellcheck-batching.sh": {
+  "baseline": 0.15,
+  "per_entry": 0.22
+ },
+ "bash linux/scripts/tests/test-site-links.sh": {
+  "baseline": 5.99,
+  "per_entry": 6.21
+ },
+ "bash linux/scripts/tests/test-slang-compile.sh": {
+  "baseline": 2.84,
+  "per_entry": 2.99
+ },
+ "bash linux/scripts/tests/test-smoke-arch-parity.sh": {
+  "baseline": 7.79,
+  "per_entry": 7.63
+ },
+ "bash linux/scripts/tests/test-smoke-compiler-link.sh": {
+  "baseline": 0.21,
+  "per_entry": 0.22
+ },
+ "bash linux/scripts/tests/test-smoke-elf-owner.sh": {
+  "baseline": 0.58,
+  "per_entry": 0.5
+ },
+ "bash linux/scripts/tests/test-smoke-genai-flavour.sh": {
+  "baseline": 1.04,
+  "per_entry": 1.3
+ },
+ "bash linux/scripts/tests/test-smoke-native-dispatch.sh": {
+  "baseline": 6.13,
+  "per_entry": 6.06
+ },
+ "bash linux/scripts/tests/test-smoke-object-lifecycle.sh": {
+  "baseline": 0.42,
+  "per_entry": 0.41
+ },
+ "bash linux/scripts/tests/test-smoke-query-contract.sh": {
+  "baseline": 8.5,
+  "per_entry": 3.05
+ },
+ "bash linux/scripts/tests/test-source-ci.sh": {
+  "baseline": 0.76,
+  "per_entry": 0.69
+ },
+ "bash linux/scripts/tests/test-stage-cargo-licenses.sh": {
+  "baseline": 4.18,
+  "per_entry": 4.27
+ },
+ "bash linux/scripts/tests/test-stage-defs.sh": {
+  "baseline": 0.38,
+  "per_entry": 0.47
+ },
+ "bash linux/scripts/tests/test-stdout-returns.sh": {
+  "baseline": 1.51,
+  "per_entry": 1.53
+ },
+ "bash linux/scripts/tests/test-storage-sdk-refactors.sh": {
+  "baseline": 0.27,
+  "per_entry": 0.3
+ },
+ "bash linux/scripts/tests/test-stream-receipt-fixture.sh": {
+  "baseline": 0.13,
+  "per_entry": 0.12
+ },
+ "bash linux/scripts/tests/test-submodule-cycles.sh": {
+  "baseline": 0.7,
+  "per_entry": 1.01
+ },
+ "bash linux/scripts/tests/test-sudo-policy-closures.sh": {
+  "baseline": 0.22,
+  "per_entry": 0.26
+ },
+ "bash linux/scripts/tests/test-sudo-policy.sh": {
+  "baseline": 61.53,
+  "per_entry": 52.82
+ },
+ "bash linux/scripts/tests/test-tag-mode-rejection.sh": {
+  "baseline": 7.98,
+  "per_entry": 8.28
+ },
+ "bash linux/scripts/tests/test-target-cargo-pipeline.sh": {
+  "baseline": 11.52,
+  "per_entry": 3.05
+ },
+ "bash linux/scripts/tests/test-target-rust-callback-scope.sh": {
+  "baseline": 0.29,
+  "per_entry": 0.21
+ },
+ "bash linux/scripts/tests/test-tensorrt-closure.sh": {
+  "baseline": 0.14,
+  "per_entry": 0.16
  },
  "bash linux/scripts/tests/test-tensorrt-install.sh": {
   "baseline": 0.08,
   "per_entry": 0.07
  },
+ "bash linux/scripts/tests/test-tensorrt-plugin-ep.sh": {
+  "baseline": 0.95,
+  "per_entry": 0.86
+ },
+ "bash linux/scripts/tests/test-think-split.sh": {
+  "baseline": 0.04,
+  "per_entry": 0.15
+ },
  "bash linux/scripts/tests/test-tiny-genai-model.sh": {
   "baseline": 0.41,
-  "per_entry": 0.31
+  "per_entry": 0.45
  },
  "bash linux/scripts/tests/test-tool-checks.sh": {
-  "baseline": 0.04,
+  "baseline": 0.06,
   "per_entry": 0.05
  },
  "bash linux/scripts/tests/test-toolchain-bootstrap.sh": {
-  "baseline": 0.18,
-  "per_entry": 0.24
+  "baseline": 0.39,
+  "per_entry": 0.31
  },
  "bash linux/scripts/tests/test-toolchain-download-loader.sh": {
-  "baseline": 5.06,
-  "per_entry": 5.17
+  "baseline": 4.62,
+  "per_entry": 4.47
  },
  "bash linux/scripts/tests/test-torch-setup-lifecycle.sh": {
-  "baseline": 2.31,
-  "per_entry": 2.35
+  "baseline": 2.67,
+  "per_entry": 2.75
  },
  "bash linux/scripts/tests/test-torch-wheelhouse.sh": {
-  "baseline": 0.9,
-  "per_entry": 0.87
+  "baseline": 0.7,
+  "per_entry": 0.81
+ },
+ "bash linux/scripts/tests/test-torchvision-cache-patch.sh": {
+  "baseline": 0.14,
+  "per_entry": 0.13
  },
  "bash linux/scripts/tests/test-trailing-conditional.sh": {
-  "baseline": 6.51,
-  "per_entry": 6.68
+  "baseline": 6.65,
+  "per_entry": 6.78
  },
  "bash linux/scripts/tests/test-triplet-query.sh": {
-  "baseline": 4.42,
-  "per_entry": 4.88
+  "baseline": 4.84,
+  "per_entry": 4.33
  },
  "bash linux/scripts/tests/test-tvm-cmake-args.sh": {
-  "baseline": 0.27,
-  "per_entry": 0.25
+  "baseline": 0.18,
+  "per_entry": 0.2
  },
  "bash linux/scripts/tests/test-tvm-compiler-selection.sh": {
-  "baseline": 0.21,
-  "per_entry": 0.26
+  "baseline": 0.34,
+  "per_entry": 0.24
  },
  "bash linux/scripts/tests/test-tvm-llvm-resolve.sh": {
-  "baseline": 0.15,
-  "per_entry": 0.12
+  "baseline": 0.1,
+  "per_entry": 0.08
  },
  "bash linux/scripts/tests/test-tvm-sdk-lookup.sh": {
   "baseline": 0.06,
   "per_entry": 0.06
  },
  "bash linux/scripts/tests/test-tvm-wheel-diagnostics.sh": {
-  "baseline": 0.11,
-  "per_entry": 0.12
+  "baseline": 0.12,
+  "per_entry": 0.13
  },
  "bash linux/scripts/tests/test-ubuntu-mirror-source-files.sh": {
-  "baseline": 0.44,
-  "per_entry": 0.35
+  "baseline": 0.35,
+  "per_entry": 0.26
  },
  "bash linux/scripts/tests/test-uv-cache-seed.sh": {
-  "baseline": 2.74,
-  "per_entry": 3.21
+  "baseline": 3.35,
+  "per_entry": 3.9
  },
  "bash linux/scripts/tests/test-uv-chain-ort.sh": {
-  "baseline": 17.16,
-  "per_entry": 17.04
+  "baseline": 16.96,
+  "per_entry": 16.48
  },
  "bash linux/scripts/tests/test-uv-conflict-extras.sh": {
-  "baseline": 0.2,
-  "per_entry": 0.21
+  "baseline": 0.24,
+  "per_entry": 0.22
  },
  "bash linux/scripts/tests/test-uv-export-drift.sh": {
-  "baseline": 0.68,
-  "per_entry": 0.67
+  "baseline": 1.03,
+  "per_entry": 1.04
  },
  "bash linux/scripts/tests/test-uv-image-overlay.sh": {
-  "baseline": 1.72,
-  "per_entry": 1.69
+  "baseline": 1.67,
+  "per_entry": 1.62
  },
  "bash linux/scripts/tests/test-uv-locked-project.sh": {
-  "baseline": 0.36,
-  "per_entry": 0.37
+  "baseline": 0.23,
+  "per_entry": 0.27
  },
  "bash linux/scripts/tests/test-uv-python-request.sh": {
-  "baseline": 0.2,
-  "per_entry": 0.23
- },
- "bash linux/scripts/tests/test-validator-probes.sh": {
-  "baseline": 3.52,
-  "per_entry": 4.02
- },
- "bash linux/scripts/tests/test-venv-probe-types.sh": {
-  "baseline": 0.36,
-  "per_entry": 0.32
- },
- "bash linux/scripts/tests/test-verified-installers.sh": {
-  "baseline": 2.05,
-  "per_entry": 2.01
- },
- "bash linux/scripts/tests/test-verifier-artifact-parity.sh": {
-  "baseline": 1.73,
-  "per_entry": 1.64
- },
- "bash linux/scripts/tests/test-verify-native-appimage-license.sh": {
-  "baseline": 0.79,
-  "per_entry": 0.59
- },
- "bash linux/scripts/tests/test-verify-parity-checks.sh": {
-  "baseline": 0.94,
-  "per_entry": 0.8
- },
- "bash linux/scripts/tests/test-verify-test-reports.sh": {
-  "baseline": 0.94,
-  "per_entry": 0.98
- },
- "bash linux/scripts/tests/test-version-forwarding.sh": {
-  "baseline": 8.63,
-  "per_entry": 8.8
- },
- "bash linux/scripts/tests/test-version-snapshot.sh": {
-  "baseline": 6.85,
-  "per_entry": 7.4
- },
- "bash linux/scripts/tests/test-vulkan-env-active-link.sh": {
-  "baseline": 0.34,
-  "per_entry": 0.3
- },
- "bash linux/scripts/tests/test-vulkan-gcc-runtime-links.sh": {
-  "baseline": 0.11,
-  "per_entry": 0.08
- },
- "bash linux/scripts/tests/test-vulkan-host-sdk-prune.sh": {
-  "baseline": 0.58,
-  "per_entry": 0.57
- },
- "bash linux/scripts/tests/test-vulkan-sdk-smoke-paths.sh": {
-  "baseline": 0.16,
-  "per_entry": 0.16
- },
- "bash linux/scripts/tests/test-vulkan-target-decomposition.sh": {
-  "baseline": 4.93,
-  "per_entry": 4.56
- },
- "bash linux/scripts/tests/test-web-lane-tools.sh": {
-  "baseline": 18.12,
-  "per_entry": 17.8
- },
- "bash linux/scripts/tests/test-webgpu-canvas-readback.sh": {
-  "baseline": 30.49,
-  "per_entry": 26.5
- },
- "bash linux/scripts/tests/test-wheel-archive-transport.sh": {
-  "baseline": 3.19,
-  "per_entry": 2.96
- },
- "bash linux/scripts/tests/test-wheel-smoke.sh": {
-  "baseline": 1.85,
-  "per_entry": 1.38
- },
- "bash linux/scripts/tests/test-wheel-tag-resolution.sh": {
-  "baseline": 8.57,
-  "per_entry": 8.45
- },
- "bash linux/scripts/tests/test-wheelhouse-manifest.sh": {
-  "baseline": 2.38,
-  "per_entry": 2.64
- },
- "bash linux/scripts/tests/test-wheelhouse-sysconfig-env.sh": {
-  "baseline": 0.24,
-  "per_entry": 0.37
- },
- "bash linux/scripts/tests/test-windows-icon-pe.sh": {
-  "baseline": 19.3,
-  "per_entry": 7.64
- },
- "bash linux/scripts/tests/test-workflow-run-filters.sh": {
-  "baseline": 0.4,
-  "per_entry": 0.4
- },
- "bash linux/scripts/tests/test-check-install-tree.sh": {
-  "baseline": 0.3,
-  "per_entry": 0.3
- },
- "bash linux/scripts/tests/test-warning-census.sh": {
-  "baseline": 0.5,
-  "per_entry": 0.5
- },
- "bash linux/scripts/tests/test-workflow-lint.sh": {
-  "baseline": 11.16,
-  "per_entry": 10.7
- },
- "bash linux/scripts/tests/test-wsl-quality.sh": {
-  "baseline": 2.17,
-  "per_entry": 1.86
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.LitertUvCache.Tests.ps1 -ResultFile logs/code-quality/litert-ty-uv-cache-mutation.json": {
-  "baseline": 2.65,
-  "per_entry": 2.91
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildDriver.ResourceSampleRow.Tests.ps1 -ResultFile logs/code-quality/resource-sampler-without-vmmem.json": {
-  "baseline": 2.36,
-  "per_entry": 2.45
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.MountStub.Tests.ps1 -ResultFile logs/code-quality/bind-target-base-lacks.json": {
-  "baseline": 3.71,
-  "per_entry": 3.24
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ci.PesterAction.Tests.ps1 -ResultFile logs/code-quality/pester-action-mutation.json": {
-  "baseline": 7.97,
-  "per_entry": 8.35
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/code-quality/harness-batch-byte-verdict.json && python3 -c 'import json; d=json.load(open(\"logs/code-quality/harness-batch-byte-verdict.json\")); assert d[\"Total\"] == 45 and d[\"Passed\"] == 45 and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'": {
-  "baseline": 6.94,
-  "per_entry": 6.31
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/code-quality/harness-lifted-body-arguments.json && python3 -c 'import json; d=json.load(open(\"logs/code-quality/harness-lifted-body-arguments.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'": {
-  "baseline": 10.76,
-  "per_entry": 9.22
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/code-quality/harness-lifted-cleanup.json && python3 -c 'import json; d=json.load(open(\"logs/code-quality/harness-lifted-cleanup.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'": {
-  "baseline": 9.25,
-  "per_entry": 9.25
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/code-quality/harness-lifted-module-arguments.json && python3 -c 'import json; d=json.load(open(\"logs/code-quality/harness-lifted-module-arguments.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'": {
-  "baseline": 7.12,
-  "per_entry": 5.29
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Lint.Diagnostics.Tests.ps1 -ResultFile logs/code-quality/lint-scope-leak-dot-sourcing.json": {
-  "baseline": 2.96,
-  "per_entry": 2.78
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Lint.Diagnostics.Tests.ps1 -ResultFile logs/code-quality/lint-scope-leak-reads.json": {
-  "baseline": 1.77,
-  "per_entry": 1.9
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Lint.Diagnostics.Tests.ps1 -ResultFile logs/code-quality/lint-scope-leak-same-scope.json": {
-  "baseline": 2.91,
-  "per_entry": 3.04
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.Cross.Tests.ps1 -ResultFile logs/code-quality/requirement-groups-mutation.json": {
-  "baseline": 2.57,
-  "per_entry": 2.27
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-cmake-build-binds.json": {
-  "baseline": 3.67,
-  "per_entry": 3.61
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-functions-at-script-level.json": {
-  "baseline": 3.97,
-  "per_entry": 4.04
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-image-copy.json": {
-  "baseline": 2.76,
-  "per_entry": 2.81
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-passed.json": {
-  "baseline": 2.91,
-  "per_entry": 2.92
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-verify-evidence.json": {
-  "baseline": 3.27,
-  "per_entry": 3.3
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiClangStlPatch.Tests.ps1 -ResultFile logs/code-quality/genai-yvals-mutation.json": {
-  "baseline": 2.55,
-  "per_entry": 2.63
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeRocmBitcode.Tests.ps1 -ResultFile logs/code-quality/iree-rocm-bitcode-both.json": {
-  "baseline": 2.31,
-  "per_entry": 1.99
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeRocmBitcode.Tests.ps1 -ResultFile logs/code-quality/iree-rocm-bitcode-option.json": {
-  "baseline": 2.16,
-  "per_entry": 1.65
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmNullReturn.Tests.ps1 -ResultFile logs/code-quality/iree-host-tools-mutation.json": {
-  "baseline": 2.42,
-  "per_entry": 2.43
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmNullReturn.Tests.ps1 -ResultFile logs/code-quality/tvm-llvm-targets-mutation.json": {
-  "baseline": 1.62,
-  "per_entry": 1.6
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/hailort-externals-retries.json": {
-  "baseline": 3.8,
-  "per_entry": 3.1
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/hailort-gitlab-budget.json": {
-  "baseline": 3.19,
-  "per_entry": 3.1
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/litert-eigen-host-pass.json": {
-  "baseline": 2.31,
-  "per_entry": 2.38
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/litert-eigen-retries.json": {
-  "baseline": 2.28,
-  "per_entry": 1.82
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.NinjaReturnLeak.Tests.ps1 -ResultFile logs/code-quality/tvm-minimal-llvm-ninja.json": {
-  "baseline": 17.65,
-  "per_entry": 15.4
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Pip.Tests.ps1 -ResultFile logs/code-quality/cpython-pip-output.json": {
-  "baseline": 18.32,
-  "per_entry": 5.94
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.SccacheLevelHits.Tests.ps1 -ResultFile logs/code-quality/sccache-level-hits-mutation.json": {
-  "baseline": 3.08,
-  "per_entry": 3.01
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TextLineIndexes.Tests.ps1 -ResultFile logs/code-quality/text-line-indexes-mutation.json": {
-  "baseline": 2.29,
-  "per_entry": 2.23
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Torch.RocmSourceBuild.Tests.ps1 -ResultFile logs/code-quality/torch-rocm-hip-launcher.json": {
-  "baseline": 2.92,
-  "per_entry": 2.91
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsContainerImage.Bootstrap.Tests.ps1 -ResultFile logs/code-quality/nvidia-bootstrap-copied.json": {
-  "baseline": 3.21,
-  "per_entry": 3.28
- },
- "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsMediaRuntime.Common.Tests.ps1 -ResultFile logs/code-quality/media-runtime-directml.json": {
-  "baseline": 3.96,
-  "per_entry": 3.67
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-license-mutation.json": {
-  "baseline": 4.48,
-  "per_entry": 2.34
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-media-mutation.json": {
-  "baseline": 4.28,
-  "per_entry": 3.45
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only MsixLogo.Portable.Tests.ps1 -ResultFile logs/code-quality/msix-logo-mutation.json": {
-  "baseline": 1.67,
-  "per_entry": 1.69
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/ort-wheel-licenses-mutation.json": {
-  "baseline": 5.81,
-  "per_entry": 3.07
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/python-ort-license-mutation.json": {
-  "baseline": 6.2,
-  "per_entry": 4.76
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PackageLicense.Portable.Tests.ps1 -ResultFile logs/code-quality/package-license-mutation.json": {
-  "baseline": 2.66,
-  "per_entry": 2.55
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleStaging.Tests.ps1 -ResultFile logs/code-quality/python-app-icon-mutation.json": {
-  "baseline": 4.29,
-  "per_entry": 3.29
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.PackageLicense.Tests.ps1 -ResultFile logs/code-quality/python-package-license-mutation.json": {
-  "baseline": 2.71,
-  "per_entry": 2.45
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.PackageLicense.Tests.ps1 -ResultFile logs/code-quality/python-package-ort-mutation.json": {
-  "baseline": 2.19,
-  "per_entry": 2.35
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Runner.ResultFile.Tests.ps1 -ResultFile logs/code-quality/result-file-mutation.json": {
-  "baseline": 4.11,
-  "per_entry": 2.96
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only RustMsix.ProjectAssets.Tests.ps1 -ResultFile logs/test-results/rust-msix-mutation.json": {
-  "baseline": 2.44,
-  "per_entry": 2.41
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Shared.CmakeUvWiring.Tests.ps1 -ResultFile logs/code-quality/cmake-uv-wiring-mutation.json": {
-  "baseline": 2.06,
-  "per_entry": 1.98
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Uv.LockedProject.Tests.ps1 -ResultFile logs/code-quality/uv-locked-project-mutation.json": {
-  "baseline": 7.98,
-  "per_entry": 6.4
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsIcon.Portable.Tests.ps1 -ResultFile logs/test-results/icon-validation-mutation.json": {
-  "baseline": 5.25,
-  "per_entry": 3.27
- },
- "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WixVariables.Portable.Tests.ps1 -ResultFile logs/code-quality/wix-variables-mutation.json": {
-  "baseline": 2.55,
-  "per_entry": 2.58
- },
- "python3 docs/scripts/verify_mutations.py --only mutations.ignored-not-copied --jobs 1": {
-  "baseline": 45.6,
-  "per_entry": 49.98
- },
- "python3 docs/scripts/verify_mutations.py --only windows-lane.powershell-lint-defaults-off --jobs 1": {
-  "baseline": 9.95,
-  "per_entry": 7.5
- },
- "python3 linux/scripts/tests/test_stage_cargo_publish.py": {
   "baseline": 0.12,
   "per_entry": 0.12
  },
+ "bash linux/scripts/tests/test-validator-probes.sh": {
+  "baseline": 2.0,
+  "per_entry": 2.18
+ },
+ "bash linux/scripts/tests/test-venv-probe-types.sh": {
+  "baseline": 0.51,
+  "per_entry": 0.4
+ },
+ "bash linux/scripts/tests/test-verified-installers.sh": {
+  "baseline": 2.04,
+  "per_entry": 2.08
+ },
+ "bash linux/scripts/tests/test-verifier-artifact-parity.sh": {
+  "baseline": 1.7,
+  "per_entry": 1.62
+ },
+ "bash linux/scripts/tests/test-verify-elf-hardening.sh": {
+  "baseline": 0.68,
+  "per_entry": 0.69
+ },
+ "bash linux/scripts/tests/test-verify-native-appimage-binary.sh": {
+  "baseline": 1.31,
+  "per_entry": 1.24
+ },
+ "bash linux/scripts/tests/test-verify-native-appimage-license.sh": {
+  "baseline": 1.04,
+  "per_entry": 0.98
+ },
+ "bash linux/scripts/tests/test-verify-ort-loader-trace.sh": {
+  "baseline": 8.25,
+  "per_entry": 7.81
+ },
+ "bash linux/scripts/tests/test-verify-parity-checks.sh": {
+  "baseline": 0.75,
+  "per_entry": 0.7
+ },
+ "bash linux/scripts/tests/test-verify-test-reports.sh": {
+  "baseline": 1.17,
+  "per_entry": 1.27
+ },
+ "bash linux/scripts/tests/test-version-forwarding.sh": {
+  "baseline": 9.27,
+  "per_entry": 10.65
+ },
+ "bash linux/scripts/tests/test-version-snapshot.sh": {
+  "baseline": 8.18,
+  "per_entry": 9.31
+ },
+ "bash linux/scripts/tests/test-vulkan-env-active-link.sh": {
+  "baseline": 0.42,
+  "per_entry": 0.45
+ },
+ "bash linux/scripts/tests/test-vulkan-gcc-runtime-links.sh": {
+  "baseline": 0.1,
+  "per_entry": 0.07
+ },
+ "bash linux/scripts/tests/test-vulkan-host-sdk-prune.sh": {
+  "baseline": 0.95,
+  "per_entry": 0.68
+ },
+ "bash linux/scripts/tests/test-vulkan-sdk-smoke-paths.sh": {
+  "baseline": 0.14,
+  "per_entry": 0.12
+ },
+ "bash linux/scripts/tests/test-vulkan-target-decomposition.sh": {
+  "baseline": 5.87,
+  "per_entry": 5.81
+ },
+ "bash linux/scripts/tests/test-warning-census.sh": {
+  "baseline": 0.72,
+  "per_entry": 0.7
+ },
+ "bash linux/scripts/tests/test-web-lane-tools.sh": {
+  "baseline": 16.91,
+  "per_entry": 16.5
+ },
+ "bash linux/scripts/tests/test-webgpu-canvas-readback.sh": {
+  "baseline": 29.96,
+  "per_entry": 26.82
+ },
+ "bash linux/scripts/tests/test-webgpu-media-lanes.sh": {
+  "baseline": 7.59,
+  "per_entry": 5.09
+ },
+ "bash linux/scripts/tests/test-webgpu-runtime-transport.sh": {
+  "baseline": 0.5,
+  "per_entry": 0.56
+ },
+ "bash linux/scripts/tests/test-wheel-archive-transport.sh": {
+  "baseline": 1.42,
+  "per_entry": 1.43
+ },
+ "bash linux/scripts/tests/test-wheel-smoke.sh": {
+  "baseline": 1.19,
+  "per_entry": 1.24
+ },
+ "bash linux/scripts/tests/test-wheel-tag-resolution.sh": {
+  "baseline": 9.07,
+  "per_entry": 9.51
+ },
+ "bash linux/scripts/tests/test-wheelhouse-manifest.sh": {
+  "baseline": 4.31,
+  "per_entry": 4.36
+ },
+ "bash linux/scripts/tests/test-wheelhouse-sysconfig-env.sh": {
+  "baseline": 0.32,
+  "per_entry": 0.46
+ },
+ "bash linux/scripts/tests/test-windows-icon-pe.sh": {
+  "baseline": 26.23,
+  "per_entry": 4.82
+ },
+ "bash linux/scripts/tests/test-workflow-lint.sh": {
+  "baseline": 9.23,
+  "per_entry": 9.9
+ },
+ "bash linux/scripts/tests/test-workflow-run-filters.sh": {
+  "baseline": 0.53,
+  "per_entry": 0.44
+ },
+ "bash linux/scripts/tests/test-workflow-sha-pin.sh": {
+  "baseline": 1.05,
+  "per_entry": 1.01
+ },
+ "bash linux/scripts/tests/test-wsl-quality.sh": {
+  "baseline": 2.07,
+  "per_entry": 1.9
+ },
+ "env ENABLE_NVIDIA=true ENABLE_AMD=true ONNX_PACKAGE=onnxruntime PYTORCH_EXTRA=pytorch-rocm10 bash linux/scripts/tests/test-gpu-variant.sh": {
+  "baseline": 9.5,
+  "per_entry": 5.14
+ },
+ "env GIT_CONFIG_PARAMETERS=\"'core.hooksPath'='/missing-consumer-fixture-hooks'\" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/missing-consumer-fixture-hooks bash linux/scripts/tests/test-consumer-hooks.sh": {
+  "baseline": 15.88,
+  "per_entry": 1.3
+ },
+ "env LC_ALL=en_US.UTF-8 bash linux/scripts/tests/test-clang-job-policy.sh": {
+  "baseline": 0.85,
+  "per_entry": 0.78
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildDriver.ResourceSampleRow.Tests.ps1 -ResultFile logs/code-quality/resource-sampler-without-vmmem.json": {
+  "baseline": 2.89,
+  "per_entry": 2.84
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.ConsumerDispatch.Tests.ps1 -ResultFile logs/code-quality/buildkit-consumer-dispatch.json": {
+  "baseline": 2.48,
+  "per_entry": 2.5
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.MountStub.Tests.ps1 -ResultFile logs/code-quality/bind-target-base-lacks.json": {
+  "baseline": 2.92,
+  "per_entry": 3.12
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ci.PesterAction.Tests.ps1 -ResultFile logs/code-quality/pester-action-mutation.json": {
+  "baseline": 13.94,
+  "per_entry": 11.45
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Driver.VariantChain.Tests.ps1 -ResultFile logs/code-quality/variant-chain-mutation.json": {
+  "baseline": 2.96,
+  "per_entry": 2.76
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Gst.OnnxInferenceRun.Tests.ps1 -ResultFile logs/code-quality/gst-onnxinference-mutation.json": {
+  "baseline": 2.38,
+  "per_entry": 2.53
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Lint.Diagnostics.Tests.ps1 -ResultFile logs/code-quality/lint-scope-leak-dot-sourcing.json": {
+  "baseline": 3.28,
+  "per_entry": 3.01
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Lint.Diagnostics.Tests.ps1 -ResultFile logs/code-quality/lint-scope-leak-reads.json": {
+  "baseline": 3.33,
+  "per_entry": 3.51
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Lint.Diagnostics.Tests.ps1 -ResultFile logs/code-quality/lint-scope-leak-same-scope.json": {
+  "baseline": 2.09,
+  "per_entry": 2.07
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/gst-vpx-cpp-std.json": {
+  "baseline": 8.48,
+  "per_entry": 7.44
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/msvc-runtime-provenance.json": {
+  "baseline": 6.11,
+  "per_entry": 5.86
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/native-provenance-mutation.json": {
+  "baseline": 5.91,
+  "per_entry": 6.08
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/provenance.defects-reported-together.json": {
+  "baseline": 7.11,
+  "per_entry": 6.92
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/provenance.libffi-identity-is-the-pin.json": {
+  "baseline": 5.08,
+  "per_entry": 4.95
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/provenance.meson-directory-from-record.json": {
+  "baseline": 7.3,
+  "per_entry": 6.72
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.DmlMatMul.Tests.ps1 -ResultFile logs/code-quality/dml-matmul-mutation.json": {
+  "baseline": 2.35,
+  "per_entry": 2.47
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.Cross.Tests.ps1 -ResultFile logs/code-quality/requirement-groups-mutation.json": {
+  "baseline": 4.18,
+  "per_entry": 4.55
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiClangStlPatch.Tests.ps1 -ResultFile logs/code-quality/genai-yvals-mutation.json": {
+  "baseline": 2.7,
+  "per_entry": 2.53
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiGuidance.Tests.ps1 -ResultFile logs/code-quality/genai-guidance-mutation.json": {
+  "baseline": 3.9,
+  "per_entry": 3.78
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeRocmBitcode.Tests.ps1 -ResultFile logs/code-quality/iree-rocm-bitcode-both.json": {
+  "baseline": 2.37,
+  "per_entry": 2.14
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeRocmBitcode.Tests.ps1 -ResultFile logs/code-quality/iree-rocm-bitcode-option.json": {
+  "baseline": 2.53,
+  "per_entry": 2.56
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmNullReturn.Tests.ps1 -ResultFile logs/code-quality/iree-host-tools-mutation.json": {
+  "baseline": 3.13,
+  "per_entry": 2.75
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/hailort-externals-retries.json": {
+  "baseline": 2.62,
+  "per_entry": 2.68
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/hailort-gitlab-budget.json": {
+  "baseline": 2.6,
+  "per_entry": 2.38
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/litert-eigen-host-pass.json": {
+  "baseline": 2.09,
+  "per_entry": 1.78
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/litert-eigen-retries.json": {
+  "baseline": 2.94,
+  "per_entry": 2.5
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Torch.RocmSourceBuild.Tests.ps1 -ResultFile logs/code-quality/torch-rocm-hip-launcher.json": {
+  "baseline": 3.19,
+  "per_entry": 3.65
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only TorchApp.SdistCompiler.Tests.ps1 -ResultFile logs/code-quality/sdist-compiler-mutation.json": {
+  "baseline": 2.17,
+  "per_entry": 2.27
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsContainerImage.Bootstrap.Tests.ps1 -ResultFile logs/code-quality/nvidia-bootstrap-copied.json": {
+  "baseline": 3.75,
+  "per_entry": 3.54
+ },
+ "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsMediaRuntime.Common.Tests.ps1 -ResultFile logs/code-quality/media-runtime-directml.json": {
+  "baseline": 3.21,
+  "per_entry": 3.19
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only CMake.CPackDiagnostics.Tests.ps1": {
+  "baseline": 1.7,
+  "per_entry": 1.72
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1": {
+  "baseline": 2.41,
+  "per_entry": 2.44
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only CrossBundle.PackageCheck.Tests.ps1": {
+  "baseline": 1.85,
+  "per_entry": 1.74
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.Ast.Tests.ps1": {
+  "baseline": 2.42,
+  "per_entry": 2.71
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.FileUnchanged.Tests.ps1": {
+  "baseline": 1.58,
+  "per_entry": 1.57
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.GitFixtures.Tests.ps1": {
+  "baseline": 2.08,
+  "per_entry": 2.04
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.TextFixtures.Tests.ps1": {
+  "baseline": 1.62,
+  "per_entry": 1.54
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Patches.ApplyClean.Tests.ps1": {
+  "baseline": 5.07,
+  "per_entry": 5.47
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PeHardening.Tests.ps1": {
+  "baseline": 1.74,
+  "per_entry": 1.69
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PythonApp.BundleLockData.Tests.ps1": {
+  "baseline": 1.7,
+  "per_entry": 1.75
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Smoke.Cudnn.Tests.ps1": {
+  "baseline": 2.17,
+  "per_entry": 2.21
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.GenaiExtensions.Tests.ps1": {
+  "baseline": 2.6,
+  "per_entry": 7.19
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.HailortCache.Tests.ps1": {
+  "baseline": 3.98,
+  "per_entry": 3.98
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.IsaFloor.Tests.ps1": {
+  "baseline": 2.18,
+  "per_entry": 2.21
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtCudaStandard.Tests.ps1": {
+  "baseline": 2.48,
+  "per_entry": 2.08
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtQnnEp.Source.Tests.ps1": {
+  "baseline": 3.33,
+  "per_entry": 3.18
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtSourceClone.Tests.ps1": {
+  "baseline": 12.87,
+  "per_entry": 12.89
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1": {
+  "baseline": 3.2,
+  "per_entry": 3.05
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.ContainerState.Tests.ps1": {
+  "baseline": 3.07,
+  "per_entry": 2.89
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Instance.Tests.ps1": {
+  "baseline": 2.95,
+  "per_entry": 2.47
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Inventory.Tests.ps1": {
+  "baseline": 4.72,
+  "per_entry": 4.37
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.Delegation.Portable.Tests.ps1": {
+  "baseline": 2.62,
+  "per_entry": 2.54
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.StorageUnits.Tests.ps1": {
+  "baseline": 1.47,
+  "per_entry": 1.49
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Torch.Rocm.Refusal.Tests.ps1": {
+  "baseline": 1.52,
+  "per_entry": 1.76
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Torchvision.RocmCache.Tests.ps1": {
+  "baseline": 1.23,
+  "per_entry": 1.17
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Uv.CensusPath.Tests.ps1": {
+  "baseline": 3.0,
+  "per_entry": 3.02
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only WindowsFlutterPin.Common.Tests.ps1": {
+  "baseline": 2.69,
+  "per_entry": 2.27
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64Acceptance.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-mutation.json": {
+  "baseline": 6.17,
+  "per_entry": 2.92
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64AcceptanceWiring.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-wiring-mutation.json": {
+  "baseline": 2.42,
+  "per_entry": 2.75
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.ExportArm64Modules.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-export-mutation.json": {
+  "baseline": 5.71,
+  "per_entry": 5.4
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.ExportArm64Modules.Tests.ps1 -ResultFile logs/code-quality/export-arm64-mutation.json": {
+  "baseline": 6.18,
+  "per_entry": 5.34
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.ExportArm64Runtime.Tests.ps1 -ResultFile logs/code-quality/export-arm64-ort-mutation.json": {
+  "baseline": 3.46,
+  "per_entry": 2.71
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.LitertUvCache.Tests.ps1 -ResultFile logs/code-quality/litert-ty-uv-cache-mutation.json": {
+  "baseline": 2.38,
+  "per_entry": 2.63
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.PipPins.Tests.ps1 -ResultFile logs/code-quality/tvm-cross-wheel-mutation.json": {
+  "baseline": 5.95,
+  "per_entry": 5.43
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.PipPins.Tests.ps1 -ResultFile logs/code-quality/tvm-packaging-pin-mutation.json": {
+  "baseline": 6.42,
+  "per_entry": 7.77
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.MountStub.Tests.ps1 -ResultFile logs/code-quality/media-direct-module-mutation.json": {
+  "baseline": 4.24,
+  "per_entry": 3.01
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.MountStub.Tests.ps1 -ResultFile logs/code-quality/module-view-mutation.json": {
+  "baseline": 4.91,
+  "per_entry": 2.3
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Diagnostics.CudaCacheProbe.Tests.ps1 -ResultFile logs/code-quality/cuda-probe-mutation.json": {
+  "baseline": 2.22,
+  "per_entry": 2.04
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Diagnostics.ModulePaths.Tests.ps1 -ResultFile logs/code-quality/diag-module-paths-mutation.json": {
+  "baseline": 3.02,
+  "per_entry": 2.28
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/call-assertions-mutation.json": {
+  "baseline": 3.36,
+  "per_entry": 2.96
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/native-fixture-mutation.json": {
+  "baseline": 2.48,
+  "per_entry": 2.64
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -ResultFile logs/code-quality/migraphx-pad-default-assertion.json": {
+  "baseline": 2.73,
+  "per_entry": 2.78
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.DockerFixtures.Tests.ps1 -ResultFile logs/code-quality/migraphx-pad-exclusive-mount-assertion.json": {
+  "baseline": 3.3,
+  "per_entry": 3.44
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.DockerFixtures.Tests.ps1 -ResultFile logs/code-quality/migraphx-pad-required-argument-assertion.json": {
+  "baseline": 3.08,
+  "per_entry": 3.7
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.DockerFixtures.Tests.ps1 -ResultFile logs/code-quality/migraphx-pad-required-mount-assertion.json": {
+  "baseline": 3.6,
+  "per_entry": 3.63
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.DockerFixtures.Tests.ps1 -ResultFile logs/code-quality/migraphx-pad-run-stage-selection.json": {
+  "baseline": 3.54,
+  "per_entry": 3.23
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.DockerFixtures.Tests.ps1 -ResultFile logs/code-quality/migraphx-pad-run-uniqueness.json": {
+  "baseline": 3.81,
+  "per_entry": 4.28
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/test-results/qnn-source-mutations/fixtures.json": {
+  "baseline": 10.73,
+  "per_entry": 9.76
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Host.TensorRtAcquisition.Tests.ps1 -ResultFile logs/code-quality/trt-acquisition-mutation.json": {
+  "baseline": 2.83,
+  "per_entry": 2.72
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-license-mutation.json": {
+  "baseline": 2.08,
+  "per_entry": 1.84
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-media-mutation.json": {
+  "baseline": 2.09,
+  "per_entry": 2.06
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only MsixLogo.Portable.Tests.ps1 -ResultFile logs/code-quality/msix-logo-mutation.json": {
+  "baseline": 2.09,
+  "per_entry": 2.41
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msvc.RuntimeNotice.Tests.ps1 -ResultFile logs/code-quality/msvc-notice-mutation.json": {
+  "baseline": 3.88,
+  "per_entry": 3.72
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/smoke-empty-finding-list.json": {
+  "baseline": 5.51,
+  "per_entry": 5.62
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/ort-wheel-licenses-mutation.json": {
+  "baseline": 4.91,
+  "per_entry": 3.33
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/python-ort-license-mutation.json": {
+  "baseline": 6.26,
+  "per_entry": 2.77
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.WebGpuStaticPlugin.Tests.ps1 -ResultFile logs/code-quality/webgpu-static-plugin-mutation.json": {
+  "baseline": 2.81,
+  "per_entry": 2.86
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PackageLicense.Portable.Tests.ps1 -ResultFile logs/code-quality/package-license-mutation.json": {
+  "baseline": 2.18,
+  "per_entry": 2.19
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Patches.ApplyClean.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/integration-mutation.json": {
+  "baseline": 5.62,
+  "per_entry": 5.63
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Patches.ApplyClean.Tests.ps1 -ResultFile logs/code-quality/patch-drift-mutation.json": {
+  "baseline": 4.77,
+  "per_entry": 5.0
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleStaging.Tests.ps1 -ResultFile logs/code-quality/python-app-icon-mutation.json": {
+  "baseline": 5.49,
+  "per_entry": 2.83
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.PackageLicense.Tests.ps1 -ResultFile logs/code-quality/python-package-license-mutation.json": {
+  "baseline": 3.01,
+  "per_entry": 2.17
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.PackageLicense.Tests.ps1 -ResultFile logs/code-quality/python-package-ort-mutation.json": {
+  "baseline": 2.54,
+  "per_entry": 2.63
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Rocm.MigraphxPadPooling.Tests.ps1 -ResultFile logs/code-quality/migraphx-pad-pooling.json": {
+  "baseline": 3.44,
+  "per_entry": 3.33
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Rocm.Structure.Tests.ps1 -ResultFile logs/code-quality/rocm-structure-mutation.json": {
+  "baseline": 1.95,
+  "per_entry": 2.01
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Runner.ResultFile.Tests.ps1 -ResultFile logs/code-quality/result-file-mutation.json": {
+  "baseline": 4.53,
+  "per_entry": 3.28
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only RustMsix.ProjectAssets.Tests.ps1 -ResultFile logs/test-results/rust-msix-mutation.json": {
+  "baseline": 3.4,
+  "per_entry": 2.85
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Shared.CmakeUvWiring.Tests.ps1 -ResultFile logs/code-quality/cmake-uv-wiring-mutation.json": {
+  "baseline": 2.69,
+  "per_entry": 3.07
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.FindingVerdict.Tests.ps1 -ResultFile logs/code-quality/smoke-finding-mutation.json": {
+  "baseline": 2.48,
+  "per_entry": 2.78
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-cmake-build-binds.json": {
+  "baseline": 3.04,
+  "per_entry": 2.69
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-functions-at-script-level.json": {
+  "baseline": 4.0,
+  "per_entry": 3.75
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-image-copy.json": {
+  "baseline": 2.62,
+  "per_entry": 2.74
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-passed.json": {
+  "baseline": 3.1,
+  "per_entry": 3.46
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-verify-evidence.json": {
+  "baseline": 1.74,
+  "per_entry": 2.07
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeScratch.Tests.ps1 -ResultFile logs/code-quality/iree-scratch-mutation.json": {
+  "baseline": 3.04,
+  "per_entry": 3.44
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmNullReturn.Tests.ps1 -ResultFile logs/code-quality/tvm-llvm-targets-mutation.json": {
+  "baseline": 3.32,
+  "per_entry": 3.81
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTwin.Tests.ps1 -ResultFile logs/code-quality/iree-genrule-python-compiler.json": {
+  "baseline": 2.62,
+  "per_entry": 2.52
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTwin.Tests.ps1 -ResultFile logs/code-quality/iree-genrule-python-shape.json": {
+  "baseline": 3.21,
+  "per_entry": 3.32
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTwin.Tests.ps1 -ResultFile logs/code-quality/iree-twin-gil-define.json": {
+  "baseline": 3.98,
+  "per_entry": 3.43
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTwin.Tests.ps1 -ResultFile logs/code-quality/iree-twin-stable-abi.json": {
+  "baseline": 3.04,
+  "per_entry": 3.05
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.NinjaReturnLeak.Tests.ps1 -ResultFile logs/code-quality/tvm-minimal-llvm-ninja.json": {
+  "baseline": 18.86,
+  "per_entry": 15.52
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OpencvPluginCache.Tests.ps1 -ResultFile logs/test-results/opencv-plugin-cache-mutation.json": {
+  "baseline": 2.13,
+  "per_entry": 2.08
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json": {
+  "baseline": 3.96,
+  "per_entry": 3.28
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtCudaLauncher.Tests.ps1 -ResultFile logs/code-quality/ort-cuda-launcher-mutation.json": {
+  "baseline": 2.25,
+  "per_entry": 2.34
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json": {
+  "baseline": 3.22,
+  "per_entry": 3.04
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json": {
+  "baseline": 7.32,
+  "per_entry": 5.32
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.PatchQuiet.Tests.ps1 -ResultFile logs/code-quality/ninja-msvc-only-mutation.json": {
+  "baseline": 2.33,
+  "per_entry": 2.42
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Pip.Tests.ps1 -ResultFile logs/code-quality/cpython-pip-output.json": {
+  "baseline": 21.94,
+  "per_entry": 15.07
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.QnnCommunityZip.Tests.ps1 -ResultFile logs/code-quality/qnn-community-zip-mutation.json": {
+  "baseline": 5.86,
+  "per_entry": 5.82
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.SccacheLevelHits.Tests.ps1 -ResultFile logs/code-quality/sccache-level-hits-mutation.json": {
+  "baseline": 2.78,
+  "per_entry": 2.93
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Scratch.Tests.ps1 -ResultFile logs/code-quality/qnn-sdk-scratch-mutation.json": {
+  "baseline": 3.26,
+  "per_entry": 3.16
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TextLineIndexes.Tests.ps1 -ResultFile logs/code-quality/text-line-indexes-mutation.json": {
+  "baseline": 3.56,
+  "per_entry": 3.73
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TvmFfiVersion.Tests.ps1 -ResultFile logs/test-results/tvm-ffi-version-mutation.json": {
+  "baseline": 4.75,
+  "per_entry": 4.92
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Torch.Rocm.Dockerfile.Tests.ps1 -Jobs 1 -ResultFile logs/mutation-results/torchvision-cache-mount.json": {
+  "baseline": 2.5,
+  "per_entry": 2.91
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only TorchApp.Checkout.Tests.ps1 -ResultFile logs/code-quality/torch-app-hub-mutation.json": {
+  "baseline": 3.72,
+  "per_entry": 2.67
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Uv.LockedProject.Tests.ps1 -ResultFile logs/code-quality/uv-locked-project-mutation.json": {
+  "baseline": 6.39,
+  "per_entry": 7.36
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsIcon.Portable.Tests.ps1 -ResultFile logs/test-results/icon-validation-mutation.json": {
+  "baseline": 3.96,
+  "per_entry": 3.56
+ },
+ "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WixVariables.Portable.Tests.ps1 -ResultFile logs/code-quality/wix-variables-mutation.json": {
+  "baseline": 3.23,
+  "per_entry": 3.15
+ },
+ "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','Harness.Fixtures.Tests.ps1','-ResultFile','logs/code-quality/harness-batch-byte-verdict.json'],check=True); d=json.load(open('logs/code-quality/harness-batch-byte-verdict.json',encoding='utf-8-sig')); assert d['Total']==46 and d['Passed']==46 and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"": {
+  "baseline": 5.82,
+  "per_entry": 6.06
+ },
+ "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','Harness.Fixtures.Tests.ps1','-ResultFile','logs/code-quality/harness-lifted-body-arguments.json'],check=True); d=json.load(open('logs/code-quality/harness-lifted-body-arguments.json',encoding='utf-8-sig')); assert d['Total']>=9 and d['Total']==d['Passed'] and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"": {
+  "baseline": 9.85,
+  "per_entry": 8.54
+ },
+ "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','Harness.Fixtures.Tests.ps1','-ResultFile','logs/code-quality/harness-lifted-cleanup.json'],check=True); d=json.load(open('logs/code-quality/harness-lifted-cleanup.json',encoding='utf-8-sig')); assert d['Total']>=9 and d['Total']==d['Passed'] and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"": {
+  "baseline": 8.46,
+  "per_entry": 9.14
+ },
+ "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','Harness.Fixtures.Tests.ps1','-ResultFile','logs/code-quality/harness-lifted-module-arguments.json'],check=True); d=json.load(open('logs/code-quality/harness-lifted-module-arguments.json',encoding='utf-8-sig')); assert d['Total']>=9 and d['Total']==d['Passed'] and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"": {
+  "baseline": 9.71,
+  "per_entry": 10.36
+ },
+ "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','SourceBuild.CpythonIsa.Tests.ps1','-ResultFile','logs/code-quality/cpython-isa.json'],check=True); d=json.load(open('logs/code-quality/cpython-isa.json',encoding='utf-8-sig')); assert d['Total']==5 and d['Passed']==5 and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"": {
+  "baseline": 1.79,
+  "per_entry": 1.97
+ },
+ "python3 -m unittest linux/scripts/tests/test-python-gpu-package.py": {
+  "baseline": 5.88,
+  "per_entry": 6.07
+ },
+ "python3 docs/scripts/verify_mutations.py --only mutations.ignored-not-copied --jobs 1": {
+  "baseline": 48.25,
+  "per_entry": 52.37
+ },
+ "python3 docs/scripts/verify_mutations.py --only windows-lane.powershell-lint-defaults-off --jobs 1": {
+  "baseline": 9.72,
+  "per_entry": 8.45
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests": {
+  "baseline": 1.7,
+  "per_entry": 1.65
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_ambiguous_archive_primary_and_symlinked_original_notice_refuse": {
+  "baseline": 0.29,
+  "per_entry": 0.31
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_archive_pin_primary_notice_and_source_identity_must_match": {
+  "baseline": 0.2,
+  "per_entry": 0.2
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_bad_empty_or_foreign_ELF_and_wrong_missing_or_duplicate_version_refuse": {
+  "baseline": 0.19,
+  "per_entry": 0.19
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_cmake_exact_repeated_paths_keep_complete_file_and_symlink_bindings": {
+  "baseline": 0.21,
+  "per_entry": 0.21
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_complete_install_stages_exact_originals_patch_and_false_review_verdict": {
+  "baseline": 1.06,
+  "per_entry": 0.18
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_copy_failures_and_changed_installed_bytes_never_publish_receipt": {
+  "baseline": 0.33,
+  "per_entry": 0.26
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_every_known_original_notice_rejects_corruption_or_symlinks": {
+  "baseline": 0.38,
+  "per_entry": 0.42
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_every_selected_payload_and_python_extension_is_required": {
+  "baseline": 0.26,
+  "per_entry": 0.26
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_fresh_absolute_prefix_only_and_alias_refusals": {
+  "baseline": 0.22,
+  "per_entry": 0.22
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_manifest_empty_repeated_relative_foreign_or_incomplete_refuses": {
+  "baseline": 0.21,
+  "per_entry": 0.22
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_missing_ambiguous_or_empty_dependency_prefixes_refuse": {
+  "baseline": 0.23,
+  "per_entry": 0.24
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_missing_or_ambiguous_private_libraries_refuse": {
+  "baseline": 0.3,
+  "per_entry": 0.47
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_notice_or_symlink_drift_during_copy_never_publishes_receipt": {
+  "baseline": 0.27,
+  "per_entry": 0.29
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_policy_duplicates_traversal_bad_hash_or_missing_named_notice_refuses": {
+  "baseline": 0.27,
+  "per_entry": 0.22
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_private_rocm_libraries_and_repeated_manifest_stage_original_notices": {
+  "baseline": 0.23,
+  "per_entry": 0.2
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_python_extension_rejects_foreign_or_additional_ABIs": {
+  "baseline": 0.43,
+  "per_entry": 0.28
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_rocmlir_policy_and_original_per_file_notices_remain_required": {
+  "baseline": 0.23,
+  "per_entry": 0.22
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_selected_header_and_config_cannot_be_empty": {
+  "baseline": 0.2,
+  "per_entry": 0.2
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_unlisted_files_and_directory_links_and_foreign_library_links_refuse": {
+  "baseline": 0.23,
+  "per_entry": 0.21
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendLifecycleTests": {
+  "baseline": 0.47,
+  "per_entry": 0.48
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendLifecycleTests.test_missing_cache_original_notice_or_changed_inputs_cannot_pass": {
+  "baseline": 0.2,
+  "per_entry": 0.18
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendLifecycleTests.test_prefix_prepare_jobs_build_install_and_stage_failures_remain_raw": {
+  "baseline": 0.2,
+  "per_entry": 0.17
+ },
+ "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendLifecycleTests.test_same_shell_preparation_jobs_install_and_notice_stage_arguments": {
+  "baseline": 0.16,
+  "per_entry": 0.16
+ },
+ "python3 linux/scripts/tests/migraphx_ck_consumer_tests.py CKConsumerTests.test_missing_or_empty_actual_api_header_fails": {
+  "baseline": 1.79,
+  "per_entry": 1.77
+ },
+ "python3 linux/scripts/tests/migraphx_ck_consumer_tests.py CKConsumerTests.test_program_writes_exact_bytes_and_reports_argument_or_output_errors": {
+  "baseline": 12.71,
+  "per_entry": 1.27
+ },
+ "python3 linux/scripts/tests/migraphx_ck_consumer_tests.py CKConsumerTests.test_real_cmake_refuses_inexact_version_or_missing_target": {
+  "baseline": 3.68,
+  "per_entry": 2.84
+ },
+ "python3 linux/scripts/tests/migraphx_ck_consumer_tests.py CKConsumerTests.test_transport_retains_selected_raw_failures": {
+  "baseline": 7.54,
+  "per_entry": 2.78
+ },
+ "python3 linux/scripts/tests/migraphx_configure_launcher_tests.py MigraphxConfigureLauncherTests.test_ck_mode_requires_its_two_archives_and_omits_msgpack": {
+  "baseline": 0.12,
+  "per_entry": 0.13
+ },
+ "python3 linux/scripts/tests/migraphx_configure_launcher_tests.py MigraphxConfigureLauncherTests.test_cleanup_cannot_pass_when_status_receipt_cannot_be_written": {
+  "baseline": 0.16,
+  "per_entry": 0.18
+ },
+ "python3 linux/scripts/tests/migraphx_configure_launcher_tests.py MigraphxConfigureLauncherTests.test_consumer_prefix_and_original_header_are_required_and_readonly": {
+  "baseline": 0.12,
+  "per_entry": 0.13
+ },
+ "python3 linux/scripts/tests/migraphx_configure_launcher_tests.py MigraphxConfigureLauncherTests.test_parser_admission_is_recorded_with_the_actual_launch": {
+  "baseline": 0.27,
+  "per_entry": 0.24
+ },
+ "python3 linux/scripts/tests/migraphx_configure_launcher_tests.py MigraphxConfigureLauncherTests.test_parser_build_requires_exact_two_archives_and_long_bounded_transport": {
+  "baseline": 0.14,
+  "per_entry": 0.16
+ },
+ "python3 linux/scripts/tests/migraphx_configure_launcher_tests.py MigraphxConfigureLauncherTests.test_python_consumer_requires_one_readonly_source_without_archives": {
+  "baseline": 0.13,
+  "per_entry": 0.14
+ },
+ "python3 linux/scripts/tests/migraphx_configure_launcher_tests.py MigraphxConfigureLauncherTests.test_rocmlir_consumer_requires_both_readonly_inputs_without_archives": {
+  "baseline": 0.22,
+  "per_entry": 0.17
+ },
+ "python3 linux/scripts/tests/migraphx_configure_launcher_tests.py MigraphxConfigureLauncherTests.test_vendor_disk_refusal_prevents_freezing_and_launch": {
+  "baseline": 0.16,
+  "per_entry": 0.18
+ },
+ "python3 linux/scripts/tests/migraphx_configure_launcher_tests.py MigraphxConfigureLauncherTests.test_vendor_disk_uses_both_exact_bytes_and_canonical_free_probe": {
+  "baseline": 0.15,
+  "per_entry": 0.14
+ },
+ "python3 linux/scripts/tests/migraphx_configure_launcher_tests.py MigraphxConfigureLauncherTests.test_worker_cleanup_retains_status_and_ownership_failures": {
+  "baseline": 0.17,
+  "per_entry": 0.16
+ },
+ "python3 linux/scripts/tests/migraphx_image_tests.py": {
+  "baseline": 0.56,
+  "per_entry": 0.56
+ },
+ "python3 linux/scripts/tests/migraphx_image_tests.py ImageEntryTests": {
+  "baseline": 0.45,
+  "per_entry": 0.41
+ },
+ "python3 linux/scripts/tests/migraphx_python_probe_tests.py MigraphxPythonProbeTests.test_changed_native_bytes_cannot_pass": {
+  "baseline": 0.15,
+  "per_entry": 0.16
+ },
+ "python3 linux/scripts/tests/migraphx_python_probe_tests.py MigraphxPythonProbeTests.test_disabled_GIL_remains_disabled_and_reenable_is_fatal": {
+  "baseline": 0.15,
+  "per_entry": 0.11
+ },
+ "python3 linux/scripts/tests/migraphx_python_probe_tests.py MigraphxPythonProbeTests.test_wrong_interpreter_ABI_or_outside_module_refuses_before_load": {
+  "baseline": 0.12,
+  "per_entry": 0.14
+ },
+ "python3 linux/scripts/tests/migraphx_python_probe_tests.py MigraphxPythonProbeTests.test_wrong_return_or_module_origin_cannot_pass": {
+  "baseline": 0.12,
+  "per_entry": 0.12
+ },
+ "python3 linux/scripts/tests/migraphx_python_selection_tests.py MigraphxPythonSelectionTests.test_failed_interpreter_invalid_JSON_or_wrong_pin_refuses": {
+  "baseline": 0.38,
+  "per_entry": 0.35
+ },
+ "python3 linux/scripts/tests/migraphx_python_selection_tests.py MigraphxPythonSelectionTests.test_inexact_pybind_or_missing_required_pins_refuse": {
+  "baseline": 0.18,
+  "per_entry": 0.22
+ },
+ "python3 linux/scripts/tests/migraphx_python_selection_tests.py MigraphxPythonSelectionTests.test_missing_paired_config_or_selected_headers_cannot_fall_back": {
+  "baseline": 0.24,
+  "per_entry": 0.27
+ },
+ "python3 linux/scripts/tests/migraphx_python_selection_tests.py MigraphxPythonSelectionTests.test_original_fails_named_ABI_assertion_corrected_uses_paired_config": {
+  "baseline": 1.91,
+  "per_entry": 0.2
+ },
+ "python3 linux/scripts/tests/migraphx_python_selection_tests.py MigraphxPythonSelectionTests.test_paired_config_raw_failures_and_wrong_prefix_or_suffix_refuse": {
+  "baseline": 1.04,
+  "per_entry": 0.8
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_api_tests.py RocmlirAPIConsumerTests.test_every_selected_installed_or_original_input_is_stable_after_api": {
+  "baseline": 2.85,
+  "per_entry": 2.05
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_api_tests.py RocmlirAPIConsumerTests.test_every_selected_original_header_is_compared_before_configuration": {
+  "baseline": 1.66,
+  "per_entry": 1.7
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_api_tests.py RocmlirAPIConsumerTests.test_incompatible_header_api_fails_actual_compilation": {
+  "baseline": 2.08,
+  "per_entry": 2.02
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_api_tests.py RocmlirAPIConsumerTests.test_inexact_package_missing_target_or_foreign_inputs_refuse": {
+  "baseline": 3.15,
+  "per_entry": 2.32
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_api_tests.py RocmlirAPIConsumerTests.test_program_output_failure_remains_fatal": {
+  "baseline": 1.69,
+  "per_entry": 1.54
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_api_tests.py RocmlirAPIConsumerTests.test_real_compiled_program_observes_registration_namespace_and_pipeline": {
+  "baseline": 2.24,
+  "per_entry": 1.75
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_api_tests.py RocmlirAPIConsumerTests.test_runtime_invalid_context_dialect_namespace_and_pipeline_refuse": {
+  "baseline": 1.61,
+  "per_entry": 1.28
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_api_tests.py RocmlirAPIConsumerTests.test_shell_worker_refuses_raw_failures_input_drift_and_invalid_api": {
+  "baseline": 2.46,
+  "per_entry": 2.34
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_build_tests.py RocmlirBuildLifecycleTests.test_each_required_installed_payload_is_mandatory": {
+  "baseline": 0.43,
+  "per_entry": 0.35
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_build_tests.py RocmlirBuildLifecycleTests.test_each_required_installed_payload_must_be_nonempty": {
+  "baseline": 0.44,
+  "per_entry": 0.21
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_build_tests.py RocmlirBuildLifecycleTests.test_exact_build_target_leaf_install_and_memory_capped_jobs": {
+  "baseline": 0.18,
+  "per_entry": 0.16
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_build_tests.py RocmlirBuildLifecycleTests.test_missing_original_notice_fails_after_install_without_success": {
+  "baseline": 0.27,
+  "per_entry": 0.22
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_build_tests.py RocmlirBuildLifecycleTests.test_prefix_raw_archive_failure_and_reused_receipt_under_conditional_calls": {
+  "baseline": 0.33,
+  "per_entry": 0.26
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_build_tests.py RocmlirBuildLifecycleTests.test_prepare_jobs_plan_build_install_and_archive_failures_remain_raw": {
+  "baseline": 0.37,
+  "per_entry": 0.53
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_build_tests.py RocmlirBuildLifecycleTests.test_required_external_api_check_preserves_failure_after_notices": {
+  "baseline": 0.34,
+  "per_entry": 0.31
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_build_tests.py RocmlirBuildPlanTests.test_each_c_or_cxx_cache_compiler_and_toolchain_drift_refuses": {
+  "baseline": 0.11,
+  "per_entry": 0.11
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_build_tests.py RocmlirBuildPlanTests.test_empty_incomplete_unknown_or_uncompiled_object_records_refuse": {
+  "baseline": 0.1,
+  "per_entry": 0.1
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_build_tests.py RocmlirBuildPlanTests.test_metadata_transport_raw_status_fresh_output_and_input_preservation": {
+  "baseline": 0.54,
+  "per_entry": 0.35
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_build_tests.py RocmlirBuildPlanTests.test_missing_duplicate_empty_or_malformed_fat_archive_loop_refuses": {
+  "baseline": 0.11,
+  "per_entry": 0.13
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_source_tests.py MigraphxRocmlirSourceTests.test_actual_cache_verdict_rejects_each_missing_or_wrong_fact": {
+  "baseline": 0.89,
+  "per_entry": 0.48
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_source_tests.py MigraphxRocmlirSourceTests.test_copy_and_hash_failures_keep_raw_status": {
+  "baseline": 0.12,
+  "per_entry": 0.14
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_source_tests.py MigraphxRocmlirSourceTests.test_empty_incomplete_missing_and_invalid_policy_refuse": {
+  "baseline": 0.34,
+  "per_entry": 0.34
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_source_tests.py MigraphxRocmlirSourceTests.test_exact_version_and_each_vendored_source_are_required": {
+  "baseline": 0.14,
+  "per_entry": 0.12
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_source_tests.py MigraphxRocmlirSourceTests.test_hash_mismatch_never_deletes_or_changes_original_source": {
+  "baseline": 0.12,
+  "per_entry": 0.13
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_source_tests.py MigraphxRocmlirSourceTests.test_independent_fat_static_pic_offline_source_compiler_plan": {
+  "baseline": 0.1,
+  "per_entry": 0.11
+ },
+ "python3 linux/scripts/tests/migraphx_rocmlir_source_tests.py MigraphxRocmlirSourceTests.test_original_notice_bytes_and_policy_are_preserved": {
+  "baseline": 0.28,
+  "per_entry": 0.37
+ },
+ "python3 linux/scripts/tests/migraphx_sdk_closure_tests.py MigraphxSDKClosureTests.test_bounded_transport_modes_and_raw_status": {
+  "baseline": 0.2,
+  "per_entry": 0.18
+ },
+ "python3 linux/scripts/tests/migraphx_sdk_closure_tests.py MigraphxSDKClosureTests.test_provider_variables_cannot_erase_an_earlier_missing_fact": {
+  "baseline": 0.1,
+  "per_entry": 0.1
+ },
+ "python3 linux/scripts/tests/migraphx_sdk_closure_tests.py MigraphxSDKClosureTests.test_supplied_development_prefix_precedes_image_sdk_paths": {
+  "baseline": 0.1,
+  "per_entry": 0.1
+ },
+ "python3 linux/scripts/tests/migraphx_source_deps_tests.py MigraphxSourceDepsTests.test_independent_static_pic_offline_and_compiler_arguments": {
+  "baseline": 0.16,
+  "per_entry": 0.19
+ },
+ "python3 linux/scripts/tests/migraphx_source_deps_tests.py MigraphxSourceDepsTests.test_rocm_tools_keep_version_original_license_and_raw_failures": {
+  "baseline": 0.3,
+  "per_entry": 0.23
+ },
+ "python3 linux/scripts/tests/migraphx_source_launcher_tests.py MigraphxSourceLauncherTests.test_busy_unit_and_changed_tool_locks_cannot_launch": {
+  "baseline": 0.08,
+  "per_entry": 0.08
+ },
+ "python3 linux/scripts/tests/migraphx_source_launcher_tests.py MigraphxSourceLauncherTests.test_changed_profile_owner_worker_or_bounds_refuse": {
+  "baseline": 0.14,
+  "per_entry": 0.12
+ },
+ "python3 linux/scripts/tests/migraphx_source_launcher_tests.py MigraphxSourceLauncherTests.test_empty_unknown_or_internally_duplicated_selection_refuses": {
+  "baseline": 0.09,
+  "per_entry": 0.1
+ },
+ "python3 linux/scripts/tests/migraphx_source_launcher_tests.py MigraphxSourceLauncherTests.test_raw_launch_status_and_current_selected_receipt_are_preserved": {
+  "baseline": 0.12,
+  "per_entry": 0.11
+ },
+ "python3 linux/scripts/tests/migraphx_source_launcher_tests.py MigraphxSourceLauncherTests.test_selection_uses_current_registry_and_deduplicates_across_inputs": {
+  "baseline": 0.13,
+  "per_entry": 0.14
+ },
+ "python3 linux/scripts/tests/migraphx_source_plan_tests.py MigraphxSourcePlanTests.test_full_feature_and_argument_contract": {
+  "baseline": 0.12,
+  "per_entry": 0.14
+ },
+ "python3 linux/scripts/tests/migraphx_source_plan_tests.py MigraphxSourcePlanTests.test_missing_duplicate_compiler_cache_and_hip_facts_refuse": {
+  "baseline": 0.32,
+  "per_entry": 0.31
+ },
+ "python3 linux/scripts/tests/migraphx_source_plan_tests.py MigraphxSourcePlanTests.test_shared_cmake_directories_preserve_option_arguments": {
+  "baseline": 0.1,
+  "per_entry": 0.11
+ },
+ "python3 linux/scripts/tests/migraphx_source_plan_tests.py MigraphxSourcePlanTests.test_shared_cmake_plan_preserves_argument_bytes_and_cache_publication": {
+  "baseline": 0.12,
+  "per_entry": 0.11
+ },
+ "python3 linux/scripts/tests/migraphx_source_plan_tests.py MigraphxSourcePlanTests.test_shared_cmake_plan_retains_raw_selection_failures": {
+  "baseline": 0.09,
+  "per_entry": 0.09
+ },
+ "python3 linux/scripts/tests/migraphx_source_plan_tests.py MigraphxSourcePlanTests.test_shared_consumer_configuration_keeps_options_scope_and_expected_entries": {
+  "baseline": 0.1,
+  "per_entry": 0.12
+ },
+ "python3 linux/scripts/tests/migraphx_source_plan_tests.py MigraphxSourcePlanTests.test_shared_consumer_configuration_keeps_raw_phase_failures": {
+  "baseline": 0.13,
+  "per_entry": 0.12
+ },
+ "python3 linux/scripts/tests/migraphx_source_plan_tests.py MigraphxSourcePlanTests.test_shared_native_consumer_build_preserves_selection_publication_and_raw_status": {
+  "baseline": 0.12,
+  "per_entry": 0.12
+ },
+ "python3 linux/scripts/tests/migraphx_source_plan_tests.py MigraphxSourcePlanTests.test_source_input_hashes_bind_both_patches_and_selected_Python_module": {
+  "baseline": 0.11,
+  "per_entry": 0.09
+ },
+ "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_bad_cache_refetches_and_failed_or_wrong_fetch_never_passes": {
+  "baseline": 0.16,
+  "per_entry": 0.12
+ },
+ "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_complete_stack_keeps_required_order_exact_arguments_and_owned_prefixes": {
+  "baseline": 0.21,
+  "per_entry": 0.2
+ },
+ "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_default_source_prefix_is_fresh_dedicated_and_explicit_value_survives": {
+  "baseline": 0.15,
+  "per_entry": 0.15
+ },
+ "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_empty_duplicate_unknown_or_missing_required_table_entry_refuses": {
+  "baseline": 0.1,
+  "per_entry": 0.13
+ },
+ "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_every_child_failure_is_raw_and_stops_all_later_children": {
+  "baseline": 0.44,
+  "per_entry": 0.32
+ },
+ "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_every_pin_and_key_is_required_before_fetch": {
+  "baseline": 0.46,
+  "per_entry": 0.25
+ },
+ "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_pin_failure_stops_all_children_and_fetch_failure_stops_dependency_builds": {
+  "baseline": 0.17,
+  "per_entry": 0.16
+ },
+ "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_prefix_refusal_happens_before_cache_work_download_or_build": {
+  "baseline": 0.11,
+  "per_entry": 0.21
+ },
+ "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_reused_work_invalid_cache_and_invalid_arity_refuse_before_children": {
+  "baseline": 0.23,
+  "per_entry": 0.18
+ },
+ "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_seven_exact_URLs_hash_names_and_order_are_planned_before_network": {
+  "baseline": 0.12,
+  "per_entry": 0.1
+ },
+ "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_symlinked_cache_cannot_supply_an_archive_even_with_matching_bytes": {
+  "baseline": 0.11,
+  "per_entry": 0.14
+ },
+ "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py": {
+  "baseline": 3.41,
+  "per_entry": 3.63
+ },
+ "python3 linux/scripts/tests/script_closure_tests.py": {
+  "baseline": 0.61,
+  "per_entry": 0.57
+ },
+ "python3 linux/scripts/tests/script_context_cache_tests.py": {
+  "baseline": 3.42,
+  "per_entry": 5.24
+ },
+ "python3 linux/scripts/tests/script_context_tests.py": {
+  "baseline": 1.31,
+  "per_entry": 1.28
+ },
+ "python3 linux/scripts/tests/test_stage_cargo_publish.py": {
+  "baseline": 0.1,
+  "per_entry": 0.1
+ },
+ "python3 linux/scripts/tests/windows_arm64_acceptance_tests.py ClosureTests.test_each_windows_closure_path_blocks_reuse": {
+  "baseline": 0.34,
+  "per_entry": 0.25
+ },
+ "python3 linux/scripts/tests/windows_arm64_acceptance_tests.py EvidenceTests.test_a_receipt_binds_source_run_attempt_status_and_immutable_image": {
+  "baseline": 0.22,
+  "per_entry": 0.14
+ },
+ "python3 linux/scripts/tests/windows_arm64_acceptance_tests.py EvidenceTests.test_the_device_log_needs_every_step_at_the_original_floor": {
+  "baseline": 0.11,
+  "per_entry": 0.1
+ },
+ "python3 linux/scripts/verify_knob_order.py": {
+  "baseline": 2.12,
+  "per_entry": 2.19
+ },
+ "python3 shared/python/tests/test_clean_host_gpu_receipt.py": {
+  "baseline": 1.95,
+  "per_entry": 1.68
+ },
+ "python3 shared/python/tests/test_compare_detector_parity.py": {
+  "baseline": 2.15,
+  "per_entry": 1.82
+ },
  "python3 shared/python/tests/test_gpu_artifact_receipt.py": {
-  "baseline": 3.29,
-  "per_entry": 3.8
+  "baseline": 4.1,
+  "per_entry": 4.17
+ },
+ "python3 shared/python/tests/test_gpu_invocation_scope.py": {
+  "baseline": 0.79,
+  "per_entry": 0.69
+ },
+ "python3 shared/python/tests/test_stage_gpu_artifact.py": {
+  "baseline": 4.36,
+  "per_entry": 4.32
+ },
+ "python3 shared/python/tests/test_verify_locked_files.py": {
+  "baseline": 1.77,
+  "per_entry": 1.58
  },
  "python3 shared/python/tests/test_verify_ort_profile.py": {
-  "baseline": 1.15,
-  "per_entry": 1.06
+  "baseline": 1.94,
+  "per_entry": 2.06
+ },
+ "python3 shared/python/tests/test_verify_ort_profile.py -k test_cpu_accelerators_need_their_own_operators": {
+  "baseline": 0.38,
+  "per_entry": 0.29
  }
 }
