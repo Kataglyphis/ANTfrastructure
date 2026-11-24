@@ -526,6 +526,8 @@ mkdir -p "${_TR_TMP}/bin" "${_TR_TMP}/sdk/emulator" "${_TR_TMP}/sdk/system-image
 printf '#!/bin/sh\ncase "$*" in *--version*) echo "Google Chrome for Testing 154.0.8037.92 " ;; *--dump-dom*) echo "<body>kg-42</body>" ;; esac\n' \
   > "${_TR_TMP}/bin/chrome"
 printf '#!/bin/sh\necho "ChromeDriver 154.0.8037.92 (x)"\n' > "${_TR_TMP}/bin/chromedriver"
+# Real cargo runs `cargo-<sub> <sub> ...` from PATH; the probe must not depend on the host's cargo.
+printf '#!/bin/sh\nexec "cargo-$1" "$@"\n' > "${_TR_TMP}/bin/cargo"
 printf '#!/bin/sh\necho "cargo-audit 0.22.2"\n' > "${_TR_TMP}/bin/cargo-audit"
 printf '#!/bin/sh\necho "cargo-deny 0.20.2"\n' > "${_TR_TMP}/bin/cargo-deny"
 printf '#!/bin/sh\necho "tarpaulin 0.37.2"\n' > "${_TR_TMP}/bin/cargo-tarpaulin"
