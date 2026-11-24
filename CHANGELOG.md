@@ -19,6 +19,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — the runtime storage guardian refuses a placement FINAL cannot read
+
+- `launch-runtime-storage-guard.py launch` now requires the runtime's host tools checkout and revision and a directory
+  beside the runtime output named `<output>-storage-guard`. Local FINAL reads an unloaded runtime's guardian only
+  there; a guardian started from another checkout ran a whole runtime and was then unusable. One case, three mutations.
+
 ## 2026-11-24 — a Python mutant never runs the previous mutant's bytecode
 
 - `verify_mutations.py` deletes a `.py` target's cached bytecode after writing each mutant and after restoring it.

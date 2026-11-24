@@ -30,19 +30,21 @@ class StorageGuardTests(unittest.TestCase):
         self.root = Path(temporary.name)
         self.home = self.root / 'home'
         (self.home / '.cache').mkdir(parents=True)
-        self.directory = self.root / 'watch'
+        self.directory = self.root / 'runtime-storage-guard'
         self.authorization = self.root / 'authorization.md'
         self.authorization.write_text('agents may run the existing ' + chr(96) + 'linux/host-config/prune-safe.sh' + chr(96) + ' autonomously')
         self.code = self.root / 'worker.py'
         self.code.write_text('# fixture worker\n')
-        self.runtime_path = self.root / 'runtime.json'
+        self.runtime_path = self.root / 'runtime' / 'invocation.json'
+        self.runtime_path.parent.mkdir()
         self.guard_unit = 'webgpu-safe-prune-runtime-amd64-999-1.service'
         self.producer_unit = 'webgpu-normal-runtime-amd64-999-1.service'
         self.driver = ['/bin/bash', '/source/linux/scripts/build-runtime-manifest.sh', '--image', 'ant-local/webgpu-fixture:runtime-1',
                        '--target-arches', 'amd64', '--artifact-image-prefix', 'ant-local/webgpu-fixture:android',
                        '--artifact-build-mode', 'cross', '--skip-manifest']
         self.runtime = {'stage':'runtime', 'launch_status':0, 'target_arch':'amd64', 'unit':self.producer_unit,
-                        'command':['systemd-run', '--user', *self.driver]}
+                        'command':['systemd-run', '--user', *self.driver], 'host_tools_revision':'a' * 40,
+                        'engine_wrapper':str(G.ROOT / 'linux/scripts/owned-nerdctl.py')}
         self.runtime_path.write_text(json.dumps(self.runtime))
         self.live = {'Id':self.producer_unit, 'LoadState':'loaded', 'ActiveState':'activating', 'SubState':'start',
                      'MainPID':'73', 'Result':'success', 'ExecMainStatus':'0', 'ExecMainExitTimestampMonotonic':'0'}
@@ -142,6 +144,17 @@ class StorageGuardTests(unittest.TestCase):
         self.assertEqual(record['runtime_invocation_sha256'], G.fingerprint(self.runtime_path))
         self.assertEqual(command[-3:], ['worker', '--directory', str(self.directory)])
         self.assertEqual(G.read(self.directory / 'launch-result.json')['exit_status'], 0)
+
+    def test_launch_refuses_a_directory_or_checkout_that_FINAL_cannot_bind(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'beside the runtime output'):
+            G.launch(self.runtime_path, self.root / 'elsewhere', self.guard_unit, self.authorization)
+        self.runtime_path.write_text(json.dumps({**self.runtime, 'host_tools_revision':'b' * 40}))
+        with self.assertRaisesRegex(ValueError, 'runtime host tools checkout'):
+            G.launch(self.runtime_path, self.directory, self.guard_unit, self.authorization)
+        self.runtime_path.write_text(json.dumps({**self.runtime, 'engine_wrapper':str(self.code)}))
+        with self.assertRaisesRegex(ValueError, 'runtime host tools checkout'):
+            G.launch(self.runtime_path, self.directory, self.guard_unit, self.authorization)
+        self.assertFalse(self.directory.exists())
 
     def test_candidate_excludes_active_shared_cachemounts_and_sub_budget_layers(self) -> None:
         row = {'id':'unused', 'size':150000000000, 'recordType':'regular', 'inUse':False, 'shared':False}

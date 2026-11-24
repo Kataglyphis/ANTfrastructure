@@ -65206,5 +65206,29 @@
   "replace": "        os.unlink(backup.name)\n",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "no bytecode of a mutant may outlive its run, where a later same-size mutant would load it"
+ },
+ {
+  "id": "disk-guard.storage-guardian-beside-runtime",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(directory == runtime_path.parent.with_name(runtime_path.parent.name + '-storage-guard'), 'Storage guardian directory must sit beside the runtime output')\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "FINAL reads the guardian only beside the runtime output, so a guardian elsewhere must refuse at launch"
+ },
+ {
+  "id": "disk-guard.storage-guardian-runtime-checkout",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "            and runtime.get('host_tools_revision') == checked_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip(),\n",
+  "replace": "            and runtime.get('host_tools_revision') is not None,\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "FINAL binds the guardian to the runtime host tools revision, so another revision must refuse at launch"
+ },
+ {
+  "id": "disk-guard.storage-guardian-runtime-root",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(Path(runtime.get('engine_wrapper', '')).resolve(strict=True).parents[2] == ROOT\n",
+  "replace": "    require(Path(runtime.get('engine_wrapper', '')).resolve(strict=True).parents[2] is not None\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "FINAL binds the guardian to the runtime host tools checkout, so another checkout must refuse at launch"
  }
 ]
