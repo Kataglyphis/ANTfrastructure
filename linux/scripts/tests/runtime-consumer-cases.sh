@@ -77,6 +77,8 @@ _CC_HOST_TOOL_MARK="${_FN_CACHE}/host-tool-executed"
 mkdir -p "${_CC_HOST_TOOL_BIN}"
 t_write_exec_stub "${_CC_HOST_TOOL_BIN}/cargo-audit"
 printf 'printf touched > "%s"\nprintf "cargo-audit fixture\\n"\n' "${_CC_HOST_TOOL_MARK}" >> "${_CC_HOST_TOOL_BIN}/cargo-audit"
+t_write_exec_stub "${_CC_HOST_TOOL_BIN}/cargo"
+printf 'printf touched > "%s"\nprintf "cargo fixture\\n"\n' "${_CC_HOST_TOOL_MARK}" >> "${_CC_HOST_TOOL_BIN}/cargo"
 
 # Probe execution stays real while fixture tool discovery remains independent of the host.
 _cc_host_probe() {
