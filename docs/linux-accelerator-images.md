@@ -330,7 +330,7 @@ Unchanged: `base`, `compiler` and `sdk` (shared), every rocm stage, which hold n
   other stage stay in the local containerd store, and only `-PushRef` pushes the final image.
   `-ExportCacheRef` (`mode=max`, every stage) refuses the public package on nvidia.
 - The tags published before the move (`cross-toolchain-nvidia-amd64`, `cross-media-nvidia-amd64`,
-  `cross-android-nvidia-amd64`) stay public until the owner deletes them (`BACKLOG.md` CON136).
+  `cross-android-nvidia-amd64`) were deleted from the public package with `ghcr-delete-tags.sh`.
 
 ## The GPU runtime gate
 

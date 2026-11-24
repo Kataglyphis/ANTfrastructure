@@ -40,6 +40,14 @@
   remaining docs phases).
 - Home Assistant's runtime `config/ip_bans.yaml` is ignored, so it is never committed.
 
+## 2026-11-24 — the old public nvidia stage tags and two legacy packages are gone
+
+- With the owner's approval, `ghcr-delete-tags.sh` deleted `cross-toolchain-nvidia-amd64`, `cross-media-nvidia-amd64`
+  and `cross-android-nvidia-amd64` from the public package; they carried TensorRT SDK files from before the stage
+  images moved to the private `-stages` package. The packages `kataglyphis_beschleuniger_windows2025` and
+  `kataglyphis_beschleuniger_test`, untouched since 2025, were deleted whole. No repository named any of them. A dry
+  run selected exactly these versions first; afterwards all five answer 404 and the public tags resolve unchanged.
+
 ## 2026-11-24 — old candidate tags go on a list for approval
 
 - 15 versions of the public package (about 223 GB) carry only `candidate-*` tags, which never expire.
