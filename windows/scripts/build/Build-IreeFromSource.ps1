@@ -294,7 +294,7 @@ function Get-IreePythonBuildPlan {
             $pythonBindings = 'ON'
             Install-CpythonPip -Python $BuildPython
             Initialize-PythonPlatformTag | Out-Null   # EXT_SUFFIX -> target tag for the .pyd name
-            Install-CpythonPipPin -Python $BuildPython -Name wheel, setuptools, numpy
+            Install-CpythonPipPin -Python $BuildPython -Name wheel, packaging, setuptools, numpy
             $ireeNumpyInc = (Invoke-ShieldedNative -Label 'numpy include probe' -CommandLine """$($BuildPython.Exe)"" -c ""import numpy; print(numpy.get_include())""" | Select-Object -Last 1)
             if (-not $ireeNumpyInc -or -not (Test-Path (Join-Path $ireeNumpyInc 'numpy\arrayobject.h'))) {
                 throw "IREE: numpy include dir not usable ('$ireeNumpyInc') -- numpy must be importable by the build interpreter $($BuildPython.Exe) before configure"
@@ -313,7 +313,7 @@ function Get-IreePythonBuildPlan {
         $pythonBindings = 'ON'
         Install-CpythonPip -Python $BuildPython
         # numpy: required by the runtime bindings at import; nanobind is vendored.
-        Install-CpythonPipPin -Python $BuildPython -Name wheel, setuptools, numpy
+        Install-CpythonPipPin -Python $BuildPython -Name wheel, packaging, setuptools, numpy
     }
     return [pscustomobject]@{ Bindings = $pythonBindings; TargetPython = $ireeTargetPy; NumpyInclude = $ireeNumpyInc }
 }

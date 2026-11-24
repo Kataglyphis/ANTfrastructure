@@ -50,6 +50,14 @@
   initializes that one submodule shallowly, without nested ones. `TorchApp.Checkout.Tests.ps1`, one mutation
   ([failure mode](docs/failure-modes.md#torch-stage-verify_ort_profilepy-is-missing--check-out-the-hub-submodule-before-building)).
 
+## 2026-11-24 — every Windows wheel install pins packaging
+
+- The arm64 media merge refused the same mixed `packaging` after the TVM fix below: `wheel` also pulls
+  `packaging`, and the TVM cross path, IREE, FFmpeg and GenAI installed `wheel` without it.
+  Each of those `Install-CpythonPipPin` calls now names `packaging`, and `Build.PipPins.Tests.ps1`
+  treats `wheel` like the other build tools; one mutation
+  ([failure mode](docs/failure-modes.md#windows-media-merge-a-merge-would-leave-a-mixed-install-pin-one-version)).
+
 ## 2026-11-24 — the TVM branch pins packaging with its build tools
 
 - The Windows media merge refused `packaging` 26.3 from media-core beside 26.4 from TVM: TVM's branch

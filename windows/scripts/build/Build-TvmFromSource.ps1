@@ -435,7 +435,7 @@ function Get-TvmPythonBuildPlan {
         Install-CpythonPip -Python $py
         Initialize-PythonPlatformTag | Out-Null
         # cython transpiles core.pyx and wheel packs it; the one pinned Cython, as the fan-in refuses two versions.
-        Install-CpythonPipPin -Python $py -Name cython, wheel
+        Install-CpythonPipPin -Python $py -Name cython, wheel, packaging
         # FindPython reads Include\pyconfig.h; the in-tree CPython keeps it at PC\.
         Copy-CpythonPyConfigHeader
         Write-Host "TVM cross: runtime python wheels ON (#133) -- host interpreter $($py.Exe), TARGET import lib $($tvmTargetPy.Lib); the compiler and its codegen stay ABSENT"

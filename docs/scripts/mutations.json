@@ -64758,5 +64758,13 @@
   "target": "windows/scripts/build/Build-TorchApp.ps1",
   "replace": "status",
   "find": "submodule update --init --depth 1 third_party/ANTfrastructure"
+ },
+ {
+  "target": "windows/scripts/build/Build-TvmFromSource.ps1",
+  "find": "-Name cython, wheel, packaging",
+  "why": "wheel pulls packaging; unpinned on the arm64 cross path, the TVM branch takes the newest release and the media merge refuses the mixed install",
+  "replace": "-Name cython, wheel",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.PipPins.Tests.ps1 -ResultFile logs/code-quality/tvm-cross-wheel-mutation.json",
+  "id": "windows-lane.tvm-cross-wheel-pin-packaging"
  }
 ]
