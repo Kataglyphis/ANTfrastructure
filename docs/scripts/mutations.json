@@ -65150,5 +65150,13 @@
   "why": "a zero guard lets an empty tag listing turn the stage prune into a registry wipe",
   "id": "lib.ghcr-cleanup-stages-guard",
   "target": ".github/workflows/ghcr-cleanup.yml"
+ },
+ {
+  "id": "lib.ghcr-candidate-tags-only-candidates",
+  "target": "linux/host-config/ghcr-candidate-tags.py",
+  "why": "a candidate that was promoted carries a public tag too, and deleting its candidate tag must never be proposed as freeing it",
+  "find": "if tags and all(tag.startswith(PREFIX) for tag in tags) and created < cutoff:",
+  "test": "python3 linux/scripts/tests/ghcr_candidate_tags_tests.py SelectTests.test_only_old_versions_carrying_nothing_but_candidate_tags_are_listed",
+  "replace": "if tags and any(tag.startswith(PREFIX) for tag in tags) and created < cutoff:"
  }
 ]

@@ -40,6 +40,14 @@
   remaining docs phases).
 - Home Assistant's runtime `config/ip_bans.yaml` is ignored, so it is never committed.
 
+## 2026-11-24 — old candidate tags go on a list for approval
+
+- 15 versions of the public package (about 223 GB) carry only `candidate-*` tags, which never expire.
+  `linux/host-config/ghcr-candidate-tags.py` lists those older than 30 days with the tracked files that name
+  them, and prints the `ghcr-delete-tags.sh` command; it deletes nothing. None is old enough today; the first
+  qualify from 2026-11-26. `ghcr_candidate_tags_tests.py` and one mutation
+  ([B8](docs/linux-host-setup.md#b8-ghcr-registry-hygiene)).
+
 ## 2026-11-24 — the weekly GHCR prune covers the private stage package
 
 - `ghcr-cleanup.yml` also prunes `kataglyphis_beschleuniger-stages`, which held about 167 GB in 30 untagged versions

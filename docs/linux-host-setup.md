@@ -716,6 +716,14 @@ during the `:latest-cross` rename.
 tags, which an API change could produce. Preview a package by hand with `GHCR_PKG` set and no
 `GHCR_PRUNE_CONFIRM`.
 
+Every pushing manifest run adds a `candidate-*` tag, and a tag keeps its image forever.
+`python3 linux/host-config/ghcr-candidate-tags.py` lists the versions that carry only candidate tags
+and are older than 30 days (`--min-age-days`). It deletes nothing. For each one it names the tracked
+files that mention the tag or digest, since a receipt that names it can no longer be replayed. The
+owner approves the list; then `ghcr-delete-tags.sh` with the printed tags removes exactly those, and
+the weekly prune drops the freed children after 14 days. A promoted candidate also carries its public
+tag, so it never appears on the list.
+
 Runs: 604 versions deleted on 2026-08-24; then on 2026-08-27, 23 untagged plus
 47 tags with 0 failures — **81 → 34 tags, 204 → 134 versions** — with
 `:latest-cross` verified 3/3 children HTTP 200 afterwards and a running build
