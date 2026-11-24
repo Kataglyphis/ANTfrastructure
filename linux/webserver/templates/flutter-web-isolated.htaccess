@@ -1,0 +1,43 @@
+# A cross-origin-isolated web app's .htaccess, every directive in Apache's FileInfo class; see docs/docs-sites.md#an-isolated-apps-htaccess
+# It stands alone at a docroot and below a docs site's root alike: there it repeats the parent's rules it needs.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+</IfModule>
+
+# Versioned paths only: an ORT build under ort/<version>-<build hash>/, a model under models/<sha256>/.
+<IfModule mod_setenvif.c>
+    SetEnvIf Request_URI "/ort/[^/]+-[0-9a-f]{8,64}/" VERSIONED_PATH
+    SetEnvIf Request_URI "/models/[0-9a-f]{64}/" VERSIONED_PATH
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header always set Strict-Transport-Security "max-age=31536000"
+    Header always set X-Content-Type-Options "nosniff"
+    # crossOriginIsolated needs both: wasm threads and SharedArrayBuffer. Safari has no credentialless.
+    Header always set Cross-Origin-Opener-Policy "same-origin"
+    Header always set Cross-Origin-Embedder-Policy "require-corp"
+    Header always set Permissions-Policy "camera=(self)"
+    # main.dart.wasm and flutter_bootstrap.js keep their names across builds: revalidate every time.
+    Header set Cache-Control "no-cache"
+    Header set Cache-Control "public, max-age=31536000, immutable" env=VERSIONED_PATH
+</IfModule>
+
+<IfModule mod_alias.c>
+    RedirectMatch 404 (^|/)\.ftp-deploy-sync-state\.json$
+</IfModule>
+
+# instantiateStreaming refuses any other wasm type, and a module script any non-JavaScript type.
+<IfModule mod_mime.c>
+    AddType application/wasm .wasm
+    AddType text/javascript .mjs
+</IfModule>
+
+# The host gzips text itself but serves wasm whole.
+<IfModule mod_filter.c>
+    <IfModule mod_deflate.c>
+        AddOutputFilterByType DEFLATE application/wasm
+    </IfModule>
+</IfModule>

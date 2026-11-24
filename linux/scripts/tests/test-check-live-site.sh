@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-live-site.js against fixture sites in headless Chrome: CSP blocks, third-party hosts, 404s, console errors, the file sweep and version.json. See docs/ftp-deploys.md#the-live-site-check
+# check-live-site.js against fixture sites in headless Chrome: CSP blocks, third-party hosts, 404s, console errors, the file sweep, version.json and isolation. See docs/ftp-deploys.md#the-live-site-check
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -9,8 +9,9 @@ SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 CHECK="${SCRIPTS}/check-live-site.js"
 w="$(mktemp -d)"
 srv=""
+iso=""
 _cleanup_live_site() {
-  t_stop_children "${srv}"
+  t_stop_children "${srv}" "${iso}"
   rm -rf "${w}"
 }
 trap _cleanup_live_site EXIT
@@ -35,9 +36,16 @@ _page missing '' "document.body.appendChild(Object.assign(document.createElement
 mkdir -p "${w}/site/blank"
 printf '<!DOCTYPE html><html><head><link rel="icon" href="data:,"></head><body>no app</body></html>\n' > "${w}/site/blank/index.html"
 
-node -e "require('${SCRIPTS}/check-docs-sidebars.js').serve('${w}/site').then((s) => require('fs').writeFileSync('${w}/port', String(s.address().port)))" &
+# _serve <port file> [js]: serves ${w}/site in the background, the js run on each request first (r is the response); waits for the port.
+_serve() {
+  node -e "require('${SCRIPTS}/check-docs-sidebars.js').serve('${w}/site').then((s) => {
+    s.prependListener('request', (q, r) => { ${2:-} });
+    require('fs').writeFileSync('$1', String(s.address().port));
+  })" &
+  for _ in $(seq 1 100); do [ -s "$1" ] && break; sleep 0.1; done
+}
+_serve "${w}/port"
 srv=$!
-for _ in $(seq 1 100); do [ -s "${w}/port" ] && break; sleep 0.1; done
 PORT="$(cat "${w}/port" 2>/dev/null)"
 t_skip_unless "the fixture server on a free port" test -n "${PORT}"
 BASE="http://127.0.0.1:${PORT}"
@@ -100,6 +108,30 @@ t_case "a route that fails on the retry too fails, with the retry's failure"
 t_assert_rc 1 _check "${BASE}/" always/
 t_assert_contains "$(t_out _check "${BASE}/" always/)" "FAIL always/ 800x600"
 t_assert_contains "$(t_out _check "${BASE}/" always/)" "flaky: always/ 800x600: exception: Error: always"
+
+t_case "--isolated fails a page served without COOP and COEP, naming both headers"
+t_assert_rc 1 _check "${BASE}/clean/" --isolated
+out="$(t_out _check "${BASE}/clean/" --isolated)"
+t_assert_contains "${out}" "not cross-origin isolated: crossOriginIsolated is false"
+t_assert_contains "${out}" "cross-origin-opener-policy: missing, want same-origin"
+t_assert_contains "${out}" "cross-origin-embedder-policy: missing, want require-corp"
+
+# The same tree with the isolated-app template's headers; credentialless/ isolates too, but is not what the template sets.
+_page credentialless '' ''
+_serve "${w}/iso-port" "r.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    r.setHeader('Cross-Origin-Embedder-Policy', q.url.startsWith('/credentialless/') ? 'credentialless' : 'require-corp');"
+iso=$!
+ISO="http://127.0.0.1:$(cat "${w}/iso-port" 2>/dev/null)"
+
+t_case "--isolated passes a page with COOP same-origin and COEP require-corp"
+t_assert_rc 0 _check "${ISO}/clean/" --isolated
+t_assert_contains "$(t_out _check "${ISO}/clean/" --isolated)" "ok   isolation headers of ${ISO}/clean/"
+
+t_case "--isolated fails COEP credentialless, which isolates Chrome but not Safari"
+out="$(t_out _check "${ISO}/credentialless/" --isolated)"
+t_assert_rc 1 _check "${ISO}/credentialless/" --isolated
+t_assert_contains "${out}" "cross-origin-embedder-policy: credentialless, want require-corp"
+t_assert_eq 0 "$(grep -c "not cross-origin isolated" <<< "${out}")" "credentialless isolates in Chrome; only the header check tells it apart"
 
 t_case "a site that does not answer names each file's network error, not a status"
 # Chrome rejects port 9 before the request can report ECONNREFUSED.

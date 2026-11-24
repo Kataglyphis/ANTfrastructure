@@ -179,6 +179,9 @@ class Site:
             rel_page = os.path.relpath(path, self.root).replace(os.sep, "/")
             url = SITE + rel_page
             base = urljoin(url, page.base) if page.base else url
+            # A root-absolute base names the site's root, as a link does: the site is served at its domain's root.
+            if page.base and page.base.startswith("/") and not page.base.startswith("//"):
+                base = SITE + page.base[1:]
             for link in page.links:
                 self.check_link(rel_page, base, link)
         if not os.path.isfile(os.path.join(self.root, "index.html")):

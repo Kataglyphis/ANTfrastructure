@@ -121,16 +121,25 @@ docs_site_build() {
   docs_site_check "$1"
 }
 
-# stage <site> [--allow FILE] [--no-htaccess]: the hub's .htaccess and 404 page in, then the link gate over the result.
+# _docs_site_isolated_app <site> <dir>: the isolated-app .htaccess into a web app's directory below the site's root.
+_docs_site_isolated_app() {
+  _docs_site_relative "isolated app" "$2"
+  [ -f "$1/$2/index.html" ] || die "no isolated app" "'$2' has no index.html in the site: the app's build wrote nothing there."
+  [ ! -e "$1/$2/.htaccess" ] || die "the app ships a .htaccess" "the hub owns an isolated app's .htaccess; '$2' brought its own."
+  cp "${DOCS_SITE_HUB}/linux/webserver/templates/flutter-web-isolated.htaccess" "$1/$2/.htaccess"
+}
+
+# stage <site> [--allow FILE] [--no-htaccess] [--isolated-app DIR]...: the hub's .htaccess files and 404 page in, then the link gate over the result.
 docs_site_stage() {
-  local site="${1:?usage: docs-site.sh stage <site dir> [--allow FILE] [--no-htaccess]}" htaccess=1 templates
-  local -a gate=()
+  local site="${1:?usage: docs-site.sh stage <site dir> [--allow FILE] [--no-htaccess] [--isolated-app DIR]...}" htaccess=1 templates app
+  local -a gate=() apps=()
   shift
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --allow) gate+=(--allow "${2:?--allow needs a file}"); shift 2 ;;
       --no-htaccess) htaccess=0; shift ;;
-      *) die "bad argument" "stage takes --allow FILE and --no-htaccess, got '$1'." ;;
+      --isolated-app) apps+=("${2:?--isolated-app needs a directory}"); shift 2 ;;
+      *) die "bad argument" "stage takes --allow FILE, --no-htaccess and --isolated-app DIR, got '$1'." ;;
     esac
   done
   [ -d "${site}" ] || die "no site" "'${site}' is not a directory: the build wrote its site somewhere else, or nothing."
@@ -140,6 +149,7 @@ docs_site_stage() {
     cp "${templates}/docs-site.htaccess" "${site}/.htaccess"
     [ -e "${site}/404.html" ] || cp "${templates}/docs-site-404.html" "${site}/404.html"
   fi
+  for app in ${apps[@]+"${apps[@]}"}; do _docs_site_isolated_app "${site}" "${app%/}"; done
   "${PYTHON:-python3}" "${DOCS_SITE_HUB}/linux/scripts/verify_site_links.py" "${site}" ${gate[@]+"${gate[@]}"}
 }
 
@@ -166,5 +176,5 @@ case "${1:-}" in
   build) shift; docs_site_build "$@" ;;
   check) shift; docs_site_check "$@" ;;
   stage) shift; docs_site_stage "$@" ;;
-  *) die "usage" "docs-site.sh plan | build [<site dir>] | check <site dir> [--if-chrome] | stage <site dir> [--allow FILE] [--no-htaccess]" ;;
+  *) die "usage" "docs-site.sh plan | build [<site dir>] | check <site dir> [--if-chrome] | stage <site dir> [--allow FILE] [--no-htaccess] [--isolated-app DIR]..." ;;
 esac

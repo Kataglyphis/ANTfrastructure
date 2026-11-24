@@ -266,7 +266,7 @@ web app.
 
 ## The live-site check
 
-`linux/scripts/check-live-site.js <base URL> [route ...] --files <build dir>` runs after a web
+`linux/scripts/check-live-site.js <base URL> [route ...] --files <build dir> [--isolated]` runs after a web
 app's deploy, in `:latest` (node and Chrome, no Playwright), and fails when:
 
 - a route, loaded fresh at 1280x800 and 390x844 and scrolled, fails twice in a row (a route that
@@ -275,6 +275,9 @@ app's deploy, in `:latest` (node and Chrome, no Playwright), and fails when:
   than the site's (`--allow-host` admits one);
 - a file of the build dir, dotfiles aside, is not served with 200;
 - `version.json` is not the build's (or `--version`'s).
+- with `--isolated`, a route's `crossOriginIsolated` is false, or the base URL's response does not carry
+  `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. An app behind
+  [the isolated-app template](docs-sites.md#an-isolated-apps-htaccess) passes it.
 
 **It cannot roll back.** The FTP upload has already replaced the live site, so a red check means
 the site is broken now: fix forward, or redeploy the previous commit. Hash routes are passed as
