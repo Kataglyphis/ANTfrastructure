@@ -1184,11 +1184,9 @@ commit `4d0ac168` rather than back to empty, for the branch reason above.
 
 `import tvm` needs both wheels: its first statement imports `tvm_ffi`, and the app
 venv installs the tvm family `--no-deps`, so a lone `apache-tvm` wheel ships an
-unimportable package. `USE_LLVM=ON` works cross only because `tvm.sh` rewrites
-FindLLVM's fallback to link the imported `libLLVM` dylib from `/opt/llvm-cross/<triplet>`
-instead of executing a foreign llvm-config, and that soname resolves at runtime
-through `/etc/ld.so.conf.d/000-llvm-target.conf`; dropping either half breaks the
-configure or the import. `apache-tvm-ffi` builds its Cython core `WITH_SOABI`, so
+unimportable package. `USE_LLVM=ON` works cross without a foreign llvm-config:
+`tvm.sh` reads the target's CMake package in `/opt/llvm-cross/<triplet>`. Its old
+fallback to the `libLLVM` dylib now only reaches the private-LLVM gate below. `apache-tvm-ffi` builds its Cython core `WITH_SOABI`, so
 it has the IREE/LiteRT host-SOABI problem, and `tvm-python.sh` withdraws staged
 wheels that do not carry the target suffix.
 
@@ -1198,6 +1196,29 @@ mount, but the native `libtvm*.so` that `Dockerfile.media` copies to
 copies an explicit allowlist with no libtvm entry. If the wheel turns out not to
 bundle its own runtime, fix that allowlist; a COPY glob in `Dockerfile.torch`
 would fail every build while the file is absent.
+
+### TVM links a private static LLVM
+
+`libtvm_compiler.so` links our LLVM's static archives. Upstream TVM hides them with
+`HIDE_PRIVATE_SYMBOLS` and `-Wl,--exclude-libs,ALL`.
+
+With the shared `libLLVM.so.23.1`, Torch-ROCm's own LLVM took over 117 of its data
+references. Torch loads that copy (`_rocm_sdk_core`) process-wide. `import tvm` then
+crashed in about two of three ROCm app smokes
+([failure mode](failure-modes.md#segfault-in-llvmaarch64resolvecpualias-during-import-tvm)).
+
+An installed LLVM package maps the `all` component to nothing. TVM therefore fell
+back to the dylib. `tvm.sh` now does four things:
+
+- FindLLVM takes the static targets from `LLVM_AVAILABLE_LIBS`, never `LLVM`, `LTO`
+  or `Remarks`. The llvm-config path gets `--link-static`.
+- A version script keeps every `llvm::` symbol of `libtvm_compiler` local. TVM's own
+  objects instantiate inline LLVM members, which `--exclude-libs` does not reach.
+- The build fails when the library needs a `libLLVM` or exports an `llvm::` symbol.
+- The runtime codegen smoke fails a process that mapped any `libLLVM`.
+
+The gates read ELF metadata and one process map. They do not prove that no other
+library shares symbols with TVM. `libtvm_compiler.so` grows by its LLVM archives.
 
 ### Operational env knobs (not versions.env)
 

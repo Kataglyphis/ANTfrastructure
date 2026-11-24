@@ -89,7 +89,8 @@ t_assert_contains "${_out}" "guarantee removed" "the message must say what it me
 t_case "a same-size mutant of a Python module never runs the previous mutant's cached bytecode"
 printf 'A = 1\nB = 1\n' > "${_work}/subject.py"
 printf '[{"id":"a","target":"subject.py","find":"A = 1","replace":"A = 2","test":"%s -c \\"import subject; assert subject.A == 1\\"","why":"a"},{"id":"b","target":"subject.py","find":"B = 1","replace":"B = 2","test":"%s -c \\"import subject; assert subject.B == 1\\"","why":"b"}]\n' "${PY}" "${PY}" > "${_work}/m.json"
-_out="$(t_out _gate --jobs 1)"
+# Preflight exports PYTHONDONTWRITEBYTECODE; without bytecode this case would prove nothing.
+_out="$(unset PYTHONDONTWRITEBYTECODE PYTHONPYCACHEPREFIX; t_out _gate --jobs 1)"
 t_assert_eq "2" "$(printf '%s\n' "${_out}" | grep -c -e ' bites ' || true)" "both same-size mutants must bite: ${_out}"
 t_assert_eq "" "$(find "${_work}" -path '*__pycache__*' -name 'subject.*.pyc' -print)" "no bytecode of the mutated module may outlive its run"
 rm -rf "${_work}/subject.py" "${_work}/__pycache__"

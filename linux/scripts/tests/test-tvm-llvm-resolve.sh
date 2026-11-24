@@ -48,9 +48,9 @@ t_case "native: the shipped package, not llvm-config's bootstrap"
 STUB_CROSS=0; NATIVE_ROOT="${root}/shipped"; _resolve
 t_assert_eq "$(_canon "${root}/shipped/lib/cmake/llvm")|ON" "${llvm_dir}|${llvm_cmake_value}"
 
-t_case "native without a package: llvm-config, as before"
+t_case "native without a package: llvm-config, linking LLVM statically"
 STUB_CROSS=0; NATIVE_ROOT="${root}/empty"; _resolve
-t_assert_eq "|/usr/bin/llvm-config-23" "${llvm_dir}|${llvm_cmake_value}"
+t_assert_eq "|/usr/bin/llvm-config-23 --link-static" "${llvm_dir}|${llvm_cmake_value}"
 
 t_case "native with TVM_LLVM_DIR: that package, and USE_LLVM on (it stayed OFF before)"
 STUB_CROSS=0; NATIVE_ROOT="${root}/empty"; _resolve "${root}/lib64-only/lib64/cmake/llvm"

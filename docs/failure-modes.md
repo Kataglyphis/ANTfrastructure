@@ -707,6 +707,20 @@ See [the exact compiler profile](local-proof-workflows.md#gnu_unique-compiler-pl
 
 ## Linux and cross-lane
 
+### Segfault in `llvm::AArch64::resolveCPUAlias` during `import tvm`
+
+**Symptom.** The ROCm runtime smoke `app wheel smoke FAILED`; `python -m orchestrant.smoke`
+exits 139 after `rocSHMEM Could not open libnuma`, with `tvm::TargetTag::AddTag` →
+`llvm::AArch64::resolveCPUAlias` → `__strlen_evex` on the stack. It fails in about two of three
+runs, so one green runtime proves nothing.
+
+**Cause.** Torch-ROCm loads `_rocm_sdk_core/lib/llvm/lib/libLLVM.so.23.0git` process-wide.
+`LD_DEBUG=bindings` showed 117 references inside our `libLLVM.so.23.1`, which TVM linked,
+bound to that copy; TVM then read ROCm's CPU tables.
+
+**Fix.** TVM links a private static LLVM
+([`linux-cross-builds.md`](linux-cross-builds.md#tvm-links-a-private-static-llvm)).
+
 ### Container preflight reports groups surviving KILL with only zombies
 
 **Symptom.** `ordered job process -<pgid> did not disappear after KILL`, while the group's

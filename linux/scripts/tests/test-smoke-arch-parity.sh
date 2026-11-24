@@ -490,21 +490,54 @@ read -r _kd _kd_bad <<< "${_kd_counts}"
 t_assert_ok test "${_kd}" -le 2
 t_assert_eq "0" "${_kd_bad}" "a KNOWN_DRIFT arm without a review date"
 
+# [NAME=VALUE...]: the codegen smoke in a clean environment, then the failure count it recorded.
+_tvm_codegen() {
+  env -i PATH="${PATH}" HOME="${HOME}" VENV="${_STV}/venv" "$@" \
+    bash -c "source '${_STV}/stv.sh' >/dev/null 2>&1; assert_tvm_codegen 2>&1; echo FAILURES=\${FAILURES}"
+}
+
 t_case "TVM import absence is a skip, while unexpected import bugs fail"
 cat > "${_STV}/stubs/tvm.py" <<'PY'
 raise ImportError("TVM is absent")
 PY
-_tvm_out="$(env -i PATH="${PATH}" HOME="${HOME}" VENV="${_STV}/venv" \
-  bash -c "source '${_STV}/stv.sh' >/dev/null 2>&1; assert_tvm_codegen 2>&1; echo FAILURES=\${FAILURES}")"
+_tvm_out="$(_tvm_codegen)"
 t_assert_contains "${_tvm_out}" "SKIP tvm codegen: tvm not importable"
 t_assert_contains "${_tvm_out}" "FAILURES=0"
 cat > "${_STV}/stubs/tvm.py" <<'PY'
 raise AssertionError("unexpected TVM initialization bug")
 PY
-_tvm_out="$(env -i PATH="${PATH}" HOME="${HOME}" VENV="${_STV}/venv" \
-  bash -c "source '${_STV}/stv.sh' >/dev/null 2>&1; assert_tvm_codegen 2>&1; echo FAILURES=\${FAILURES}")"
+_tvm_out="$(_tvm_codegen)"
 t_assert_contains "${_tvm_out}" "AssertionError: unexpected TVM initialization bug"
 t_assert_contains "${_tvm_out}" "FAILURES=1"
+
+t_case "a tvm process that maps a shared LLVM fails the codegen smoke; a private one passes"
+rm -f "${_STV}/stubs/tvm.py"
+mkdir -p "${_STV}/stubs/tvm/lib"
+: > "${_STV}/stubs/tvm/lib/libtvm_compiler.so"
+cp "$(python3 -c 'import _ctypes; print(_ctypes.__file__)')" "${_STV}/libLLVM.so.99"
+cat > "${_STV}/stubs/tvm/__init__.py" <<'PY'
+import ctypes
+import os
+import types
+
+base = types.SimpleNamespace(_RUNTIME_ONLY=False)
+support = types.SimpleNamespace(libinfo=lambda: {"USE_LLVM": "ON"})
+if os.environ.get("STUB_TVM_SHARED_LLVM"):
+    ctypes.CDLL(os.environ["STUB_TVM_SHARED_LLVM"])
+
+
+def compile(func, target):
+    return func
+PY
+printf '%s\n' 'def placeholder(shape, name): return name' 'def compute(shape, fn, name): return name' \
+  'def create_prim_func(args): return args' > "${_STV}/stubs/tvm/te.py"
+_tvm_out="$(_tvm_codegen)"
+t_assert_contains "${_tvm_out}" "tvm codegen: one PrimFunc compiled for llvm"
+t_assert_contains "${_tvm_out}" "FAILURES=0"
+_tvm_out="$(_tvm_codegen STUB_TVM_SHARED_LLVM="${_STV}/libLLVM.so.99")"
+t_assert_contains "${_tvm_out}" "TVM-CODEGEN FAIL: tvm loaded a shared LLVM, which another LLVM can interpose: ['${_STV}/libLLVM.so.99']"
+t_assert_contains "${_tvm_out}" "FAILURES=1"
+rm -rf "${_STV}/stubs/tvm" "${_STV}/libLLVM.so.99"
 
 # D3: smoke-common's gate helpers must (A) fail when they should and (B) stay the only copy
 

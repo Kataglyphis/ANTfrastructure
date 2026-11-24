@@ -33,6 +33,15 @@
 - `check-live-site.js --isolated` fails a route whose `crossOriginIsolated` is false and a base URL without
   COOP `same-origin` and COEP `require-corp`.
 
+## 2026-11-24 — TVM links a private static LLVM
+
+- `import tvm` crashed in about two of three ROCm app smokes: Torch-ROCm's own LLVM, loaded process-wide,
+  interposed 117 references inside the shared `libLLVM.so.23.1` that TVM linked. `tvm.sh` now links the LLVM
+  archives, which TVM hides, fails a `libtvm_compiler.so` that needs a `libLLVM` or exports `llvm::` symbols, and
+  the runtime codegen smoke fails a process that mapped any `libLLVM`. An installed LLVM package maps `all` to
+  nothing, so the patch takes the static targets from `LLVM_AVAILABLE_LIBS`; a version script keeps the inline
+  `llvm::` members TVM's own objects instantiate local. Two suites, eleven mutations.
+
 ## 2026-11-24 — README words and width; the owner's NSIS answers
 
 - `readme-length` holds every root README to 700 words and 160 characters a line besides its 100 lines (owner
