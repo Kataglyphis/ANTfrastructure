@@ -2553,8 +2553,8 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
         linux/host-config/ghcr-delete-tags.sh cross-toolchain-nvidia-amd64 cross-media-nvidia-amd64
         cross-android-nvidia-amd64` (dry run), then the same with `GHCR_DELETE_TAGS_CONFIRM=1`. Their untagged
         predecessors go with the weekly `ghcr-cleanup.yml` prune once 14 days old.
-      - Open: `ghcr-cleanup.yml` prunes only the public package; on `-stages` its `MIN_TAGS=10` guard would
-        refuse three tags, so untagged stage versions stay there (private, storage free today).
+      - Done (owner decision 2026-11-24): `ghcr-cleanup.yml` also prunes `-stages`, with `MIN_TAGS=3`. A local dry run
+        planned 30 of 36 versions for deletion and kept the 6 tagged ones.
 - [b] **CON42 — DeepStream in `:latest-nvidia`: what is left after the publish** [M, ★]. **Done:** DeepStream 9.1
       ships in every amd64 nvidia build (owner 2026-10-07, full TensorRT 10), published 2026-10-11 (`:latest-nvidia`
       index `810f36b3…`, amd64 `23e3cc9e…`). **The GPU run on the published image passed on 2026-10-12** (RTX 2080,

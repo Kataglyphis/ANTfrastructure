@@ -710,6 +710,12 @@ names: every tag's live digest must be readable and in the keep-set. Two tags
 on one image are fine. The tag-count gate it replaced refused one on 2026-09-27,
 during the `:latest-cross` rename.
 
+`ghcr-cleanup.yml` prunes two packages each Sunday: the public one and the private
+`kataglyphis_beschleuniger-stages`. The stage package holds one tag per nvidia stage, so its
+`MIN_TAGS` guard is 3 instead of 10. That guard only refuses an inventory that lists almost no
+tags, which an API change could produce. Preview a package by hand with `GHCR_PKG` set and no
+`GHCR_PRUNE_CONFIRM`.
+
 Runs: 604 versions deleted on 2026-08-24; then on 2026-08-27, 23 untagged plus
 47 tags with 0 failures — **81 → 34 tags, 204 → 134 versions** — with
 `:latest-cross` verified 3/3 children HTTP 200 afterwards and a running build

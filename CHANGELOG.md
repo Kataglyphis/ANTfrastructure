@@ -40,6 +40,13 @@
   remaining docs phases).
 - Home Assistant's runtime `config/ip_bans.yaml` is ignored, so it is never committed.
 
+## 2026-11-24 — the weekly GHCR prune covers the private stage package
+
+- `ghcr-cleanup.yml` also prunes `kataglyphis_beschleuniger-stages`, which held about 167 GB in 30 untagged versions
+  no tag references. Its `MIN_TAGS` guard is 3 for that package only, since it carries one tag per nvidia stage.
+  A local dry run kept the 6 tagged versions and planned the other 30. `ghcr_cleanup_workflow_tests.py` and two
+  mutations hold both steps ([B8](docs/linux-host-setup.md#b8-ghcr-registry-hygiene)).
+
 ## 2026-11-24 — CI artifacts keep days, not the 90-day maximum
 
 - An audit of the 13 public repositories found 1.64 TB of Actions artifacts. Every package upload of the

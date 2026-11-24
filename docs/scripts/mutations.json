@@ -65134,5 +65134,21 @@
   "target": ".github/workflows/python-ci-linux.yml",
   "id": "python-ci.retention-input-default-by-ref",
   "why": "a nonzero default would bypass the by-ref policy for every consumer that calls the lane at @develop"
+ },
+ {
+  "test": "python3 linux/scripts/tests/ghcr_cleanup_workflow_tests.py PruneTests.test_both_packages_are_pruned_with_confirm_age_and_tag_guards",
+  "replace": "",
+  "find": "          GHCR_PKG: kataglyphis_beschleuniger-stages\n",
+  "why": "without its package name the second step prunes the public package again and the private stages keep every untagged version",
+  "id": "lib.ghcr-cleanup-stages-package",
+  "target": ".github/workflows/ghcr-cleanup.yml"
+ },
+ {
+  "test": "python3 linux/scripts/tests/ghcr_cleanup_workflow_tests.py PruneTests.test_only_the_stage_package_lowers_the_empty_inventory_guard",
+  "replace": "          MIN_TAGS: \"0\"\n",
+  "find": "          MIN_TAGS: \"3\"\n",
+  "why": "a zero guard lets an empty tag listing turn the stage prune into a registry wipe",
+  "id": "lib.ghcr-cleanup-stages-guard",
+  "target": ".github/workflows/ghcr-cleanup.yml"
  }
 ]

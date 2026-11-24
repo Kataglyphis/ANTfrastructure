@@ -156,10 +156,10 @@ docs/linux-cross-builds.md | avg-sentence | 19.7
 docs/linux-cross-builds.md | long-share | 13.8
 docs/linux-cross-builds.md | ids-per-k | 4.5
 docs/linux-cross-builds.md | bold-per-k | 10.1
-docs/linux-host-setup.md | avg-sentence | 18.3
-docs/linux-host-setup.md | long-share | 10.9
+docs/linux-host-setup.md | avg-sentence | 18.2
+docs/linux-host-setup.md | long-share | 10.8
 docs/linux-host-setup.md | ids-per-k | 3.7
-docs/linux-host-setup.md | bold-per-k | 12.4
+docs/linux-host-setup.md | bold-per-k | 12.3
 docs/linux-reference.md | avg-sentence | 13.2
 docs/linux-reference.md | long-share | 1.9
 docs/linux-reference.md | ids-per-k | 0.0
