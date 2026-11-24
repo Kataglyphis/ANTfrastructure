@@ -41,6 +41,15 @@ compiler statistics and failure-time draining. Native wheel paths do not need a
 compiler server. Source fixtures check this wiring; actual cache reuse still
 requires measured compiler statistics.
 
+## Fixture host isolation
+
+`test-chain-lifecycle.sh` disables `CROSS_BUILDKIT_PRUNE` and `CROSS_IMAGE_PRUNE`
+before exercising low-disk refusals. Its explicit fallback doubles still prove
+recovery order and refusals. A separate isolation suite runs it with both inherited
+permissions enabled and sentinel engine executables, and rejects attempted pruning
+or service maintenance. Removing either fixture override must fail that suite.
+This proves fixture isolation, not real daemon behavior or the amount of space reclaimed.
+
 ## 1. The tiers
 
 | # | Tier | Wired at | Covers | Stored in | Destroyed by |

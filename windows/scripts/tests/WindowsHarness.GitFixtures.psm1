@@ -31,10 +31,11 @@ function New-TestGitRepository {
 }
 
 function Add-TestGitCommit {
-    param([Parameter(Mandatory)][string]$Path, [Collections.IDictionary]$Files = @{}, [string]$Message = 'fixture')
+    param([Parameter(Mandatory)][string]$Path, [Collections.IDictionary]$Files = @{}, [string]$Message = 'fixture', [switch]$PassThru)
     Write-TestFileTree -Root $Path -Files $Files
     $null = Invoke-TestGitCommand -Path $Path -ArgumentList @('add', '-A')
     $null = Invoke-TestGitCommand -Path $Path -ArgumentList @('commit', '--quiet', '-m', $Message)
+    if ($PassThru) { Invoke-TestGitCommand -Path $Path -ArgumentList @('rev-parse', 'HEAD') }
 }
 
 Export-ModuleMember -Function Invoke-TestGitCommand, Set-TestGitIdentity, New-TestGitRepository, Add-TestGitCommit

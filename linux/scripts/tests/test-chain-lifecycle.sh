@@ -7,6 +7,9 @@ source "${TESTS_DIR}/test-harness.sh"
 source "${CORE_DIR}/chain-lifecycle.sh"
 source "${CORE_DIR}/chain-storage.sh"
 
+# Low-disk fixtures must never inherit permission to prune a host store.
+export CROSS_BUILDKIT_PRUNE=0 CROSS_IMAGE_PRUNE=0
+
 workdir="$(mktemp -d)"
 _cleanup_lifecycle_fixture() {
   local leaf="${_fixture_leaf_pid:-}"

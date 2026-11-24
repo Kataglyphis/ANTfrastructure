@@ -1,0 +1,76 @@
+--- a/src/eliminate_pad.cpp
++++ b/src/eliminate_pad.cpp
+@@ -68,7 +68,8 @@
+ static void update_pooling(const instruction_ref& input, const instruction_ref& ins, module& m)
+ {
+     auto op = any_cast<op::pooling>(ins->get_operator());
+-    if(op.mode == op::pooling_mode::average)
++    // Explicit zeros can win a max over negative inputs.
++    if(op.mode == op::pooling_mode::average or op.mode == op::pooling_mode::max)
+     {
+         return;
+     }
+--- a/test/eliminate_pad_test.cpp
++++ b/test/eliminate_pad_test.cpp
+@@ -95,10 +95,12 @@
+ 
+     EXPECT(op0["padding"].to_vector<std::size_t>() == std::vector<std::size_t>{1, 1, 1, 1});
+     EXPECT(om1["padding"].to_vector<std::size_t>() == std::vector<std::size_t>{1, 1, 1, 1});
+-    EXPECT(om2["padding"].to_vector<std::size_t>() == std::vector<std::size_t>{1, 1, 1, 1});
+-
+-    EXPECT(std::none_of(
+-        m.begin(), m.end(), [](const migraphx::instruction& ins) { return ins.name() == "pad"; }));
++    EXPECT(om2["padding"].to_vector<std::size_t>() == std::vector<std::size_t>{0, 0, 0, 0});
++    EXPECT(l2->inputs().front()->name() == "pad");
++
++    EXPECT(std::count_if(
++               m.begin(), m.end(), [](const migraphx::instruction& ins) { return ins.name() == "pad"; }) ==
++           1);
+ }
+ 
+ TEST_CASE(eliminate_pad_im2col_asymmetric)
+@@ -215,4 +217,44 @@
+     EXPECT(m1 == m2);
+ }
+ 
++static migraphx::module create_negative_padded_pool(migraphx::op::pooling_mode mode)
++{
++    migraphx::module m;
++    migraphx::shape s{migraphx::shape::float_type, {1, 1, 2, 2}};
++    std::vector<float> input{-1, -2, -3, -4};
++    auto x = m.add_literal(migraphx::literal{s, input});
++    auto padded = m.add_instruction(
++        migraphx::make_op("pad", {{"pads", {0, 0, 0, 0, 0, 0, 1, 1}}}), x);
++    auto pooled = m.add_instruction(
++        migraphx::make_op("pooling", {{"mode", mode}, {"lengths", {2, 2}}, {"stride", {1, 1}}}),
++        padded);
++    m.add_return({pooled, padded});
++    return m;
++}
++
++TEST_CASE(eliminate_pad_preserves_zero_max_pool_negative)
++{
++    auto actual = create_negative_padded_pool(migraphx::op::pooling_mode::max);
++    migraphx::module expected = actual;
++    run_pass(actual);
++    migraphx::run_passes(
++        expected, {migraphx::normalize_ops{}, migraphx::dead_code_elimination{}});
++    EXPECT(actual == expected);
++}
++
++TEST_CASE(eliminate_pad_keeps_lpnorm_zero_fold)
++{
++    auto actual = create_negative_padded_pool(migraphx::op::pooling_mode::lpnorm);
++    run_pass(actual);
++    auto pooled = std::find_if(actual.begin(), actual.end(), [](const migraphx::instruction& ins) {
++        return ins.name() == "pooling";
++    });
++    EXPECT(pooled != actual.end());
++    if(pooled == actual.end())
++        return;
++    EXPECT(pooled->inputs().front()->name() != "pad");
++    EXPECT(pooled->get_operator().to_value()["padding"].to_vector<std::size_t>() ==
++           std::vector<std::size_t>{0, 0, 1, 1});
++}
++
+ int main(int argc, const char* argv[]) { test::run(argc, argv); }

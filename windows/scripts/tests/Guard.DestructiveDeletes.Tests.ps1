@@ -252,7 +252,7 @@ Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
         Assert-Equal 0 $report.Deleted.Count
 
         $apply = Invoke-ReclaimFixture -ScriptPath $reclaim -DaemonPrune -ApplyChanges
-        Assert-Equal 'docker:system df,buildctl:prune --free-storage 102400,docker:image prune -f' ($apply.Daemons -join ',')
+        Assert-Equal 'docker:system df,buildctl:prune --free-storage 107375,docker:image prune -f' ($apply.Daemons -join ',')
         Assert-Equal 'C:\ProgramData\Docker.bak-fixture' ($apply.Deleted -join ',')
     }
 

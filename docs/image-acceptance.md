@@ -321,3 +321,7 @@ its `PATH`. No Git Bash, a ref without a tag or a refused dispatch only warns wi
 run by hand; the push stands. Tests: `linux/scripts/tests/test-dispatch-consumer-lanes.sh`, recipes
 `dispatch-lanes.*`; the Windows call `windows/scripts/tests/BuildKit.ConsumerDispatch.Tests.ps1`.
 
+
+A promotion error stops before any consumer dispatch, including when the caller tests the function
+conditionally. The fixture proves this refusal and post-promotion warning policy with stubs; it
+does not prove live API permissions, consumer execution or which digest those workflows select.

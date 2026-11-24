@@ -9,7 +9,42 @@ work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
 
 # bh <args...>: the tool's stdout, stderr and status land in ${work}/out, err and rc.
-bh() { python3 "${tool}" "$@" > "${work}/out" 2> "${work}/err"; echo "$?" > "${work}/rc"; }
+bh() {
+  python3 - "${tool}" "${FAKE_GH:-}" "$@" > "${work}/out" 2> "${work}/err" <<'PY'
+import os
+import runpy
+import shutil
+import subprocess
+import sys
+from contextlib import ExitStack
+from pathlib import Path
+from unittest.mock import patch
+
+tool, fake = sys.argv[1:3]
+sys.argv = [tool, *sys.argv[3:]]
+sys.path.insert(0, str(Path(tool).parent))
+with ExitStack() as doubles:
+    if fake:
+        import quality_report_github as github
+
+        bash = shutil.which("bash")
+        if bash is None:
+            raise RuntimeError("the fake GitHub CLI requires Bash")
+        os.environ["FAKE_GH"] = Path(fake).as_posix()
+        fake_cli = (Path(fake) / "bin" / "gh").as_posix()
+        native_run = subprocess.run
+
+        def run_fake(argv, **kwargs):
+            if not argv or argv[0] != fake_cli:
+                raise AssertionError(f"unexpected fixture subprocess: {argv}")
+            return native_run([bash, fake_cli, *argv[1:]], **kwargs)
+
+        doubles.enter_context(patch.object(github, "_gh", return_value=fake_cli))
+        doubles.enter_context(patch.object(subprocess, "run", side_effect=run_fake))
+    runpy.run_path(tool, run_name="__main__")
+PY
+  echo "$?" > "${work}/rc"
+}
 
 # criterion <dir> <detector ns> <draw_box ns>: Criterion's layout for two benches.
 criterion() {
@@ -181,7 +216,7 @@ for week in range(20):
     created = (start + datetime.timedelta(days=7 * week)).isoformat().replace("+00:00", "Z")
     rows.append({"name": "bench-history-k", "created_at": created, "expired": week < 7,
                  "workflow_run": {"id": run, "head_branch": "develop"}})
-    (fake / "runs" / str(run)).mkdir(parents=True)
+    (fake / "runs" / str(run)).mkdir(parents=True, exist_ok=True)
     value = 10.0 + week * week
     (fake / "runs" / str(run) / "bench-history-k.json").write_text(json.dumps(
         {"schema_version": 1, "verdict": "ok", "metrics": {"x/p50_ms": value}}))

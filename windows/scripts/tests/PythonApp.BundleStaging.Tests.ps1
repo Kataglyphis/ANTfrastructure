@@ -102,15 +102,10 @@ function clang-cl { $State.Argv = @($args); $global:LASTEXITCODE = 0 }
     }
 
     It 'wires the validated workspace and generated icon into the actual bundle driver' {
-        $ast = Get-TestScriptAst -ScriptPath 'windows/scripts/python/New-PythonAppBundle.ps1'
-        $workspaces = @(Get-TestAstCommands -Ast $ast -Name 'Initialize-PythonAppBundleWorkspace')
-        $icons = @(Get-TestAstCommands -Ast $ast -Name 'Initialize-PythonAppBundleIcon')
-        $launchers = @(Get-TestAstCommands -Ast $ast -Name 'New-PythonAppBundleLaunchers')
-        Assert-Equal 1 $workspaces.Count
-        Assert-Equal 1 $icons.Count
-        Assert-Equal 1 $launchers.Count
-        Assert-True ($workspaces[0].Extent.StartOffset -lt $icons[0].Extent.StartOffset) 'the workspace is prepared before the icon'
-        $arguments = Get-TestCommandArguments -Command $launchers[0]
+        $commands = Get-TestScriptCommandMap -ScriptPath 'windows/scripts/python/New-PythonAppBundle.ps1' `
+            -Name @('Initialize-PythonAppBundleWorkspace', 'Initialize-PythonAppBundleIcon', 'New-PythonAppBundleLaunchers') `
+            -Order @('Initialize-PythonAppBundleWorkspace', 'Initialize-PythonAppBundleIcon')
+        $arguments = Get-TestCommandArguments -Command $commands['New-PythonAppBundleLaunchers']
         Assert-True ($arguments.ContainsKey('IconResource')) 'the generated resource must reach the launchers'
         Assert-Equal '$launcherIcon' $arguments['IconResource']
     }

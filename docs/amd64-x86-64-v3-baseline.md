@@ -62,7 +62,20 @@ BMI1/2, LZCNT, MOVBE and F16C. Where it lands:
 - nvcc's MSVC host compiler and MLAS's ml64 assembly get nothing; AVX-512 and AMX stay on MLAS's
   dispatched kernels.
 
-No Windows image is built with it yet; it is built with CON264's chain on the owner's go.
+CPython applies its floor in `ApplyCpythonIsaFloor` immediately before `ClCompile`, after
+upstream item metadata is available. Regular x64 ClangCL files get v3; files already marked
+`AdvancedVectorExtensions512` get v4, retaining their VNNI/VPCLMUL additions. ARM64 and
+other toolsets receive neither floor. A global `-march=x86-64-v3` overrides `/arch:AVX512`
+in Clang and made zlib-ng fail during the 2026-11-18 NVIDIA toolchain bootstrap. This
+keeps the existing runtime dispatch and selected sources; it does not enable AVX-512 globally.
+[Clang CPU selection](https://github.com/llvm/llvm-project/blob/llvmorg-22.1.0/clang/lib/Driver/ToolChains/Arch/X86.cpp)
+and the [pinned CPython project](https://github.com/python/cpython/blob/v3.15.2/PCbuild/zlib-ng.vcxproj)
+describe the two inputs. `SourceBuild.CpythonIsa.Tests.ps1` grades XML wiring only;
+a separate native MSBuild/ClangCL probe checks baseline, AVX-512, VNNI and VPCLMUL compilation.
+
+The 2026-11-18 NVIDIA attempt exported Base and the CUDA/TensorRT SDKs, then failed in
+CPython before LLVM compilation. No complete Windows image with this baseline is accepted yet;
+the remaining CON264/CON265 measurement and owner decisions stay open.
 
 ## The gates
 

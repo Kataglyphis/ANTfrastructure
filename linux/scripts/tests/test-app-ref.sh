@@ -97,6 +97,13 @@ t_assert_contains "${_calls}" "-C /opt/app fetch -q --depth 1 https://github.com
 t_assert_contains "${_calls}" "-C /opt/app checkout -q --detach FETCH_HEAD" "and checks out exactly that commit"
 t_assert_fails grep -q -e 'clone' <<<"${_calls}"
 
+t_case "assemble checks out the hub submodule OrchestrANT's setup.py copies from, and no other"
+for _ref in "${P}" develop; do
+  t_assert_contains "$(_fetch "${_ref}")" "-C /opt/app submodule update --init --depth 1 third_party/ANTfrastructure" \
+    "a tree without it fails uv sync: verify_ort_profile.py is missing"
+done
+t_assert_fails grep -q -e 'recursive' <<<"$(_fetch develop)"
+
 t_case "assemble still clones a name, for a plain docker build"
 t_assert_contains "$(_fetch develop)" "clone --branch develop --depth 1 https://github.com/Kataglyphis/OrchestrANT.git /opt/app" \
   "the Dockerfile default is the branch itself"

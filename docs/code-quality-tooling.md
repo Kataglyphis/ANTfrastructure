@@ -33,7 +33,16 @@ must actually succeed; a missing privilege is a prerequisite failure, not a
 skipped assertion. This does not make Windows a substitute for Linux-only gates.
 See [MSYS2's symlink modes](https://www.msys2.org/docs/symlinks/).
 
+Consumer-hook fixtures compare Git's canonical repository root in hook output.
+Native Git may report `C:/...` for a fixture Bash created under `/tmp/...`.
+
 ## Preserved local proof workflows
+
+On Windows Git Bash, compiler-less CMake fixtures still need an installed
+generator. If the default NMake generator fails at `nmake -?` before the cases,
+select an existing Ninja with `CMAKE_GENERATOR=Ninja` for that check or commit
+only. Preserve every target/compiler identity, assertion and mutation control;
+this environment prerequisite proves neither compilation nor image acceptance.
 
 Python module suites share `linux/scripts/tests/python-proof-fixture.sh` for module
 loading and unittest execution. The wrapper requires raw success, a positive executed
@@ -112,7 +121,11 @@ nonroot user. The engine init reaps orphaned descendants so strict process-group
 observe disappearance; nerdctl requires `tini` on the host PATH. A timeout wrapper alone does not
 reap adopted children. This keeps the default seccomp profile and capabilities unchanged.
 Setup reuses the canonical uv, PowerShell, PE-tool and locked quality-tool installers;
-`en_US.UTF-8`, Python headers, pip and Chromium are checked prerequisites. No selection or shard
+`en_US.UTF-8`, Python headers, pip and Chromium are checked prerequisites. Setup also installs
+free-threaded CPython from the same `PYTHON_VERSION` pin and passes its managed path through
+the clean worker environment. Version drift, a GIL-enabled interpreter or missing FT headers
+fails before the gates; the real extension/GIL case must run rather than print its optional skip.
+No selection or shard
 knob is inherited. `preflight.log` preserves raw output; `run.json`, `container.cid` and `reports/`
 retain source, base digest, bootstrap hash, tool versions and results. This is a local gate proof,
 not image acceptance or a hardware test. An apt repository or tool download must remain available.
@@ -164,6 +177,14 @@ also serves isolated preflight's finally cleanup; copy `owned_containers.py` and
 beside either entry point. A final receipt and terminal unit state must both be checked.
 The local lifecycle proof covers raw workload exits0/37 and SIGKILL starter timeouts with both
 removal and stopped-container retention. It does not exercise a model, GPU or published image.
+
+For rootless nerdctl, prepare a private client directory containing `config.json`
+with `{"auths":{}}` and pass its path as `DOCKER_CONFIG` for the invocation. The
+base is public and pinned; this avoids a Windows credential helper inherited from
+the user's Docker configuration. Select the native Linux CLI and wait for the
+existing rootless daemon to become ready. Preserve the user's authentication and
+context files. A hanging preparatory pull is not a started preflight; retain its
+failure before a fresh invocation ([observed failure](failure-modes.md#error-getting-credentials---err-exit-status-1)).
 
 ```bash
 python3 linux/scripts/watch-build-units.py --unit rebuild-sequence-37.service \
@@ -225,6 +246,11 @@ Windows environment policy intact. It isolates separate commands on Unix; it doe
 PowerShell children inside one command or fix the .NET implementation. `test-mutation-cache.sh`
 checks overlap, timeouts, output and cache lifetime; both cache mutations must bite. No automatic
 retry turns a failed baseline green.
+
+Shell fixtures pass environment assignments as individual quoted arguments. The QNN Community
+fixture exercises plain and spaced PATH/cache/extract values with fake archive bytes. Its three
+unquoting mutations must fail the planted spaced case even on a clean Linux PATH; these checks
+do not prove a real SDK transfer or hardware inference. See [the failure](failure-modes.md#qnn-community-test-fails-with-a-spaced-path).
 
 ## C++ formatters and linters (clang-format, clang-tidy, cmake-format)
 
@@ -635,6 +661,15 @@ invalid outer caps so either value leaking into the child fails the rendezvous a
 
 The runner's leftover check (`AGENTS.md`, no ghosts) cannot see a suite that writes `/tmp` by name
 or clears `TMPDIR`. Hadolint and actionlint keep their caches in the run's outer `TMPDIR`.
+
+Host-executed consumer probes use `/usr/bin:/bin` and explicit fixture-tool directories.
+Their real probe program, fact output and verdict assertions remain in use. This keeps
+free-threaded interpreter discovery from scanning unrelated Windows PATH directories
+and prevents unrelated tools in the caller's PATH from affecting the fixture. A harmless host `cargo-audit` marker
+proves isolation; a mutation introduces that one directory and must fail. The outer
+runner retains its inherited PATH, including spaces for the QNN fixtures. These tests
+do not establish live SDK, image or GPU execution, and the 300-second mutation budget
+is unchanged.
 
 `PREFLIGHT_ONLY=script-tests bash linux/scripts/preflight.sh` runs the Bash suites locally;
 Linux x64 CI runs them on pushes and pull requests. Discovery fails when there are no suites,
@@ -1263,7 +1298,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **7739 entries** over **894 distinct test commands**; both digits are
+manifest holds **8084 entries** over **938 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1427,6 +1462,17 @@ A rewritten recipe keeps the edit valid: replace a removed branch body with
 `test-mutation-parse.sh` proves each arm, and the `mutations.parse-*` recipes
 prove that suite.
 
+Mutation fixtures pass temporary paths as Python arguments so native Windows
+receives the same path used by the actual gate. Synthetic host-skip cases override
+only the gate's host-skip fact; changing `sys.platform` also changes executable
+lookup and can falsely hide bash.exe from the required mutant parser.
+
+The torchvision patch fixture loads its temporary patched module through
+`runpy.run_path` with explicit compiler and environment facts. It executes the
+real patch's launcher selection, drift refusal and reverse check. Isolated
+fixture controls cover this harness; complete source qualification and actual
+wheel/cache measurements require their own results.
+
 ### The mutation gate in CI, sharded
 
 **What happened (2026-09-23).** The `preflight` job of `linux-x64.yml` (then `ubuntu26.04.yml`) ran every
@@ -1517,6 +1563,17 @@ The shards install no Pester, so a recipe whose test is a Pester-style suite
 every run as a vacuous bite. Put the cases a recipe needs in a harness-style
 suite; `test-mutation-pester-targets.sh` refuses a recipe that names a
 Pester-style one.
+`CMake.CPackDiagnostics.Tests.ps1` runs the CPack export, log selection, sorted tails and
+missing-directory cases through the harness on both hosts. It lifts the canonical batch
+logger over a state fixture; the remaining CMake Pester cases keep their separate full-run coverage.
+The cleanup unit-boundary recipes use `Stevedore.StorageUnits.Tests.ps1` through
+`Invoke-HarnessSuite.ps1`; existing Pester reclaim controls remain in the full Windows run.
+Copied-module source views use the portable `BuildKit.MountStub.Tests.ps1` fixture;
+`BuildKit.ModuleClosure.Tests.ps1` retains its separate Pester closure checks.
+
+`CrossBundle.PackageCheck.Tests.ps1` proves package callback output and failure contracts
+under a cold harness on both hosts. Its install fixture is shared with the Windows-only
+CMake/batch suite; real archive validation remains in the package licence suites.
 
 A recipe's cost is one run of its command, so name the narrowest command that
 bites: `-k <section>` on a bash suite using `t_sections`
@@ -1524,9 +1581,9 @@ bites: `-k <section>` on a bash suite using `t_sections`
 on a unittest file, or
 `pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only <suite>` for a
 harness-style suite that needs only `TestHarness.psm1`. That driver skips the modules,
-Pester detection and tally of `Invoke-Tests.ps1`; a suite that needs a module fails its
-baseline rather than losing a bite. The same cases must stay in the unfiltered suite, so
-preflight and Windows CI still run them.
+Pester detection and tally of `Invoke-Tests.ps1`; a suite depending on implicit imports
+fails its baseline rather than losing a bite. Import required modules in the suite.
+The same cases must stay in unfiltered discovery, so preflight and Windows CI still run them.
 
 A failed baseline reports its first three and last three nonempty lines, capped
 at 500 characters per line. This retains the first diagnostic and final summary
@@ -2019,9 +2076,9 @@ bites: `-k <section>` on a bash suite using `t_sections`
 on a unittest file, or
 `pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only <suite>` for a
 harness-style suite that needs only `TestHarness.psm1`. That driver skips the modules,
-Pester detection and tally of `Invoke-Tests.ps1`; a suite that needs a module fails its
-baseline rather than losing a bite. The same cases must stay in the unfiltered suite, so
-preflight and Windows CI still run them.
+Pester detection and tally of `Invoke-Tests.ps1`; a suite depending on implicit imports
+fails its baseline rather than losing a bite. Import required modules in the suite.
+The same cases must stay in unfiltered discovery, so preflight and Windows CI still run them.
 
 A failed baseline reports its first three and last three nonempty lines, capped
 at 500 characters per line. This retains the first diagnostic and final summary
@@ -3126,6 +3183,13 @@ a change to a commit. `--perf-host [--update-baseline]` instead runs the repo's 
 latencies in the CI image against a per-CPU baseline:
 [`fleet-health.md` § perf-host](fleet-health.md#perf-host). `test-quality-report.sh` covers a rise, a fall, a direction, a set swap, a
 moved set member, a missing collector, an absent artifact, a malformed compare file and the queue.
+
+Benchmark-history fetch fixtures bind the private CLI resolver to their fake
+and invoke that script explicitly through Bash. The Python subprocess boundary
+rejects other commands, so Windows cannot silently select an installed `gh.exe`.
+This replay checks pagination, retry and report behavior, not CLI authentication
+or the live artifact service. Run the complete suite on Linux; Windows fetch
+controls do not grade Criterion's host-dependent path rendering.
 
 ## Windows Pester coverage
 
@@ -4575,6 +4639,21 @@ name does not resolve it silently disables the rule and still reports clean. So
 `lint-workflows.sh` resolves shellcheck through `lint-shell.sh --print-bin`,
 refuses to grade when it cannot, and requires actionlint to report a planted
 SC1010 before it trusts a clean verdict.
+
+### The warning census (`warning-census`)
+
+`linux/scripts/verify_warning_census.py --lane <name> --census <file> <build log>...` holds a C/C++ lane's
+compiler warnings at a committed count per flag, the ratchet the owner put between the SYSTEM includes and
+warnings as errors (CON295 (c), D11). It reads GCC and clang `path:line:col: warning: ... [-Wflag]` lines,
+counts each `path:line:flag` once, as a header's warning repeats in every unit that includes it, and counts only
+the repository's own code: `third_party/`, `_deps/`, `external/`, `vendor/` and absolute toolchain paths are
+foreign, and a container's `/workspace/` prefix is stripped. A warning with no flag (GCC's "X redefined")
+counts under `-W(unnamed)`; a clang-tidy or analyzer finding, tagged with its check instead of a `-W` flag, does not count. The census file holds `<lane> | <flag> | <count>` rows, one lane per CI job that
+compiles. A flag above its row fails the lane, and so does one below it until the row is lowered in the same
+commit, so a fixed warning cannot make room for a new one. A log with no compile line fails too, since an
+incremental build that compiled nothing would read as zero. `--write` rewrites the lane's rows from the logs and
+keeps the other lanes'. Suite `linux/scripts/tests/test-warning-census.sh`; BeschleunigerBallett's GCC job
+137728645203 reads 37 own warnings over six flags, where its log shows 203 warning lines.
 
 ### Four fleet workflow conventions (`workflow-lint`)
 

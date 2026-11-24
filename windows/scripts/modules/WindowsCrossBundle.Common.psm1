@@ -120,6 +120,31 @@ function Copy-PeImportClosure {
     return @($copied)
 }
 
+# Headers, CMake and pkg-config packages, import and static libraries: what a build needs and a user of the product never does.
+$script:BuildTimePattern = '^(usr/)?(include|lib[^/]*(/[^/]+)?/(cmake|pkgconfig)|share/pkgconfig)/|\.(lib|a)$'
+
+<#
+.SYNOPSIS
+    Throws when an install tree ships build-time files, naming them (CON299: a bundle shipped 52 gtest and gmock files).
+.PARAMETER Allow
+    Paths below Root that the product ships on purpose, such as an SDK's include tree.
+#>
+function Assert-InstallTreeLayout {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [string[]]$Allow = @()
+    )
+    $base = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\', '/')
+    $kept = @($Allow | ForEach-Object { $_.Replace('\', '/').TrimEnd('/') })
+    $found = @(Get-ChildItem -LiteralPath $base -File -Recurse | ForEach-Object { $_.FullName.Substring($base.Length + 1).Replace('\', '/') } |
+            Where-Object { $_ -match $script:BuildTimePattern } |
+            Where-Object { $rel = $_; -not ($kept | Where-Object { $rel -eq $_ -or $rel.StartsWith("$_/") }) })
+    if ($found.Count -gt 0) {
+        throw "$Root ships $($found.Count) build-time file(s) no user of the product needs: $(($found | Select-Object -First 8) -join ', '). Install only runtime files, or pass -Allow for what the product ships on purpose."
+    }
+}
+
 <#
 .SYNOPSIS
     <DistDir>\bundle, the -BuildDir install tree plus the DLLs its binaries import, and <DistDir>\packages, the build's installers.
@@ -129,6 +154,8 @@ function Copy-PeImportClosure {
     install tree, so every one of them would lack it.
 .PARAMETER PackageCheck
     Checks one finished .msi or .zip as { param($Path, $RedistText) }; the default is Assert-PackageMsvcRuntimeNotice.
+.PARAMETER ForbidBuildTimeFiles
+    Refuses an install tree with headers, CMake or pkg-config packages or libraries in it (Assert-InstallTreeLayout); AllowBuildTimeFile excepts paths.
 .PARAMETER Runner
     Runs cmake as { param($File, [string[]]$Arguments) }; the default throws on a non-zero exit. A build passes its logged runner.
 .OUTPUTS
@@ -143,6 +170,8 @@ function New-PortableBundle {
         [string]$Arch = '',
         [string[]]$SearchDirectory = @(),
         [switch]$RequireCompleteInstall,
+        [switch]$ForbidBuildTimeFiles,
+        [string[]]$AllowBuildTimeFile = @(),
         [scriptblock]$PackageCheck = { param($Path, $RedistText) Assert-PackageMsvcRuntimeNotice -Path $Path -RedistText $RedistText },
         [scriptblock]$Runner = { param($File, [string[]]$Arguments) & $File @Arguments; if ($LASTEXITCODE) { throw "$File $($Arguments -join ' ') exited $LASTEXITCODE" } }
     )
@@ -154,6 +183,7 @@ function New-PortableBundle {
     foreach ($dir in $bundle, $packages) { if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force } }
     # Out-Host: cmake's install lines must not join this function's result.
     & $Runner 'cmake' @('--install', $BuildDir, '--prefix', $bundle, '--config', $Configuration) | Out-Host
+    if ($ForbidBuildTimeFiles) { Assert-InstallTreeLayout -Root $bundle -Allow $AllowBuildTimeFile }
 
     $bin = Join-Path $bundle 'bin'
     $installed = @(Get-ChildItem -LiteralPath $bin -File | ForEach-Object Name)
@@ -179,4 +209,4 @@ function New-PortableBundle {
 }
 
 Export-ModuleMember -Function Get-CrossConfigureArgs, Get-WindowsPackageArch, Get-ProductDllSearchPath, Get-PeImportClosure, Copy-PeImportClosure,
-    New-PortableBundle
+    New-PortableBundle, Assert-InstallTreeLayout

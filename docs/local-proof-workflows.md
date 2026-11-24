@@ -155,6 +155,39 @@ cachemount, check before/after identities and recheck the actual ordinary reserv
 The [host cleanup page](linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches)
 owns this workflow; cleanup does not create source, image or hardware acceptance.
 
+## Proof-workflow fixture companions
+
+The proof-workflow harness carries `tests/proof_workflow_ft_tests.py`,
+`tests/proof_workflow_capture_tests.py` and `tests/proof_workflow_cleanup_tests.py`
+beside `proof_workflow_tests.py`. The
+runner supplies the selected script root and owns each engine fixture lifetime;
+all free-threaded bootstrap and owned-container refusal cases remain in the
+same discovered suite. These fixtures do not qualify a real build or GPU.
+
+## Complete preflight transcripts
+
+The isolated worker redirects both streams of its unchanged `make preflight` command
+into `/evidence/isolated-preflight-command.log`. The evidence bind preserves those
+bytes before container removal. The host retains the engine's attach stream separately
+as `engine-attach.log` and copies the regular mounted transcript byte for byte to
+`preflight.log`. A missing transcript or symlink fails the run even when the engine
+returns zero; original command and cleanup statuses remain separate. This prevents
+an incomplete attach stream from becoming the only retained test output. The observed
+transport cause is not established. Fixtures cover clipped attachment, binary bytes,
+missing/linked transcripts, both redirected streams and raw failed command status;
+they do not prove a real container run. Complete acceptance still requires the existing
+42-group, exact-registry, source, terminal and cleanup checks. Keep earlier incomplete
+logs and failed sealing attempts unchanged; do not add a success footer to them.
+
+The final receipt reader accepts the original `--property=ExecStopPost=...`,
+`--property ExecStopPost=...`, `-p ExecStopPost=...` and joined `-pExecStopPost=...`
+forms. Exactly one cleanup property is required across all forms. Preserve the
+executed argv without rewriting it. The same owner ID, raw cleanup result, strict
+mutation proof and independent engine absence checks still apply. Mixed or repeated
+properties, a missing cleanup, wrong owner or failed cleanup refuse. Synthetic CLI
+fixtures cover those cases and quoted paths with spaces; they do not authenticate
+receipts, execute systemd or establish image acceptance.
+
 ## Media profile source controls
 
 The isolated `run-isolated-preflight.py` runner accepts

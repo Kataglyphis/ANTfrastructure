@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: MIT
 # CON91: the Windows CI drivers name no Python; an empty -PythonVersion takes the pin, so an upgrade moves them too.
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.CallAssertions.psm1') -ErrorAction Stop
+
 Describe 'Invoke-CiPackaging and Invoke-CiStaticAnalysis: the pinned Python by default (CON91)' {
 
     $repoRoot = Get-RepoRoot
@@ -10,14 +12,12 @@ Describe 'Invoke-CiPackaging and Invoke-CiStaticAnalysis: the pinned Python by d
         $driver = Join-Path $repoRoot "windows\scripts\python\$name"
 
         $ast = Get-TestScriptAst -ScriptPath $driver
-        $param = @($ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'PythonVersion' })
         $init = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Initialize-CiEnvironment' }, $true)) | Select-Object -First 1
         $modules = @(if ($init) { $init.CommandElements | Where-Object { $_ -is [System.Management.Automation.Language.ArrayExpressionAst] } | ForEach-Object { $_.SafeGetValue() } })
 
         It "$name defaults -PythonVersion to '' and fills it from Get-PinnedPythonVersion" {
             Assert-NotNull $ast 'the driver parses'
-            Assert-Equal 1 $param.Count 'one -PythonVersion'
-            Assert-Equal "''" $param[0].DefaultValue.Extent.Text 'no version literal'
+            Assert-TestScriptParameterDefault -Ast $ast -Name 'PythonVersion' -Text "''"
             Assert-Match '(?m)^if \(-not \$PythonVersion\) \{ \$PythonVersion = \(Get-PinnedPythonVersion\)\.MajorMinor \}' $ast.Extent.Text 'the pin fills an empty value'
         }
 

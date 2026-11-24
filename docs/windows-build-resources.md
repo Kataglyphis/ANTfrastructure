@@ -138,6 +138,29 @@ so no earlier run's tree reaches CMake, and again after the wheels, so the host 
 the space back. `SourceBuild.IreeScratch.Tests.ps1` holds the path on both sides and
 both resets.
 
+### Extracted QNN SDK scratch
+
+`Resolve-QnnSdk` verifies the SDK archive, extracts it under
+`TEMP_DIR/qnn-sdk-extract` and stages selected backend DLLs and Hexagon payloads
+into each component's runtime tree. The default extraction also contains other
+platforms, including Android libraries. It is not an exported SDK contract.
+
+`Clear-BuildScratch`, called by the source-chain epilogue with `-ScrubAfter`,
+removes that one extraction tree after the selected components finish. The SDK
+archive cache, compiler-cache mounts, copied runtime and `TEMP_DIR/cpython` remain.
+A relative temporary root, reparse metadata on the parent or leaf, removal error
+or remaining tree stops the build before export; ordinary profile-cache cleanup
+retains its best-effort policy. The host disk-reclaim tool does not perform this
+in-container cleanup.
+
+On 2026-11-13 the `0a822337` ROCm producer completed TVM, IREE, native/Python
+smokes and both IREE free-threaded imports, then exhausted host storage while
+the Windows importer copied an unused `lib-safe/aarch64-android` member from
+this extraction. Its first import failed with `0x5`; the retries also recorded
+disk-full and `0x20`. This proves an unwanted export payload, not that every
+import error has the same cause. `SourceBuild.Scratch.Tests.ps1` uses private
+file trees and failure fixtures; the reduced real image export must still pass.
+
 ## Building a project inside the image, as AGENTS.md carried it
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
@@ -222,6 +245,37 @@ stage seconds too (hub #184).
 > (→ ~39 GB container, ~56 GB peak) is the verified-safe budget here. The heavy
 > CUDA TUs (FlashAttention, MoE kernels) use **more than the ~4 GB/job estimate**, so
 > do not shrink the reserve without watching `docker stats` + host free RAM.
+
+## TVM-FFI wheel versions in tagless checkouts
+
+The Windows TVM source builder uses `Get-TvmFfiSourceVersion` for native and
+cross wheels: normalize the vendored submodule's nearest release tag, or use
+TVM's `apache-tvm-ffi>=` bound when tags are unavailable. The native GIL install
+and free-threaded build each set only
+`SETUPTOOLS_SCM_PRETEND_VERSION_FOR_APACHE_TVM_FFI` for that call. The shared
+process-environment helper restores a previous value, including after failure;
+TVM's separate SCM version remains untouched.
+
+The `6235d8b4` ROCm producer exposed the defect on 2026-11-13: the exact pinned
+FFI commit `daf594da8e6950fdc02ae35fcf4e0ab2e59a4979`, which upstream tags
+[`v0.1.14-post0`](https://github.com/apache/tvm-ffi/tree/v0.1.14-post0), built as
+`0.1.dev1+gdaf594da8` without local tags. TVM imported, but pip still reported
+that version below `apache-tvm-ffi>=0.1.14.post0`. This correction changes the
+metadata version, not the source pin or ABI. The actual pinned SCM provider in
+an isolated tagless checkout reproduces both the bad default and the scoped
+`0.1.14.post0` result.
+
+After each native build, `Assert-TvmFfiPackageVersion` reads the real installed
+GIL distribution or the saved twin archive with `importlib.metadata`. Missing,
+multiple, foreign or differently versioned metadata fails. A legitimately
+unselected twin retains the existing skip policy. The gate proves the selected
+metadata version; it does not resolve all dependencies, prove ABI compatibility,
+run the module or demonstrate GPU inference. Existing import, architecture and
+hardware gates remain separate. Regression and mutation checks use real
+installed metadata and ZIPs without compiling TVM. The suite uses the shared
+harness and case-scoped temporary directories: Linux mutation shards do not
+install Pester, so Pester-only setup/teardown would invalidate those recipes.
+Corrected product images still require their own build receipts.
 
 ## The Windows cache, tier by tier
 
@@ -341,6 +395,30 @@ there; the tiers, the numbers and the two incidents are here.
 
 ## Persistent compile cache (sccache)
 
+The standalone OpenCV GStreamer plugin reports
+`Write-SccacheStats -Label 'opencv-gstreamer-plugin'`, then completes the server
+before source cleanup. It preserves the preceding GStreamer log by leaving
+session startup to the launcher. `SourceBuild.OpencvPluginCache.Tests.ps1`
+checks unconditional wiring and order; fresh producer counters and retained
+bytes are separate evidence.
+
+**Retained log transport:** never use `--no-cache` to force a cache-log copy,
+even when the mount is read-only. BuildKit 0.33's
+[IgnoreCache handling](https://github.com/moby/buildkit/blob/dddd5621af04ea57823085c93a063383f71d3173/solver/llbsolver/vertex.go)
+collects cache IDs and the worker resets their associations before execution.
+Consume a unique per-run ARG in the copy command instead. On 2026-11-13 the
+incorrect diagnostic export lost the original full server trace; the recovered
+image build log and transcript do not replace that trace.
+
+**Current prefix evidence (`ee49f2dd`, 2026-11-13):** all 11 ROCm images through
+media merge passed. TVM reports 9,995 cumulative C/C++ hits with zero misses,
+cache errors or compilation failures. GStreamer reports 4,892 C/C++ hits,
+18 misses, 103 cache errors and 32 compilation failures; the latter causes
+remain unclassified. Do not sum duplicate stats renderings or infer CUDA/Rust
+hits from C/C++ counters. The new standalone-plugin instrumentation still needs
+a producer run; the ordinary ROCm tail, final-source lanes and device checks
+remain open.
+
 Without BuildKit cache mounts a container-local sccache cache dies with the
 layer, so the WebDAV remote is the only compile cache that survives a
 container. **sccache is therefore REQUIRED by default for the media stages:
@@ -385,6 +463,14 @@ The host cache initializer and CMake build setup share one `SCCACHE_MAX_JOBS`
 defaulting helper. Each caller keeps its own activation point and log message;
 both preserve an explicit limit and fill an absent or empty value from the CPU count.
 
+The standalone HailoRT stage starts the shared cache session before CMake, so
+its nested protobuf compiles belong to the same session. After Ninja it asks
+for advanced `sccache-stats|` counters on stderr and drains/stops the server
+before success cleanup. This direct RUN has no media-chain epilogue. The
+`a7ba976b` pass exported HailoRT without an aggregate snapshot; those missing
+counters remain unknown. Regression and mutation wiring checks do not replace
+a new producer receipt or establish Hailo device execution. CON229 stays open.
+
 **The pin is the hub build `0.19.0+965c019.pr2809`.** Its source is
 `SCCACHE_SOURCE_REV=965c01943a40c9df96264474bbe28ba98f2e1487` plus the shared
 patch series. `Install-RustToolchain.ps1` downloads the hub asset
@@ -394,13 +480,49 @@ the scoop shims. The Windows image installs that binary rather than building it.
 The [shared source-build record](../shared/upstream/sccache/README.md) owns the
 patches, canary evidence and conditions for returning to upstream release assets.
 
-**Upstream checked 2026-11-11:** [sccache#2862](https://github.com/mozilla/sccache/issues/2862)
+**Source-bound measurement, 2026-11-22:** the private
+`79e41b6b814c5bab0e1e225bc3c754c2d804f8a3` canonical CUDA repeat completed
+with raw exit zero, all six phases, five exports and full parent layer/diff-ID
+prefixes. All 2,592 source files/modes and six compiler-cache identities were
+unchanged afterward. Its ONNX primary point has 6,304 typed hits, including
+605 NVCC hits, zero misses/cache/compiler failures, and 173 named CUDA-plugin
+object lines. Keep its 605 non-cacheable internal compilations separate from
+zero non-cacheable calls; their causes remain unclassified.
+
+Other repeat points are separate: FFmpeg 2,361 C/C++ hits; OpenCV 3,665 hits,
+including 155 NVCC hits and one C++ miss; Hailo 246 C/C++ hits; GenAI 207 C/C++
+hits. GenAI's direct CUDA path, PyAV/NASM and unmeasured paths gain no coverage.
+Do not add primary points, typed subsets, L0/L1 figures or mirror rows. The
+original NVIDIA Media-Merge point has 4,896 hits, 18 misses, 102 cache errors and
+32 failed compiler requests; those errors remain unclassified despite its
+successful export. The separate OpenCV GStreamer plugin point has one hit and
+zero misses/errors. Torch has no observed primary compiler counter.
+
+The independent whole-repeat audit SHA256 is
+`d17b06b3db4f64c2f652f82681194382a65567f90fb72b1c007aab1d942f1b3b`.
+The later CPU retry independently records TVM 617 hits/zero misses and IREE
+6,912 hits/30 successful misses, with zero cache/compiler errors at those
+points. Its normal/FT wheels and imports, including 13 compiler and one runtime
+FT extension with the GIL off, were checked before the successful TVM/IREE
+export. The run then stopped before Media-Merge, so whole CPU acceptance is
+still missing. Full stage/source receipts are indexed in
+`logs/g2-stage-coverage-current.md` and `logs/g5-results.md`.
+
+The primary upstream check on 2026-11-22 still reports issue 2862 open and
+v0.19.0 as the latest stable release; the pin remains `0.19.0+965c019.pr2809`.
+These observations qualify their exact source and measured paths only. They
+do not qualify the integration successor, other lanes, hosted CI, AMD/ARM64
+hardware or registry promotion. The earlier d9 table retains its own source.
+
+**Upstream checked 2026-11-15:** [sccache#2862](https://github.com/mozilla/sccache/issues/2862)
 is still open; its fix [#2809](https://github.com/mozilla/sccache/pull/2809) merged
 on 2026-11-02. The pin carries that fix. The older bare-nvcc exemption for
 `onnxruntime_providers_cuda_llm` is removed; reintroducing it would lose the cache
-coverage already proved by the earlier NVIDIA chain.
+coverage already proved by the earlier NVIDIA chain. The sole upstream
+comment explicitly lacks Windows verification; the local repeat below remains
+a separate measurement, without inferring an upstream resolution.
 
-**Current evidence boundary:** CON229 in [BACKLOG.md](../BACKLOG.md) owns the dated
+**Earlier ARM64 evidence boundary:** CON229 in [BACKLOG.md](../BACKLOG.md) owns the dated
 per-stage coverage gaps. The ARM64 goal run `bk-20261108-231320` at `7c575e34`
 actually rebuilt GStreamer: one reported block contains 5,198 compiler-cache hits,
 12 misses, 99 cache errors and 80 compilation failures. The RUN includes configure
@@ -410,16 +532,16 @@ architecture gate passed, then the final-stage disk guard refused 24.6 GiB versu
 40 GiB. After selected host cleanup, full retry `bk-20261109-081421` at the same
 source passed in 3:08 with 152 smoke assertions, zero failures and 17 cross-lane
 skips; its publish gate also passed. This reuse does not add compiler-cache
-measurements or prove native ARM64 device acceptance. The CUDA-plugin repeat
-build remains required, including real compiler requests and hits. A cached
-image layer supplies no such measurement. Subsequent candidate device run 42579941215
+measurements or prove native ARM64 device acceptance. A CUDA-plugin repeat
+requires actual compiler requests and hits; reused image layers provide neither.
+The later d9 repeat is recorded below. Subsequent candidate device run 42579941215
 passed 22/22, and its exact ARM64 image was promoted to `:winarm64`; the
 [cross-build guide](windows-cross-builds.md) records that digest and receipt.
 This native ARM64 result does not supply the missing GPU-provider measurement.
 In the subsequent local NVIDIA chain at the same source, the patched LLVM 23.1.5
 RUN reported 4,233 compiler requests served by 4,233 WebDAV hits, zero misses,
 zero cache errors and zero compilation failures. That is one observed stats
-block, recorded separately from the still-required CUDA-plugin repeat proof.
+block, recorded separately from the later CUDA-plugin repeat proof below.
 
 **Measured NVIDIA attempt at `6737933a`, 2026-11-09.** The ONNX CUDA-plugin
 compile/install and both wheels complete, then QNN builds and stages. TensorRT
@@ -473,6 +595,105 @@ layers from executed Torch, final and gate steps. No fresh compiler-counter
 block appears in those solves; complete producer success supplies no new CUDA
 hit rate or whole-repeat result. Retain the failed repeat's separate status.
 
+
+### Completed d9 CUDA repeat and stage coverage
+
+Measured 2026-11-15 (Europe/Berlin) at exact private source
+`d9f129afee5fd39f87ec68daea24122b344121c0`. The separate canonical request used
+`-Gpu -Stages media -MediaBranches media-core` with diagnostic `SCCACHE_LOG`;
+it ended naturally with raw exit zero. No no-cache option, nonce or source edit
+was used. All five ONNX/FFmpeg/OpenCV/Hailo/GenAI images exported; the audit
+checks every manifest/config content hash and complete successive parent chain,
+all 2,492 source files before and after, and the same six compiler-cache IDs.
+
+The ONNX compiler RUN's one primary snapshot contains 2,261 parent requests,
+6,909 executed inner requests and 6,304 hits: C 78, C++ 1,578, NVCC 605,
+cudafe++ 605, PTX 1,738 and CUBIN 1,700. Misses, cache errors and compilation
+failures are zero. Retain 605 non-cacheable compilations without assigning a
+cause. These typed counters are parts of the primary total, never extra hits;
+mirrors, later checkpoints and backend counters are not added. CUDA-plugin ABI
+and TensorRT-plugin build checks pass in the actual exported ONNX stage.
+
+ONNX manifest: `sha256:707db5c2c9ba9818dbfc137cf169c29533abc12d9136060917c2cc117d9d2ec0`.
+Its config is `sha256:86c859387a79f84a1de2eee2a0ff6954b9d6b8b2b4fab080af594511f49c9b11`;
+all 26 toolchain parent descriptors and diff-IDs remain identical in 27 layers.
+The whole-repeat audit SHA256 is
+`955e332773ba261b220f1432082c820ca48576f48e30bea9c4a590e424073a88`.
+Its new terminal checks pass ten refusal controls and eight valid guard mutants.
+The [coordination receipt](https://github.com/Kataglyphis/ANTfrastructure/issues/249#issuecomment-6886786046)
+records the same result. Local raw logs, exact checkpoints and independent audits
+are indexed by `logs/g2-stage-coverage-current.md` and `logs/g5-results.md`.
+
+This ledger covers all 17 logical stages of the same-source full NVIDIA producer;
+the dedicated repeat is identified separately in the ONNX row. Each value is
+one primary measurement. A successful export or reused image supplies no new
+compiler-counter sample.
+
+| Logical stage | Actual cache evidence and coverage limit |
+|---|---|
+| base | Image reuse; no new compiler-counter sample. |
+| NVIDIA SDK | SDK image reuse; acquisition is not compiler-cache proof. |
+| TensorRT SDK extraction | Verified extraction/export; no compiler sample. |
+| patched LLVM toolchain | Image reuse; older LLVM hits retain their own source. |
+| toolchain publish gate | Metadata check; no compiler sample. |
+| media-core ONNX/QNN/TensorRT | Baseline reuses its image; dedicated repeat proves the primary 6,304 typed hits above. Later QNN/TensorRT displays are not independent totals. |
+| media-core FFmpeg/PyAV | Baseline image reuse; no new baseline compiler sample or dedicated PyAV/NASM accounting. |
+| media-core OpenCV | Baseline image reuse; no new baseline CUDA-counter sample. |
+| media-core HailoRT | 246 C/C++ hits, zero misses/cache errors/compiler failures. |
+| media-core GenAI | 207 C/C++ hits, zero misses/cache errors/compiler failures; CUDA retains its direct-compiler policy. |
+| media LiteRT | CMake: 5,350 hits, zero misses/cache errors/compiler failures; Bazel and wheel compilation have separate coverage limits. |
+| media TVM/IREE | Separate primary samples: TVM 630 and IREE 7,018 hits, each zero misses/cache errors/compiler failures. |
+| media merge | GStreamer 4,892 hits, 18 misses, 103 cache errors and 32 compilation failures; causes unclassified. Separate OpenCV-plugin sample: one hit, zero misses/errors/failures. |
+| Torch | App environment updated; no primary sccache-counter block. |
+| final | Image assembly/export; no compiler sample. |
+| smoke gate | 319 passed, zero failed, two retained skips; separate image-bound host receipts cover those hardware checks. |
+| publish gate | Local publishability check; no image push or compiler sample. |
+
+The complete diagnostic repeat proves G2 at d9. It does not prove a later
+commit's full lane, hosted CI, ARM device acceptance, Windows AMD inference or
+image publication. CON229 stays open for the uncached paths; unexplained
+GStreamer failures remain visible rather than classified as expected probes.
+
+**Frozen source `5bd443ea` evidence, 2026-11-12.** These private image manifests are
+dated producer evidence, not public tags or acceptance of a later source commit:
+
+| Lane | Manifest SHA256 | Actual producer/smoke scope |
+|---|---|---|
+| CPU amd64 | `99663296bfb1cc88911ff4d729269d2db37b3025e8fbdeccee9d781da846c98c` | full raw0, 289 pass / 0 fail / 2 skip |
+| ARM64 payload | `cada63a7de6578861efb37aac9eee8faf5dade814bbe3dc36881b994280fef1e` | full raw0, 152 pass / 0 fail / 17 skip; device execution open |
+| NVIDIA amd64 | `8111a9a1ad46717b5204ea5bc647a78717f8c52aa0a8991233f624a2b1748f2b` | audited full raw1 disk stop + documented Torch/final raw0; 319 pass / 0 fail / 2 hardware skips with separate host proof |
+| ROCm amd64 | `fa4bc369a67ea33182e33b42c00e243f71a2c3faf372754fbe14494fcaf5b309` | audited full/media/final raw1/1/0; 286 pass / 0 fail / 2 skip, plus a separate HIP-load skip; AMD device execution open |
+
+The full NVIDIA driver explicitly forced `media-core-built-onnx`. Its bounded
+executed ONNX block reports 6,304 typed hits: C 78, C++ 1,578, CUBIN 1,700,
+cudafe++ 605, nvcc 605 and PTX 1,738. Misses, cache errors and compilation failures
+are zero; retain 605 non-cacheable compilations and zero non-cacheable calls.
+The 2,261 top-level requests and 6,909 inner requests are distinct counters.
+L0 supplies the 6,304 hits; neither L1's zero hits nor its 605 misses prove an S3
+read hit. Do not add later QNN/TensorRT snapshots or duplicate console output.
+The original partial counter receipt does not prove a whole product; the later
+full-lane audit binds its source, forced driver, final image and continuation.
+Per-stage uncached gaps in CON229 remain open.
+
+The completed ROCm MIGraphX RUN8 reports 509 C++ hits, 17 misses and no cache or
+compile errors. GStreamer RUN27 reports 4,894 C++ hits, 16 misses, 103 cache errors
+and 32 compilation failures; repeated displays are not summed. Their original
+causes remain unclassified. An isolated real Linux GCC probe with the Linux binary
+of the same pinned `0.19.0+965c019.pr2809` build shows that a missing-header preprocessing failure
+increments Cache errors, while an undeclared identifier after preprocessing
+increments Compilation failures. Valid cold/warm controls still miss/hit correctly.
+This explains the counter categories, not the Windows requests: do not classify
+the 103 events as expected Meson checks or backend failures without request logs.
+
+The same NVIDIA bytes additionally pass five correct negative-input explicit
+zero-Pad/MaxPool runs through CPU, CUDA and TensorRTPlugin, with both outputs
+checked for shape/type/count/finite values and provider work in every complete
+run. CUDA has 10 GPU operator events and TensorRTPlugin 5. The image-bound C++
+probe has 15 actual CPU controls and 8 actually compiled semantic mutants. Forty-five
+runtime DLLs and the earlier accepted probe/model remain unchanged. This small
+graph does not establish MIGraphX, arbitrary models or Windows AMD execution.
+The native evidence receipt is `negative-pool-native-evidence-20261112.json`;
+[coordination and remaining scope](https://github.com/Kataglyphis/ANTfrastructure/issues/249#issuecomment-6824366231).
 
 Historical fixes and the canary bar before changing the pin:
 

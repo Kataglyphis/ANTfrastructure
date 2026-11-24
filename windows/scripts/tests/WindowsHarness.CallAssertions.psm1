@@ -28,16 +28,19 @@ function Assert-TestScriptCallOrder {
     param([Parameter(Mandatory)][string]$ScriptPath, [Parameter(Mandatory)][string[]]$Name,
         [Parameter(Mandatory)][string]$Text, [int]$RequiredIndex = 0, [switch]$Unconditional)
     if ($RequiredIndex -lt 0 -or $RequiredIndex -ge $Name.Count) { throw 'Required call index is outside the selected sequence.' }
-    $ast = Get-TestScriptAst -ScriptPath $ScriptPath
-    $commands = @(foreach ($commandName in $Name) {
-        $selected = @(Get-TestAstCommands -Ast $ast -Name $commandName)
-        Assert-Equal 1 $selected.Count "one selected call to $commandName"
-        $selected[0]
-    })
-    for ($index = 1; $index -lt $commands.Count; $index++) {
-        Assert-TestAstOrder -Before $commands[$index - 1] -After $commands[$index]
-    }
-    Assert-TestAstCommand -Command @($commands[$RequiredIndex]) -Text $Text -Unconditional:$Unconditional
+    $commands = Get-TestScriptCommandMap -ScriptPath $ScriptPath -Name $Name -Order $Name -CountReason 'one selected call to {0}'
+    Assert-TestAstCommand -Command @($commands[$Name[$RequiredIndex]]) -Text $Text -Unconditional:$Unconditional
 }
 
-Export-ModuleMember -Function Assert-TestSequence, Assert-TestRecordedArguments, Assert-TestScriptCallOrder
+function Assert-TestScriptParameterDefault {
+    param([Parameter(Mandatory)][Management.Automation.Language.Ast]$Ast,
+        [Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
+        [string]$Message = '')
+    $parameter = @($Ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq $Name })
+    Assert-Equal 1 $parameter.Count "one $Name parameter"
+    Assert-NotNull $parameter[0].DefaultValue "$Name has a default expression"
+    $reason = if ($Message) { $Message } else { "$Name default expression" }
+    Assert-Equal $Text $parameter[0].DefaultValue.Extent.Text $reason
+}
+
+Export-ModuleMember -Function Assert-TestSequence, Assert-TestRecordedArguments, Assert-TestScriptCallOrder, Assert-TestScriptParameterDefault

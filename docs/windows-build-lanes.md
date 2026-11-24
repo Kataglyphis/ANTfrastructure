@@ -313,6 +313,36 @@ $env:SCCACHE_WEBDAV_ENDPOINT = 'http://<host>:5000'
 > ~2 min with `windows\scripts\diagnostics\Test-Rdna4LayerLock.ps1` (elevated) —
 > its GONE verdict is the signal the workaround can be retired.
 
+### Resume from completed media branches
+
+When media-core, LiteRT and TVM/IREE have all completed, a disk stop before the
+merge does not require rebuilding those branches. After the build has ended,
+use the canonical cleanup and retain the completed branches' immutable digests
+and matching image-producing input evidence. Resume the default amd64 lane with:
+
+```pwsh
+& .\windows\Build-Buildkit.ps1 -Stages @('media-merge','torch','final')
+```
+
+`media-merge` probes all three reused parents with the existing publish gate.
+Their `publish-gate:parent-<component>` phase labels keep three independent
+logs and timing rows, separate from the final image's `publish-gate` receipt.
+These names retain ordinary publish-probe headroom. The driver
+then runs the unchanged `built` merge target with its disk gate and five-attempt
+policy. It does not run the seven branch solves. A `MediaBranches` subset refuses
+the explicit merge, including when no downstream stage was requested. Selecting
+ordinary `media` still builds its branches and merges once; adding `media-merge`
+to that selection does not duplicate the merge.
+
+Use the existing variant and target options: NVIDIA adds `-Gpu`; ROCm retains
+`migraphx` and `llama` between the merge and Torch unless its existing spike mode
+permits otherwise. ARM64 omits Torch. The compiler-cache preflight also applies
+to the explicit merge, and ROCm gap checks treat it as a new media output.
+These checks preserve the normal pipeline; they do not prove that older parents
+match changed production inputs. Complete source-bound ancestry, smoke, device
+and publication acceptance remain required. Array parameters stay in the same
+PowerShell process: use `&` as above, not a comma-joined `pwsh -File` argument.
+
 Remaining gotchas (store visibility — this was the argument for keeping a second
 lane, and it never justified one): images land in the
 CONTAINERD store (`docker.io/local/kataglyphis:bk-*`) and are invisible to
@@ -796,7 +826,10 @@ steps; the remaining work is the Dockerfile surgery):
   Shared + SourceBuild.Patches + SourceBuild.Cuda + Native.Common (plus
   Installer.Common for GStreamer; today's lists are the `buildmods` and
   `tvmmods` stages of `Dockerfile.media-builder` and the merge builder's module
-  COPY) — a whole-dir `modules/` mount lets edits to
+  COPY). All five media-core and both LiteRT RUNs directly mount those seven
+  shared files; TVM adds its private leaf. Cached COPY/view reads failed before
+  LiteRT and the later ONNX CUDA repeat on 2026-11-19. Other consumers retain the [copied-module source views](windows-build-invariants.md#copied-module-stages-need-a-readable-view).
+  A whole-dir `modules/` mount lets edits to
   the ~24 host-only modules (BuildDriver, BuildKit, Flutter, …) bust every
   compile RUN it feeds. The last one survived in `Dockerfile.toolchain-builder`'s
   `patched-llvm` RUN — the DEFAULT toolchain target — until 2026-08-31, so until

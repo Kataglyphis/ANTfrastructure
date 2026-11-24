@@ -35,10 +35,12 @@ fetch_app_tree() {
   if [[ "${APP_REF}" =~ ^[0-9a-f]{40}$ ]]; then
     git init -q "${APP_DIR}" \
       && git -C "${APP_DIR}" fetch -q --depth 1 "${_fat_url}" "${APP_REF}" \
-      && git -C "${APP_DIR}" checkout -q --detach FETCH_HEAD
+      && git -C "${APP_DIR}" checkout -q --detach FETCH_HEAD || return 1
   else
-    git clone --branch "${APP_REF}" --depth 1 "${_fat_url}" "${APP_DIR}"
+    git clone --branch "${APP_REF}" --depth 1 "${_fat_url}" "${APP_DIR}" || return 1
   fi
+  # OrchestrANT's setup.py copies hub modules from this submodule (CON289); its own submodules are not needed.
+  git -C "${APP_DIR}" submodule update --init --depth 1 third_party/ANTfrastructure
 }
 
 prepare_project_tree() {

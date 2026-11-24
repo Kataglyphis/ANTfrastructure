@@ -1,9 +1,45 @@
 #requires -Version 7.0
-# Logical text preserves raw inspection inputs; it does not validate Docker grammar, mounts or stage policies.
+# Parsed stage and literal mount checks do not execute containers or validate full engine grammar.
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -DisableNameChecking
 
 Describe 'Harness Docker inspection inputs' {
+    It 'retains exact mounts and arguments plus caller-selected wider mount exclusivity' {
+        $text = "FROM pinned AS built`nRUN --mount=type=bind,source=shared/fix.patch,target=C:\fix.patch & Build-Test.ps1 -Patch 'C:\fix.patch'`n"
+        Invoke-InTestDir -Files @{ 'Dockerfile' = $text } -Body {
+            param($dir)
+            $contract = @{ Path = Join-Path $dir 'Dockerfile'; ScriptLeaf = 'Build-Test.ps1';
+                Mount = @(@{ Text = 'source=shared/fix.patch,target=C:\fix.patch'; Exclusive = 'shared/fix.patch' }); ArgumentText = @("-Patch 'C:\fix.patch'") }
+            Assert-TestDockerfileBuildMounts @contract
+            $contract.Mount[0].Text = 'absent mount'
+            Assert-Throws { Assert-TestDockerfileBuildMounts @contract } -MessagePattern 'required build mount absent mount'
+            $contract.Mount[0].Text = 'source=shared/fix.patch,target=C:\fix.patch'
+            $contract.ArgumentText = @('absent argument')
+            Assert-Throws { Assert-TestDockerfileBuildMounts @contract } -MessagePattern 'required build argument absent argument'
+            $contract.ArgumentText = @("-Patch 'C:\fix.patch'")
+            [IO.File]::AppendAllText($contract.Path, "RUN echo shared/fix.patch`n")
+            Assert-Throws { Assert-TestDockerfileBuildMounts @contract } -MessagePattern 'exclusive build mount shared/fix.patch'
+        }
+    }
+
+    It 'selects RUN instructions only from the requested parsed stage and refuses omitted or malformed selected stages' {
+        Invoke-InTestDir -Files @{ 'Dockerfile' = "FROM pinned AS built`nRUN first`nCOPY file target`nFROM built AS selected`nRUN second```n third`n" } -Body {
+            param($dir)
+            $path = Join-Path $dir 'Dockerfile'
+            Assert-Equal 'RUN first' (@(Get-TestDockerfileRun -Path $path) -join '|') 'default stage selection'
+            Assert-Equal 'RUN second third' (@(Get-TestDockerfileRun -Path $path -Stage selected) -join '|') 'selected stage and joined continuation'
+            $build = Get-TestDockerfileBuildRun -Path $path -Stage selected -ScriptLeaf second
+            Assert-Equal 'RUN second third' $build.Command 'selected command'
+            Assert-Equal 1 $build.All.Count 'whole selected-stage RUN collection'
+            Assert-Throws { Get-TestDockerfileBuildRun -Path $path -ScriptLeaf absent } -MessagePattern 'one build RUN containing absent'
+            [IO.File]::AppendAllText($path, "RUN second again`n")
+            Assert-Throws { Get-TestDockerfileBuildRun -Path $path -Stage selected -ScriptLeaf second } -MessagePattern 'one build RUN containing second'
+            Assert-Throws { Get-TestDockerfileRun -Path $path -Stage missing } -MessagePattern 'stage .missing. is missing'
+            [IO.File]::WriteAllText($path, "FROM`nRUN forbidden`n")
+            Assert-Throws { Get-TestDockerfileRun -Path $path } -MessagePattern 'stage .built. is missing'
+        }
+    }
+
     It 'loads a literal file and folds LF and CRLF continuations without executing or expanding its content' {
         Invoke-InTestDir { param($dir)
             $path = Join-Path $dir 'Dockerfile [literal]'

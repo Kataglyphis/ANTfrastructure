@@ -1755,6 +1755,14 @@
   "baseline": 0.4,
   "per_entry": 0.4
  },
+ "bash linux/scripts/tests/test-check-install-tree.sh": {
+  "baseline": 0.3,
+  "per_entry": 0.3
+ },
+ "bash linux/scripts/tests/test-warning-census.sh": {
+  "baseline": 0.5,
+  "per_entry": 0.5
+ },
  "bash linux/scripts/tests/test-workflow-lint.sh": {
   "baseline": 11.16,
   "per_entry": 10.7

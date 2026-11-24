@@ -7,6 +7,7 @@ ARG BASE_IMAGE=docker.io/local/kataglyphis:bk-windows-media-rocm
 
 # The two scripts' module closure, mounted as one directory (the buildmods pattern of the media lane).
 FROM ${BASE_IMAGE} AS migraphxmods
+ARG WINDOWS_TARGET_ARCH=amd64
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
@@ -16,6 +17,8 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsPythonWheel.Common.psm1 `
      windows\scripts\modules\WindowsMigraphx.Common.psm1 `
      C:\bkmods\
+# The view keeps copied module files readable through Windows bind mounts.
+RUN cmd /c exit 0
 
 FROM ${BASE_IMAGE} AS built
 
@@ -51,10 +54,11 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=secret,id=sccache_endpoint,env=SCCACHE_ENDPOINT --mount=type=secret,id=sccache_bucket,env=SCCACHE_BUCKET `
     --mount=type=secret,id=sccache_region,env=SCCACHE_REGION --mount=type=secret,id=sccache_s3_use_ssl,env=SCCACHE_S3_USE_SSL `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
+    --mount=type=bind,source=shared/upstream/migraphx/patches/0001-preserve-zero-pad-maxpool.patch,target=C:\bkmnt\migraphx-pad-pool.patch,readonly `
     --mount=type=bind,source=windows/scripts/build/Build-MigraphxFromSource.ps1,target=C:\bkmnt\Build-MigraphxFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=migraphxmods,source=/bkmods,target=C:\bkmnt\modules `
-    & 'C:\bkmnt\Build-MigraphxFromSource.ps1' -InstallDir 'C:\runtime\lib\migraphx' -WorkDir 'C:\temp\migraphx-work'
+    & 'C:\bkmnt\Build-MigraphxFromSource.ps1' -InstallDir 'C:\runtime\lib\migraphx' -WorkDir 'C:\temp\migraphx-work' -PadPoolingPatchFile 'C:\bkmnt\migraphx-pad-pool.patch'
 
 # Declared AFTER the MIGraphX RUN, so an EP pin bump never re-runs that compile.
 ARG ORT_AMDGPU_EP_COMMIT=58afd43bc4c2ddc7582712e1d75cbfd4c3bb03fc

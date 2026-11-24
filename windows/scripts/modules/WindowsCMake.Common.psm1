@@ -236,20 +236,22 @@ function Get-CmakeBuildArgs {
   return $buildArgs
 }
 
+function Get-CPackGeneratorLogMessages {
+  param([string]$BuildPath, [int]$TailLines)
+  # CPack's summary omits the generator failure; retain each log's path and bounded tail.
+  $packages = Join-Path $BuildPath '_CPack_Packages'
+  if (-not (Test-Path -LiteralPath $packages)) { return "No CPack generator logs: $packages does not exist" }
+  $logs = @(Get-ChildItem -LiteralPath $packages -Recurse -Depth 3 -File -Filter '*.log' | Sort-Object FullName)
+  if ($logs.Count -eq 0) { return "No CPack generator logs under $packages" }
+  foreach ($log in $logs) {
+    "===== CPack generator log (last $TailLines lines): $($log.FullName) ====="
+    Get-Content -LiteralPath $log.FullName -Tail $TailLines
+  }
+}
+
 function Write-CPackGeneratorLog {
   param($Context, [string]$BuildPath, [int]$TailLines = 80)
-  # CPack reports only "Problem running NSIS command"; the generator's own log under _CPack_Packages names the cause.
-  $packages = Join-Path $BuildPath '_CPack_Packages'
-  if (-not (Test-Path -LiteralPath $packages)) {
-    Write-BuildLog -Context $Context -Message "No CPack generator logs: $packages does not exist"
-    return
-  }
-  $logs = @(Get-ChildItem -LiteralPath $packages -Recurse -Depth 3 -File -Filter '*.log' | Sort-Object FullName)
-  if ($logs.Count -eq 0) { Write-BuildLog -Context $Context -Message "No CPack generator logs under $packages" }
-  foreach ($log in $logs) {
-    Write-BuildLog -Context $Context -Message "===== CPack generator log (last $TailLines lines): $($log.FullName) ====="
-    Write-BuildLogMessages -Context $Context -Messages @(Get-Content -LiteralPath $log.FullName -Tail $TailLines)
-  }
+  Write-BuildLogMessages -Context $Context -Messages @(Get-CPackGeneratorLogMessages -BuildPath $BuildPath -TailLines $TailLines)
 }
 
 function Write-CmakeBuildDiagnostics {

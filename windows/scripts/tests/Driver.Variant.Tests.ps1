@@ -5,7 +5,7 @@ Import-Module (Join-Path $PSScriptRoot 'WindowsDriverVariant.Fixture.psm1') -For
 
 Describe 'Resolve-BkVariant' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\Build-Buildkit.ps1' `
-        -FunctionName @('Resolve-BkVariant', 'Remove-BkUnsupportedStage', 'Assert-BkRocmStageClosure', 'Assert-BkVariantPushRef'))
+        -FunctionName @('Resolve-BkVariant', 'Remove-BkUnsupportedStage', 'Get-BkRequiredStages', 'Assert-BkRocmStageClosure', 'Assert-BkVariantPushRef'))
     $script:DefaultStages = @('base', 'sdk', 'toolchain', 'media', 'migraphx', 'llama', 'torch', 'final')
     function Invoke-Resolve {
         param([string]$Variant = '', [bool]$Gpu = $false, [string]$TargetArch = 'amd64',
@@ -33,8 +33,7 @@ Describe 'Resolve-BkVariant' {
         Assert-Equal 'nvidia' (Invoke-Resolve -Variant 'nvidia').Variant '-Variant nvidia'
     }
 
-    It 'refuses what a variant cannot build, the retired rocm stage, and a rocm stale-parent gap' {
-        # Case = the Invoke-Resolve splat; Pattern = the refusal that must fire. Bound stages throughout.
+    It 'validates accepted and refused stage selections on every lane, including the explicit merge boundary' {
         $refusals = @(
             @{ Pattern = 'sdk stage on -Variant rocm'; Case = @{ Stages = @('rocm', 'torch'); StagesBound = $true } }
             @{ Pattern = 'sdk stage on -Variant rocm'; Case = @{ Variant = 'nvidia'; Stages = @('rocm'); StagesBound = $true } }
@@ -49,26 +48,42 @@ Describe 'Resolve-BkVariant' {
             @{ Pattern = 'skips migraphx,llama'; Case = @{ Variant = 'rocm'; Stages = @('media', 'torch', 'final'); StagesBound = $true } }
             @{ Pattern = 'skips llama'; Case = @{ Variant = 'rocm'; Stages = @('migraphx', 'torch'); StagesBound = $true } }
             @{ Pattern = 'NoRocmSpikes to skip migraphx'; Case = @{ Variant = 'rocm'; Stages = @('media', 'llama'); StagesBound = $true } }
+            @{ Pattern = 'skips migraphx,llama'; Case = @{ Variant = 'rocm'; Stages = @('media-merge', 'torch', 'final'); StagesBound = $true } }
+            @{ Pattern = 'skips llama,torch'; Case = @{ Variant = 'rocm'; NoRocmSpikes = $true; Stages = @('media-merge', 'final'); StagesBound = $true } }
             # final builds FROM torch on rocm, so skipping torch ships an earlier run's torch.
             @{ Pattern = 'skips torch'; Case = @{ Variant = 'rocm'; Stages = @('llama', 'final'); StagesBound = $true } }
             @{ Pattern = 'skips llama,torch'; Case = @{ Variant = 'rocm'; Stages = @('migraphx', 'final'); StagesBound = $true } }
             @{ Pattern = 'skips migraphx,llama,torch'; Case = @{ Variant = 'rocm'; Stages = @('media', 'final'); StagesBound = $true } }
             @{ Pattern = 'skips llama,torch'; Case = @{ Variant = 'rocm'; NoRocmSpikes = $true; Stages = @('media', 'final'); StagesBound = $true } }
         )
-        foreach ($r in $refusals) {
-            $case = $r.Case
+        $accepted = @(
+            foreach ($selection in @(@('media'), @('final'), @('torch', 'final'), @('llama', 'torch', 'final'), @('sdk', 'toolchain', 'media'), @('media', 'migraphx'))) {
+                @{ Variant='rocm'; Stages=$selection; StagesBound=$true }
+            }
+            @{ Variant='rocm'; Stages=@('media-merge', 'migraphx', 'llama', 'torch', 'final'); StagesBound=$true }
+            @{ Variant='rocm'; NoRocmSpikes=$true; Stages=@('media', 'llama', 'torch'); StagesBound=$true }
+            @{ Variant='rocm'; NoRocmSpikes=$true; Stages=@('media-merge', 'llama', 'torch', 'final'); StagesBound=$true }
+            @{ Stages=@('media', 'torch', 'final'); StagesBound=$true }
+            @{ Gpu=$true; Stages=@('media', 'final'); StagesBound=$true }
+        )
+        $selections = @($refusals) + @($accepted | ForEach-Object { @{ Case = $_; Pattern = '' } })
+        foreach ($selection in $selections) {
+            $case = $selection.Case
             $label = ($case.GetEnumerator() | Sort-Object Key | ForEach-Object { "$($_.Key)=$($_.Value -join ',')" }) -join ' '
-            Assert-Throws { Invoke-Resolve @case } $label -MessagePattern $r.Pattern
+            if ($selection.Pattern) {
+                Assert-Throws { Invoke-Resolve @case } $label -MessagePattern $selection.Pattern
+            } else {
+                Assert-Equal ($case.Stages -join ',') ((Invoke-Resolve @case).Stages -join ',') $label
+            }
         }
     }
 
-    It 'accepts a contiguous rocm stage list, and never applies the gap rule to the default or nvidia lanes' {
-        foreach ($ok in @(@('media'), @('final'), @('torch', 'final'), @('llama', 'torch', 'final'), @('sdk', 'toolchain', 'media'), @('media', 'migraphx'))) {
-            Assert-Equal ($ok -join ',') ((Invoke-Resolve -Variant 'rocm' -Stages $ok -StagesBound $true).Stages -join ',') "contiguous $($ok -join ',')"
-        }
-        Assert-Equal 'media,llama,torch' ((Invoke-Resolve -Variant 'rocm' -NoRocmSpikes $true -Stages @('media', 'llama', 'torch') -StagesBound $true).Stages -join ',') 'no migraphx gap under -NoRocmSpikes'
-        Assert-Equal 'media,torch,final' ((Invoke-Resolve -Stages @('media', 'torch', 'final') -StagesBound $true).Stages -join ',') 'default lane'
-        Assert-Equal 'media,final' ((Invoke-Resolve -Gpu $true -Stages @('media', 'final') -StagesBound $true).Stages -join ',') 'nvidia lane'
+    It 'detects a live ROCm merge alias mutant after its healthy ordinary control' {
+        Invoke-WithFunctionModule -ScriptPath 'windows/Build-Buildkit.ps1' -FunctionName @('Get-BkRequiredStages', 'Assert-BkRocmStageClosure') `
+            -Find "'^media-merge$'" -Replace "'^unmatched-stage$'" -Body {
+                Assert-MutBkRocmStageClosure -Stages @('media', 'migraphx', 'llama', 'torch', 'final') -NoRocmSpikes $false
+                Assert-MutBkRocmStageClosure -Stages @('media-merge', 'torch', 'final') -NoRocmSpikes $false
+            }
     }
 
     It 'lets a push go only to the tag of its own variant' {

@@ -14,7 +14,7 @@
 .PARAMETER Variant
     '' (CPU + DirectML), nvidia (= -Gpu) or rocm (amd64 only); both variants take the sdk slot under their own tags.
 .PARAMETER Stages
-    Subset of base,sdk,toolchain,media,migraphx,llama,torch,final; migraphx and llama are rocm-only.
+    Subset of base,sdk,toolchain,media,media-merge,migraphx,llama,torch,final; migraphx and llama are rocm-only.
 .PARAMETER NoRocmSpikes
     rocm only: skip the migraphx stage and build TVM without ROCm.
 .EXAMPLE
@@ -39,7 +39,7 @@ param(
     [ValidateSet('amd64', 'arm64')]
     [string]$TargetArch = 'amd64',
     # 'rocm' stays in the set only to refuse it with the migration message (Resolve-BkVariant).
-    [ValidateSet('base', 'sdk', 'toolchain', 'media', 'migraphx', 'llama', 'torch', 'final', 'rocm')]
+    [ValidateSet('base', 'sdk', 'toolchain', 'media', 'media-merge', 'migraphx', 'llama', 'torch', 'final', 'rocm')]
     [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'migraphx', 'llama', 'torch', 'final'),
     [ValidateSet('media-core', 'media-litert', 'media-tvm')]
     [string[]]$MediaBranches = @('media-core', 'media-litert', 'media-tvm'),
@@ -206,12 +206,18 @@ function Remove-BkUnsupportedStage {
     return ,@($StageList | Where-Object { $_ -ne $Stage })
 }
 
+function Get-BkRequiredStages {
+    param([string[]]$StageList)
+    return ,@($StageList -replace '^media-merge$', 'media')
+}
+
 function Assert-BkRocmStageClosure {
     param([string[]]$Stages, [bool]$NoRocmSpikes)
+    $requiredStages = Get-BkRequiredStages -StageList $Stages
     # Each post-media stage builds FROM the previous tag, so a gap inherits an older image.
     $chain = @(@('media', 'migraphx', 'llama', 'torch', 'final') | Where-Object { -not ($NoRocmSpikes -and $_ -eq 'migraphx') })
-    $built = @(for ($i = 0; $i -lt $chain.Count; $i++) { if ($Stages -contains $chain[$i]) { $i } })
-    $gap = @(if ($built.Count -gt 1) { $chain[$built[0]..$built[-1]] | Where-Object { $Stages -notcontains $_ } })
+    $built = @(for ($i = 0; $i -lt $chain.Count; $i++) { if ($requiredStages -contains $chain[$i]) { $i } })
+    $gap = @(if ($built.Count -gt 1) { $chain[$built[0]..$built[-1]] | Where-Object { $requiredStages -notcontains $_ } })
     if ($gap.Count -gt 0) {
         throw ("-Variant rocm -Stages $($Stages -join ',') skips $($gap -join ','): the next stage would build FROM " +
                "an earlier run's $($gap[-1]) image (stale parent, backlog #39). Add $($gap -join ',') to -Stages" +
@@ -374,7 +380,7 @@ Assert-BkCacheExportRef -Variant $Variant -ExportCacheRef $ExportCacheRef -Publi
 # --- resource budget + sccache gate ---
 $MediaMemoryGb = Get-MediaMemoryBudget -RequestedGb $MediaMemoryGb -HostReserveGb $HostReserveGb
 Write-Host "BuildKit lane: process isolation, all CPUs; memory budget $MediaMemoryGb GB (published via webdav, #51)" -ForegroundColor Cyan
-Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache
+Assert-SccacheEndpoint -Stages (Get-BkRequiredStages -StageList $Stages) -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache
 # The children's halved budget travels only via the webdav publish, which -NoSccache disables.
 if ($ConcurrentAux -and $NoSccache) {
     throw ('-ConcurrentAux relies on the WebDAV memory publish to halve the aux children''s budget, ' +
@@ -1001,8 +1007,7 @@ function Get-BkToolPinArg {
     return $picked
 }
 
-function Invoke-BkMediaStages {
-if ($Stages -contains 'media') {
+function Invoke-BkMediaBranches {
     # Canonical per-branch version args (WindowsBuildDriver.Common).
     $branchArgs = @{}
     foreach ($b in 'media-core', 'media-litert', 'media-tvm') {
@@ -1049,10 +1054,19 @@ if ($Stages -contains 'media') {
     if ($ConcurrentAux -and ($MediaBranches -contains 'media-litert') -and ($MediaBranches -contains 'media-tvm')) {
         Invoke-BkAuxMediaBranches -AuxMem $auxMem -DriverPath $PSCommandPath
     }
+}
+
+function Invoke-BkMediaMergeStage {
     # The merge needs all three branches and runs once, which keeps the single-branch children out of it.
     $allBranches = $script:MergeRequiredBranches
     $runMerge = @($allBranches | Where-Object { $_ -notin $MediaBranches }).Count -eq 0
     if ($runMerge) {
+        if ($Stages -notcontains 'media') {
+            foreach ($branch in $script:MergeRequiredBranches) {
+                $parentLabel = 'publish-gate:' + $branch.Replace('media-', 'parent-')
+                Invoke-BkPublishGate -Image (Get-BkTag "windows-$branch") -Label $parentLabel
+            }
+        }
         # Every branch ships a tree, possibly an empty marker one, so the unconditional COPY --from lines hold.
         $litertImage = Get-BkTag 'windows-media-litert'
         $tvmImage    = Get-BkTag 'windows-media-tvm'
@@ -1067,7 +1081,7 @@ if ($Stages -contains 'media') {
         Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'built' -Tag (Get-BkTag 'windows-media') -BuildArgs $mergeArgs -MaxAttempts 5
     } else {
         # Fail closed: later stages would silently build on the previous run's media image.
-        $downstream = @('migraphx', 'llama', 'torch', 'final') | Where-Object { $Stages -contains $_ }
+        $downstream = @('media-merge', 'migraphx', 'llama', 'torch', 'final') | Where-Object { $Stages -contains $_ }
         if ($downstream) {
             throw ("[bk:merge] REFUSING to build $($downstream -join '+') from a STALE '$(Get-BkTag 'windows-media')': " +
                    "the merge was skipped because -MediaBranches is a subset (got: $($MediaBranches -join ', '); " +
@@ -1078,6 +1092,9 @@ if ($Stages -contains 'media') {
     }
 }
 
+function Invoke-BkMediaStages {
+    if ($Stages -contains 'media') { Invoke-BkMediaBranches }
+    if ($Stages -contains 'media' -or $Stages -contains 'media-merge') { Invoke-BkMediaMergeStage }
 }
 Invoke-BkMediaStages
 

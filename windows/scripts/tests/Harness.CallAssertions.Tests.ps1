@@ -45,3 +45,13 @@ Describe 'Captured child diagnostic text' {
         Assert-Throws { Assert-Match 'expected reason' (ConvertTo-TestDiagnosticText -Output @('different reason')) } -MessagePattern 'Assert-Match'
     }
 }
+
+Describe 'Shared parameter default assertions' {
+    It 'requires the selected parameter and its exact declared default' {
+        $ast = ConvertTo-TestScriptAst -Text "param([string]`$Selected = 'source with spaces', [string]`$Required)"
+        Assert-TestScriptParameterDefault -Ast $ast -Name Selected -Text "'source with spaces'"
+        Assert-Throws { Assert-TestScriptParameterDefault -Ast $ast -Name Missing -Text "''" } -MessagePattern 'one Missing parameter'
+        Assert-Throws { Assert-TestScriptParameterDefault -Ast $ast -Name Required -Text "''" } -MessagePattern 'Required has a default expression'
+        Assert-Throws { Assert-TestScriptParameterDefault -Ast $ast -Name Selected -Text "'different'" } -MessagePattern 'Selected default expression'
+    }
+}

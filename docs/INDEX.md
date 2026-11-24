@@ -80,7 +80,7 @@ The two halves of one topic often split:
 | **The home network's addresses**: placeholders in docs and examples, the real values in the gitignored `site.local.env` | [`site.local.env.example`](../site.local.env.example) |
 | **clang-cl sanitizers**: why `-shared-libsan`, trap-mode UBSan, Microsoft's ASan runtime over LLVM's, and who stages the DLL | [`windows-clang-cl-sanitizers.md`](windows-clang-cl-sanitizers.md) |
 | **The sanitizer modules on every compiler**: Debug-only generator expressions, the defaults, the combinations each toolchain drops, clang-cl's trap-mode UBSan | [`../cmake/README.md`](../cmake/README.md#sanitizers-what-the-modules-actually-do) |
-| Stevedore post-install fixes, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
+| Stevedore post-install fixes, disk inventory, delegated maintenance/new-host limits, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
 | **Local fixes to upstream projects** — every third-party source change the Windows chain carries, graded, and the 12 prepared-but-unsent submissions | [`upstream-windows-patches.md`](upstream-windows-patches.md) |
 | **Building for Windows-on-ARM**: why there is no arm64 image, the clang-cl cross lane, arch gates, what reached runtime parity with amd64 and what stays amd64-only | [`windows-cross-builds.md`](windows-cross-builds.md) |
 | **A consumer's Windows products**: the reusable `container-ci-windows.yml` lane, the product folder and its DLL closure (`Copy-PeImportClosure`), and CPack's `KATAGLYPHIS_PACKAGE_DLL_DIR` | [`windows-cross-builds.md` § Consumer cross lanes](windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml) |
@@ -228,8 +228,10 @@ owning page above.
 | What to read in a running chain's log | [`build-watch-list.md`](build-watch-list.md) | The 2026-09-05 wave's closure changes, grouped by stage: the log line that proves each one worked and the line that means it failed, plus the read-only probes to run on the shipped bytes afterwards. Why: eleven backlog entries closed on static proof, and a first rebuild attempt still found two build-killing bugs. |
 | Open refactor work, Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | What changed and why, current wave | [`../CHANGELOG.md`](../CHANGELOG.md) |
-| Changelog entries 2026-11-06 … 2026-11-17 | [`changelog-archive-2026-11-17.md`](changelog-archive-2026-11-17.md) | Linux and Windows build, cache, packaging and acceptance history. |
-| Changelog entries 2026-11-06 … 2026-11-12 | [`changelog-archive-2026-11-12.md`](changelog-archive-2026-11-12.md) | Linux and Windows build, cache, packaging and acceptance history. |
+| Changelog entries 2026-11-15 … 2026-11-17 | [`changelog-archive-2026-11-17.md`](changelog-archive-2026-11-17.md) | Preserved Linux and Windows source, workflow and acceptance history. |
+| Changelog entries 2026-11-13 … 2026-11-14 | [`changelog-archive-2026-11-14.md`](changelog-archive-2026-11-14.md) | Preserved Linux and Windows build, test and acceptance history. |
+| Changelog entries 2026-11-07 … 2026-11-12 | [`changelog-archive-2026-11-12.md`](changelog-archive-2026-11-12.md) | Build, cache, packaging, consumer hooks and acceptance history. |
+| Changelog entries 2026-11-05 … 2026-11-06 | [`changelog-archive-2026-11-06.md`](changelog-archive-2026-11-06.md) | Compiler caches, Windows TensorRT acquisition and GPU runtime fixes. |
 | Changelog entries 2026-11-05 | [`changelog-archive-2026-11-05.md`](changelog-archive-2026-11-05.md) |
 | Changelog entries 2026-10-23 … 2026-11-04 | [`changelog-archive-2026-11-04.md`](changelog-archive-2026-11-04.md) | Linux and Windows build, cache, packaging and acceptance history. |
 | Changelog entries 2026-10-20 … 2026-10-22 | [`changelog-archive-2026-10-22.md`](changelog-archive-2026-10-22.md) | Linux and Windows build fixes, shared tooling and CI regression coverage. |

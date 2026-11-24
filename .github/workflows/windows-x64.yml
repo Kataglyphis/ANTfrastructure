@@ -7,6 +7,7 @@ on:
     paths:
       - 'windows/**'
       - 'shared/windows/**'
+      - 'shared/upstream/migraphx/**'
       - 'shared/native/windows/**'
       - 'shared/python/windows_*'
       - 'shared/python/tests/test_windows_installer_payload*'
@@ -21,6 +22,7 @@ on:
     paths:
       - 'windows/**'
       - 'shared/windows/**'
+      - 'shared/upstream/migraphx/**'
       - 'shared/native/windows/**'
       - 'shared/python/windows_*'
       - 'shared/python/tests/test_windows_installer_payload*'

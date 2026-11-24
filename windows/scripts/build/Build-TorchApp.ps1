@@ -143,6 +143,8 @@ function New-TorchAppCheckout {
         Write-Warning "APP_REF '$AppRef' is a name, not a commit: a cached build of this stage does not see it move"
         [void](Invoke-ShieldedNative -Label 'git clone (app)' -CommandLine "git clone --branch $AppRef --depth 1 $appRepo ""$AppDir""")
     }
+    # The app's setup.py copies hub modules at build time; the hub's own submodules are not needed.
+    [void](Invoke-ShieldedNative -Label 'git submodule (app hub)' -CommandLine "git -C ""$AppDir"" submodule update --init --depth 1 third_party/ANTfrastructure")
 }
 
 function Install-TorchAppPython3Dll {

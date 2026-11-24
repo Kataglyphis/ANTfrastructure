@@ -62,6 +62,7 @@ All paths are `-p1`, applied to the root of the named upstream checkout. Pinned 
 | `gstreamer/003-onnxinference-wide-model-path.patch` | gstreamer/gstreamer **`GSTREAMER_VERSION`** | `gstonnxinference.c`: convert the model path to UTF-16 on Windows. Upstream passes a `gchar *` where `ORTCHAR_T` is `wchar_t`, so every session fails with a garbled path; the build's `-Wno-incompatible-pointer-types` hides the warning. Fatal when it stops applying. | ✅ `index` |
 | `gstreamer/002-libvpx-clangcl-simd-flags.patch` | gstreamer/meson-ports/libvpx **`LIBVPX_MESON_COMMIT`** | root `meson.build`: use the per-file `-mssse3`-style flags under clang-cl, whose MSVC argument syntax otherwise selects the empty MSVC table and fails with `requires target feature`. Applied by meson through the wrap's `diff_files`. | ✅ `index` |
 | `gstreamer/001-ges-commit-rename.patch` | gstreamer/gstreamer **`GSTREAMER_VERSION`** | `ges-validate.c`: `#define _commit ges__commit` before clang-cl's `-FIio.h` force-include exposes a colliding CRT `_commit`. | ✅ `index` |
+| `pytorch/001-torchvision-host-sccache.patch` | pytorch/pytorch **`PYTORCH_VERSION`** | `torch/utils/cpp_extension.py`: opt torchvision's Windows HIP build into its host C++ compiler launcher. The patched source belongs to PyTorch; `TORCHVISION_VERSION` does not select it. | no `index` |
 
 `cpython/001-short-clang-compiler-id.patch` was dropped with CPython 3.14.8, whose `PC/pyconfig.h`
 names clang by `major.minor.patch` itself (`_Py_CLANG_COMPILER`); `Build-ToolchainAll.ps1` still refuses
@@ -110,7 +111,19 @@ pwsh -File windows/scripts/tests/Test-PatchesApplyClean.ps1
 pwsh -File windows/scripts/tests/Test-PatchesApplyClean.ps1 -Versions @{ ONNXRUNTIME = 'v1.28.0' }
 ```
 
-The script reads the pinned refs from `versions.env`; its `$defaultRefs` are only the fallback
-when that file is absent. A new patch directory needs a `$repoMap` entry, or the check reports
-FAIL for it. CI runs the same check as the `patch-drift` job of
+The script reads the pinned refs from `versions.env`; its defaults are only the fallback
+when that file is absent. A new patch directory needs a `Get-PatchRepoMap` entry and its
+source pin in `Get-PatchRefs`, or the check reports FAIL for it. Local accounting fixtures
+check every current static patch's mapping, source-pin selection and explicit override
+precedence before any clone; they do not prove upstream application. CI runs the real check as the `patch-drift` job of
 `.github/workflows/windows-x64.yml`, on every change under `windows/` or to `versions.env`.
+
+ONNX first tries the configured Microsoft release, then the full original commit from the
+reviewed ROCm mirror only after clone failure. Both transports require the configured commit
+and `VERSION_NUMBER` before a clone enters the cache; a successful but wrong primary identity
+fails immediately. Sparse checkout, Git apply and GNU patch dry runs remain mandatory.
+If a clone still cannot be obtained, a confirmed HTTP 404 is reported as `NOT CHECKED` to
+distinguish unavailability from a reachable clone failure. Both statuses leave this required
+gate red: the diagnostic is not patch-application evidence. CON280 remains open for maintained
+private mirrors. Local fixtures cover identity, fallback and verdict accounting; the real
+upstream check supplies separate network and patch-application evidence.

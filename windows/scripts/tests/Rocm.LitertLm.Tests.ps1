@@ -232,9 +232,10 @@ Describe 'Build-LitertLmBazel: the GPU payload' {
     }
 
     It 'pins every prebuilt DLL through versions.env, the media-litert branch args and the stage ARG' {
-        $v = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
-        $branch = Get-MediaBranchVersionArg -Branch 'media-litert' -VersionTable $v
-        $merge = Get-MediaMergeVersionArg -VersionTable $v
+        $pinContext = Get-TestMediaPinContext -Branch 'media-litert'
+        $v = $pinContext.Versions
+        $branch = $pinContext.Branch
+        $merge = $pinContext.Merge
         $dockerfile = Get-Content -LiteralPath (Join-Path (Get-RepoRoot) 'windows\Dockerfile.media-builder') -Raw
         $keys = (Get-LlmPayloadFixture).PinKeys + 'LITERT_LM_DXC_ZIP_SHA256'
         Assert-Equal 4 $keys.Count 'three DLL pins + the DXC zip pin'

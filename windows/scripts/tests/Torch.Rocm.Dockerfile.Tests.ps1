@@ -108,6 +108,9 @@ Describe 'Dockerfile.torch: cpu and nvidia build the unchanged app stage' {
         }
         Assert-Match "Build-TorchRocmFromSource\.ps1' -OutputDir 'C:\\torch-rocm-wheels' -WorkDir 'C:\\b'$" $runs[0] 'the torch RUN'
         Assert-False $runs[0].Contains('Build-TorchvisionRocmFromSource') 'the torch RUN is not keyed by the torchvision script'
+        $cachePatch = 'source=windows/scripts/patches/pytorch/001-torchvision-host-sccache.patch,target=C:\bkmnt\patches\pytorch\001-torchvision-host-sccache.patch'
+        Assert-False $runs[0].Contains($cachePatch) 'a vision cache edit preserves the torch compile'
+        Assert-True $runs[1].Contains($cachePatch) 'vision receives its required source patch'
         Assert-True $runs[1].Contains('source=windows/scripts/build/Build-TorchvisionRocmFromSource.ps1,target=C:\bkmnt\Build-TorchvisionRocmFromSource.ps1') 'torchvision script mount'
         Assert-Match "Build-TorchvisionRocmFromSource\.ps1' -OutputDir 'C:\\torch-rocm-wheels' -WorkDir 'C:\\b'$" $runs[1] 'same output and work dir'
         $torchRun = [array]::IndexOf($lines, $runs[0])

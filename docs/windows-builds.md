@@ -1,5 +1,7 @@
 # Windows Build Image
 
+IREE's x86-64-v3 floor coexists with explicit clang-cl AVX512 flags on its dispatched kernels. The source patch runs before native and cross-host configuration; it preserves GNU/MSVC options and refuses changed input layouts. See [the ISA invariant](windows-build-invariants.md#avx-512amx-flags-never-go-in-global-cxx-flags). The 24908390 NVIDIA attempt stopped in this kernel compilation after eleven completed phases; earlier stages are not full-lane acceptance.
+
 The reference for the image itself: what is installed, how it is built, how it is verified. Lane
 mechanics, resource budgets and host fixes moved to their own pages on 2026-08-25:
 
@@ -965,6 +967,12 @@ Source build from the pinned release tag (`FFMPEG_VERSION` in `versions.env`; a 
   sets the sentinel `FFMPEG_SOURCE_BUILD=0`.
 
 ## Prerequisites
+
+The full native Windows test runner also builds `CrashDump.Native.Tests.ps1`'s
+real x64 MSVC fixture. Run it with installed MSVC and a working Visual Studio
+CMake generator. A host with only Stevedore may default to NMake, reject the
+fixture's `-A x64` and lack `cl.exe`; that local run remains failed. The
+Windows x64 CI runner provides the compiler environment.
 
 **Provisioning a FRESH machine?** Follow the ordered checklist in
 [Fresh Windows Host Bring-Up](windows-host-setup.md): it sequences everything on this page
@@ -2166,9 +2174,16 @@ profile, and the host had to be rebuilt by hand).
 - `-StoreHusksOnly` selects only `C:\ProgramData\{containerd,buildkitd,Docker}.bak-*`
   directories and disables every daemon report/prune call, even with `-Apply`. It excludes TEMP,
   logs and checkout scratch. Report with this selector first; apply only after checking the list.
+- `-KeepGB` uses GiB, matching the build driver's free-space probes. BuildKit's
+  `--free-storage` uses decimal MB: the shared boundary conversion rounds up
+  `GiB * 1073741824 / 1000000`; 100 GiB becomes 107375 MB, not 102400 MB.
+  A successful prune does not prove the target was met: remeasure actual free bytes.
 - `-StevedoreOnly` selects a separate daemon-only path: provide matching `-ImageTag` and
   `-ExpectedImageId` arrays for explicit local tags and their full `sha256:` image IDs, and/or
-  select `-RegularCache` to prune unused regular BuildKit cache. Run without `-Apply` to preview;
+  select `-RegularCache` to prune unused regular BuildKit cache. Matching `-ContainerId` and
+  `-ExpectedContainerImageId` arrays select full IDs of stopped containers carrying exactly
+  `org.kataglyphis.antfrastructure.disposable=true`; removal uses neither force nor volume deletion.
+  Run without `-Apply` to preview;
   after review, repeat with `-Apply` from an elevated shell. For example:
 
   ```pwsh
@@ -2198,7 +2213,13 @@ profile, and the host had to be rebuilt by hand).
   looks live unless `-AllowDuringBuild`.
 - Parameters: `-Apply`, `-KeepGB` (buildkit free-space target, default 100), `-TempOlderThanDays`,
   `-AllowDuringBuild`, `-NoDaemonPrune`, `-StoreHusksOnly`, `-StevedoreOnly`, `-ImageTag`,
-  `-ExpectedImageId`, `-RegularCache`, `-StevedoreNamespace`, `-ContainerdAddress`, `-BuildkitAddress`.
+  `-ExpectedImageId`, `-ContainerId`, `-ExpectedContainerImageId`, `-RegularCache`,
+  `-StevedoreNamespace`, `-ContainerdAddress`, `-BuildkitAddress`.
+- For recurring agent operation, use the versioned `Install-StevedoreMaintenance.ps1`,
+  `Invoke-StevedoreMaintenance.ps1` and `Remove-StevedoreMaintenance.ps1` entrypoints.
+  The [delegated maintenance runbook](windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts)
+  defines the fixed retention policy, one-time administrator setup, ordinary-user acceptance,
+  protected logs and revocation on this host or a new machine.
 - Enforced from outside the script too, by the `PreToolUse` guard in
   `.claude/hooks/guard-destructive-deletes.ps1`; behaviour pinned by
   `windows/scripts/tests/Guard.DestructiveDeletes.Tests.ps1`.
@@ -2517,6 +2538,16 @@ binary can run. Mutation checks reverse the candidates, remove app normalization
 and remove recursion; each must fail the suite.
 
 ## Structural test AST helpers
+
+Directory fixtures forward optional callback arguments after their root without
+flattening nested objects. Git fixture commits remain silent by default;
+`Add-TestGitCommit -PassThru` returns the full committed identity for source tests.
+
+Source-wiring suites share `Get-TestScriptCommandMap` for required command
+cardinality, optional text selection, and caller-selected order and unconditional
+checks. It preserves the original AST nodes for argument binding and delegates
+scope/order assertions to `Assert-TestAstCommand` and `Assert-TestAstOrder`.
+The ONNX, Torchvision, Python bundle and shared call-assertion callers retain their distinct policies.
 
 `Uv.CensusPath.Tests.ps1` runs the same three checkout, copied-image and missing-census
 cases under Linux and Windows. Its Dockerfile destination mapping recognises either
@@ -2937,3 +2968,80 @@ probes. Those children terminate on inner errors so failed setup cannot produce
 a green exit. `Consumer.NativeExecution.Tests.ps1` keeps actual batch transport
 separate from the portable consumer suite. These checks do not establish installed
 compiler behavior or live debugger acceptance.
+
+## Pinned Windows ONNX Runtime sources
+
+Pin suites share `Get-TestMediaPinContext` for the actual version, branch and
+merge maps, retaining each caller's key and DLL checks. The source-pin ARG/ENV
+mutations run the source-archive harness with its explicit
+module closure and shared Dockerfile stage facts. They require both commit pins
+in the ONNX compile stage, forwarded by the core branch and excluded from merge. Linux mutation shards need neither Pester nor Windows CIM; the broader
+Pester parity contract remains in the full Windows suite. These checks establish
+declarations and routing, not download, compiler or hardware acceptance.
+
+The Windows core build pairs `ONNXRUNTIME_VERSION` with
+`ONNXRUNTIME_WINDOWS_SOURCE_COMMIT` in `linux/scripts/01-core/versions.env`.
+The driver forwards both pins only through the media-core branch; the Dockerfile
+exports the commit to `Build-OnnxFromSource.ps1`. A direct stage invocation must
+provide that commit too. Updating the version requires re-deriving the full
+original release commit; an unchanged commit with a new version refuses.
+
+`Invoke-OrtSourceClone` first uses the existing three-attempt Microsoft tag clone.
+If that clone fails, it fetches the exact commit from `ROCm/onnxruntime`, checks it
+out detached and initializes the recursively pinned submodules at depth one.
+The full HEAD commit and `VERSION_NUMBER` must match before any patch or build.
+A successful primary clone with a mismatched identity refuses immediately;
+the fallback cannot override that failure. Fetch, checkout and submodule failures
+remain fatal. A mirror branch tip or a version string alone is never accepted.
+
+`Test-PatchesApplyClean.ps1` uses the same pin and identity validators with a
+sparse checkout. Its primary tag stays first; only a failed clone permits the
+same original commit from the mirror, without requiring a mirror tag. Clone
+errors and identity mismatches fail before caching or checking patches. The
+checkout retains `core.autocrlf=false`, target checks and both Git and GNU patch
+dry runs. A diagnostic `-Versions` release override also needs its matching
+`ONNXRUNTIME_SOURCE_COMMIT`. Sparse patch checks prove no recursive-submodule,
+compiler or hardware acceptance; full source builds retain their recursive path.
+Both local suites carry `WindowsOrt.SourceFixture.psm1` and its Git/harness
+companions; their shared release fixture preserves callback scope and payload paths.
+
+The 1.31.1 pin is `6af1a932e2286d5c58166085d24c68783033edee`.
+The historical [Apache OpenNLP Dependabot update](https://github.com/apache/opennlp/pull/1514)
+records the full original Microsoft release commit; the own previously accepted
+wheel reports its `6af1a93` short ID. A separate Git-object inspection verifies
+the matching tree and all three declared submodule commits from their original
+repositories. This is a recovery transport for unchanged source, not adoption of
+the fork's development branch. It proves no current upstream-ref reachability,
+compiler success, GPU inference or final-image acceptance.
+
+
+
+### GenAI source recovery without a version change
+
+The Windows GenAI builder uses the same identity-pinned clone helper, with
+`VERSION_INFO` instead of the core's `VERSION_NUMBER`. Its original Microsoft
+tag remains first. Only a failed clone permits fetching the exact
+`ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT` from `CodeLinaro/onnxruntime-genai`;
+the full commit and version must match before source patches or configuration.
+The compile-only pin belongs to the GenAI stage and never enters the merge.
+
+GenAI's extensions are also source-built: read the unique upstream
+`cmake/deps.txt` row, require its original repository and complete lowercase
+commit, then fetch that same commit recursively before CMake. The Microsoft
+clone retains its bounded retries; only clone failure permits the CodeLinaro
+fork. A mismatched successful primary checkout refuses without fallback.
+`FETCHCONTENT_SOURCE_DIR_ONNXRUNTIME_EXTENSIONS` points to that verified tree;
+no dependency is omitted and no runtime binary is substituted. Version 0.19.0
+pins `e2e119c08b4379d038bcb5c75d9111328a9b86c1`; a real shallow recursive fetch
+and Git object check passed on 2026-11-19. Disposable Git and metadata tests
+do not establish CMake compilation, a complete lane or inference acceptance.
+
+Version 0.19.0 retains original commit
+`d01b2441a72d4e3223415b9b08474c6e65fbc028`, recorded by the
+[Microsoft NuGet release](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntimeGenAI/0.19.0).
+A real shallow fetch and `git fsck --full` verified tree
+`62d4f05814fd59e95bdeb57c1cefa0446c0ab9f3` and `VERSION_INFO=0.19.0`.
+No fork branch, substitute runtime binary or newer release is selected.
+Source transport, full final-source builds, CUDA-repeat hits, hosted CI and
+physical device acceptance remain separate requirements.
+

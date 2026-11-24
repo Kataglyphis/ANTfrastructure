@@ -41,6 +41,31 @@ recorded metadata; original receipts remain unchanged. Origin metadata does not
 authenticate the source or establish workflow acceptance. See
 [working consumer sources](local-proof-workflows.md#working-consumer-sources).
 
+## Torch stage: `verify_ort_profile.py is missing ... check out the hub submodule before building`
+
+**Symptom.** `uv sync` of the app fails in `Dockerfile.torch` with that message from OrchestrANT's
+`setup.py` (2026-11-24, Windows amd64).
+
+**Cause.** Since OrchestrANT `3abd84e` (hub CON288/CON289) its build copies hub modules from
+`third_party/ANTfrastructure`; the torch stage cloned the app without submodules.
+
+**Fix.** `New-TorchAppCheckout` runs `submodule update --init --depth 1 third_party/ANTfrastructure`
+after the checkout, without `--recursive`; `TorchApp.Checkout.Tests.ps1` holds it. The Linux
+lane's `fetch_app_tree` (`assemble-torch-app.sh`) clones the same way.
+
+## Windows media merge: `a merge would leave a mixed install; pin one version`
+
+**Symptom.** `Dockerfile.media-merge-builder:built` fails in seconds with `packaging is 26.3 in
+...\media-core but 26.4 in ...\media-tvm` (2026-11-24), although `PY_PACKAGING_VERSION` pins 26.3.
+
+**Cause.** The branches were built hours apart. TVM's branch installed `scikit-build-core` and
+`setuptools-scm` before it had `packaging`, so pip resolved their dependency to the newest release,
+which came out between the two builds. The merge gate is right to refuse.
+
+**Fix.** Name the dependency in the same `Install-CpythonPipPin` call, so its pin applies.
+`Build.PipPins.Tests.ps1` fails a call that installs either tool without `packaging`; extend its
+`$toolDeps` map when another build tool pulls an unpinned dependency.
+
 ## Local Docker-loaded GPU image does not resolve by repository@digest
 
 **Symptom.** The 2026-11-14 GPU4 image is loaded and visible under its local tag,
@@ -176,6 +201,49 @@ Two neighbours, so you land on the right page:
 > [`windows-builds.md`](windows-builds.md) and its sibling pages. This page is
 > the triage index: enough to recognise the failure and act, with a link when
 > the full history matters.
+
+## Stevedore delegation reports no such image or an unknown task instance
+
+The first v2 host setup registered its two SYSTEM tasks but its post-install
+inventory failed on reconstructed display-table names. Containerd retained raw
+digest-qualified names that nerdctl's repository/tag columns could not reproduce.
+Read JSON `Name` and manifest `ID`, inspect each distinct immutable manifest and
+preserve its returned configuration separately. Never skip the failed rows or
+substitute the unrelated Docker namespace; native diagnostics remain failures.
+
+The first normal-user preview then stopped with `The original scheduled-task
+instance is unknown.` before querying the store. The hidden worker's
+`GetInstances(0)` enumeration returned zero. Resolve the SYSTEM worker through
+`GetRunningTasks(1)` with exact task path, unique instance and a nonempty GUID;
+do not pass that flag to `GetInstances`. Require scheduler Ready state for
+completion and refuse queued/running/unknown state before overlap or revocation.
+Both failures preceded any v2 removal. Install the reviewed correction and retain
+a fresh real preview/Apply receipt; unit tests do not prove protected deployment.
+See [setup, operation and updates](windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts).
+
+## Stevedore preview reports Container status is unknown for a created container
+
+The real never-started disposable control returned an empty `State.Status`,
+false activity flags, zero PID/exit status and empty error/timestamps. nerdctl's
+[Docker compatibility conversion](https://github.com/containerd/nerdctl/blob/v2.4.2/pkg/inspecttypes/dockercompat/dockercompat.go)
+leaves that state empty without a native process. Its
+[inspector](https://github.com/containerd/nerdctl/blob/v2.4.2/pkg/containerinspector/containerinspector.go)
+also emits a warning for a failed task lookup other than not-found, so a quiet
+successful query is required. Normalize only the complete typed empty state for
+selection; preserve the raw inspection and reject incomplete, active, nonempty
+unknown or diagnostic-bearing replies. The canonical per-removal check uses the
+same parser and refuses stderr even at native exit zero. Real preview/Apply,
+preservation and free-space evidence remain separate from fixture tests.
+
+## Windows GenAI clone reports repository not found after three attempts
+
+The full NVIDIA run at `bd6bb3b2` exported ONNX, FFmpeg, OpenCV and Hailo,
+then failed the `microsoft/onnxruntime-genai` clone before configuration.
+Do not substitute a binary package or silently update GenAI. The Windows
+builder retains the original release commit and checks its `VERSION_INFO`;
+only a failed primary clone permits the exact commit from CodeLinaro.
+See [the source transport contract](windows-builds.md#genai-source-recovery-without-a-version-change).
+Transport recovery does not establish final-source producer or GPU acceptance.
 
 ## cuDNN link/run skips despite installed SDK files
 
@@ -463,6 +531,7 @@ See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 - [`zconf.h: No such file or directory` in civetweb under the SBSA DeepStream build](#zconfh-no-such-file-or-directory-in-civetweb-under-the-sbsa-deepstream-build)
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
 - [apt: `libc6:i386` install is unsatisfiable after an archive/ports drift](#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift)
+- [Windows CPython zlib-ng loses AVX-512 features](#windows-cpython-zlib-ng-loses-avx-512-features)
 - [A from-source CPython silently drops an extension module](#a-from-source-cpython-silently-drops-an-extension-module)
 - [The delete guard denies its own legitimate work](#the-delete-guard-denies-its-own-legitimate-work)
 - [OpenCV: `std::complex` breaks on a shadowed `complex.h`](#opencv-stdcomplex-breaks-on-a-shadowed-complexh)
@@ -1205,6 +1274,22 @@ because the helper's name appears in a comment.
 **Retry after a drift.** Nothing in the image needs rebuilding. Wait for the
 mirror to catch up and re-run the stage (`--from-stage android`, ancestry
 checked) — the failed run left no partial tags (0/7 cache stages exported).
+
+### Windows CPython zlib-ng loses AVX-512 features
+
+**Symptom.** ClangCL reports that zlib-ng intrinsics require `avx512f`, `avx512bw`
+or `avx512vl` while compiling CPython in the toolchain stage. The enclosing
+`patched-llvm` stage name does not mean LLVM itself failed.
+
+**Cause.** A global `-march=x86-64-v3` takes precedence over the upstream project's
+per-file `/arch:AVX512`. Reordering those two switches cannot fix that precedence.
+
+**Fix.** The checked-in CPython props apply the floor immediately before `ClCompile`
+using each item's ISA metadata: v3 normally, v4 for existing AVX512 items, with
+inherited VNNI/VPCLMUL options. Retain the x64/ClangCL guards; do not remove optimized
+files or raise the global baseline. See [Windows x64 ISA floors](amd64-x86-64-v3-baseline.md#windows-x64).
+The portable XML-wiring suite and native compiler probe have separate coverage;
+full CPython and lane acceptance still require their actual build results.
 
 ### A from-source CPython silently drops an extension module
 
@@ -2672,6 +2757,13 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 ### `exporting layers` prints nothing for 20+ minutes
 
+If a failed import names `Files/temp/qnn-sdk-extract/.../lib-safe/aarch64-android`
+and reports disk-full, inspect the source-chain SDK scrub before repeating it.
+The extraction is separate from the container profile's `%TEMP%`; unused
+platform files must be removed in the creating RUN after runtime staging.
+See [the QNN scratch policy](windows-build-resources.md#extracted-qnn-sdk-scratch).
+Do not delete `hcs*` directories or snapshot-store files by hand.
+
 **Symptom.** BK lane: `exporting layers` (or the following `unpacking to …`) prints NOTHING for 20+ minutes after a heavy amd64 layer (the LiteRT-LM Bazel output is the measured case) — or the merge fan-in `COPY --from=media-core C:\runtime C:\runtime` sits silent for 10–15 minutes on a step that took 5 s the run before — and every daemon — buildkitd, containerd, vmcompute, wcifs — sits at 0.00 s CPU, no shim/container process is left, and `buildctl debug workers` still answers in <1 s
 
 **Cause.** **Not a hang — a slow, mostly kernel-side layer export/unpack.** Measured 2026-08-24/25: `exporting layers 1216.3s done` after 20 idle-looking minutes, then `unpacking … 1277.0s done`, and the stage went `OK` at 58:08 (17 min of actual build); arm64 run 12 (2026-08-25): the fan-in COPY finished `DONE 847.4s` after 14 idle-looking minutes (run 11: 5.1 s), no eventlog entry, nothing written under the buildkitd root
@@ -2710,9 +2802,57 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Fix.** The merge binds `media-core-view` and `media-tvm-view`, two stages that add `RUN cmd /c exit 0` on top of each branch image (`Dockerfile.media-merge-builder`). The `COPY --from=` steps keep reading the images themselves, which works. The view layer never reaches the image, since only the merged files are kept.
 
+The same symptom was observed for a seven-file `C:\bkmods` COPY closure on
+2026-11-17: `WindowsSourceBuild.Common.psm1` was listed but not loadable before
+Hailo and ONNX compilation, including after a successful cache-only cleanup.
+A forced-fresh diagnostic COPY briefly restored reads but replaced two mutable
+cache generations; it was not a durable fix. Use the [module source-view
+invariant](windows-build-invariants.md#copied-module-stages-need-a-readable-view):
+each shared, TVM-private, merge and ROCm module COPY stage ends with its own
+empty `RUN`. Keep the final COPY before that view, keep compiler-cache mounts
+and image tags intact, and validate actual reads separately from a directory
+listing or a cached probe. Do not infer a kernel cause from the cleanup timing.
+
+On 2026-11-19 LiteRT reproduced this failure despite an already-cached COPY
+and final empty RUN. The actual toolchain control could read and import the
+same seven modules through individual host-file mounts, also after inheriting
+the first consumer layer. Both LiteRT build RUNs now use that narrow file
+closure. Keep the other module views and compiler caches; neither a listing
+nor these read/import probes establish full product or architecture acceptance.
+
+The later `2c40a98d` CUDA repeat stopped at the same required-module import
+before ONNX compilation. Its independent control could open none of the seven
+cached-directory modules and opened, hashed and imported the identical seven
+through direct file mounts. The media-core consumers now use that narrow
+delivery too; TVM adds only its private module. No compiler-cache reset,
+forced no-cache build or daemon restart is the repair. New-source full
+qualification, builds and typed CUDA hits remain separate requirements.
+
 ---
 
 ## Windows: container networking
+
+### Windows ONNX source returns HTTP 404 while other public repositories work
+
+An inaccessible repository is not evidence of broken container DNS or a deleted
+project. Check the exact URL and retain the failure. The Windows core pairs its
+release with a full original commit; its bounded fallback checks the same commit,
+version and recursive submodules from the maintained mirror before any patch.
+See [pinned source recovery](windows-builds.md#pinned-windows-onnx-runtime-sources).
+QNN separately needs its older header release; its verified local archive retains
+CMake population and all original patches, with a SHA256 transport check.
+See [the QNN header transport](windows-cross-builds.md#the-qnn-plugin-ep).
+
+### QNN source patches fail with `different line endings` after a local Git archive
+
+Windows Git can apply host `core.autocrlf` while exporting a source ZIP. That
+changes LF source bytes and prevents the fork's original patches from applying.
+The QNN archive command fixes `core.autocrlf=false` and `core.eol=lf` for that
+invocation while retaining repository export attributes. Its regression uses
+an enabled host conversion and a later HEAD to check the requested commit's
+exact header bytes. A separate real CMake probe applies all six original patches
+and reverses them to the canonical export; it proves no plugin compilation.
+
 
 ### `Could not resolve host: github.com` seconds into the first downloading RUN
 
@@ -2824,7 +2964,21 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** wincred credential helper fails because dockerd runs as SYSTEM without interactive session
 
-**Fix.** OK to ignore for public images (MCR, GitHub). Use `nerdctl pull` instead for images that need auth, or set `"credsStore":""` in docker config.
+**Fix.** Treat the helper failure as a failed registry setup even for a public image.
+The containerd 2.4.2 transfer client logs a credential error and continues without
+answering the pending authentication request ([source](https://github.com/containerd/containerd/blob/v2.4.2/core/transfer/registry/registry.go#L253-L256)).
+The 2026-11-20 rootless Linux preflight stopped making progress before creating a
+container; the same pinned Ubuntu image pulled in 17 seconds with a private empty
+Docker configuration. This supports the credential-stream diagnosis; it does not
+prove every registry stall has that cause.
+
+For a pinned **public** base, use a per-run `DOCKER_CONFIG` containing
+`{"auths":{}}`, and select the native Linux nerdctl rather than a Windows/Rancher
+wrapper inherited through PATH. Keep the user's credential and context files
+unchanged. Start a new client after the failed preparatory pull has ended; verify
+its exact PID/command and that no build/container started before cancelling it.
+Active builds and exports remain protected. Private registries still require their
+normal authenticated configuration. See the [local proof workflow](code-quality-tooling.md#preserved-local-proof-workflows).
 
 ### `failed to extract layer ... failed to find link target` pulling servercore
 
@@ -3211,6 +3365,29 @@ it keeps elevated-only ICD registration. `Lavapipe.HostVisibility.Tests.ps1` che
 host import AST and probes the shared export in a cold PowerShell process; removing
 the direct import makes its mutation check fail.
 
+### A Windows portable bundle fails because `Bundle` is missing
+
+**Symptom.** Packaging finishes its licence checks, then the build fails with
+`The property 'Bundle' cannot be found on this object`.
+
+**Cause.** A successful `New-PortableBundle` package checker wrote its proof line to
+the success stream. PowerShell returned that string together with the bundle object.
+
+**Fix.** Route the package-check callback through `Out-Host`, as the CMake runner
+already does. Keep checker failures fatal. `CrossBundle.PackageCheck.Tests.ps1` rejects
+output contamination and swallowed failures; separate licence suites check package bytes.
+
+### A bundle mutation baseline fails before applying its edit
+
+**Symptom.** Linux preflight reports an unmutated baseline failure from Windows
+path assertions or a fake `cmake.cmd` install.
+
+**Cause.** The callback mutation selected the whole Windows-specific bundle suite.
+
+**Fix.** Use the cold, host-portable `CrossBundle.PackageCheck.Tests.ps1` with the
+shared install fixture. Both output and rejection mutants must fail there on Linux
+and Windows. Keep the native batch cases in full Windows discovery.
+
 ### A consumer's CMake says clang-cl "is not able to compile a simple test program"
 
 **Symptom.** A consumer's Windows CI lane, building inside `:winamd64`, stops at CMake's compiler
@@ -3350,6 +3527,18 @@ riscv64-only opencv-freetype warning, and after a green rebuild
 that warning's "expected on riscv64" status is STALE (parity
 follow-up for the orchestrator).
 
+### GenAI extensions clone fails while the root source is available
+
+The 82c0d0b5 NVIDIA run on 2026-11-19 passed ONNX, FFmpeg, OpenCV and
+Hailo, then CMake failed to clone `microsoft/onnxruntime-extensions` with
+terminal prompts disabled. Host GitHub reads returned 404 too. Recovering
+the GenAI root alone does not recover this nested FetchContent dependency.
+The builder now fetches the exact extensions commit from upstream deps.txt,
+tries the original repository first and uses the same commit in CodeLinaro
+only after clone failure. Its explicit FetchContent source keeps the normal
+extensions build. Wrong or ambiguous pins and failed recursive fetches fail.
+See [the source contract](windows-builds.md#genai-source-recovery-without-a-version-change).
+
 ### A half-fetched dependency that every retry inherits
 
 `ONNX Runtime CPU build failed after 3 attempts` on media-riscv64, 2026-09-02,
@@ -3446,6 +3635,14 @@ yet in a VC Tools release the image ships.
 **Fix.** `find_if` with a predicate, which is a plain loop; or a hand-written `operator==`,
 which is not trivially comparable. Drop the workaround once the image's VC Tools carry the
 fix.
+
+### Native crash fixture: NMake does not support platform x64
+
+`CrashDump.Native.Tests.ps1` uses `-A x64` for its real MSVC fixture. If CMake
+selects NMake on a host without Visual Studio, configuration fails before the
+fixture is compiled. Check the installed compiler and selected CMake generator;
+run the full suite in the [required host environment](windows-builds.md#prerequisites).
+Retain the failed local result until the real fixture passes there or in CI.
 
 ### A Windows test exits `0xC0000005` with no gtest line and no dump
 
@@ -3574,6 +3771,15 @@ class 2, the `printf | grep -q` form).
 first export early and then writes 200 000 lines; the recipes `onnx-ep-amdgpu.exports-grep-reads-whole-table`
 and `onnx-ep-tensorrt.verify-exports-grep-reads-whole-table` prove the stand-in bites.
 
+### TVM imports but pip reports apache-tvm-ffi 0.1.dev1 below its requirement
+
+A tagless vendored checkout can make setuptools-scm label the pinned release as
+a development version. On Windows, use the shared FFI source-version selector
+and the distribution-specific SCM override for both the GIL install and twin
+build. Do not substitute a PyPI binary or merely suppress the warning. Require
+the installed/archive metadata gate as well as the existing imports.
+[Details and proof limits](windows-build-resources.md#tvm-ffi-wheel-versions-in-tagless-checkouts).
+
 ### GCC warns in a SYSTEM header anyway: `-Wstringop-overflow` at the LTO link
 
 **Symptom.** A third-party library added as SYSTEM still shows warnings from its headers, but only in an LTO
@@ -3598,3 +3804,56 @@ find out, and an isolated build offline has no setuptools to download. `check_do
 
 **Fix.** `uv lock --project docs` and commit the one-line change with the gitlink that caused it. Do not add
 `--no-build-isolation` or lower the theme's bound: the check would still read the lock as stale.
+
+### Consumer-hook empty-directory cases inherit a parent repository
+
+`test-consumer-hooks.sh` can fail its three final "not a git checkout" assertions
+when TMPDIR belongs to a real checkout. Git walks from the empty fixture to that
+ancestor and runs the gates instead of refusing the missing repository.
+
+The suite now initializes an owned parent repository and exports a discovery
+ceiling using Git's canonical root spelling. Child consumer repositories remain
+discoverable; empty-directory cases stop before their parent. A valid mutation
+removes the export and must break those existing assertions on both platforms.
+The image-runner fixture uses that same native spelling before its path crosses
+Git's configuration boundary; Windows must still match the complete diagnostic.
+These tests grade hook wiring with stubbed downloaded linters, not the linters
+themselves or a complete preflight result.
+
+### QNN query receipts differ between filesystems
+
+`test-qnn-runtime-query.sh` can fail its original 120-case receipt comparison
+while the other QNN assertions pass. In the 2026-11-20 rootless preflight,
+40 cases selected `target/lib` instead of the recorded `target/deep` after an
+injected query failure. Both contained matching files, and the fixture inherited
+the filesystem's unsorted enumeration before the production fallback took its
+first match.
+
+The fixture captures the real `find` output in a private per-process file and
+sorts that output under `LC_ALL=C`, preserving the tool's raw status before the
+configured fault is returned. Its argument trace and all original receipt bytes
+remain checked. The suite also forces reverse tool output; a valid mutation
+that removes the fixture sort must break those same receipts. These synthetic
+checks cover query, transport and status policies. Real SDK staging, provider
+loading and device inference require their own evidence.
+
+### QNN Community test fails with a spaced PATH
+
+The last `test-qnn-community-zip.sh` case reports empty output, no `rc=0` and zero fake downloads,
+while the same unchanged suite passes with a Linux-only PATH. Its old `_run` word-split a string
+of environment assignments; a PATH entry such as `Program Files` became another `env` argument
+before Bash could run the resolver. The fixture now supplies per-call bindings as individually
+quoted environment values and tests both plain and spaced PATH/cache/extract directories.
+All original selection cases remain covered; three valid unquoting mutations reject the broken
+transport on the deliberately spaced case. Fake download/extraction tests do not grade real SDK
+downloads, installation or inference. A diagnostic clean-PATH pass does not replace a failed full
+preflight result.
+
+
+### IREE AVX512 ukernel says it was compiled without avx512f
+
+**Symptom.** `conv_nchwc_x86_64_avx512_base.c` fails on `_mm512_loadu_ps`, `_mm512_fmadd_ps` or `_mm512_storeu_ps`. Its command contains both `/clang:-march=x86-64-v3` and `/arch:AVX512`.
+
+**Cause.** clang-cl forwards the explicit baseline `-march` after interpreting its MSVC-style architecture option. Moving the arguments does not restore the missing AVX512 features.
+
+**Fix.** `Set-IreeX86KernelCmakeFlags` adds the five explicit clang-cl AVX512-base feature flags to upstream's dispatched target options before configuration. GNU/MSVC options and all other targets remain unchanged. Missing, changed or partially patched input fails; repeated patching is byte-identical. Keep the baseline and the kernels enabled. The small compiler reproduction does not prove the shipped Windows compiler, complete IREE, runtime dispatch or GPU execution; those still need their actual builds and acceptance checks.
