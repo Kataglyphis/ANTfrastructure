@@ -64766,5 +64766,29 @@
   "replace": "-Name cython, wheel",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.PipPins.Tests.ps1 -ResultFile logs/code-quality/tvm-cross-wheel-mutation.json",
   "id": "windows-lane.tvm-cross-wheel-pin-packaging"
+ },
+ {
+  "target": "linux/scripts/local-proof/windows-arm64-acceptance.py",
+  "id": "image-acceptance.arm64-closure-windows-prefix",
+  "test": "python3 linux/scripts/tests/windows_arm64_acceptance_tests.py ClosureTests.test_each_windows_closure_path_blocks_reuse",
+  "find": "CLOSURE_PREFIXES = ('windows/', ",
+  "why": "a later commit that changes a Windows build script must not reuse an older ARM64 image for promotion",
+  "replace": "CLOSURE_PREFIXES = ("
+ },
+ {
+  "target": "linux/scripts/local-proof/windows-arm64-acceptance.py",
+  "id": "image-acceptance.arm64-receipt-masked-status",
+  "test": "python3 linux/scripts/tests/windows_arm64_acceptance_tests.py EvidenceTests.test_a_receipt_binds_source_run_attempt_status_and_immutable_image",
+  "find": "if receipt['Passed'] != (receipt['GateExitCode'] == 0):",
+  "why": "a receipt that reports passed beside a failing gate status must not promote the tag",
+  "replace": "if receipt is None:"
+ },
+ {
+  "target": "linux/scripts/local-proof/windows-arm64-acceptance.py",
+  "id": "image-acceptance.arm64-device-single-verdict",
+  "test": "python3 linux/scripts/tests/windows_arm64_acceptance_tests.py EvidenceTests.test_the_device_log_needs_every_step_at_the_original_floor",
+  "find": "if len(verdicts) != 1 or tuple(",
+  "why": "a device log must carry exactly one full verdict at the original floor",
+  "replace": "if not verdicts or tuple("
  }
 ]

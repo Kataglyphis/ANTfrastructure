@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — the ARM64 acceptance tool is versioned
+
+- `linux/scripts/local-proof/windows-arm64-acceptance.py` replaces five ignored handoff scripts. It uploads
+  the graded `bk-winarm64` image by digest, checks a device run's receipt and log, and moves `:winarm64` only
+  with `--apply`. A device run on a later `develop` commit counts only when no path between the image source
+  and that commit lies in the Windows build closure. `windows_arm64_acceptance_tests.py` and three mutations
+  cover the refusals ([procedure](docs/windows-cross-builds.md#accept-an-arm64-image-before-moving-its-tag)).
+
 ## 2026-11-24 — the docs match the tree again, and name no host
 
 - The build host's name is gone from every tracked file; the Home Assistant notes write the MQTT broker as

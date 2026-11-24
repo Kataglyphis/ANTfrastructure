@@ -380,11 +380,34 @@ export only the already graded ARM64 candidate and retain its exact manifest/con
 digests and clean source proof. This is the ARM64 publication's acceptance stage,
 not approval for other image variants or public tags.
 
+`linux/scripts/local-proof/windows-arm64-acceptance.py` runs all three steps. Upload the
+graded local image by digest; the tool checks the driver log for a passed arm64 smoke and
+publish gate, re-exports the image with a pure `FROM` and refuses any digest change:
+
+```powershell
+python linux/scripts/local-proof/windows-arm64-acceptance.py publish-candidate --source <image-commit> `
+  --worktree <build-worktree> --driver-log <console.log> --final-log <bk-...-final.log>
+```
+
 Run the device workflow against that immutable image:
 
 ```powershell
 gh workflow run windows-arm64.yml --ref develop -f candidate-digest=sha256:<64-lowercase-hex-digits>
 ```
+
+Then check the run and, with `--apply`, move the tag. Without `--apply` it only writes the receipt:
+
+```powershell
+python linux/scripts/local-proof/windows-arm64-acceptance.py promote --run-id <run> --image-source <image-commit> `
+  --gate-source <run-commit> --candidate sha256:<digest> --candidate-receipt <receipt.json> --require-ci-run <id> --apply
+```
+
+The gate source may be a later `develop` commit than the image source. The tool accepts it only
+when no path between the two lies in the Windows build closure: `windows/`, the shared pins and
+media inputs under `linux/scripts/`, `shared/upstream/`, `cmake/` and `.dockerignore`. The same
+rule applies to every required CI run and to the `develop` tip at promotion. A changed closure
+path means a rebuild. `linux/scripts/tests/windows_arm64_acceptance_tests.py` covers the
+refusals without a registry, GitHub or device.
 
 Omitting the input retains `Get-CiImageReference -Windows -TargetArch arm64`.
 Invalid digests fail before the pull; both the host preparation and container export
