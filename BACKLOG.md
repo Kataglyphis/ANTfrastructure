@@ -2621,11 +2621,17 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       BeschleunigerBallett adds spdlog and nlohmann_json as SYSTEM subdirectories (a9333e7e), against the 124 and 12
       header warnings of GCC job 135983570345; proven in GCC job 137728645203: 0 spdlog and 0 nlohmann warnings, 339
       warning lines down to 203. Step 2 in the hub 2026-11-23, as the owner chose that day: `verify_warning_census.py`
-      holds each lane's own warnings at a committed count per flag, red on growth and on an unlowered drop; left:
-      AccelerANTgine's and BeschleunigerBallett's GCC and clang lanes call it with their census files. Then
-      `myproject_WARNINGS_AS_ERRORS` for the product targets only. (d) Done 2026-11-21: the pattern-limits doc holds
-      the row for exception-free filesystem calls, which AccelerANTgine and BeschleunigerBallett bind; the first
-      version read `current_path(ec)` as throwing and missed the iterator declaration, corrected the same day.
+      holds each lane's own warnings at a committed count per flag, red on growth and on an unlowered drop;
+      AccelerANTgine's x64 lanes run it (dc50d879, f15f62b2: GCC 16 and clang 48 own warnings, held exactly in CI).
+      Step 3, as the owner chose 2026-11-23 (fix first, then errors): AccelerANTgine fixed its own warnings (b96099a4,
+      the census at 1 per lane, a doxygen note on a fuzz test) and builds its library, CLI and demo with -Werror, /WX
+      under clang-cl (23d91739, f93294de, 4eac5a56; every lane green, x64, arm64, riscv64, Windows x64 and arm64):
+      CMake compiles an imported module's BMI with the importer's flags, so GCC's two TU-local warnings in nlohmann's
+      module and clang's -Wnullability-extension in Abseil stay warnings, and Abseil is SYSTEM outside clang-cl, which
+      misparses its function_ref.h so. Left: BeschleunigerBallett's census lanes and product targets. (d) Done
+      2026-11-21: the pattern-limits doc holds the row for exception-free filesystem calls, which AccelerANTgine and
+      BeschleunigerBallett bind; the first version read `current_path(ec)` as throwing and missed the iterator
+      declaration, corrected the same day.
 - [b] **CON296 — a bridge import helper for the first consumer bridge** [S-M; owner D4]. `kataglyphis_import_bridge_crate`
       beside `kataglyphis_configure_corrosion_target`: imports LOCKED, uses an unwinding profile outside Debug and
       checks that at configure time (a runtime test cannot, `cargo test` always unwinds), and lets a superproject

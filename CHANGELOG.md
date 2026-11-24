@@ -19,6 +19,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — CON295 (c) is done in AccelerANTgine
+
+- AccelerANTgine went through all three warning steps: its x64 lanes hold their own warnings with
+  `verify_warning_census.py` (GCC 16, clang 48, matched exactly in CI), it fixed them down to a doxygen note on a fuzz
+  test (b96099a4), and its library, CLI and demo build with `-Werror` (`/WX` under clang-cl) on every lane (4eac5a56).
+  Two lessons for the next consumer, in CON295: CMake compiles an imported module's BMI with the importing target's
+  flags, so a dependency module's own warnings (GCC's TU-local ones in nlohmann) need `-Wno-error`; and SYSTEM on
+  Abseil breaks clang-cl's parse of its `function_ref.h`, so it is SYSTEM for GCC and clang only.
+
 ## 2026-11-24 — the Linux torch stage checks out OrchestrANT's hub submodule
 
 - Since OrchestrANT 3abd84e (CON289) its `setup.py` copies hub modules from `third_party/ANTfrastructure`, and a clone
