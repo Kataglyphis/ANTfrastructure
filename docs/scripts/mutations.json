@@ -1,5 +1,13 @@
 [
  {
+  "id": "lib.torch-app-hub-submodule",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "  git -C \"${APP_DIR}\" submodule update --init --depth 1 third_party/ANTfrastructure\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-app-ref.sh",
+  "why": "OrchestrANT's setup.py copies hub modules from its submodule, so a tree without it fails the torch stage's uv sync"
+ },
+ {
   "id": "packaging.install-tree-cmake-packages",
   "target": "linux/scripts/06-packaging/check-install-tree.sh",
   "find": "BUILD_TIME='^(usr/)?(include|lib[^/]*(/[^/]+)?/(cmake|pkgconfig)|share/pkgconfig)/|\\.(lib|a)$'",

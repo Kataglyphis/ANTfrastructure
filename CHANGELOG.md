@@ -19,6 +19,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — the Linux torch stage checks out OrchestrANT's hub submodule
+
+- Since OrchestrANT 3abd84e (CON289) its `setup.py` copies hub modules from `third_party/ANTfrastructure`, and a clone
+  without that submodule fails `uv sync` ("verify_ort_profile.py is missing"). The Windows torch stage hit it first
+  and checks the submodule out since this hub's windows-torch commit; `assemble-torch-app.sh`'s `fetch_app_tree` does
+  the same now, `--depth 1` and not recursive, before its next app ref reaches the error. One case, one mutation.
+
 ## 2026-11-24 — the TVM branch pins packaging with its build tools
 
 - The Windows media merge refused `packaging` 26.3 from media-core beside 26.4 from TVM: TVM's branch
