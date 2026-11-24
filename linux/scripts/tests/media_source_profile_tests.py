@@ -27,12 +27,14 @@ DOCKERFILES = {
                                   'RUN --mount=type=bind,source=linux/scripts/03-media/build/${LIB}/x,target=/x true\n',
     'linux/Dockerfile.sdk': 'LABEL org.kataglyphis.build-script-closure=demo\nCOPY --from=hub-scripts / /opt/s/\n',
     'linux/Dockerfile.amd': 'RUN --mount=type=bind,source=linux/scripts/01-core,target=/core true\n',
-    'linux/Dockerfile.media': 'RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv/build.sh,target=/b true\n',
+    'linux/Dockerfile.media': 'RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv/build.sh,target=/b true\n'
+                              'RUN --mount=type=bind,source=linux/scripts/03-media/${ROOT},target=/m true\n',
     'linux/Dockerfile.android': 'COPY linux/scripts/03-media/android-dispatch.sh /opt/d.sh\n',
 }
 FILES = {
     'linux/scripts/01-core/common.sh': 'core\n',
     'linux/scripts/01-core/runtime-build-fns.sh': 'host only\n',
+    'linux/scripts/03-media/runtime/assemble-torch-app.sh': 'runtime stage only\n',
     'linux/scripts/03-media/build/opencv/build.sh': 'media input\n',
     'linux/scripts/03-media/android-dispatch.sh': 'android input\n',
     'linux/scripts/02-toolchain/gcc.sh': 'gcc\n',
@@ -177,6 +179,11 @@ class MediaSourceProfileTests(unittest.TestCase):
         self.assertEqual(review['host_only_inputs_changed'], ['linux/scripts/01-core/runtime-build-fns.sh'])
         self.assertEqual(review['runtime_source_revision'], git(self.media_source, 'rev-parse', 'HEAD'))
         self.assertEqual(review['Android_source_revision'], self.parent)
+
+    def test_runtime_torch_assembly_change_is_admitted(self) -> None:
+        self.change({'linux/scripts/03-media/runtime/assemble-torch-app.sh': 'clones the hub submodule\n'})
+        _, review = self.runtime_select()
+        self.assertEqual(review['host_only_inputs_changed'], ['linux/scripts/03-media/runtime/assemble-torch-app.sh'])
 
     def test_runtime_change_to_any_base_to_android_input_is_refused(self) -> None:
         for path in ('linux/scripts/01-core/common.sh', 'linux/scripts/03-media/build/opencv/build.sh',

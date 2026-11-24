@@ -37,7 +37,7 @@ from mutation_push import (
     touches,
 )
 from mutation_shards import describe, load_costs, plan
-from mutation_workspace import mutation_workspaces, relative_file_path
+from mutation_workspace import drop_bytecode, mutation_workspaces, relative_file_path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mutations.json")
@@ -422,6 +422,7 @@ def apply_and_run(entry: MutationEntry, root: str) -> tuple[bool, bool, str | No
         backup.write(original.encode("utf-8"))
     try:
         write_exact(target, mutated)
+        drop_bytecode(target)
         rc, timed_out, output = _run_test(entry["test"], root, entry.get("timeout", 300))
         if timed_out:
             return True, True, "test timed out (counts as failing)", 0
@@ -429,6 +430,7 @@ def apply_and_run(entry: MutationEntry, root: str) -> tuple[bool, bool, str | No
     finally:
         shutil.copyfile(backup.name, target)
         os.unlink(backup.name)
+        drop_bytecode(target)
 
 
 def baseline_ok(

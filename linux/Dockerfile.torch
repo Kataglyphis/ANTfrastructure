@@ -114,6 +114,8 @@ ARG HAILO_PYHAILORT_IPO=off
 COPY --chmod=755 linux/scripts/01-core/ /opt/scripts/core/
 COPY --chmod=755 linux/scripts/03-media/core/ /opt/scripts/03-media/core/
 COPY --chmod=755 linux/scripts/03-media/build/hailo/ /opt/scripts/03-media/build/hailo/
+COPY --chmod=755 linux/scripts/03-media/free-threaded-wheels.sh /opt/scripts/03-media/free-threaded-wheels.sh
+COPY linux/scripts/03-media/free-threaded-twins.txt /opt/scripts/03-media/free-threaded-twins.txt
 COPY --chmod=755 linux/hailo-sdk/ /opt/scripts/hailo-sdk/
 # The caps are Dockerfile.base's: this image lost base's ENV, and a smaller cap trims the shared mount.
 LABEL kataglyphis.step=hailort

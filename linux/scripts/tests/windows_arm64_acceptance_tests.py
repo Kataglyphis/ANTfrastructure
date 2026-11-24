@@ -32,6 +32,13 @@ class ClosureTests(unittest.TestCase):
         self.repo = Path(self.temp.name)
         self.env = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1', LC_ALL='C')
         self.git('init', '-q', '-b', 'develop')
+        dockerfile = self.repo / 'windows/Dockerfile.base'
+        dockerfile.parent.mkdir(parents=True)
+        dockerfile.write_text('# escape=`\n# linux/scripts/01-core/runtime-build-fns.sh is only named in a comment\n'
+                              'RUN --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=C:\\t `\n'
+                              '    --mount=type=bind,source=shared/upstream/migraphx/patches/,target=C:\\p\n'
+                              'COPY linux\\scripts\\02-toolchain\\python\\free-threaded-wheel.py C:\\temp\\scripts\\\n',
+                              encoding='utf-8')
         self.base = self.commit('notes/a.md')
 
     def git(self, *args: str) -> str:
@@ -47,15 +54,17 @@ class ClosureTests(unittest.TestCase):
         self.git('commit', '-q', '-m', path)
         return self.git('rev-parse', 'HEAD')
 
-    def test_a_later_docs_or_linux_only_commit_reuses_the_image(self) -> None:
-        self.commit('notes/b.md')
-        later = self.commit('linux/scripts/local-proof/x.py')
+    def test_a_later_commit_outside_the_windows_closure_reuses_the_image(self) -> None:
+        for path in ['notes/b.md', 'linux/scripts/local-proof/x.py', 'linux/scripts/01-core/runtime-build-fns.sh',
+                     'cmake/CPackCommon.cmake', 'linux/scripts/03-media/build/x.sh']:
+            later = self.commit(path)
         self.assertEqual(TOOL['closure_changes'](self.base, later, self.repo), [])
         TOOL['require_reuse'](self.base, later, self.repo)
 
     def test_each_windows_closure_path_blocks_reuse(self) -> None:
         for path in ['windows/scripts/build/X.ps1', 'linux/scripts/01-core/versions.env',
-                     'linux/scripts/03-media/free-threaded-twins.txt', 'shared/upstream/migraphx/p.patch',
+                     'linux/scripts/01-core/tool-pins.env', '.dockerignore',
+                     'linux/scripts/03-media/free-threaded-twins.txt', 'shared/upstream/migraphx/patches/p.patch',
                      'linux/scripts/02-toolchain/python/free-threaded-wheel.py']:
             with self.subTest(path=path):
                 later = self.commit(path)
@@ -69,6 +78,28 @@ class ClosureTests(unittest.TestCase):
             TOOL['closure_changes'](later, self.base, self.repo)
         with self.assertRaisesRegex(ValueError, 'full commit'):
             TOOL['closure_changes'](self.base[:8], later, self.repo)
+
+
+class InstructionTests(unittest.TestCase):
+    def test_only_context_copies_and_bind_mounts_are_inputs(self) -> None:
+        text = ('# escape=`\n# COPY docs\\x.md C:\\never\n'
+                'LABEL description="see docs/windows-cross-builds.md"\n'
+                'COPY --from=build C:\\out C:\\out\n'
+                'COPY linux\\scripts\\a.py `\n     linux\\scripts\\b.py C:\\temp\\\n'
+                'RUN --mount=type=bind,source=shared/p.patch,target=C:\\p `\n'
+                '    --mount=type=bind,from=media-core,source=/temp,target=C:\\m `\n'
+                '    --mount=type=cache,target=C:\\cache `\n    pwsh -c "echo linux/scripts/c.py"\n')
+        sources = [s for i in TOOL['instructions'](text) for s in TOOL['instruction_sources'](i)]
+        self.assertEqual(sources, ['linux\\scripts\\a.py', 'linux\\scripts\\b.py', 'shared/p.patch'])
+
+    def test_a_whole_context_or_variable_mount_makes_every_change_count(self) -> None:
+        for spec in ['source=.', 'source=${HUB}/x', 'target=C:\\ctx']:
+            with self.subTest(spec=spec):
+                sources = TOOL['instruction_sources'](f'RUN --mount=type=bind,{spec} pwsh -c x')
+                self.assertEqual(len(sources), 1)
+                path = sources[0].replace('\\', '/').removeprefix('./').rstrip('/')
+                self.assertTrue(path in ('', '.') or '$' in path)
+        self.assertTrue(TOOL['in_closure']('notes/a.md', {'*'}))
 
 
 class EvidenceTests(unittest.TestCase):

@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 ANDROID_REVISION = '8c4e13b01fb43f8f55e5ca39aa7c0109d23504e5'
 RUNTIME_REVISION = '2aa1a7780861db8012cb769e04d3de474dddca37'
 ANDROID_DOCKERFILES = (*UPSTREAM_DOCKERFILES, 'linux/Dockerfile.media', 'linux/Dockerfile.android')
-# Loaded only through artifact-common.sh by host orchestrators; see docs/local-proof-workflows.md § A runtime source newer than its Android parent
-HOST_ONLY_FILES = frozenset({'linux/scripts/01-core/runtime-build-fns.sh'})
+# Run only by the runtime lane, never by a base-to-Android stage; see docs/local-proof-workflows.md § A runtime source newer than its Android parent
+HOST_ONLY_FILES = frozenset({'linux/scripts/01-core/runtime-build-fns.sh', 'linux/scripts/03-media/runtime/assemble-torch-app.sh'})
 
 
 def _review(invocation: Json, revision: str, proof_path: Path, complete: Json, profile: str) -> Json:

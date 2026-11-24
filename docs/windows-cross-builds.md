@@ -402,11 +402,13 @@ python linux/scripts/local-proof/windows-arm64-acceptance.py promote --run-id <r
   --gate-source <run-commit> --candidate sha256:<digest> --candidate-receipt <receipt.json> --require-ci-run <id> --apply
 ```
 
-The gate source may be a later `develop` commit than the image source. The tool accepts it only
-when no path between the two lies in the Windows build closure: `windows/`, the shared pins and
-media inputs under `linux/scripts/`, `shared/upstream/`, `cmake/` and `.dockerignore`. The same
-rule applies to every required CI run and to the `develop` tip at promotion. A changed closure
-path means a rebuild. `linux/scripts/tests/windows_arm64_acceptance_tests.py` covers the
+A manual candidate run keeps its bundle artifact 14 days, and promotion checks that artifact, so
+promote inside that window. The gate source may be a later `develop` commit than the image source. The tool accepts it only
+when no path between the two lies in the Windows build closure. That closure is `windows/`, the two
+pin files the driver reads on the host (`versions.env`, `tool-pins.env`), `.dockerignore`, and every
+context path a Windows Dockerfile copies or bind-mounts, read from both commits. A whole-context or
+variable mount makes every change count. The same rule applies to every required CI run and to the
+`develop` tip at promotion. A changed closure path means a rebuild. `linux/scripts/tests/windows_arm64_acceptance_tests.py` covers the
 refusals without a registry, GitHub or device.
 
 Omitting the input retains `Get-CiImageReference -Windows -TargetArch arm64`.
@@ -465,6 +467,16 @@ hash check. DirectML logs NoAdapter, so its conditional PASS does not prove the
 shape check or GPU inference. The newer private `5bd443ea` image and final
 integrated source still need their own device receipt and approved promotion.
 
+
+**Accepted publication at 946c1637:** the image built at `946c1637` passed its smoke gate
+(152 passed, 17 cross-lane skips) and candidate run
+[45397953361](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/45397953361), 22 of 22 device
+steps, at gate source `e57fc83d`. That source changed no Windows closure path. `windows-arm64-acceptance.py
+promote --apply` then moved `:winarm64` to manifest
+`sha256:f0a860faba4629ff51897ffacef8de1905928902011c062459102991b6260a75`, config
+`sha256:aabbc1531259e1e4ad80e449bc7053c7f64b96f6b2d051645017d9f2109cf601`. It required green Linux x64,
+Windows x64, Docs and Security runs on closure-neutral commits. The platform stayed windows/amd64 at
+OS 10.0.26100.33674. This adds no GPU execution proof.
 
 Consumer lanes hosted it
 from 2026-10-03 to 2026-10-11, until a WebRTC defect turned BeschleunigerBallett's renderer lane red

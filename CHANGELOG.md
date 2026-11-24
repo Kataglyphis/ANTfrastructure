@@ -35,6 +35,35 @@
   the three sections take 3, 10 and 17 s. Run 45421650403 on the fresh cost table was green, but three mutation
   shards took 27 to 28 of their 30 minutes.
 
+## 2026-11-24 — the runtime storage guardian refuses a placement FINAL cannot read
+
+- `launch-runtime-storage-guard.py launch` now requires the runtime's host tools checkout and revision and a directory
+  beside the runtime output named `<output>-storage-guard`. Local FINAL reads an unloaded runtime's guardian only
+  there; a guardian started from another checkout ran a whole runtime and was then unusable. One case, three mutations.
+
+## 2026-11-24 — a Python mutant never runs the previous mutant's bytecode
+
+- `verify_mutations.py` deletes a `.py` target's cached bytecode after writing each mutant and after restoring it.
+  Python trusts a `.pyc` whose source size and mtime second match, so a same-size second mutant of one module ran
+  the first one's code and survived on a fast host. `test-mutation-gate.sh` covers it; two mutations.
+- The CON50 probe fixture carries its own `cargo` dispatcher and a planted host `cargo`, since the probe now asks
+  `cargo <tool> --version`.
+
+## 2026-11-24 — two runtime smoke probes read the shipped image correctly
+
+- The `cargo-qa-tools` probe now asks `cargo <tool> --version`: `cargo-mutants --version` rejects the flag, so every
+  amd64 image reported `cargo-mutants=` empty although 27.1.0 was installed.
+- `Dockerfile.torch` ships `03-media/free-threaded-wheels.sh` and its twin table to `/opt/scripts/03-media/`; the
+  FT-STORE probe sources them, failed without them and reported "the in-image probe never finished".
+- `test-runtime-probe-inputs.sh` checks both against fake tools and the Dockerfile COPY lines; three mutations.
+
+## 2026-11-24 — the Linux torch stage checks out OrchestrANT's hub submodule
+
+- Since OrchestrANT 3abd84e (CON289) its `setup.py` copies hub modules from `third_party/ANTfrastructure`, and a clone
+  without that submodule fails `uv sync` ("verify_ort_profile.py is missing"). The Windows torch stage hit it first
+  and checks the submodule out since this hub's windows-torch commit; `assemble-torch-app.sh`'s `fetch_app_tree` does
+  the same now, `--depth 1` and not recursive, before its next app ref reaches the error. One case, one mutation.
+
 ## 2026-11-24 — the mutation shard plan has fresh costs
 
 - `docs/scripts/mutation-costs.json` is rebuilt from the cost lines of run 45373701267 (all eight shards) and
@@ -64,13 +93,58 @@
   remaining docs phases).
 - Home Assistant's runtime `config/ip_bans.yaml` is ignored, so it is never committed.
 
+## 2026-11-24 — :winarm64 carries the 946c1637 bundle
+
+- The ARM64 bundle built at `946c1637` passed its smoke gate and all 22 device steps. `:winarm64` now points at
+  `sha256:f0a860faba4629ff51897ffacef8de1905928902011c062459102991b6260a75`, promoted by
+  `windows-arm64-acceptance.py`, and the six consumers' Windows lanes were dispatched on it
+  ([acceptance](docs/windows-cross-builds.md#accept-an-arm64-image-before-moving-its-tag)).
+- Test fixtures no longer name the build host's LAN addresses: the image-env and sccache-level suites use
+  `10.255.255.16`/`.26`, which the leak gate still flags as private, and `Set-SccacheS3Level.ps1`'s example uses
+  `192.0.2.26`.
+
+## 2026-11-24 — the old public nvidia stage tags and two legacy packages are gone
+
+- With the owner's approval, `ghcr-delete-tags.sh` deleted `cross-toolchain-nvidia-amd64`, `cross-media-nvidia-amd64`
+  and `cross-android-nvidia-amd64` from the public package; they carried TensorRT SDK files from before the stage
+  images moved to the private `-stages` package. The packages `kataglyphis_beschleuniger_windows2025` and
+  `kataglyphis_beschleuniger_test`, untouched since 2025, were deleted whole. No repository named any of them. A dry
+  run selected exactly these versions first; afterwards all five answer 404 and the public tags resolve unchanged.
+
+## 2026-11-24 — old candidate tags go on a list for approval
+
+- 15 versions of the public package (about 223 GB) carry only `candidate-*` tags, which never expire.
+  `linux/host-config/ghcr-candidate-tags.py` lists those older than 30 days with the tracked files that name
+  them, and prints the `ghcr-delete-tags.sh` command; it deletes nothing. None is old enough today; the first
+  qualify from 2026-11-26. `ghcr_candidate_tags_tests.py` and one mutation
+  ([B8](docs/linux-host-setup.md#b8-ghcr-registry-hygiene)).
+
+## 2026-11-24 — the weekly GHCR prune covers the private stage package
+
+- `ghcr-cleanup.yml` also prunes `kataglyphis_beschleuniger-stages`, which held about 167 GB in 30 untagged versions
+  no tag references. Its `MIN_TAGS` guard is 3 for that package only, since it carries one tag per nvidia stage.
+  A local dry run kept the 6 tagged versions and planned the other 30. `ghcr_cleanup_workflow_tests.py` and two
+  mutations hold both steps ([B8](docs/linux-host-setup.md#b8-ghcr-registry-hygiene)).
+
+## 2026-11-24 — CI artifacts keep days, not the 90-day maximum
+
+- An audit of the 13 public repositories found 1.64 TB of Actions artifacts. Every package upload of the
+  shared lanes kept the 90-day maximum. `python-ci-linux.yml`, `python-ci-windows.yml` and
+  `container-ci-windows.yml` now keep package and report artifacts 30 days on `main`, 14 on `develop` and
+  5 elsewhere; the new `artifact-retention-days` input overrides it. Same-run hand-offs keep 1 day, and
+  `winarm64-bundle` 2 days on its daily run and 14 on a manual candidate run. `artifact_retention_tests.py`
+  and three mutations hold it ([policy](docs/python-ci.md#how-long-the-artifacts-live)). Existing artifacts
+  keep their old expiry.
+
 ## 2026-11-24 — the ARM64 acceptance tool is versioned
 
 - `linux/scripts/local-proof/windows-arm64-acceptance.py` replaces five ignored handoff scripts. It uploads
   the graded `bk-winarm64` image by digest, checks a device run's receipt and log, and moves `:winarm64` only
   with `--apply`. A device run on a later `develop` commit counts only when no path between the image source
-  and that commit lies in the Windows build closure. `windows_arm64_acceptance_tests.py` and three mutations
-  cover the refusals ([procedure](docs/windows-cross-builds.md#accept-an-arm64-image-before-moving-its-tag)).
+  and that commit lies in the Windows build closure. The tool derives that closure from the Windows
+  Dockerfiles' context copies and bind mounts, plus `windows/`, the host-read pin files and `.dockerignore`;
+  a coarse prefix list first blocked Linux-only commits. `windows_arm64_acceptance_tests.py` and four
+  mutations cover the refusals ([procedure](docs/windows-cross-builds.md#accept-an-arm64-image-before-moving-its-tag)).
 
 ## 2026-11-24 — the docs match the tree again, and name no host
 

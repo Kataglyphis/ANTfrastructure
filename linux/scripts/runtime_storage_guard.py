@@ -151,6 +151,10 @@ def launch(runtime_path: Path, directory: Path, unit: str, authorization: Path) 
     variant = runtime.get('variant', '')
     require(isinstance(variant, str) and (variant, arch) in LANES, 'Supported ordinary runtime lane required')
     require(producer_unit('runtime', arch, variant).fullmatch(runtime['unit']), 'Ordinary runtime unit required')
+    require(directory == runtime_path.parent.with_name(runtime_path.parent.name + '-storage-guard'), 'Storage guardian directory must sit beside the runtime output')
+    require(Path(runtime.get('engine_wrapper', '')).resolve(strict=True).parents[2] == ROOT
+            and runtime.get('host_tools_revision') == checked_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip(),
+            'Launch the storage guardian from the runtime host tools checkout')
     require('agents may run the existing \x60linux/host-config/prune-safe.sh\x60 autonomously' in authorization.read_text(), 'Standing canonical cleanup authorization required')
     state = UNIT_API(runtime['unit'])
     require(state.get('Id') == runtime['unit'] and state.get('LoadState') == 'loaded' and state.get('ActiveState') in {'active', 'activating'}, 'Runtime is not live')

@@ -29,3 +29,13 @@ jobs:
           KEEP_DAYS: "14"
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
         run: bash linux/host-config/ghcr-prune-package.sh
+
+      # The private stage package holds one tag per nvidia stage, so its empty-inventory guard sits lower.
+      - name: Prune stale stage versions
+        env:
+          GHCR_PRUNE_CONFIRM: "1"
+          KEEP_DAYS: "14"
+          GHCR_PKG: kataglyphis_beschleuniger-stages
+          MIN_TAGS: "3"
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: bash linux/host-config/ghcr-prune-package.sh

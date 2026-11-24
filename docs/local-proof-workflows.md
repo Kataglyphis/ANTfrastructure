@@ -329,8 +329,10 @@ source other than the historical `8c4e13b0`, `runtime_source_profile.py` require
 commit's own complete preflight, byte-identical inputs for every stage from base through Android
 (the four upstream Dockerfiles plus `Dockerfile.media` and `Dockerfile.android`, their mounted and
 copied paths and the SDK and AMD script closures) and no image stage naming a host-only file. The
-only permitted difference inside those inputs is `01-core/runtime-build-fns.sh`: image stages mount
-`01-core` whole, but only host orchestrators load the file, through `artifact-common.sh`. The review
+only permitted differences inside those inputs are two runtime-lane files. Image stages mount `01-core`
+whole, but only host orchestrators load `01-core/runtime-build-fns.sh`, through `artifact-common.sh`;
+`03-media/runtime/assemble-torch-app.sh` lies under a Media mount prefix, but only `Dockerfile.torch`
+copies and runs it. The review
 proves unchanged parent inputs, not cache hits or a successful runtime build.
 
 Carry the existing `normal_stage_launch.py`, `gpu_source_profile.py`, `media_source_profile.py`,
@@ -1025,7 +1027,7 @@ preservation receipt. Ordinary successful acceptance retains its original checko
 
 ## Bounded runtime storage observation
 
-Start `linux/scripts/launch-runtime-storage-guard.py launch --runtime-invocation /absolute/runtime/invocation.json --directory /absolute/fresh/observation --unit webgpu-safe-prune-runtime-amd64-20261115-1.service --authorization /absolute/path/to/owner-operational-rules.md` immediately after the ordinary runtime has an actual live PID. The guardian requires a clean committed owning checkout, its complete worker hashes, the supplied standing authorization, the successful launch record and the same live unit, command, PID and `/proc` start ticks. It starts no producer or container.
+Start `linux/scripts/launch-runtime-storage-guard.py launch --runtime-invocation /absolute/runtime-output/invocation.json --directory /absolute/runtime-output-storage-guard --unit webgpu-safe-prune-runtime-amd64-20261115-1.service --authorization /absolute/path/to/owner-operational-rules.md` immediately after the ordinary runtime has an actual live PID. Run it from the runtime's host tools checkout. Place the directory beside the runtime output with the `-storage-guard` suffix: local FINAL reads an unloaded runtime's guardian only there and at that revision. The launcher refuses anything else. Pass an unchanging copy of the authorization file; FINAL rehashes it. The guardian requires a clean committed owning checkout, its complete worker hashes, the supplied standing authorization, the successful launch record and the same live unit, command, PID and `/proc` start ticks. It starts no producer or container.
 
 The six-hour oneshot uses a separate control group, 256-MiB memory limit, 25% CPU quota, literal arguments and a fresh on-disk temporary directory outside Git. Between one-second waits it checks the producer and free bytes. Below the unchanged 193,273,528,320-byte reserve, it considers only unused, unshared regular layers above a 100-GB retained layer budget. Every record type reporting zero in-use records does not make the outer live build idle. A new eligible pressure state triggers the existing `autonomous-safe-prune.py worker` synchronously inside the same control group, with its full before/after preservation checks and duplicate-cachemount cleanup disabled. It rechecks source and process identity immediately before dispatch. Unchanged ineffective candidates do not loop; a worker that skips because space recovered can be retried if pressure returns. No image removal or recurring timer is installed.
 

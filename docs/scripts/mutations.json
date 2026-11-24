@@ -842,8 +842,8 @@
  {
   "id": "shellcheck.extensionless-arm",
   "target": "linux/scripts/lint-shell.sh",
-  "find": "    *)\n      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
-  "replace": "    *)\n      continue\n      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+  "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+  "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
   "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
   "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
  },
@@ -1277,7 +1277,7 @@
   "find": "            if m.group(\"sec\") in have:\n                continue",
   "replace": "            if True:\n                continue",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "a bare (§ 1a) pointing at no section must be caught, not merely counted"
+  "why": "a bare (\u00a7 1a) pointing at no section must be caught, not merely counted"
  },
  {
   "id": "doc-links.git-free-floor",
@@ -2978,7 +2978,7 @@
  {
   "id": "pre-commit.fast-tier-aborts",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED — fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
+  "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED \u2014 fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
   "replace": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || true",
   "test": "bash linux/scripts/tests/test-precommit-hook.sh",
   "why": "a failing fast gate must REFUSE the commit, not print and continue"
@@ -3594,7 +3594,7 @@
  {
   "id": "pre-commit.pinned-shellcheck-or-refuse",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck — see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
+  "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck \u2014 see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
   "replace": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || _sc_bin=shellcheck",
   "test": "bash linux/scripts/tests/test-precommit-hook.sh",
   "why": "with no pinned binary the hook must REFUSE; falling back to whatever shellcheck PATH offers lints the commit against an unknown version and calls it green"
@@ -5050,8 +5050,8 @@
  {
   "id": "arg-consistency.gcc-literal-drift-fatal",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
-  "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"",
+  "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
+  "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "these ~25 sites all name the same /opt/gcc-<ver> toolchain, so unlike the generic scan there is no legitimate divergence to be advisory about"
  },
@@ -5090,8 +5090,8 @@
  {
   "id": "arg-consistency.script-drift-advisory",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
-  "replace": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
+  "find": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
+  "replace": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "script defaults legitimately diverge -- a standalone run pins a branch, not the built ref -- so this scan must never be an exit code"
  },
@@ -5309,7 +5309,7 @@
   "find": "            if SECTION_SIGN in line:\n                continue",
   "replace": "            if False:\n                continue",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "`page.md § Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
+  "why": "`page.md \u00a7 Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
  },
  {
   "id": "doc-links.header-stale-row",
@@ -15806,8 +15806,8 @@
  {
   "id": "docs-site.publish-no-tolerance",
   "target": ".github/workflows/build-docs.yml",
-  "find": "      - name: 📂 Sync files to domain\n",
-  "replace": "      - name: 📂 Sync files to domain\n        continue-on-error: true\n",
+  "find": "      - name: \ud83d\udcc2 Sync files to domain\n",
+  "replace": "      - name: \ud83d\udcc2 Sync files to domain\n        continue-on-error: true\n",
   "test": "bash linux/scripts/tests/test-docs-site.sh",
   "why": "a publish that may fail is a site that stops updating while the lane stays green"
  },
@@ -33315,7 +33315,7 @@
  {
   "id": "packaging.gpu-receipt-windows-device-names",
   "target": "shared/python/gpu_artifact_receipt.py",
-  "find": "for digit in \"¹²³\"",
+  "find": "for digit in \"\u00b9\u00b2\u00b3\"",
   "replace": "for digit in \"\"",
   "test": "python3 shared/python/tests/test_gpu_artifact_receipt.py",
   "why": "Windows COM and LPT aliases with superscript digits must not be accepted as portable names"
@@ -61573,7 +61573,7 @@
   "find": "assert invocation['GPU_layers_matched'] == parent['matched_GPU_layers_and_diffIDs'], 'NVIDIA Android GPU coverage differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-nvidia-handoff.sh",
-  "why": "The Android profile retains the Media receipt’s matched GPU ancestry."
+  "why": "The Android profile retains the Media receipt\u2019s matched GPU ancestry."
  },
  {
   "id": "compiler-llvm-tools.nvidia-android-disk",
@@ -64944,12 +64944,12 @@
   "id": "windows-lane.tvm-cross-wheel-pin-packaging"
  },
  {
-  "target": "linux/scripts/local-proof/windows-arm64-acceptance.py",
   "id": "image-acceptance.arm64-closure-windows-prefix",
+  "target": "linux/scripts/local-proof/windows-arm64-acceptance.py",
+  "find": "return '*' in inputs or path.startswith('windows/') or path in HOST_INPUTS",
   "test": "python3 linux/scripts/tests/windows_arm64_acceptance_tests.py ClosureTests.test_each_windows_closure_path_blocks_reuse",
-  "find": "CLOSURE_PREFIXES = ('windows/', ",
-  "why": "a later commit that changes a Windows build script must not reuse an older ARM64 image for promotion",
-  "replace": "CLOSURE_PREFIXES = ("
+  "replace": "return '*' in inputs or path in HOST_INPUTS",
+  "why": "a later commit that changes a Windows build script must not reuse an older ARM64 image for promotion"
  },
  {
   "target": "linux/scripts/local-proof/windows-arm64-acceptance.py",
@@ -65278,5 +65278,133 @@
   "replace": "  _lint_gates_hub_python\n}\n\n# A quality-report.toml",
   "test": "bash linux/scripts/tests/test-doc-prose.sh -k wiring",
   "why": "without --root the gate grades the hub and passes every consumer"
+ },
+ {
+  "id": "image-acceptance.arm64-closure-bind-mounts",
+  "target": "linux/scripts/local-proof/windows-arm64-acceptance.py",
+  "find": "if spec.get('type', 'bind') == 'bind' and 'from' not in spec:",
+  "test": "python3 linux/scripts/tests/windows_arm64_acceptance_tests.py InstructionTests.test_only_context_copies_and_bind_mounts_are_inputs",
+  "replace": "if spec.get('type', 'bind') == 'bind' and 'from' in spec:",
+  "why": "a file a Windows RUN mounts from the build context belongs to the image closure even though it lives outside windows/"
+ },
+ {
+  "find": "retention-days: ${{ github.event_name == 'workflow_dispatch' && 14 || 2 }}",
+  "replace": "retention-days: 14",
+  "test": "python3 linux/scripts/tests/artifact_retention_tests.py RetentionTests.test_the_arm64_bundle_lives_long_enough_only_for_a_manual_candidate",
+  "target": ".github/workflows/windows-arm64.yml",
+  "id": "windows-lane.arm64-bundle-retention-by-trigger",
+  "why": "the daily device replay re-uploads a ~2 GB bundle that only its own gate job reads"
+ },
+ {
+  "find": "          # Only the arm64 test job of this run reads the stage.\n          retention-days: 1\n",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/artifact_retention_tests.py RetentionTests.test_every_reusable_upload_keeps_the_ref_policy_or_is_a_same_run_handoff",
+  "target": ".github/workflows/python-ci-windows.yml",
+  "id": "windows-lane.handoff-retention-one-day",
+  "why": "a same-run handoff must not keep its bytes for the 90-day default"
+ },
+ {
+  "find": "        type: number\n        default: 0\n",
+  "replace": "        type: number\n        default: 90\n",
+  "test": "python3 linux/scripts/tests/artifact_retention_tests.py RetentionTests.test_reusable_lanes_take_an_override_that_defaults_to_the_ref_policy",
+  "target": ".github/workflows/python-ci-linux.yml",
+  "id": "python-ci.retention-input-default-by-ref",
+  "why": "a nonzero default would bypass the by-ref policy for every consumer that calls the lane at @develop"
+ },
+ {
+  "test": "python3 linux/scripts/tests/ghcr_cleanup_workflow_tests.py PruneTests.test_both_packages_are_pruned_with_confirm_age_and_tag_guards",
+  "replace": "",
+  "find": "          GHCR_PKG: kataglyphis_beschleuniger-stages\n",
+  "why": "without its package name the second step prunes the public package again and the private stages keep every untagged version",
+  "id": "lib.ghcr-cleanup-stages-package",
+  "target": ".github/workflows/ghcr-cleanup.yml"
+ },
+ {
+  "test": "python3 linux/scripts/tests/ghcr_cleanup_workflow_tests.py PruneTests.test_only_the_stage_package_lowers_the_empty_inventory_guard",
+  "replace": "          MIN_TAGS: \"0\"\n",
+  "find": "          MIN_TAGS: \"3\"\n",
+  "why": "a zero guard lets an empty tag listing turn the stage prune into a registry wipe",
+  "id": "lib.ghcr-cleanup-stages-guard",
+  "target": ".github/workflows/ghcr-cleanup.yml"
+ },
+ {
+  "id": "lib.ghcr-candidate-tags-only-candidates",
+  "target": "linux/host-config/ghcr-candidate-tags.py",
+  "why": "a candidate that was promoted carries a public tag too, and deleting its candidate tag must never be proposed as freeing it",
+  "find": "if tags and all(tag.startswith(PREFIX) for tag in tags) and created < cutoff:",
+  "test": "python3 linux/scripts/tests/ghcr_candidate_tags_tests.py SelectTests.test_only_old_versions_carrying_nothing_but_candidate_tags_are_listed",
+  "replace": "if tags and any(tag.startswith(PREFIX) for tag in tags) and created < cutoff:"
+ },
+ {
+  "id": "handoff.runtime-source-torch-assembly",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "HOST_ONLY_FILES = frozenset({'linux/scripts/01-core/runtime-build-fns.sh', 'linux/scripts/03-media/runtime/assemble-torch-app.sh'})",
+  "replace": "HOST_ONLY_FILES = frozenset({'linux/scripts/01-core/runtime-build-fns.sh'})",
+  "test": "bash linux/scripts/tests/test-media-source-profile.sh -k test_runtime_torch_assembly",
+  "why": "the torch stage's own assembly script runs only in the runtime lane and must not force a rebuild of verified parents"
+ },
+ {
+  "id": "smoke.cargo-qa-through-cargo",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "$(cargo \"${_t#cargo-}\" --version",
+  "replace": "$(\"${_t}\" --version",
+  "test": "bash linux/scripts/tests/test-runtime-probe-inputs.sh -k cargo_subcommands",
+  "why": "cargo-mutants rejects --version when called directly, so the probe must ask every tool through cargo"
+ },
+ {
+  "id": "smoke.ft-probe-library-shipped",
+  "target": "linux/Dockerfile.torch",
+  "find": "COPY --chmod=755 linux/scripts/03-media/free-threaded-wheels.sh /opt/scripts/03-media/free-threaded-wheels.sh\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-runtime-probe-inputs.sh -k ft_probe_inputs",
+  "why": "the free-threaded store probe sources this library inside the shipped image"
+ },
+ {
+  "id": "smoke.ft-probe-table-shipped",
+  "target": "linux/Dockerfile.torch",
+  "find": "COPY linux/scripts/03-media/free-threaded-twins.txt /opt/scripts/03-media/free-threaded-twins.txt\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-runtime-probe-inputs.sh -k ft_probe_inputs",
+  "why": "the sourced library reads its twin table beside itself"
+ },
+ {
+  "id": "mutations.drop-bytecode-after-apply",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "        write_exact(target, mutated)\n        drop_bytecode(target)\n",
+  "replace": "        write_exact(target, mutated)\n",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "a same-size Python mutant must not run the previous mutant's cached bytecode"
+ },
+ {
+  "id": "mutations.drop-bytecode-after-restore",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "        os.unlink(backup.name)\n        drop_bytecode(target)\n",
+  "replace": "        os.unlink(backup.name)\n",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "no bytecode of a mutant may outlive its run, where a later same-size mutant would load it"
+ },
+ {
+  "id": "disk-guard.storage-guardian-beside-runtime",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(directory == runtime_path.parent.with_name(runtime_path.parent.name + '-storage-guard'), 'Storage guardian directory must sit beside the runtime output')\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "FINAL reads the guardian only beside the runtime output, so a guardian elsewhere must refuse at launch"
+ },
+ {
+  "id": "disk-guard.storage-guardian-runtime-checkout",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "            and runtime.get('host_tools_revision') == checked_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip(),\n",
+  "replace": "            and runtime.get('host_tools_revision') is not None,\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "FINAL binds the guardian to the runtime host tools revision, so another revision must refuse at launch"
+ },
+ {
+  "id": "disk-guard.storage-guardian-runtime-root",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(Path(runtime.get('engine_wrapper', '')).resolve(strict=True).parents[2] == ROOT\n",
+  "replace": "    require(Path(runtime.get('engine_wrapper', '')).resolve(strict=True).parents[2] is not None\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "FINAL binds the guardian to the runtime host tools checkout, so another checkout must refuse at launch"
  }
 ]

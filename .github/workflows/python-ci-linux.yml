@@ -8,6 +8,13 @@ permissions:
 on:
   workflow_call:
     inputs:
+      artifact-retention-days:
+        description: >-
+          Days to keep this lane's package and report artifacts. 0, the
+          default, keeps them 30 days on main, 14 on develop and 5 on any other ref.
+        required: false
+        type: number
+        default: 0
       package-name:
         description: >-
           Importable package/module directory, e.g. orchestrant. NOT the
@@ -374,6 +381,7 @@ jobs:
           overwrite: ${{ inputs.host-gpu-runtime && !inputs.gpu-attempt-artifacts }}
           path: logs/test-results/
           if-no-files-found: error
+          retention-days: ${{ inputs.artifact-retention-days || (github.ref == 'refs/heads/main' && 30) || (github.ref == 'refs/heads/develop' && 14) || 5 }}
 
       # After a red test too: the site carries the test report, and a red test must not leave it stale.
       - name: Build Docs
@@ -483,6 +491,7 @@ jobs:
           overwrite: ${{ inputs.host-gpu-runtime && !inputs.gpu-attempt-artifacts }}
           path: ${{ github.workspace }}/dist/
           if-no-files-found: error
+          retention-days: ${{ inputs.artifact-retention-days || (github.ref == 'refs/heads/main' && 30) || (github.ref == 'refs/heads/develop' && 14) || 5 }}
 
   # The x64 row's docs, staged, link-checked and published by the family's one docs lane; a red test does not hold them back.
   docs:

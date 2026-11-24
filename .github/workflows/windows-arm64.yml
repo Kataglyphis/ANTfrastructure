@@ -96,6 +96,8 @@ jobs:
           name: winarm64-bundle
           path: ${{ steps.prep.outputs.workspace }}/dist/windows-arm64-bundle
           if-no-files-found: error
+          # A manual candidate run must stay promotable; the daily replay is read only by its own gate job.
+          retention-days: ${{ github.event_name == 'workflow_dispatch' && 14 || 2 }}
 
   # Its own job: the gate needs ~15 minutes of python and GStreamer on the device.
   gate:

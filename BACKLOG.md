@@ -2544,17 +2544,16 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
         prints `401` (read 2026-11-04; the public package prints `200`, a missing one `403`); `DOCKER_CONFIG="$(mktemp -d)"
         nerdctl pull ghcr.io/kataglyphis/kataglyphis_beschleuniger-stages:cross-media-nvidia-amd64` fails `denied`, while
         a logged-in `nerdctl manifest inspect` of it succeeds.
-      - **For the owner: delete the old public stage tags.** All three still resolve (read 2026-11-04; a delete is
-        restorable for 30 days):
+      - Done (owner approval 2026-11-24): the three old public stage tags are deleted. A dry run first selected
+        exactly these three versions; afterwards all three tags answer 404, and `:winarm64` and `:latest-nvidia`
+        resolve unchanged. The legacy packages `kataglyphis_beschleuniger_windows2025` and `_test` went the same day.
+        The digests, kept for a 30-day restore:
         `cross-toolchain-nvidia-amd64` `sha256:af3245773499e0287ccded76d35aefa3560d34c217635e9ae8fedc8d20c7dffd`,
         `cross-media-nvidia-amd64` `sha256:d2d11dbbb50bc5eb8cb070b7597761428c9123786cd7f42d15ebdfeb02935ce6`,
         `cross-android-nvidia-amd64` `sha256:e495e70dd62456f68f07f92ae2ef409e3ca1a869f609093295b8fa649c2b0e70`.
-        With a PAT holding `read:packages` and `delete:packages` (`GHCR_TOKEN` or `docker login`): `bash
-        linux/host-config/ghcr-delete-tags.sh cross-toolchain-nvidia-amd64 cross-media-nvidia-amd64
-        cross-android-nvidia-amd64` (dry run), then the same with `GHCR_DELETE_TAGS_CONFIRM=1`. Their untagged
-        predecessors go with the weekly `ghcr-cleanup.yml` prune once 14 days old.
-      - Open: `ghcr-cleanup.yml` prunes only the public package; on `-stages` its `MIN_TAGS=10` guard would
-        refuse three tags, so untagged stage versions stay there (private, storage free today).
+        Their untagged predecessors go with the weekly `ghcr-cleanup.yml` prune once 14 days old.
+      - Done (owner decision 2026-11-24): `ghcr-cleanup.yml` also prunes `-stages`, with `MIN_TAGS=3`. A local dry run
+        planned 30 of 36 versions for deletion and kept the 6 tagged ones.
 - [b] **CON42 — DeepStream in `:latest-nvidia`: what is left after the publish** [M, ★]. **Done:** DeepStream 9.1
       ships in every amd64 nvidia build (owner 2026-10-07, full TensorRT 10), published 2026-10-11 (`:latest-nvidia`
       index `810f36b3…`, amd64 `23e3cc9e…`). **The GPU run on the published image passed on 2026-10-12** (RTX 2080,

@@ -18,14 +18,14 @@ function New-TestImageConfig {
 
 # The 2026-10-17 history, its addresses made generic: the preseed ARG in the base, the S3 ARGs in a compiling stage.
 $script:leaky = New-TestImageConfig -CreatedBy @(
-    'ARG VULKAN_PRESEED_ENDPOINT=http://10.0.0.16:5000',
-    'RUN |3 VULKAN_VERSION=1.4.363.0 VULKAN_PRESEED_ENDPOINT=http://10.0.0.16:5000 CMAKE_VERSION=4.4.4 pwsh -Command & C:\temp\scripts\Install-ScoopTools.ps1',
-    'ARG SCCACHE_ENDPOINT=http://10.0.0.26:3900',
+    'ARG VULKAN_PRESEED_ENDPOINT=http://10.255.255.16:5000',
+    'RUN |3 VULKAN_VERSION=1.4.363.0 VULKAN_PRESEED_ENDPOINT=http://10.255.255.16:5000 CMAKE_VERSION=4.4.4 pwsh -Command & C:\temp\scripts\Install-ScoopTools.ps1',
+    'ARG SCCACHE_ENDPOINT=http://10.255.255.26:3900',
     'ARG SCCACHE_BUCKET=kata-bucket',
-    ('RUN |6 SCCACHE_WEBDAV_ENDPOINT=http://10.0.0.16:5000 SCCACHE_MULTILEVEL_CHAIN=webdav,s3 SCCACHE_ENDPOINT=http://10.0.0.26:3900 ' +
+    ('RUN |6 SCCACHE_WEBDAV_ENDPOINT=http://10.255.255.16:5000 SCCACHE_MULTILEVEL_CHAIN=webdav,s3 SCCACHE_ENDPOINT=http://10.255.255.26:3900 ' +
         'SCCACHE_BUCKET=kata-bucket SCCACHE_REGION=kata-region SCCACHE_S3_USE_SSL=false pwsh -Command & C:\bkmnt\Build-LlvmFromSource.ps1'))
-$script:gate = @{ EndpointHost = @('10.0.0.16', '10.0.0.26'); Bucket = 'kata-bucket'; Region = 'kata-region' }
-$script:values = @('10.0.0.16', '10.0.0.26', 'kata-bucket', 'kata-region')
+$script:gate = @{ EndpointHost = @('10.255.255.16', '10.255.255.26'); Bucket = 'kata-bucket'; Region = 'kata-region' }
+$script:values = @('10.255.255.16', '10.255.255.26', 'kata-bucket', 'kata-region')
 
 # What the secret form leaves, plus what only looks like a leak: versions, a version dir, empty switches, the word sccache.
 $script:clean = New-TestImageConfig -CreatedBy @(
@@ -60,7 +60,7 @@ Describe 'WindowsImageEnv.Common: Find-ImageConfigLeak' {
     }
 
     It 'passes what the secret form leaves, with the real bucket and region, which are common words' {
-        Assert-Equal '' ((Get-HistoryReason $script:clean @{ EndpointHost = @('10.0.0.16', '10.0.0.26'); Bucket = 'sccache'; Region = 'garage' }) -join ' | ')
+        Assert-Equal '' ((Get-HistoryReason $script:clean @{ EndpointHost = @('10.255.255.16', '10.255.255.26'); Bucket = 'sccache'; Region = 'garage' }) -join ' | ')
     }
 
     It 'finds a hostname endpoint in a label and the entrypoint, never inside a longer name' {
@@ -135,7 +135,7 @@ Describe 'WindowsImageEnv.Common: Assert-ImageConfigPublishable' {
     }
 
     It 'passes the clean config and says how much it read' {
-        $out = @(Assert-ImageConfigPublishable -Config $script:clean -Label 'img:final' -EndpointHost '10.0.0.16' -Bucket 'sccache' -Region 'garage' 6>&1 | ForEach-Object { "$_" })
+        $out = @(Assert-ImageConfigPublishable -Config $script:clean -Label 'img:final' -EndpointHost '10.255.255.16' -Bucket 'sccache' -Region 'garage' 6>&1 | ForEach-Object { "$_" })
         Assert-Match '6 history entries, no build-host address' ($out -join ' ')
     }
 

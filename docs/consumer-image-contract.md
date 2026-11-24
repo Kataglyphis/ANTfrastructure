@@ -644,7 +644,8 @@ no source fallback, which would cost hundreds of crates per tool under QEMU.
 
 - The pins are read from `versions.env` inside the stage, not forwarded as
   build-args, so they are not advertised ENV. The `cargo-qa-tools` contract row
-  compares what each binary reports with the pins instead.
+  compares what each binary reports with the pins instead, asking `cargo <tool> --version`:
+  `cargo-mutants` rejects a direct `--version`.
 - **cargo-mutants on amd64 only (CON238).** The package stage adds `cargo-mutants` at
   `CARGO_MUTANTS_VERSION`, upstream's x86_64 glibc binary verified against
   `CARGO_MUTANTS_LINUX_X86_64_SHA256`; upstream publishes no aarch64 Linux build, so arm64
