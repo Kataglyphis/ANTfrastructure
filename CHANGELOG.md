@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-24 — the mutation shard plan has fresh costs
+
+- `docs/scripts/mutation-costs.json` is rebuilt from the cost lines of run 45373701267 (all eight shards) and
+  run 45404285986 (the seven green ones). 469 of 950 test commands had no cost and were planned at the median,
+  1.2 s per entry. Shard 3 then drew `test-gstreamer-original-notices.sh` (73 entries at about 25 s) and was
+  cancelled at its 30-minute timeout. Now 949 commands have a cost; only `test-doc-prose.sh -k hub` is missing.
+  The new plan gives every shard the same predicted load, 17 % below the old plan's heaviest shard.
+
 ## 2026-11-24 — docs get a style page, a glossary, a decisions page and a prose ratchet
 
 - Priority 4 in `AGENTS.md` is narrower (owner decision, docs audit): `AGENTS.md` changes only for a new or
