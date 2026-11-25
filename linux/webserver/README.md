@@ -94,6 +94,8 @@ fetch, and the glyph draws as an empty box.
   `font_fallback_data.dart` in the image's SDK and fails on a locked file the engine no longer
   requests, or a chunk of a locked family the lock lacks. Re-pin with
   `fetch-fallback-fonts.py --print-lock <family>...`.
+- During an image switch, a `# transition:` line in the lock names the old engine's lock. That
+  engine gets only those rows. A partial match still fails. Both go once the new image is out.
 - **A family the lock lacks** now 404s on the site instead of being blocked: the live-site check
   ([`docs/ftp-deploys.md`](../../docs/ftp-deploys.md#the-live-site-check)) names its URL.
 - The fonts are OFL-1.1; the app lists them on its licences page.

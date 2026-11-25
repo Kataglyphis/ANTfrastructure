@@ -1,5 +1,7 @@
 # Every chunk of the Noto families a family site needs, as Flutter's web engine requests them (font_fallback_data.dart in the image's Flutter).
 # fetch-fallback-fonts.py places each at <dest>/<family>/<version>/<file>; licence OFL-1.1. Re-pin: fetch-fallback-fonts.py --print-lock <family>...
+# The published image still runs Flutter 3.47.9 until its 3.50.1 build publishes; drop this line and that lock then.
+# transition: Flutter 3.47.9, rows in fallback-fonts-flutter-3.47.9.lock
 # sha256                                                          file                                                       url
 1ea085e149cb9e5f1ac086f0580f7dc10d6cc06cb2e29caa8a7360064a7eadd6  Yq6P-KqIXTD0t4D9z1ESnKM3-HpFabsE4tq3luCC7p-aXxcn.0.woff2  https://fonts.gstatic.com/s/notocoloremoji/v39/Yq6P-KqIXTD0t4D9z1ESnKM3-HpFabsE4tq3luCC7p-aXxcn.0.woff2
 c87e948953bc90e38ba25d711f65377a62aef4e4a7cce272e1c6d8c315e4da41  Yq6P-KqIXTD0t4D9z1ESnKM3-HpFabsE4tq3luCC7p-aXxcn.1.woff2  https://fonts.gstatic.com/s/notocoloremoji/v39/Yq6P-KqIXTD0t4D9z1ESnKM3-HpFabsE4tq3luCC7p-aXxcn.1.woff2

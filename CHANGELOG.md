@@ -19,6 +19,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-25 — The fallback-font check accepts the 3.47.9 engine while the image switches Flutter
+
+- The published image still runs Flutter 3.47.9, whose engine requests Noto Color Emoji v32 and Noto Sans Symbols 2
+  v24. The 3.50.1 lock failed every web build on it, OmniAccelerANT's docs publish among them.
+- `fallback-fonts.lock` names `fallback-fonts-flutter-3.47.9.lock` in a `# transition:` line; it holds the rows from
+  before the 3.50.1 refresh. `fetch-fallback-fonts.py` uses them only when the engine fails the lock and requests
+  exactly those rows. It then places only them and says so. A partial match still fails.
+- `test-fetch-fallback-fonts.sh`: two new cases. Four `fallback-fonts.transition-*` mutations, all proven.
+- Owner decision. The line and the 3.47.9 lock come out once the 3.50.1 image is published (BACKLOG).
+
 ## 2026-11-25 — build-docs.yml checks its isolated apps live after each publish
 
 - New input `live-url`. With `isolated-apps`, a `live-check` job runs after the publish job. It runs

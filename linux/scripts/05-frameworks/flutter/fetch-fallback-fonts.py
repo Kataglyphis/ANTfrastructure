@@ -21,6 +21,8 @@ GSTATIC = "https://fonts.gstatic.com/s/"
 ENGINE_DATA = Path("engine/src/flutter/lib/web_ui/lib/src/engine/font_fallback_data.dart")
 # The image's SDK stage fills this directory once, read-only; a build reads it before any download.
 STORE_ENV = "KATAGLYPHIS_FONT_STORE"
+# While the published image still runs the Flutter before the lock's, the lock names that engine's rows in a lock beside it.
+TRANSITION = re.compile(r"^# transition: Flutter (\S+), rows in (\S+)$", re.MULTILINE)
 
 
 def _fetcher() -> ModuleType:
@@ -62,6 +64,22 @@ def check_against_engine(rows: Sequence[tuple[str, str, str]], requested: list[s
     missing = [rel for rel in requested if rel.split("/")[0] in families and rel not in locked]
     problems += [f"{rel}: the engine requests it for a locked family, the lock lacks it" for rel in missing]
     return problems
+
+
+def generation(lock: ModuleType, path: Path, requested: list[str]) -> tuple[list[tuple[str, str, str]], list[str], str]:
+    """The lock's rows, else all of the older Flutter's its transition line names; with the problems and a note naming that Flutter."""
+    rows = lock.read_lock(path)
+    problems = check_against_engine(rows, requested)
+    found = TRANSITION.search(path.read_text(encoding="utf-8"))
+    if not problems or found is None:
+        return rows, problems, ""
+    version, name = found[1], found[2]
+    if Path(name).name != name:
+        raise lock.FetchError(f"{path}: the transition lock {name!r} is no file beside it")
+    older = lock.read_lock(path.parent / name)
+    if check_against_engine(older, requested):
+        return rows, [*problems, f"nor is this Flutter {version}'s engine, whose rows {name} holds"], ""
+    return older, [], f" (Flutter {version}'s transition rows)"
 
 
 def print_lock(families: list[str], requested: list[str]) -> int:
@@ -147,11 +165,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--dest is required")
     lock = _fetcher()
     try:
-        rows = lock.read_lock(args.lock)
+        rows, problems, note = generation(lock, args.lock, requested)
     except (OSError, lock.FetchError) as exc:
         sys.stderr.write(f"{exc}\n")
         return 2
-    problems = check_against_engine(rows, requested)
     for problem in problems:
         sys.stderr.write(f"FAIL: {problem}\n")
     if problems or args.check:
@@ -163,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"{exc}\n")
         return 1
     families = {url[len(GSTATIC):].split("/")[0] for _sha, _name, url in rows}
-    sys.stdout.write(f"{len(rows)} fallback fonts of {len(families)} families in {args.dest}\n")
+    sys.stdout.write(f"{len(rows)} fallback fonts of {len(families)} families in {args.dest}{note}\n")
     return 0
 
 

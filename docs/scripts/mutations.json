@@ -18516,6 +18516,38 @@
   "why": "a lock the engine disagrees with must stop the build, not ship fonts nobody requests"
  },
  {
+  "id": "fallback-fonts.transition-strict",
+  "target": "linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py",
+  "find": "    if check_against_engine(older, requested):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-fetch-fallback-fonts.sh",
+  "why": "the older Flutter's rows serve only an engine that requests exactly them; a partial match is an empty box again"
+ },
+ {
+  "id": "fallback-fonts.transition-rows-placed",
+  "target": "linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py",
+  "find": "    return older, [], f\" (Flutter {version}'s transition rows)\"",
+  "replace": "    return rows, [], f\" (Flutter {version}'s transition rows)\"",
+  "test": "bash linux/scripts/tests/test-fetch-fallback-fonts.sh",
+  "why": "an engine of the older Flutter must get that generation's files, not the new lock's that it never requests"
+ },
+ {
+  "id": "fallback-fonts.transition-only-on-mismatch",
+  "target": "linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py",
+  "find": "    if not problems or found is None:",
+  "replace": "    if found is None:",
+  "test": "bash linux/scripts/tests/test-fetch-fallback-fonts.sh",
+  "why": "an engine the lock already matches must take the lock's own rows, whatever the transition line names"
+ },
+ {
+  "id": "fallback-fonts.transition-beside-the-lock",
+  "target": "linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py",
+  "find": "    if Path(name).name != name:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-fetch-fallback-fonts.sh",
+  "why": "the transition line may name only a lock beside it, so the hub's lock decides which rows a site gets"
+ },
+ {
   "id": "web-artefacts.apache-icons",
   "target": "linux/scripts/05-frameworks/flutter/check-web-artefacts.py",
   "find": "    if (root / \"web/.htaccess\").is_file():",

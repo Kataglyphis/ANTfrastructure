@@ -79,6 +79,30 @@ cp "${w}/e.0.woff2" "${w}/partial/emoji/v1/"
 t_assert_ok env KATAGLYPHIS_FONT_STORE="${w}/partial" "${PY}" -I "${FONTS}" --engine-data "${w}/engine.dart" --lock "${w}/fonts.lock" --cache "${w}/cache" --dest "${w}/mixed"
 t_assert_eq 3 "$(find "${w}/mixed" -type f | wc -l | tr -d ' ')"
 
+t_case "a transition line serves the older Flutter's engine all of its own rows and nothing else, and no partial match"
+# The suite's first lock and engine stand for the older generation; the lock under test moved emoji to v2.
+mkdir -p "${w}/tr"
+cp "${w}/fonts.lock" "${w}/tr/old.lock"
+moved=(emoji/v2/e.0.woff2 sym/v2/s.woff2)
+printf '# transition: Flutter 1.0, rows in old.lock\n' > "${w}/tr/fonts.lock"
+for p in "${moved[@]}"; do line "${p}"; done >> "${w}/tr/fonts.lock"
+_engine "${w}/new.dart" "${moved[@]}"
+tr_fetch() { "${PY}" -I "${FONTS}" --engine-data "${w}/$1.dart" --cache "${w}/cache" --lock "${w}/tr/fonts.lock" --dest "${w}/tr-$1"; }
+files() { (cd "$1" && find . -type f | sed 's#^\./##' | sort | tr '\n' ' ' | sed 's/ $//'); }
+t_assert_contains "$(t_out tr_fetch engine)" "3 fallback fonts of 2 families in ${w}/tr-engine (Flutter 1.0's transition rows)"
+t_assert_eq "emoji/v1/e.0.woff2 emoji/v1/e.1.woff2 sym/v2/s.woff2" "$(files "${w}/tr-engine")"
+t_assert_eq "2 fallback fonts of 2 families in ${w}/tr-new" "$(t_out tr_fetch new)"
+t_assert_eq "emoji/v2/e.0.woff2 sym/v2/s.woff2" "$(files "${w}/tr-new")"
+t_assert_rc 1 tr_fetch more
+t_assert_contains "$(t_out tr_fetch more)" "nor is this Flutter 1.0's engine, whose rows old.lock holds"
+t_assert_ok test ! -e "${w}/tr-more"
+
+t_case "a transition lock is a file beside the lock, never a path elsewhere"
+mkdir -p "${w}/tr/sub"
+sed 's#rows in old.lock#rows in ../old.lock#' "${w}/tr/fonts.lock" > "${w}/tr/sub/fonts.lock"
+t_assert_rc 2 "${PY}" -I "${FONTS}" --engine-data "${w}/engine.dart" --lock "${w}/tr/sub/fonts.lock" --check
+t_assert_contains "$(t_out "${PY}" -I "${FONTS}" --engine-data "${w}/engine.dart" --lock "${w}/tr/sub/fonts.lock" --check)" "the transition lock '../old.lock' is no file beside it"
+
 # In the family image the hub's own lock is graded against the SDK the lanes build with.
 ENGINE_LIST=/opt/flutter/engine/src/flutter/lib/web_ui/lib/src/engine/font_fallback_data.dart
 if [ -f "${ENGINE_LIST}" ]; then

@@ -348,10 +348,10 @@ linux/scripts/tests/fixtures/migraphx-node-compute-info/README.md | avg-sentence
 linux/scripts/tests/fixtures/migraphx-node-compute-info/README.md | long-share | 0.0
 linux/scripts/tests/fixtures/migraphx-node-compute-info/README.md | ids-per-k | 0.0
 linux/scripts/tests/fixtures/migraphx-node-compute-info/README.md | bold-per-k | 0.0
-linux/webserver/README.md | avg-sentence | 17.7
-linux/webserver/README.md | long-share | 6.8
-linux/webserver/README.md | ids-per-k | 1.9
-linux/webserver/README.md | bold-per-k | 13.3
+linux/webserver/README.md | avg-sentence | 17.2
+linux/webserver/README.md | long-share | 6.3
+linux/webserver/README.md | ids-per-k | 1.8
+linux/webserver/README.md | bold-per-k | 12.9
 shared/agentic-loop/prompts/executor.md | avg-sentence | 25.0
 shared/agentic-loop/prompts/executor.md | long-share | 42.9
 shared/agentic-loop/prompts/executor.md | ids-per-k | 0.0
