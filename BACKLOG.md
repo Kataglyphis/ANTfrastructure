@@ -1423,6 +1423,16 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       integration remain open; protocol fixtures are not a finished-package or Root-FFI proof.
 
 
+**Step 2 landed on every consumer's develop 2026-11-25** (owner: hub helper first, ask before each consumer
+      commit). The hub helpers gained `reuse_existing` (Rust d65f00cb, Python fbf3f6d0). OxidANT 02f7c97 and
+      AccelerANTgine 783eff5 pass detector parity on an RX 9070 XT; OrchestrANT ca227f1 (+ ruff fix bd78587)
+      runs MIGraphX operators and matches the CPU tensors within 9.3e-4, detector parity still open (CON224).
+      OmniAccelerANT 74e3fde registers through OxidANT 02f7c97 and needed hub 35f6c889/ccc834c4
+      (`bundle-loader.sh --gcc-unwinder`): Flutter's exported `_Unwind_*` ended ROCm's internal
+      `filesystem_error` in `std::terminate`. A release bundle then passed `profile-gpu-candidate.sh` on the card.
+      Still open: Omni's packaged TAR/DEB/AppImage on the card (local packaging lacked libwayland inventory rows),
+      and Omni's docs job, red until `:latest` carries Flutter 3.50.1 for the refreshed fallback-font lock.
+
 **Native packaging source follow-up 2026-11-11:** AccelerANTgine's prepared CPack source selects the CPU core
       and separate image plugin, preserves its full license tree and requires the shared plugin-safe AppImage
       patcher. The actual install/proof blocks pass fixture and mutation checks. The prepared finished-package
