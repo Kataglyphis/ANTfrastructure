@@ -65702,5 +65702,29 @@
   "replace": "                .devices()\n                .unwrap_or_default()\n                .iter()",
   "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
   "why": "an enumeration failure must stay an error, never read as no external device"
+ },
+ {
+  "id": "lib.ort-plugin-python-reuse-skips-registration",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        ):\n            return path\n        register = getattr",
+  "replace": "        ):\n            pass\n        register = getattr",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "a device another library registered must be attached without registering the module again"
+ },
+ {
+  "id": "lib.ort-plugin-python-reuse-forwarded",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "            binding, plugin, environ=environ, reuse_existing=reuse_existing\n",
+  "replace": "            binding, plugin, environ=environ, reuse_existing=False\n",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "device selection must forward the reuse opt-in to registration"
+ },
+ {
+  "id": "lib.ort-plugin-python-reuse-opt-in",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    environ: Mapping[str, str] | None = None,\n    reuse_existing: bool = False,\n) -> Path | None:",
+  "replace": "    environ: Mapping[str, str] | None = None,\n    reuse_existing: bool = True,\n) -> Path | None:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "ordinary registration owns its name; reusing another library's registration is an explicit opt-in"
  }
 ]

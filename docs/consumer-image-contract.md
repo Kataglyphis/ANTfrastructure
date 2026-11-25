@@ -1174,7 +1174,9 @@ enters its locked per-binding cache. A missing advertised root or module is fata
 while an absent advertisement and absent bundled module leave CPU use untouched.
 `registered_plugin_names` reports those successful calls. `select_plugin_device`
 registers first and selects the requested matching device from fresh `get_ep_devices()`
-results; pass that device to `SessionOptions.add_provider_for_devices`. Omit the
+results; pass that device to `SessionOptions.add_provider_for_devices`. Both take `reuse_existing=True`, as
+the native helper does. A device another library already listed is then used without
+registering again. It is never reported as this helper's registration. Omit the
 `providers` argument of `InferenceSession` (or pass `None`): a nonempty constructor
 provider list overrides providers already attached through session options. The
 [Python session implementation](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/onnxruntime_inference_collection.py)
