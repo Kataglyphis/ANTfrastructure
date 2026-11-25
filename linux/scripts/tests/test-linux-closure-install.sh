@@ -114,28 +114,27 @@ mv "${_work}/moved" "${_work}/stage"
 
 t_case "--beside: data/ beside /proc/self/exe is found on both paths, argv[0] stays, no child is left behind; a rerun changes nothing"
 _loader="${CMAKE_MODULES}/../linux/scripts/06-packaging/bundle-loader.sh"
-# _write_probe <source> <program> [c++ args...]: stdin's main() after the probes' shared prelude, compiled; base() prints a path's file name.
-_write_probe() {
-  local source="$1" program="$2"
+# <dir> <exe> [loader options]: stages a --beside launcher twice, since a rerun must change nothing.
+_beside_twice() {
+  local dir="${_work}/$1" exe="$2"
   shift 2
-  {
-    printf '#include <dlfcn.h>\n#include <sys/wait.h>\n#include <cstdlib>\n#include <filesystem>\n#include <iostream>\n'
-    printf 'static std::string base(const std::filesystem::path &p) { return p.filename().string(); }\n'
-    cat
-  } > "${source}"
-  c++ -std=c++17 -o "${program}" "${source}" "$@"
+  t_assert_ok bash "${_loader}" --beside "$@" "${dir}" "${dir}/lib" "${exe}"
+  t_assert_ok bash "${_loader}" --beside "$@" "${dir}" "${dir}/lib" "${exe}"
 }
 mkdir -p "${_work}/beside/lib" "${_work}/beside/data"
-_write_probe "${_work}/runner.cpp" "${_work}/beside/runner" <<'EOF'
+cat > "${_work}/runner.cpp" <<'EOF'
+#include <sys/wait.h>
+#include <filesystem>
+#include <iostream>
 int main(int, char **argv) {
   auto exe = std::filesystem::read_symlink("/proc/self/exe");
   std::cout << (std::filesystem::is_directory(exe.parent_path() / "data") ? "data-found" : "data-missing") << ' '
-            << base(exe) << ' ' << base(argv[0]) << ' '
+            << exe.filename().string() << ' ' << std::filesystem::path(argv[0]).filename().string() << ' '
             << (waitpid(-1, nullptr, WNOHANG) == -1 ? "no-child" : "stray-child") << '\n';
 }
 EOF
-t_assert_ok bash "${_loader}" --beside "${_work}/beside" "${_work}/beside/lib" runner
-t_assert_ok bash "${_loader}" --beside "${_work}/beside" "${_work}/beside/lib" runner
+c++ -std=c++17 -o "${_work}/beside/runner" "${_work}/runner.cpp"
+_beside_twice beside runner
 t_assert_ok test -f "${_work}/beside/runner.bin"
 t_assert_ok test -f "${_work}/beside/lib/glibc/libc.so.6"
 t_assert_eq "data-found runner.bin runner no-child" "$(env -i "${_work}/beside/runner")" \
@@ -154,18 +153,11 @@ mkdir -p "${_work}/unwind/lib"
 printf 'void _Unwind_RaiseException(void) {}\n' > "${_work}/fake-unwind.c"
 cc -shared -fPIC -o "${_work}/unwind/lib/libfakeunwind.so" "${_work}/fake-unwind.c"
 cp -L "$(c++ -print-file-name=libgcc_s.so.1)" "${_work}/unwind/lib/libgcc_s.so.1"
-_write_probe "${_work}/unwind.cpp" "${_work}/unwind/plain" -Wl,--no-as-needed -L"${_work}/unwind/lib" -lfakeunwind -Wl,-rpath,'$ORIGIN/lib' <<'EOF'
-int main() {
-  Dl_info info{};
-  dladdr(dlsym(RTLD_DEFAULT, "_Unwind_RaiseException"), &info);
-  std::cout << base(info.dli_fname) << ' ' << (std::getenv("LD_PRELOAD") ? "preload-exported" : "preload-unset") << '\n';
-}
-EOF
+c++ -std=c++17 -o "${_work}/unwind/plain" "$(dirname "${BASH_SOURCE[0]}")/fixtures/unwinder-owner.cpp" -Wl,--no-as-needed -L"${_work}/unwind/lib" -lfakeunwind -Wl,-rpath,'$ORIGIN/lib'
 cp "${_work}/unwind/plain" "${_work}/unwind/fixed"
 t_assert_eq "libfakeunwind.so preload-unset" "$(env -i "${_work}/unwind/plain")" "the fixture's earlier library wins the lookup, as Flutter's engine does"
-t_assert_ok bash "${_loader}" --beside "${_work}/unwind" "${_work}/unwind/lib" plain
-t_assert_ok bash "${_loader}" --beside --gcc-unwinder "${_work}/unwind" "${_work}/unwind/lib" fixed
-t_assert_ok bash "${_loader}" --beside --gcc-unwinder "${_work}/unwind" "${_work}/unwind/lib" fixed
+_beside_twice unwind plain
+_beside_twice unwind fixed --gcc-unwinder
 t_assert_eq "libfakeunwind.so preload-unset" "$(env -i "${_work}/unwind/plain")" "without the option the launcher changes nothing"
 t_assert_eq "libgcc_s.so.1 preload-exported" "$(env -i "${_work}/unwind/fixed")" "the host path preloads the bundled unwinder"
 t_assert_eq "libgcc_s.so.1 preload-unset" "$(env -i KATAGLYPHIS_BUNDLED_GLIBC=1 "${_work}/unwind/fixed")" \
