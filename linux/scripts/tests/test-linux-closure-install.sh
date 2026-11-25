@@ -114,6 +114,13 @@ mv "${_work}/moved" "${_work}/stage"
 
 t_case "--beside: data/ beside /proc/self/exe is found on both paths, argv[0] stays, no child is left behind; a rerun changes nothing"
 _loader="${CMAKE_MODULES}/../linux/scripts/06-packaging/bundle-loader.sh"
+# <dir> <exe> [loader options]: stages a --beside launcher twice, since a rerun must change nothing.
+_beside_twice() {
+  local dir="${_work}/$1" exe="$2"
+  shift 2
+  t_assert_ok bash "${_loader}" --beside "$@" "${dir}" "${dir}/lib" "${exe}"
+  t_assert_ok bash "${_loader}" --beside "$@" "${dir}" "${dir}/lib" "${exe}"
+}
 mkdir -p "${_work}/beside/lib" "${_work}/beside/data"
 cat > "${_work}/runner.cpp" <<'EOF'
 #include <sys/wait.h>
@@ -127,8 +134,7 @@ int main(int, char **argv) {
 }
 EOF
 c++ -std=c++17 -o "${_work}/beside/runner" "${_work}/runner.cpp"
-t_assert_ok bash "${_loader}" --beside "${_work}/beside" "${_work}/beside/lib" runner
-t_assert_ok bash "${_loader}" --beside "${_work}/beside" "${_work}/beside/lib" runner
+_beside_twice beside runner
 t_assert_ok test -f "${_work}/beside/runner.bin"
 t_assert_ok test -f "${_work}/beside/lib/glibc/libc.so.6"
 t_assert_eq "data-found runner.bin runner no-child" "$(env -i "${_work}/beside/runner")" \
@@ -147,24 +153,11 @@ mkdir -p "${_work}/unwind/lib"
 printf 'void _Unwind_RaiseException(void) {}\n' > "${_work}/fake-unwind.c"
 cc -shared -fPIC -o "${_work}/unwind/lib/libfakeunwind.so" "${_work}/fake-unwind.c"
 cp -L "$(c++ -print-file-name=libgcc_s.so.1)" "${_work}/unwind/lib/libgcc_s.so.1"
-cat > "${_work}/unwind.cpp" <<'EOF'
-#include <dlfcn.h>
-#include <cstdlib>
-#include <filesystem>
-#include <iostream>
-int main() {
-  Dl_info info{};
-  dladdr(dlsym(RTLD_DEFAULT, "_Unwind_RaiseException"), &info);
-  const char *preload = std::getenv("LD_PRELOAD");
-  std::cout << std::filesystem::path(info.dli_fname).filename().string() << ' ' << (preload ? "preload-exported" : "preload-unset") << '\n';
-}
-EOF
-c++ -std=c++17 -o "${_work}/unwind/plain" "${_work}/unwind.cpp" -Wl,--no-as-needed -L"${_work}/unwind/lib" -lfakeunwind -Wl,-rpath,'$ORIGIN/lib'
+c++ -std=c++17 -o "${_work}/unwind/plain" "$(dirname "${BASH_SOURCE[0]}")/fixtures/unwinder-owner.cpp" -Wl,--no-as-needed -L"${_work}/unwind/lib" -lfakeunwind -Wl,-rpath,'$ORIGIN/lib'
 cp "${_work}/unwind/plain" "${_work}/unwind/fixed"
 t_assert_eq "libfakeunwind.so preload-unset" "$(env -i "${_work}/unwind/plain")" "the fixture's earlier library wins the lookup, as Flutter's engine does"
-t_assert_ok bash "${_loader}" --beside "${_work}/unwind" "${_work}/unwind/lib" plain
-t_assert_ok bash "${_loader}" --beside --gcc-unwinder "${_work}/unwind" "${_work}/unwind/lib" fixed
-t_assert_ok bash "${_loader}" --beside --gcc-unwinder "${_work}/unwind" "${_work}/unwind/lib" fixed
+_beside_twice unwind plain
+_beside_twice unwind fixed --gcc-unwinder
 t_assert_eq "libfakeunwind.so preload-unset" "$(env -i "${_work}/unwind/plain")" "without the option the launcher changes nothing"
 t_assert_eq "libgcc_s.so.1 preload-exported" "$(env -i "${_work}/unwind/fixed")" "the host path preloads the bundled unwinder"
 t_assert_eq "libgcc_s.so.1 preload-unset" "$(env -i KATAGLYPHIS_BUNDLED_GLIBC=1 "${_work}/unwind/fixed")" \
