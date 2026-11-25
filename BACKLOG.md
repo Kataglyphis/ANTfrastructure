@@ -2694,6 +2694,11 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
         exists.
       - No PATH entry for the pilot.
       - OxidANT's Start-menu shortcut starts `gui` in NSIS, and in MSI and MSIX as well.
+      Found 2026-11-25: the released setups AccelerANTgine v0.0.3 and BeschleunigerBallett v1.6.0 were built with
+      NSIS 3.13, so both CVEs were already fixed there. But both ship the LZMA stub (7-Zip: `Method = LZMA:23`,
+      `SubType = NSIS-3 Unicode`), CPack's default. Owner decision: switch to zlib and release again.
+      `kataglyphis_cpack_common` now sets `CPACK_NSIS_COMPRESSOR` to `zlib`; the two repos need a hub pin bump and a
+      new release.
       Steps, in order:
       1. Phase 0, measure in Windows CI (owner: the Windows session, after its four Windows lanes have proven their
          final commit). The Windows lanes start only on `workflow_dispatch` or `workflow_call`, so

@@ -232,10 +232,10 @@ docs/slang-shader-compilation.md | avg-sentence | 17.6
 docs/slang-shader-compilation.md | long-share | 7.5
 docs/slang-shader-compilation.md | ids-per-k | 0.0
 docs/slang-shader-compilation.md | bold-per-k | 6.0
-docs/third-party-licenses.md | avg-sentence | 16.9
-docs/third-party-licenses.md | long-share | 6.0
-docs/third-party-licenses.md | ids-per-k | 2.1
-docs/third-party-licenses.md | bold-per-k | 2.1
+docs/third-party-licenses.md | avg-sentence | 16.7
+docs/third-party-licenses.md | long-share | 5.8
+docs/third-party-licenses.md | ids-per-k | 2.0
+docs/third-party-licenses.md | bold-per-k | 2.0
 docs/upstream-libstdcxx-c++23-nostdinc++.md | avg-sentence | 20.5
 docs/upstream-libstdcxx-c++23-nostdinc++.md | long-share | 14.3
 docs/upstream-libstdcxx-c++23-nostdinc++.md | ids-per-k | 0.0

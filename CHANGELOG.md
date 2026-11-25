@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-25 — CPack's NSIS setups compress with zlib
+
+- The released NSIS setups of AccelerANTgine v0.0.3 and BeschleunigerBallett v1.6.0 carry NSIS's CPL-1.0 LZMA
+  stub without a source notice, because CPack defaults to `lzma`. Both were built with NSIS 3.13, so the two NSIS
+  CVEs do not apply. `kataglyphis_cpack_common` now sets `CPACK_NSIS_COMPRESSOR` to `zlib`;
+  `test-cmake-package-license.sh` and one mutation hold it ([compressor](docs/third-party-licenses.md#the-nsis-setups-compressor)).
+  The two repos release again once their hub pin moves.
+
 ## 2026-11-25 — :winamd64, :winamd64-nvidia and :winamd64-rocm carry 58d00ec7
 
 - With the owner's approval, the three Windows images built at `58d00ec7` are published after their smoke and

@@ -30,6 +30,10 @@ t_assert_contains "${_rtf}" 'Copyright \u233? \u-10179?\u-8704?\tab end' "Unicod
 t_assert_contains "${_rtf}" '\par' "line breaks remain readable"
 t_assert_eq "${_project}/build/kataglyphis-license.rtf" "$(cat "${_project}/build/rtf-path.txt")" "WiX uses the generated text"
 
+t_case "the NSIS setup compresses with zlib, never the CPL-licensed lzma stub"
+t_assert_contains "$(cat "${_project}/build/CPackConfig.cmake")" 'set(CPACK_NSIS_COMPRESSOR "zlib")' \
+  "CPack hands makensis zlib"
+
 t_case "CPack includes the exact project licence in its ZIP payload"
 t_assert_rc 0 cpack --config "${_project}/build/CPackConfig.cmake" -G ZIP -B "${_project}/packages"
 _package="$(find "${_project}/packages" -maxdepth 1 -name '*.zip' -print -quit)"

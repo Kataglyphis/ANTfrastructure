@@ -1056,6 +1056,15 @@ instead of shipping it avoids that question.
   reads the package's members, so it does not depend on the staging step having run. It does not
   judge the terms, and it does not cover NSIS `.exe` installers.
 
+### The NSIS setup's compressor
+
+An NSIS setup carries the decompressor stub of the compressor it was built with. NSIS's LZMA stub is
+CPL-1.0 code, and shipping it needs a source-availability notice that no package carries yet. So
+`kataglyphis_cpack_common` sets `CPACK_NSIS_COMPRESSOR` to `zlib`, whose stub is zlib-licensed.
+CPack's own default is `lzma`. The setups AccelerANTgine v0.0.3 and BeschleunigerBallett v1.6.0
+shipped with it: 7-Zip lists them as `Method = LZMA:23`. Their next releases replace them.
+`test-cmake-package-license.sh` checks the configured compressor; it does not open a built setup.
+
 ## Notes
 
 - Ubuntu system packages carry diverse licenses (GPL, LGPL, Apache 2.0, MIT,

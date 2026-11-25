@@ -31257,6 +31257,14 @@
   "why": "WiX must display the real terms rather than a placeholder."
  },
  {
+  "id": "lib.cpack-nsis-zlib-compressor",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "set(CPACK_NSIS_COMPRESSOR \"zlib\")",
+  "replace": "set(CPACK_NSIS_COMPRESSOR \"lzma\")",
+  "test": "bash linux/scripts/tests/test-cmake-package-license.sh",
+  "why": "CPack defaults to lzma, whose CPL-1.0 stub ships without a source notice"
+ },
+ {
   "id": "windows-lane.package-license-copies",
   "target": "windows/scripts/modules/WindowsMsix.Common.psm1",
   "find": "  Copy-Item -LiteralPath $source -Destination $target -Force -ErrorAction Stop",

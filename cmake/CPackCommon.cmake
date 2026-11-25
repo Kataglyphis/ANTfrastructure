@@ -713,6 +713,8 @@ macro(kataglyphis_cpack_common)
     endif()
     set(CPACK_SOURCE_GENERATOR "ZIP")
 
+    # CPack's default lzma ships NSIS's CPL-1.0 LZMA stub, which needs a source notice: docs/third-party-licenses.md
+    set(CPACK_NSIS_COMPRESSOR "zlib")
     set(CPACK_NSIS_WELCOME_TITLE "${KGCPACK_NSIS_WELCOME_TITLE}")
     set(CPACK_NSIS_FINISH_TITLE "${KGCPACK_NSIS_FINISH_TITLE}")
     set(CPACK_NSIS_MUI_HEADERIMAGE "${KGCPACK_NSIS_HEADER_IMAGE}")
