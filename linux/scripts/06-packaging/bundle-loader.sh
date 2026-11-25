@@ -10,16 +10,18 @@ source "${SCRIPT_DIR}/../01-core/logging.sh"
 BESIDE=false
 EXTERNAL_LIBRARY_PATH=false
 PRESERVE_BYTES=false
+GCC_UNWINDER=false
 while :; do
   case "${1:-}" in
     --beside) BESIDE=true; shift ;;
     --external-library-path) EXTERNAL_LIBRARY_PATH=true; shift ;;
     --preserve-bytes) PRESERVE_BYTES=true; shift ;;
+    --gcc-unwinder) GCC_UNWINDER=true; shift ;;
     *) break ;;
   esac
 done
 if [ $# -lt 3 ]; then
-  printf 'usage: %s [--beside] [--external-library-path] [--preserve-bytes] BUNDLE LIB-DIR EXECUTABLE...\n' "$0" >&2
+  printf 'usage: %s [--beside] [--external-library-path] [--preserve-bytes] [--gcc-unwinder] BUNDLE LIB-DIR EXECUTABLE...\n' "$0" >&2
   exit 2
 fi
 BUNDLE="$(realpath -m "$1")"
@@ -31,6 +33,10 @@ if [ "${PRESERVE_BYTES}" = true ]; then
   [[ "${LIB_DIR}" == "${BUNDLE}/"* ]] || err "immutable helper libraries must stay inside the bundle"
 fi
 mkdir -p "${LIB_DIR}"
+# A Flutter engine exports its own _Unwind_*, which cannot catch ROCm's internal C++ exceptions: docs/failure-modes.md
+if [ "${GCC_UNWINDER}" = true ]; then
+  [ -f "${LIB_DIR}/libgcc_s.so.1" ] && [ ! -L "${LIB_DIR}/libgcc_s.so.1" ] || err "--gcc-unwinder needs a regular ${LIB_DIR}/libgcc_s.so.1"
+fi
 
 # glibc's own libraries; python-app-closure.sh leaves all of them to the system, so they come from here.
 GLIBC_SONAMES=(libc.so.6 libm.so.6 libmvec.so.1 libpthread.so.0 libdl.so.2 librt.so.1 libresolv.so.2
@@ -67,6 +73,9 @@ for rel in "${EXES[@]}"; do
     preserved=false
     grep -q '^# Original executable bytes must survive package hash checks\.$' "${exe}" && preserved=true
     [ "${PRESERVE_BYTES}" = "${preserved}" ] || err "${rel} has a different byte-preservation policy; restage the executable"
+    unwinder=false
+    grep -q '^# The bundled libgcc_s unwinder is preloaded\.$' "${exe}" && unwinder=true
+    [ "${GCC_UNWINDER}" = "${unwinder}" ] || err "${rel} has a different unwinder policy; restage the executable"
     info "  ${rel}: already a launcher"
     continue
   fi
@@ -111,6 +120,13 @@ for rel in "${EXES[@]}"; do
   fi
   external_setup=""
   external_suffix=""
+  host_preload=""
+  bundled_preload=""
+  if [ "${GCC_UNWINDER}" = true ]; then
+    byte_policy="${byte_policy}"$'\n# The bundled libgcc_s unwinder is preloaded.'
+    host_preload="$(printf '\n  export LD_PRELOAD="$here/%s/libgcc_s.so.1${LD_PRELOAD:+:$LD_PRELOAD}"' "${to_lib}")"
+    bundled_preload=" --preload \"\$here/${to_lib}/libgcc_s.so.1\""
+  fi
   if [ "${EXTERNAL_LIBRARY_PATH}" = true ]; then
     external_setup="$(cat <<EXTERNAL
 
@@ -135,10 +151,10 @@ here="\$(cd -- "\$(dirname -- "\$(readlink -f -- "\$0")")" && pwd)"${external_se
 host_glibc="\$("${interp}" --version 2>/dev/null | sed -n '1s/.*release version \([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\1 \2/p')"
 read -r host_major host_minor <<< "\$host_glibc"
 if [ -z "\${KATAGLYPHIS_BUNDLED_GLIBC:-}" ] && [ -n "\${host_minor:-}" ] &&
-  { [ "\$host_major" -gt ${major} ] || { [ "\$host_major" -eq ${major} ] && [ "\$host_minor" -ge ${minor} ]; }; }; then
+  { [ "\$host_major" -gt ${major} ] || { [ "\$host_major" -eq ${major} ] && [ "\$host_minor" -ge ${minor} ]; }; }; then${host_preload}
   exec -a "\$0" "\$here/${to_home}/${real}" "\$@"
 fi
-exec "\$here/${to_home}/${loader}" --library-path "\$here/${to_lib}/glibc:\$here/${to_lib}${external_suffix}" --argv0 "\$0" "\$here/${to_home}/${real}" "\$@"
+exec "\$here/${to_home}/${loader}" --library-path "\$here/${to_lib}/glibc:\$here/${to_lib}${external_suffix}"${bundled_preload} --argv0 "\$0" "\$here/${to_home}/${real}" "\$@"
 LAUNCHER
   chmod 0755 "${exe}"
   info "  ${rel}: launcher -> ${to_home}/${real}, through ${loader} and glibc ${major}.${minor} (${glibc_dir}) on an older host"

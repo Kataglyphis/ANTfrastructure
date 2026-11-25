@@ -94,7 +94,7 @@ docs/docs-sites.md | ids-per-k | 5.2
 docs/docs-sites.md | bold-per-k | 3.5
 docs/failure-modes.md | avg-sentence | 18.4
 docs/failure-modes.md | long-share | 11.6
-docs/failure-modes.md | ids-per-k | 5.3
+docs/failure-modes.md | ids-per-k | 5.2
 docs/failure-modes.md | bold-per-k | 18.6
 docs/fleet-health.md | avg-sentence | 18.7
 docs/fleet-health.md | long-share | 12.3
@@ -151,7 +151,7 @@ docs/linux-accelerator-images.md | bold-per-k | 4.8
 docs/linux-build-basics.md | avg-sentence | 19.5
 docs/linux-build-basics.md | long-share | 14.0
 docs/linux-build-basics.md | ids-per-k | 3.5
-docs/linux-build-basics.md | bold-per-k | 5.7
+docs/linux-build-basics.md | bold-per-k | 5.6
 docs/linux-cross-builds.md | avg-sentence | 19.3
 docs/linux-cross-builds.md | long-share | 13.3
 docs/linux-cross-builds.md | ids-per-k | 4.5

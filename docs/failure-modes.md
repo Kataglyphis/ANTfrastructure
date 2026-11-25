@@ -1951,6 +1951,28 @@ or `/usr/local` that needs it, and `tests/test-no-libunwind.sh` pins both flags 
 `libunwind-dev` stays installed (several `install-deps.sh` and the runtime image ship it), so
 the flags are the guard: do not set them back to `auto` to "get better backtraces".
 
+### A Flutter app on ROCm aborts with filesystem_error
+
+**Symptom.** A Linux Flutter bundle started with an AMD GPU device prints
+`terminate called after throwing an instance of 'std::filesystem::__cxx11::filesystem_error'`,
+then `terminate called recursively`, and aborts. The backtrace runs `migraphx_target_create`
+→ `dlopen(libmigraphx_gpu)` → `libhipblaslt`'s `__hipRegisterFatBinary` → `kpack_load_code_object`
+(`librocm_kpack`) → `__cxa_throw` → `_Unwind_RaiseException` in **`libflutter_linux_gtk.so`**.
+The same model on the same card passes in a binary without Flutter.
+
+**Cause.** The same class as the entry above: two unwinders in one process. The Flutter engine
+exports its own `_Unwind_*`, and as the program's direct dependency it precedes `libgcc_s.so.1`
+in the lookup scope. Its unwinder finds no handler for the exception ROCm throws and catches
+internally, so `__cxa_throw` calls `std::terminate`. A preloaded `libgcc_s.so.1` moves the
+lookup to GCC's unwinder, and the same bundle then runs MIGraphX and matches the CPU detections.
+
+**Fix.** `bundle-loader.sh --gcc-unwinder` makes the launcher preload the bundle's own
+`libgcc_s.so.1`: through `LD_PRELOAD` on the host glibc path, which keeps a caller's entries
+behind it, and through the bundled loader's `--preload` otherwise, so host children inherit
+nothing. A bundle without a regular `libgcc_s.so.1` refuses the option, and a launcher built
+under the other policy must be restaged. The closure suite proves the lookup owner on both
+paths with a stand-in library; it does not reproduce ROCm or prove inference.
+
 ### lavapipe segfaults building an acceleration structure on arm64
 
 **Symptom.** A Vulkan test on lavapipe (Mesa's CPU device) dies with SIGSEGV as soon as a draw
