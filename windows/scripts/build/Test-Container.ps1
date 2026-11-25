@@ -497,6 +497,11 @@ Assert-FileExists -Path 'C:\WiX\wix.exe' -Description 'WiX toolset'
 Assert-Test -Name 'WiX firewall extension' -Condition {
     (& 'C:\WiX\wix.exe' extension list --global 2>&1 | Out-String) -match 'WixToolset\.Firewall\.wixext'
 } -FailMessage 'WixToolset.Firewall.wixext is not installed globally (windows/Dockerfile installs it)'
+$nsisExpected = Get-ExpectedVersion 'NSIS_VERSION' ''
+$makensis = Get-Command makensis.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+Assert-Test -Name "makensis on PATH is the pinned NSIS $nsisExpected" -Condition {
+    $makensis -and $makensis.Source -ieq 'C:\nsis\Bin\makensis.exe' -and "$(& $makensis.Source /VERSION)".Trim() -ceq "v$nsisExpected"
+} -FailMessage "makensis resolves to $(if ($makensis) { $makensis.Source } else { 'nothing' }), not windows/Dockerfile's C:\nsis\Bin at NSIS_VERSION '$nsisExpected'"
 foreach ($tool in 'sccache', 'cppcheck', '7z', 'uv', 'nano') {
     Assert-CommandExists $tool
 }

@@ -1392,6 +1392,19 @@
               }
             },
             {
+              "name": "NSIS (C:\\nsis: the final stage's pinned makensis, first on PATH; a setup built with it carries the stub of its compressor)",
+              "var": "NSIS_VERSION",
+              "url": "https://nsis.sourceforge.io/",
+              "license": "zlib (NSIS and its zlib stub) + bzip2 1.0.6 (the bzip2 stub) + CPL-1.0 (the LZMA stub); COPYING ships in C:\\nsis",
+              "spdx": "Zlib AND bzip2-1.0.6 AND CPL-1.0",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://sourceforge.net/projects/nsis/files/NSIS%203/",
+                "ref_var": "NSIS_VERSION",
+                "note": "Redistributed unmodified; nsis-<version>-src.tar.bz2 sits beside the zip. CPL-1.0 is why kataglyphis_cpack_common selects the zlib compressor."
+              }
+            },
+            {
               "name": "sccache (Windows lane)",
               "var": "SCCACHE_WINDOWS_VERSION",
               "url": "https://github.com/mozilla/sccache",

@@ -19,6 +19,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-25 — The Windows final stage pins NSIS 3.13 (CON302 step 2)
+
+- `NSIS_VERSION` 3.13 and `NSIS_WINDOWS_ZIP_SHA256` in `versions.env`. `windows/scripts/host/Install-Nsis.ps1`
+  downloads SourceForge's zip with `Invoke-WebRequest` and a non-browser user agent: SourceForge answers the shared
+  helper's browser one with an HTML page. It checks the SHA256, accepts only the `nsis-<version>` root with makensis,
+  `COPYING` and the zlib stub, and requires makensis to report that release.
+- `windows/Dockerfile` runs it in the final stage, puts `C:\nsis\Bin` first on PATH and sets `NSISDIR`; `Test-Container.ps1`
+  fails when makensis resolves anywhere else or to another version. No image carries it yet: the next Windows build
+  rebuilds only the final stage.
+- Renovate's `custom.nsis` datasource and `bump_versions.py spec_nsis` read nsis-dev/nsis's `v313` tags. The spec
+  pins the zip's SHA256 only after its SHA1 matches SourceForge's.
+- `deps.json` lists NSIS as `Zlib AND bzip2-1.0.6 AND CPL-1.0` with a source pointer; both SPDX ids are new in
+  `license_obligations.py`.
+- `Nsis.Install.Tests.ps1` (six cases), a `test-bump-versions.sh` case, and six new mutations, all proven.
+
 ## 2026-11-25 — an nvidia chain on amd64 builds arm64 by default (owner directive)
 
 - `cross_nvidia_sbsa_active` is on unless `CROSS_NVIDIA_SBSA=0`, and a variant chain without `--target-arches`

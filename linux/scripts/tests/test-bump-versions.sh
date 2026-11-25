@@ -726,4 +726,45 @@ t_assert_contains "${_out}" "raised LiteRT main's qairt workspace names no" "a w
 t_assert_contains "${_out}" "raised no stable ndk;* package" "an index without a stable NDK raises instead of reporting the current pin as newest"
 t_assert_contains "${_out}" "raised QAIRT 2.51.1.261002 is not served at ${_qurl}" "a version the software center does not serve raises"
 
+t_case "spec_nsis: v<major><minor> tags become NSIS_VERSION, and the zip's SHA256 waits for SourceForge's SHA1 (offline)"
+_out="$(_bv_offline <<'PY'
+import hashlib
+zip_bytes = b"PK-nsis-3.14"
+good_sha1 = hashlib.sha1(zip_bytes).hexdigest()
+page = {"sha1": good_sha1}
+bv.ls_remote_tags = lambda repo: ["v3061", "v313", "v314", "v2051", "list", "v40"]
+bv.http_text = lambda url: '"nsis-3.14.zip" ... "sha1":"%s"' % page["sha1"] if "/3.14/" in url else ""
+fetched = []
+def http_bytes(url):
+    fetched.append(url)
+    return zip_bytes
+bv.http_bytes = http_bytes
+print("tag", bv.nsis_version_from_tag("v309"), bv.nsis_version_from_tag("v3061"), bv.nsis_version_from_tag("v40"))
+bv.WRITE_MODE = False
+print("report", bv.spec_nsis("3.13"), fetched)
+bv.WRITE_MODE = True
+print("bump", bv.spec_nsis("3.13"))
+print("url", fetched[-1])
+print("same", bv.spec_nsis("3.14"))
+page["sha1"] = "0" * 40
+try:
+    bv.spec_nsis("3.13")
+except RuntimeError as e:
+    print("raised", e)
+bv.ls_remote_tags = lambda repo: ["v3061", "list"]
+try:
+    bv.spec_nsis("3.13")
+except RuntimeError as e:
+    print("raised", e)
+PY
+)"
+_nsis_sha="$(printf 'PK-nsis-3.14' | sha256sum | cut -d' ' -f1)"
+t_assert_contains "${_out}" "tag 3.09 None None" "v309 is 3.09; four-digit and one-digit tags are not releases"
+t_assert_contains "${_out}" "report ('3.14', {}) []" "a report run downloads nothing"
+t_assert_contains "${_out}" "bump ('3.14', {'NSIS_WINDOWS_ZIP_SHA256': '${_nsis_sha}'})" "--write moves NSIS_WINDOWS_ZIP_SHA256 with the version"
+t_assert_contains "${_out}" "url https://downloads.sourceforge.net/project/nsis/NSIS%203/3.14/nsis-3.14.zip" "the zip comes from SourceForge's release folder"
+t_assert_contains "${_out}" "same ('3.14', {})" "an up-to-date pin drags no SHA"
+t_assert_contains "${_out}" "raised nsis-3.14.zip does not match SourceForge's SHA1" "a zip that differs from SourceForge's SHA1 raises instead of pinning its hash"
+t_assert_contains "${_out}" "raised nsis-dev/nsis has no v<major><minor> release tag" "no release tag raises"
+
 t_summary

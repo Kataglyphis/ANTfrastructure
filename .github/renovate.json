@@ -124,6 +124,14 @@
       "transformTemplates": [
         "{ \"releases\": [ { \"version\": channels.Stable.version } ] }"
       ]
+    },
+    "nsis": {
+      "description": "nsis-dev/nsis tags its releases v<major><two-digit minor> (v313); the transform keeps that shape only and writes it as NSIS_VERSION's 3.13.",
+      "defaultRegistryUrlTemplate": "https://api.github.com/repos/nsis-dev/nsis/tags?per_page=100",
+      "format": "json",
+      "transformTemplates": [
+        "{ \"releases\": $map($[$contains(name, /^v[0-9]{3}$/)], function($t) { { \"version\": $substring($t.name, 1, 1) & \".\" & $substring($t.name, 2) } }) }"
+      ]
     }
   }
 }

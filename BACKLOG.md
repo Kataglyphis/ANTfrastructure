@@ -2710,9 +2710,13 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
          except the NVIDIA DirectML bundle size, which needs a released NVIDIA bundle and stays open.
          First run (2026-11-25, run 45669420315): the image carries makensis v3.13 and it takes the one-frame PNG
          `.ico`. Both compressors failed on OrchestrANT's bundle: makensis is not long-path aware and could not open
-         a `hydra	est_utils` file past 260 characters under a long temp root, so a packager must build from a
+         a `hydra\test_utils` file past 260 characters under a long temp root, so a packager must build from a
          short root and check the bundle's longest path. Without `SetShellVarContext all` the shortcut went into the
-         user's Start menu. Rerun pending with a short root and stderr in the report.
+         user's Start menu. Rerun 45678590167 from the short root `C:\np` (longest path 205 characters) passed:
+         the 525 MB bundle packs with zlib to a 190 MB setup in 61 s at 52 MB peak RAM, which 7-Zip lists as
+         `Deflate`, not solid. `/SOLID lzma` gives 127 MB in 173 s at 135 MB (`LZMA:23`, solid). With
+         `SetShellVarContext all` a silent install in Server Core creates the all-users shortcut and the
+         uninstaller removes it. Open: the NVIDIA DirectML bundle size.
       2. Pin makensis at 3.12 or later (owner: the Windows session, after the same proof; it changes
          the Windows image files and `versions.env`): 3.11 fixes CVE-2025-43715, 3.12 fixes CVE-2026-42171, Scoop ships 3.13.
          First read which NSIS built the setups AccelerANTgine and BeschleunigerBallett already released; below
@@ -2721,6 +2725,14 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
          rebuilds one stage. Record it in the toolchain manifest, give Renovate a custom datasource (the tags are
          `v313`, not semver), add a `bump_tools.py` spec, and list the stub's licences (zlib, bzip2, CPL-1.0 for
          LZMA) in `deps.json` and `license_obligations.py`. Pin or record 7-Zip too: the licence reader needs it.
+         Done in the source on 2026-11-25, not yet in an image (the owner holds the Windows rebuild): `NSIS_VERSION`
+         3.13 and `NSIS_WINDOWS_ZIP_SHA256`, `Install-Nsis.ps1` in the final stage into `C:\nsis` (first on PATH,
+         `NSISDIR` set), the Test-Container check, `custom.nsis`, `spec_nsis`, the `deps.json` row with CPL-1.0 and
+         bzip2-1.0.6. Two deviations: provenance is `C:\nsis\kataglyphis-provenance.json`, because the toolchain
+         manifest is written in base; and base keeps scoop's floating `extras/nsis` until its next rebuild, since
+         removing it re-keys the whole chain. 7-Zip stays unpinned for now. At that base rebuild,
+         `Invoke-DownloadWithRetry` also takes a `-UserAgent` and `Install-Nsis.ps1` moves onto it: SourceForge serves
+         HTML to the helper's browser user agent, and both shared modules sit above base's Visual Studio layer.
       3. The hub module `WindowsNsis.Common.psm1` with a template and `kataglyphis-common.nsh`: a stable uninstall
          key, the upgrade, the MSI guard and the architecture check. Pester tests go through an invoker seam, and
          `Invoke-PackagerTool` must be exported. `Resolve-MakensisExe` fails on any version but the pin, since

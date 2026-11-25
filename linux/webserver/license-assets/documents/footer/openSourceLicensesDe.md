@@ -277,6 +277,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | Scoop package manager | latest | [scoop.sh](https://scoop.sh/) | Unlicense / MIT |
 | Scoop-installed tools (7-Zip, Git, LLVM, ninja, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet) | latest (scoop) | [scoop.sh](https://scoop.sh/) | various (GPL, Apache 2.0, BSD, zlib) |
+| NSIS (C:\nsis: the final stage's pinned makensis, first on PATH; a setup built with it carries the stub of its compressor) | 3.13 | [nsis.sourceforge.io](https://nsis.sourceforge.io/) | zlib (NSIS and its zlib stub) + bzip2 1.0.6 (the bzip2 stub) + CPL-1.0 (the LZMA stub); COPYING ships in C:\nsis |
 | sccache (Windows lane) | 0.19.0-965c019-pr2809 | [github.com/mozilla/sccache](https://github.com/mozilla/sccache) | Apache 2.0 |
 | vcpkg | master | [github.com/microsoft/vcpkg](https://github.com/microsoft/vcpkg) | MIT |
 | vcpkg packages (zlib, protobuf — linked into builds) | vcpkg baseline | [github.com/microsoft/vcpkg](https://github.com/microsoft/vcpkg) | Zlib / BSD 3-Clause |
@@ -536,6 +537,13 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 - **Source:** <https://scoop.sh/>
 - **Revision:** —
 - Build-time tooling installed from upstream publishers; each carries its own source location. sccache is the exception -- see its own row, it is installed from the official release zip.
+
+### NSIS (C:\nsis: the final stage's pinned makensis, first on PATH; a setup built with it carries the stub of its compressor) — Windows Image
+
+- **Licence:** Zlib AND bzip2-1.0.6 AND CPL-1.0
+- **Source:** <https://sourceforge.net/projects/nsis/files/NSIS%203/>
+- **Revision:** 3.13
+- Redistributed unmodified; nsis-<version>-src.tar.bz2 sits beside the zip. CPL-1.0 is why kataglyphis_cpack_common selects the zlib compressor.
 
 ### Ubuntu — Documentation Image
 

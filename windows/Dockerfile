@@ -39,6 +39,17 @@ ARG WIX_FIREWALL_EXT_VERSION=7.0.1
 RUN & 'C:\WiX\wix.exe' extension add --global "WixToolset.Firewall.wixext/$env:WIX_FIREWALL_EXT_VERSION"; `
     if ($LASTEXITCODE -ne 0) { throw "wix extension add WixToolset.Firewall.wixext/$env:WIX_FIREWALL_EXT_VERSION failed ($LASTEXITCODE)" }
 
+# The pinned NSIS precedes base's floating scoop copy on PATH, and NSISDIR keeps scoop's stubs out (BACKLOG CON302).
+ARG NSIS_VERSION=3.13
+ARG NSIS_WINDOWS_ZIP_SHA256=ba63dffc4410ee89193e1cb5a41989991bd77c61068da17e3156d136b7b0b3d8
+RUN --mount=type=bind,source=windows/scripts/host/Install-Nsis.ps1,target=C:\temp\nsis-install\Install-Nsis.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsContainerImage.Common.psm1,target=C:\temp\nsis-install\modules\WindowsContainerImage.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\temp\nsis-install\modules\WindowsScripts.Shared.psm1 `
+    & 'C:\temp\nsis-install\Install-Nsis.ps1' -TempDir $env:TEMP_DIR -InstallDir 'C:\nsis'
+ENV NSIS_VERSION=${NSIS_VERSION} `
+    NSISDIR=C:\nsis `
+    PATH=C:\nsis\Bin;$PATH
+
 # One COPY (the chain runs near the 125-layer cap), in the last stage so script edits never invalidate earlier layers.
 COPY windows\scripts\build\Test-Health.ps1 windows\scripts\build\Test-Container.ps1 windows\scripts\build\genai-guidance-smoke.py linux\scripts\lib\tiny-genai-model.py windows\scripts\entrypoint.cmd linux\scripts\03-media\runtime\ort-venv-census.py linux\scripts\02-toolchain\python\free-threaded-wheel.py linux\scripts\03-media\free-threaded-twins.txt C:\temp\scripts\
 # Downstream Invoke-Ci* and rust build scripts import the modules from this path; WindowsPythonWheel.Common finds the helper and the twin table one level up.

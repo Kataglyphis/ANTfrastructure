@@ -2,6 +2,7 @@
 """Spec lookups for bump_versions.py: the tool, toolchain and base-image pins in versions.env."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Callable
@@ -351,6 +352,38 @@ def spec_wix_ui(cur: str) -> SpecResult:
 
 def spec_wix_firewall(cur: str) -> SpecResult:
     return bv._nuget_pkg_latest("WixToolset.Firewall.wixext", same_major_as=cur), {}
+
+
+def nsis_version_from_tag(tag: str) -> str | None:
+    """The release a nsis-dev/nsis tag names (v313 -> '3.13', v309 -> '3.09'); None for any other tag shape."""
+    m = re.fullmatch(r"v(\d)(\d{2})", tag)
+    return f"{m.group(1)}.{m.group(2)}" if m else None
+
+
+def nsis_zip_url(v: str) -> str:
+    return f"https://downloads.sourceforge.net/project/nsis/NSIS%20{v.split('.')[0]}/{v}/nsis-{v}.zip"
+
+
+def nsis_zip_sha256(v: str) -> str:
+    """SHA256 of the release zip, after its SHA1 matches the one SourceForge publishes for it."""
+    page = bv.http_text(f"https://sourceforge.net/projects/nsis/files/NSIS%20{v.split('.')[0]}/{v}/")
+    m = re.search(rf'"nsis-{re.escape(v)}\.zip".{{0,400}}?"sha1": ?"([0-9a-f]{{40}})"', page, re.DOTALL)
+    if not m:
+        raise RuntimeError(f"SourceForge publishes no SHA1 for nsis-{v}.zip")
+    data = bv.http_bytes(nsis_zip_url(v))
+    # SHA1 is the only digest upstream publishes; the pinned SHA256 stays the build's gate.
+    if hashlib.sha1(data).hexdigest() != m.group(1):
+        raise RuntimeError(f"nsis-{v}.zip does not match SourceForge's SHA1 {m.group(1)}")
+    return hashlib.sha256(data).hexdigest()
+
+
+def spec_nsis(cur: str) -> SpecResult:
+    versions = [v for v in (nsis_version_from_tag(t) for t in bv.ls_remote_tags("nsis-dev/nsis")) if v]
+    if not versions:
+        raise RuntimeError("nsis-dev/nsis has no v<major><minor> release tag")
+    v = max(versions, key=bv._vkey)
+    extras = {"NSIS_WINDOWS_ZIP_SHA256": nsis_zip_sha256(v)} if v != cur and bv.WRITE_MODE else {}
+    return v, extras
 
 
 def spec_python(cur: str) -> SpecResult:

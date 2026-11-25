@@ -2365,6 +2365,11 @@ regex manager's `currentDigest` capture:
   shared key must exist on the lagging lane) and `custom.nuget`
   (`dist.nuget.org/tools.json`, `ReleasedAndBlessed` only -- the same filter
   `bump_versions.py` applies).
+* **`custom.nsis`** reads nsis-dev/nsis's GitHub tags, keeps only the
+  `v<major><two-digit minor>` shape (`v313`) and writes it as `NSIS_VERSION`'s
+  `3.13`. `bump_versions.py spec_nsis` reads the same tags, and before it pins
+  `NSIS_WINDOWS_ZIP_SHA256` it checks the SourceForge zip against the SHA1
+  SourceForge publishes, the only digest upstream gives.
 * **`versioning=regex:...` now covers every tag shape `extractVersion` cannot
   transform** -- FFmpeg's `n9.0`, Freetype's `VER-2-14-3`,
   gobject-introspection's `GOBJECT_INTROSPECTION_1_86_0`,

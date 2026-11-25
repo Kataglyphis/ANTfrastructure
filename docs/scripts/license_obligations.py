@@ -57,6 +57,7 @@ OBLIGATIONS: dict[str, tuple[str, ...]] = {
     "Unicode-3.0": (KEEP_NOTICE, INCLUDE_TEXT),
     "CDLA-Permissive-2.0": (KEEP_NOTICE, INCLUDE_TEXT),
     "Zlib": (KEEP_NOTICE, INCLUDE_TEXT),
+    "bzip2-1.0.6": (KEEP_NOTICE, INCLUDE_TEXT, STATE_CHANGES),
     "curl": (KEEP_NOTICE, INCLUDE_TEXT),
     "Unlicense": (),
     # SQLite's public-domain dedication: it asks for nothing, not even a notice.
@@ -76,6 +77,7 @@ OBLIGATIONS: dict[str, tuple[str, ...]] = {
     "LGPL-2.1-or-later": (KEEP_NOTICE, INCLUDE_TEXT, OFFER_SOURCE, ALLOW_RELINK),
     "LGPL-3.0-or-later": (KEEP_NOTICE, INCLUDE_TEXT, OFFER_SOURCE, ALLOW_RELINK),
     "MPL-2.0": (KEEP_NOTICE, INCLUDE_TEXT, OFFER_SOURCE, STATE_CHANGES),
+    "CPL-1.0": (KEEP_NOTICE, INCLUDE_TEXT, OFFER_SOURCE),
 
     # Strong copyleft
     "GPL-2.0-only": (KEEP_NOTICE, INCLUDE_TEXT, OFFER_SOURCE, STATE_CHANGES, SAME_LICENCE),

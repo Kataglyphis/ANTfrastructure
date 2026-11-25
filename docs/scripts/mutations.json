@@ -66086,5 +66086,53 @@
   "replace": "TARGET_ARCHES=\"$(resolve_arch_list)\"",
   "test": "bash linux/scripts/tests/test-gpu-variant.sh",
   "why": "The chain must take the variant's default arches when none are named."
+ },
+ {
+  "id": "windows-lane.nsis-install-version-shape",
+  "target": "windows/scripts/host/Install-Nsis.ps1",
+  "find": "    $release = [regex]::Match($Version, '^(?<major>\\d+)\\.\\d{2}$')",
+  "replace": "    $release = [regex]::Match($Version, '^(?<major>\\d+)\\.')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Install.Tests.ps1",
+  "why": "Only a major.minor NSIS release may name the SourceForge folder and zip."
+ },
+ {
+  "id": "windows-lane.nsis-install-required-files",
+  "target": "windows/scripts/host/Install-Nsis.ps1",
+  "find": "    foreach ($required in 'Bin\\makensis.exe', 'COPYING', 'Stubs\\zlib-x86-unicode') {",
+  "replace": "    foreach ($required in 'Bin\\makensis.exe') {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Install.Tests.ps1",
+  "why": "The installed tree must carry NSIS's licence and the zlib stub the setups use."
+ },
+ {
+  "id": "windows-lane.nsis-install-pin-before-download",
+  "target": "windows/scripts/host/Install-Nsis.ps1",
+  "find": "        [ValidatePattern('^[0-9a-fA-F]{64}$', ErrorMessage",
+  "replace": "        [ValidatePattern('^', ErrorMessage",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Install.Tests.ps1",
+  "why": "A malformed SHA256 pin must stop the install before any download."
+ },
+ {
+  "id": "windows-lane.nsis-final-path-first",
+  "target": "windows/Dockerfile",
+  "find": "    PATH=C:\\nsis\\Bin;$PATH",
+  "replace": "    PATH=$PATH;C:\\nsis\\Bin",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Install.Tests.ps1",
+  "why": "The pinned makensis must precede base's floating scoop copy on PATH."
+ },
+ {
+  "id": "lib.bump-nsis-sha1-gate",
+  "target": "docs/scripts/bump_tools.py",
+  "find": "    if hashlib.sha1(data).hexdigest() != m.group(1):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "A zip whose SHA1 differs from SourceForge's must not have its SHA256 pinned."
+ },
+ {
+  "id": "lib.bump-nsis-tag-shape",
+  "target": "docs/scripts/bump_tools.py",
+  "find": "    m = re.fullmatch(r\"v(\\d)(\\d{2})\", tag)",
+  "replace": "    m = re.fullmatch(r\"v(\\d)(\\d+)\", tag)",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "Four-digit maintenance tags like v3061 are not NSIS_VERSION releases."
  }
 ]

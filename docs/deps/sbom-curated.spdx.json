@@ -1911,6 +1911,19 @@
       "licenseComments": "Obligations: keep-notice, include-text, offer-source | Corresponding source required. Upstream: https://scoop.sh/"
     },
     {
+      "SPDXID": "SPDXRef-Package-Windows-Image-NSIS-C-nsis-the-final-stage-s-pinned-makensis--dc990994",
+      "name": "NSIS (C:\\nsis: the final stage's pinned makensis, first on PATH; a setup built with it carries the stub of its compressor)",
+      "versionInfo": "3.13",
+      "downloadLocation": "https://sourceforge.net/projects/nsis/files/NSIS%203/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Zlib AND bzip2-1.0.6 AND CPL-1.0",
+      "licenseConcluded": "Zlib AND bzip2-1.0.6 AND CPL-1.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Build Tooling (build-time only)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, offer-source | Corresponding source required. Upstream: https://sourceforge.net/projects/nsis/files/NSIS%203/ at 3.13"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Windows-Image-sccache-Windows-lane-16ab13cf",
       "name": "sccache (Windows lane)",
       "versionInfo": "0.19.0-965c019-pr2809",
@@ -3078,6 +3091,11 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Scoop-installed-tools-7-Zip-Git-LLVM-ninja-NAS-0ab2edca"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-NSIS-C-nsis-the-final-stage-s-pinned-makensis--dc990994"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
