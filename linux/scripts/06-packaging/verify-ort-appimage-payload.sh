@@ -7,7 +7,13 @@ source "${script_dir}/appimage-verification.sh"
 source "${script_dir}/ort-runtime-bundle.sh"
 source "${script_dir}/ort-package-proof.sh"
 declare image target work
-appimage_require_args "$#" 5 "$0" 'APPIMAGE ARCH LIB_DIR NOTICE_DIR nvidia|amd'
+# A bundle may stage only the bare soname its ORT binding dlopens; the versioned one stays the default.
+nvidia_core=libonnxruntime.so.1
+if [ "${1:-}" = --nvidia-core ]; then
+  case "${2:-}" in libonnxruntime.so | libonnxruntime.so.1) nvidia_core="$2" ;; *) echo 'Invalid --nvidia-core name' >&2; exit 2 ;; esac
+  shift 2
+fi
+appimage_require_args "$#" 5 "$0" '[--nvidia-core libonnxruntime.so|libonnxruntime.so.1] APPIMAGE ARCH LIB_DIR NOTICE_DIR nvidia|amd'
 appimage_init "$1" "$2"
 lib_dir="$3"
 notice_dir="$4"
@@ -17,7 +23,7 @@ for path in "$lib_dir" "$notice_dir"; do
 done
 appimage_require_native "$2"
 case "$variant" in
-  nvidia) kind=cuda; required=(libonnxruntime.so.1 libonnxruntime_providers_shared.so libonnxruntime_providers_cuda.so) ;;
+  nvidia) kind=cuda; required=("$nvidia_core" libonnxruntime_providers_shared.so libonnxruntime_providers_cuda.so) ;;
   amd) [ "$target" = amd64 ] || { echo 'AMD GPU AppImages require Linux x64' >&2; exit 2; }; kind=migraphx; required=(libonnxruntime.so.1 "${ORT_AMDGPU_EP_MODULE}") ;;
   *) printf 'Invalid GPU variant: %s\n' "$variant" >&2; exit 2 ;;
 esac

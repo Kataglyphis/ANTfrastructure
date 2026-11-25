@@ -66038,5 +66038,21 @@
   "replace": "    if ($null -eq $hit) { return $Path }\n",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Diagnostics.NsisSetupProbe.Tests.ps1",
   "why": "A shim without a target must fail rather than measure the shim's own working set."
+ },
+ {
+  "id": "packaging.nvidia-core-option-ignored",
+  "target": "linux/scripts/06-packaging/verify-ort-appimage-payload.sh",
+  "find": "  nvidia) kind=cuda; required=(\"$nvidia_core\" libonnxruntime_providers_shared.so libonnxruntime_providers_cuda.so) ;;\n",
+  "replace": "  nvidia) kind=cuda; required=(libonnxruntime.so.1 libonnxruntime_providers_shared.so libonnxruntime_providers_cuda.so) ;;\n",
+  "test": "bash linux/scripts/tests/test-ort-appimage-payload.sh",
+  "why": "An NVIDIA bundle that stages only the bare soname ort dlopens must pass when its caller says so."
+ },
+ {
+  "id": "packaging.nvidia-core-any-name",
+  "target": "linux/scripts/06-packaging/verify-ort-appimage-payload.sh",
+  "find": "  case \"${2:-}\" in libonnxruntime.so | libonnxruntime.so.1) nvidia_core=\"$2\" ;; *) echo 'Invalid --nvidia-core name' >&2; exit 2 ;; esac\n",
+  "replace": "  nvidia_core=\"${2:-}\"\n",
+  "test": "bash linux/scripts/tests/test-ort-appimage-payload.sh",
+  "why": "Only an ORT core soname may stand in for the core; a provider name would let a bundle without its core pass."
  }
 ]

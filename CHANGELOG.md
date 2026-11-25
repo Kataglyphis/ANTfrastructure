@@ -19,6 +19,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-25 — the NVIDIA AppImage check accepts a bundle's bare ORT soname
+
+- `verify-ort-appimage-payload.sh --nvidia-core libonnxruntime.so` lets a bundle that ships only the soname ort
+  dlopens pass; OmniAccelerANT's NVIDIA AppImage failed on the missing `libonnxruntime.so.1` after its TAR and DEB
+  passed. The versioned soname stays the default for every other caller, and only the two core names are accepted.
+  A host-independent NVIDIA fixture and two packaging mutations hold it.
 ## 2026-11-25 — CPack's NSIS setups compress with zlib
 
 - The released NSIS setups of AccelerANTgine v0.0.3 and BeschleunigerBallett v1.6.0 carry NSIS's CPL-1.0 LZMA

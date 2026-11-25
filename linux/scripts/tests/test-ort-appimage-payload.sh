@@ -80,6 +80,26 @@ ln -s libonnxruntime_providers_shared.so "$work/fixture/usr/lib/engine/libonnxru
 t_assert_fails check
 rm "$work/fixture/usr/lib/engine/libonnxruntime.so.1"
 mv "$work/fixture/usr/lib/engine/libonnxruntime.so.1.2.3" "$work/fixture/usr/lib/engine/libonnxruntime.so.1"
+t_case '--nvidia-core names the bare soname a bundle stages alone; any other name is a usage error'
+t_assert_rc 2 bash "$verifier" --nvidia-core libonnxruntime_providers_shared.so "$work/image" "$(uname -m)" usr/lib/engine usr/share/licenses/onnxruntime "$variant"
+# An NVIDIA bundle that stages only the bare soname, on any host: the versioned default refuses it, the option accepts it.
+mkdir -p "$work/nv/fixture/usr/lib/engine" "$work/nv/fixture/usr/share/licenses/onnxruntime" "$work/nv/wheels"
+for name in libonnxruntime.so libonnxruntime_providers_shared.so libonnxruntime_providers_cuda.so; do
+  cc -shared -fPIC -g "$work/fixture.c" -o "$work/nv/fixture/usr/lib/engine/$name" || exit 1
+done
+cp "$work/fixture/usr/share/licenses/onnxruntime/"* "$work/nv/fixture/usr/share/licenses/onnxruntime/"
+python3 -c 'import pathlib, sys, zipfile
+root = pathlib.Path(sys.argv[1])
+with zipfile.ZipFile(root / "wheels/onnxruntime_gpu_fixture-1.whl", "w") as wheel:
+    for path in (root / "fixture/usr/lib/engine").iterdir():
+        wheel.write(path, "onnxruntime/capi/" + path.name)
+    for path in (root / "fixture/usr/share/licenses/onnxruntime").iterdir():
+        wheel.write(path, "onnxruntime/" + path.name)' "$work/nv"
+nv_opts=()
+nv_check() { FIXTURE_ROOT="$work/nv/fixture" ORT_CHAIN_WHEEL_DIR="$work/nv/wheels" bash "$verifier" "${nv_opts[@]}" "$work/image" "$(uname -m)" usr/lib/engine usr/share/licenses/onnxruntime nvidia; }
+t_assert_contains "$(nv_check 2>&1)" 'Missing GPU ORT library: libonnxruntime.so.1'
+nv_opts=(--nvidia-core libonnxruntime.so)
+t_assert_ok nv_check
 t_case 'altered notices and unsupported variants fail'
 printf wrong > "$work/fixture/usr/share/licenses/onnxruntime/LICENSE"
 t_assert_fails check

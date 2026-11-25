@@ -410,6 +410,9 @@ GPU SDK libraries. Its path and alias rules live in
 their tarball and DEB trees without a second copy. Run it after AppImage generation:
 the generator can alter ELF files after an install-tree check has passed. It does
 not prove GPU execution or account for other dependencies.
+Some NVIDIA bundles ship only the bare `libonnxruntime.so` that ort dlopens. They pass
+`--nvidia-core libonnxruntime.so` first. The versioned soname stays the default. No other name is
+accepted.
 
 AMD package consumers can pass a fourth provenance-file path to both
 `ort_package_stage_amdgpu_licenses` and `ort_package_verify_amdgpu`. It binds the image's
