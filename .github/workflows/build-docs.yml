@@ -63,6 +63,12 @@ on:
           isolated-app .htaccess (COOP, COEP, camera, wasm and mjs types, no-cache).
         type: string
         default: ''
+      live-url:
+        description: >-
+          The published site's https:// address. With isolated-apps, a job after the publish runs
+          check-live-site.js --isolated on each app there, against the files it published.
+        type: string
+        default: ''
       publish:
         description: >-
           Publish on a push to develop or main. false builds and checks only, and needs no
@@ -256,3 +262,47 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./site/
           server-dir: ${{ inputs.server-dir }}
+
+  # The upload cannot be undone: red here means the live app is broken now (docs/ftp-deploys.md#the-live-site-check).
+  live-check:
+    name: Check the published apps
+    needs: publish
+    if: inputs.live-url != '' && inputs.isolated-apps != ''
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    env:
+      DOCS_HUB: ${{ inputs.hub-path || 'antfrastructure-tools' }}
+      DOCS_LIVE_URL: ${{ inputs.live-url }}
+      DOCS_ISOLATED_APPS: ${{ inputs.isolated-apps }}
+    steps:
+      # The family image carries node and Chrome; the same disk cleanup as the site job before pulling it.
+      - name: Prepare CI host (checkout + pull the family Linux image)
+        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-linux-ci-host@develop
+        with:
+          fetch-depth: '1'
+          submodules: ${{ inputs.submodules }}
+          free-disk-space: 'true'
+          pull-first: 'false'
+
+      - name: Get ANTfrastructure tooling
+        if: inputs.hub-path == ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Kataglyphis/ANTfrastructure
+          ref: develop
+          path: antfrastructure-tools
+          submodules: 'true'
+          persist-credentials: false
+
+      - name: Take the published site
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: docs-site-${{ inputs.site-name }}
+          path: .docs-live
+
+      # The runner's shell expands DOCS_HUB; the URL and the apps reach the container as -e names, and live validates them.
+      - name: Check each isolated app live
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
+        with:
+          extra-args: -e DOCS_LIVE_URL -e DOCS_ISOLATED_APPS
+          script: bash "${DOCS_HUB}/linux/scripts/docs-site.sh" live .docs-live

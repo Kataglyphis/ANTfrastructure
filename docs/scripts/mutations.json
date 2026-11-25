@@ -65798,5 +65798,61 @@
   "replace": "    environ: Mapping[str, str] | None = None,\n    reuse_existing: bool = True,\n) -> Path | None:",
   "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
   "why": "ordinary registration owns its name; reusing another library's registration is an explicit opt-in"
+ },
+ {
+  "id": "docs-site.live-isolated",
+  "target": "linux/scripts/docs-site.sh",
+  "find": " --files \"${site}/${app}\" --isolated || failed=1",
+  "replace": " --files \"${site}/${app}\" || failed=1",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "without --isolated a published app whose COOP or COEP header is gone passes, and its wasm threads stop unseen"
+ },
+ {
+  "id": "docs-site.live-published-files",
+  "target": "linux/scripts/docs-site.sh",
+  "find": " --files \"${site}/${app}\" --isolated",
+  "replace": " --isolated",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "the file sweep is what finds a published file the server does not answer with 200"
+ },
+ {
+  "id": "docs-site.live-every-app",
+  "target": "linux/scripts/docs-site.sh",
+  "find": " --isolated || failed=1",
+  "replace": " --isolated || return 1",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "one red app would hide the verdicts of the apps after it"
+ },
+ {
+  "id": "docs-site.live-https-only",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "    https://*) ;;\n",
+  "replace": "    http*) ;;\n",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "cross-origin isolation needs a secure context, so a plain-http address would check a page that can never be isolated"
+ },
+ {
+  "id": "docs-site.live-app-path-safety",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "    _docs_site_relative \"isolated app\" \"${app}\"\n    # Every app",
+  "replace": "    # Every app",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "an app path climbing out of the site would check files the publish never sent"
+ },
+ {
+  "id": "docs-site.live-after-publish",
+  "target": ".github/workflows/build-docs.yml",
+  "find": "    needs: publish\n",
+  "replace": "    needs: site\n",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "before the upload the live check grades the previous publish, and a pull request's run would check a site it never changed"
+ },
+ {
+  "id": "docs-site.live-only-when-asked",
+  "target": ".github/workflows/build-docs.yml",
+  "find": "    if: inputs.live-url != '' && inputs.isolated-apps != ''\n",
+  "replace": "    if: inputs.isolated-apps != ''\n",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "without a live-url the check has no address, and the job would fail every site that has apps"
  }
 ]

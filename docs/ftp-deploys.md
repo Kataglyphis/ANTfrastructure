@@ -279,6 +279,9 @@ app's deploy, in `:latest` (node and Chrome, no Playwright), and fails when:
   `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. An app behind
   [the isolated-app template](docs-sites.md#an-isolated-apps-htaccess) passes it.
 
+A docs site's isolated apps get it after every publish: `build-docs.yml` runs it from its `live-check` job when the
+caller passes `live-url` ([docs-sites.md § An isolated app's .htaccess](docs-sites.md#an-isolated-apps-htaccess)).
+
 **It cannot roll back.** The FTP upload has already replaced the live site, so a red check means
 the site is broken now: fix forward, or redeploy the previous commit. Hash routes are passed as
 `/#/route`; `--scrolls` and `--settle-ms` trade time for coverage, since Flutter lays out, and

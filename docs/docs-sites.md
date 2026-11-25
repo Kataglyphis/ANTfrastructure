@@ -69,6 +69,7 @@ commit changes only docs. The hub's own caller is `.github/workflows/docs.yml`.
 | `link-allow` | `''` | The link gate's allow file, relative to the repository root |
 | `htaccess` | `true` | Add the hub's `.htaccess` and 404 page; `false` for a site that ships its own |
 | `isolated-apps` | `''` | Web apps below the site's root, space-separated paths relative to it. Each gets [the isolated-app `.htaccess`](#an-isolated-apps-htaccess); `docs-site.sh stage` refuses a path outside the site, one without an `index.html`, and an app that ships its own `.htaccess` |
+| `live-url` | `''` | The published site's `https://` address. With `isolated-apps`, a `live-check` job after the publish runs `check-live-site.js --isolated` on each app at `<live-url>/<app>/`, against the files it published. A red job means the live app is broken now |
 | `publish` | `true` | `false` builds and checks only, and needs no secrets |
 | `publish-on-dispatch` | `false` | Also publish a `workflow_dispatch` run on `develop` or `main` |
 | `publish-timeout-minutes` | `30` | The publish job's limit. An upload it cuts off saves no sync state, so a file too large to finish in time is retried from scratch on every run: BeschleunigerBallett's 61 MB demo scene at about 74 kB/s never landed under 30 |
@@ -335,3 +336,8 @@ order of the two cache lines and the versioned-path patterns against sample path
 `docs-site.isolated-*` mutations prove it. After a publish, `check-live-site.js <app URL> --isolated`
 checks the headers and `crossOriginIsolated` in Chrome:
 [ftp-deploys.md § The live-site check](ftp-deploys.md#the-live-site-check).
+
+`build-docs.yml` runs that check itself when the caller passes `live-url`. Its `live-check` job needs the
+publish, so it never runs on a pull request. It pulls the family image for node and Chrome, takes the published
+site, and runs `docs-site.sh live`. That checks every app, also after a red one, and fails if any is red. It refuses a
+plain-http address, an empty app list and an app path outside the site.

@@ -153,6 +153,29 @@ t_assert_eq "Header set X-Own 1" "$(cat "${SITE}/app/.htaccess")" "refused, not 
 _site isolated-climb
 t_assert_contains "$(t_out _stage "${SITE}" --isolated-app ../isolated --no-htaccess)" "must be a plain path inside the repository"
 
+# A node on PATH that prints its arguments and fails for a URL with "broken" in it, so live's calls are visible without Chrome.
+mkdir -p "${_tmp}/fake-bin" "${_tmp}/live/app" "${_tmp}/live/demo"
+printf '#!/usr/bin/env bash\necho "node $*"\ncase "$2" in *broken*) exit 1 ;; esac\n' > "${_tmp}/fake-bin/node"
+chmod +x "${_tmp}/fake-bin/node"
+_live() { (cd "${_tmp}" && env -u DOCS_LIVE_URL -u DOCS_ISOLATED_APPS PATH="${_tmp}/fake-bin:${PATH}" "$@" bash "${FAKE}/linux/scripts/docs-site.sh" live live); }
+_checked() { printf 'node %s/linux/scripts/check-live-site.js https://docs.example.org/%s/ --files live/%s --isolated' "${FAKE}" "$1" "$1"; }
+
+t_case "live: each isolated app at its published URL, against the files published, isolated"
+t_assert_eq "$(_checked app; printf '\n'; _checked demo)" "$(_live DOCS_LIVE_URL=https://docs.example.org/ DOCS_ISOLATED_APPS='app demo/')"
+t_assert_eq "$(_checked app)" "$(_live DOCS_LIVE_URL=https://docs.example.org DOCS_ISOLATED_APPS=app)" "with or without the URL's trailing slash"
+
+t_case "live: a red app fails the job, and the apps after it are still checked"
+mkdir -p "${_tmp}/live/broken"
+t_assert_fails _live DOCS_LIVE_URL=https://docs.example.org/ DOCS_ISOLATED_APPS='broken app'
+t_assert_contains "$(t_out _live DOCS_LIVE_URL=https://docs.example.org/ DOCS_ISOLATED_APPS='broken app')" "$(_checked app)"
+
+t_case "live: an https URL, at least one app, every app inside the site"
+t_assert_fails _live DOCS_LIVE_URL=http://docs.example.org/ DOCS_ISOLATED_APPS=app
+t_assert_contains "$(t_out _live DOCS_ISOLATED_APPS=app)" "live-url is the published site's https:// address"
+t_assert_contains "$(t_out _live DOCS_LIVE_URL=https://docs.example.org/)" "none is named"
+t_assert_fails _live DOCS_LIVE_URL=https://docs.example.org/ DOCS_ISOLATED_APPS=../app
+t_assert_fails _live DOCS_LIVE_URL=https://docs.example.org/ DOCS_ISOLATED_APPS='app;id'
+
 # _job <name>: the lines of one job of build-docs.yml, from its key to the next job's.
 _job() { awk -v job="  $1:" '$0 == job { on = 1; next } on && /^  [a-z-]+:$/ { exit } on' "${WORKFLOW}"; }
 
@@ -185,5 +208,16 @@ t_assert_contains "$prepare" "free-disk-space: 'true'"
 t_assert_contains "$prepare" "pull-first: 'false'"
 # shellcheck disable=SC2016
 t_assert_contains "$prepare" 'submodules: ${{ inputs.submodules }}'
+
+t_case "build-docs.yml: the live check runs after the publish, only when a live-url and isolated apps are given"
+live_job="$(_job live-check)"
+t_assert_contains "${live_job}" "    needs: publish"
+t_assert_contains "${live_job}" "if: inputs.live-url != '' && inputs.isolated-apps != ''"
+# shellcheck disable=SC2016
+t_assert_contains "${live_job}" 'name: docs-site-${{ inputs.site-name }}'
+t_assert_contains "${live_job}" "extra-args: -e DOCS_LIVE_URL -e DOCS_ISOLATED_APPS"
+# shellcheck disable=SC2016
+t_assert_contains "${live_job}" 'script: bash "${DOCS_HUB}/linux/scripts/docs-site.sh" live .docs-live'
+t_assert_contains "${live_job}" "path: .docs-live"
 
 t_summary

@@ -19,6 +19,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-25 — build-docs.yml checks its isolated apps live after each publish
+
+- New input `live-url`. With `isolated-apps`, a `live-check` job runs after the publish job. It runs
+  `check-live-site.js --isolated` on each app at `<live-url>/<app>/` and sweeps the files it published. The upload
+  cannot be undone, so a red job means the live app is broken now.
+- `docs-site.sh live <site>` reads `DOCS_LIVE_URL` and `DOCS_ISOLATED_APPS`. It checks every app, also after a
+  red one, and refuses a plain-http address, no apps and a path outside the site.
+- `test-docs-site.sh`: four new cases with a stub node. Seven `docs-site.live-*` mutations, all proven.
+- OmniAccelerANT's `docs.yml` opts in with `live-url: https://kataglyphisinferenceengine.jonasheinle.de`.
+
 ## 2026-11-25 — the usable CPUs honour the cgroup quota
 
 - Owner decision: every cgroup v2 `cpu.max` from the process's own cgroup up to the root counts, and the

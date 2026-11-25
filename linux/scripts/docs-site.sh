@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# docs-site.sh plan|build|check|stage: the steps of build-docs.yml, one place to test them. See docs/docs-sites.md#the-reusable-workflow
+# docs-site.sh plan|build|check|stage|live: the steps of build-docs.yml, one place to test them. See docs/docs-sites.md#the-reusable-workflow
 set -euo pipefail
 
 DOCS_SITE_HUB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -171,10 +171,32 @@ docs_site_check() {
   node "${DOCS_SITE_HUB}/linux/scripts/check-docs-sidebars.js" "${site}"
 }
 
+# live <site>: after the publish, check-live-site.js --isolated on each DOCS_ISOLATED_APPS app at DOCS_LIVE_URL, against the files published.
+docs_site_live() {
+  local site="${1:?usage: docs-site.sh live <site dir>}" base="${DOCS_LIVE_URL:-}" app failed=0
+  local -a apps=()
+  case "${base}" in
+    https://*) ;;
+    *) die "bad live-url" "live-url is the published site's https:// address, got '${base}'." ;;
+  esac
+  read -ra apps <<<"${DOCS_ISOLATED_APPS:-}"
+  [ "${#apps[@]}" -gt 0 ] || die "no isolated app" "the live check runs on the isolated-apps; none is named."
+  [ -d "${site}" ] || die "no site" "'${site}' is not a directory: the checked site was not downloaded."
+  command -v node >/dev/null 2>&1 || die "no node" "the live check runs on node, which the family image carries."
+  for app in "${apps[@]}"; do
+    app="${app%/}"
+    _docs_site_relative "isolated app" "${app}"
+    # Every app is checked even after a red one, so one run names every broken app.
+    node "${DOCS_SITE_HUB}/linux/scripts/check-live-site.js" "${base%/}/${app}/" --files "${site}/${app}" --isolated || failed=1
+  done
+  return "${failed}"
+}
+
 case "${1:-}" in
   plan) docs_site_plan ;;
   build) shift; docs_site_build "$@" ;;
   check) shift; docs_site_check "$@" ;;
   stage) shift; docs_site_stage "$@" ;;
-  *) die "usage" "docs-site.sh plan | build [<site dir>] | check <site dir> [--if-chrome] | stage <site dir> [--allow FILE] [--no-htaccess] [--isolated-app DIR]..." ;;
+  live) shift; docs_site_live "$@" ;;
+  *) die "usage" "docs-site.sh plan | build [<site dir>] | check <site dir> [--if-chrome] | stage <site dir> [--allow FILE] [--no-htaccess] [--isolated-app DIR]... | live <site dir>" ;;
 esac
