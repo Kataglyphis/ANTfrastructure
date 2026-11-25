@@ -1476,7 +1476,10 @@ key in one class:
 A `bump extra` is a key quoted in its owner's spec. It counts only as far as that spec writes it.
 
 The brief report names two risks. **Drift** is a set `FOLLOWS` pin whose owner one call moves.
-Renovate bumps `LLVM_RELEASE`, and `LLVM_COMMIT` stays. **Outside the pin files** are versions no
+Renovate bumps `GSTREAMER_VERSION`, and `LIBVPX_MESON_COMMIT` stays. A held drift pin says so.
+A commit that a tag fixes becomes a safe-tier spec. The sweep runs after Renovate in the same
+call. So `spec_llvm_commit` and `spec_tvm_commit` read the tag Renovate just wrote, and
+`LLVM_COMMIT` and `TVM_COMMIT` move with it. **Outside the pin files** are versions no
 updater reads, such as the ORT and GenAI rows of `source-pins.txt`. The full report also lists
 every version one call does not move.
 

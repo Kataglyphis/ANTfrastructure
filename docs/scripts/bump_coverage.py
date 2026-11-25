@@ -22,8 +22,6 @@ NONVERSION = re.compile(
 
 # Commit, asset and sub-dependency pins no spec writes, each with the pin it is moved with by hand.
 FOLLOWS: dict[str, str] = {
-    "LLVM_COMMIT": "LLVM_RELEASE",
-    "TVM_COMMIT": "TVM_REF",
     "ONNXRUNTIME_WINDOWS_SOURCE_COMMIT": "ONNXRUNTIME_VERSION",
     "ORT_WEBGPU_WINDOWS_DAWN_VERSION": "ONNXRUNTIME_VERSION",
     "ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT": "ONNXRUNTIME_GENAI_VERSION",
@@ -167,8 +165,9 @@ def _print_report(env: dict[str, str], classes: dict[str, tuple[str, str]], brie
     risky = drift(env, classes)
     if risky:
         print(f"\nDRIFT ({len(risky)}): one run moves the owner, these stay by hand")
+        holds = bv.read_holds()
         for key, owner, cls in risky:
-            print(f"  {key:44} with {owner} ({cls})")
+            print(f"  {key:44} with {owner} ({cls}){', held' if key in holds else ''}")
     rows = outside_rows(env)
     if rows:
         print(f"\nOUTSIDE THE PIN FILES ({len(rows)}): no updater reads them")

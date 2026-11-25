@@ -326,6 +326,16 @@ def spec_cargo_c(cur: str) -> SpecResult:
     return bv.gh_latest("lu-zero/cargo-c").lstrip("v"), {}
 
 
+def spec_llvm_commit(cur: str) -> SpecResult:
+    """LLVM_RELEASE's peeled llvmorg tag; Renovate moves the release, the sweep in the same call moves this."""
+    return bv.ls_remote_tag_commit("llvm/llvm-project", f"llvmorg-{bv.read_env()['LLVM_RELEASE']}"), {}
+
+
+def spec_tvm_commit(cur: str) -> SpecResult:
+    """TVM_REF's peeled tag; refs/tags only, since apache/tvm also has a branch of the same name."""
+    return bv.ls_remote_tag_commit("apache/tvm", bv.read_env()["TVM_REF"]), {}
+
+
 def spec_flutter(cur: str) -> SpecResult:
     # GitHub's "latest release" is stale; flutter_infra_release is the authoritative stable pointer.
     data = bv.http_json("https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json")

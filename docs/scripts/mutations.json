@@ -66174,5 +66174,29 @@
   "replace": "run_apply; apply_pin_sweep ;;",
   "test": "bash linux/scripts/tests/test-renovate-pin-sweep.sh",
   "why": "An apply run must name the pins it did not move."
+ },
+ {
+  "id": "lib.bump-llvm-commit-follows-release",
+  "target": "docs/scripts/bump_tools.py",
+  "find": "    return bv.ls_remote_tag_commit(\"llvm/llvm-project\", f\"llvmorg-{bv.read_env()['LLVM_RELEASE']}\"), {}",
+  "replace": "    return cur, {}",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "LLVM_COMMIT must move with the release Renovate wrote, or the source build checks out a stale commit."
+ },
+ {
+  "id": "lib.bump-tvm-commit-follows-ref",
+  "target": "docs/scripts/bump_tools.py",
+  "find": "    return bv.ls_remote_tag_commit(\"apache/tvm\", bv.read_env()[\"TVM_REF\"]), {}",
+  "replace": "    return cur, {}",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "TVM_COMMIT must move with the TVM_REF tag Renovate wrote."
+ },
+ {
+  "id": "lib.bump-coverage-held-drift-named",
+  "target": "docs/scripts/bump_coverage.py",
+  "find": "{', held' if key in holds else ''}",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-bump-coverage.sh",
+  "why": "A held drift pin must say it is held, so nobody expects the call to move it."
  }
 ]

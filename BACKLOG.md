@@ -2800,7 +2800,9 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       2026-11-25 one call wrote 185 of 550 keys; 115 versions move only by `--write-all` or by hand. In order:
       1. Drift: `LLVM_COMMIT`, `TVM_COMMIT`, the ORT and GenAI Windows source commits, ORT's Dawn tag and
          `LIBVPX_MESON_COMMIT` stay while Renovate moves their owner. Each gets a spec extra or a Renovate
-         digest hint that moves it in the same call.
+         digest hint that moves it in the same call. Done for `LLVM_COMMIT` and `TVM_COMMIT` (safe-tier specs
+         of the tag Renovate wrote). Open: the ORT and GenAI commits are held and their upstream answers 404
+         (CON280); libvpx follows a branch head and drags its SHA256; Dawn comes from ORT's `deps.txt`.
       2. `source-pins.txt`'s ORT and GenAI rows: read them from `versions.env`, or teach a manager the file.
       3. The report tier and plain MANUAL pins with a feed move to the safe tier, each with its oracle.
       4. Owner-decided pins (majors, WiX, CUDA architectures, Windows base) get an approval option inside the

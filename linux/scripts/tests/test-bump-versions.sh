@@ -742,4 +742,21 @@ t_assert_contains "${_out}" "same ('3.14', {})" "an up-to-date pin drags no SHA"
 t_assert_contains "${_out}" "raised nsis-3.14.zip does not match SourceForge's SHA1" "a zip that differs from SourceForge's SHA1 raises instead of pinning its hash"
 t_assert_contains "${_out}" "raised nsis-dev/nsis has no v<major><minor> release tag" "no release tag raises"
 
+t_case "LLVM_COMMIT and TVM_COMMIT follow the tags Renovate wrote earlier in the same call (offline)"
+_out="$(_bv_offline <<'PY'
+bv.read_env = lambda: {"LLVM_RELEASE": "23.2.0", "TVM_REF": "v0.28.0"}
+asked = []
+def tag_commit(repo, tag):
+    asked.append((repo, tag))
+    return "c" * 40
+bv.ls_remote_tag_commit = tag_commit
+print("llvm", bv.spec_llvm_commit("a" * 40))
+print("tvm", bv.spec_tvm_commit("b" * 40))
+print("asked", asked)
+PY
+)"
+t_assert_contains "${_out}" "llvm ('$(printf 'c%.0s' {1..40})', {})" "the release's tag commit is LLVM_COMMIT"
+t_assert_contains "${_out}" "('llvm/llvm-project', 'llvmorg-23.2.0')" "read from the llvmorg tag of the current LLVM_RELEASE"
+t_assert_contains "${_out}" "('apache/tvm', 'v0.28.0')" "and TVM_COMMIT from the current TVM_REF tag"
+
 t_summary

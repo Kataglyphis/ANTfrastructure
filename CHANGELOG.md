@@ -19,6 +19,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-25 — LLVM_COMMIT and TVM_COMMIT move in the same Renovate call (CON305 step 1)
+
+- `spec_llvm_commit` and `spec_tvm_commit` join the safe tier. The sweep runs after Renovate, so they read the
+  `LLVM_RELEASE` and `TVM_REF` tags Renovate just wrote and pin those tags' peeled commits; both match today's
+  pins. The coverage audit drops them from its drift list, which now says when a drift pin is held.
+- A `test-bump-versions.sh` case and two `test-bump-coverage.sh` assertions; three new mutations, all proven.
+
 ## 2026-11-25 — The Renovate call names the pins it does not move (CON305)
 
 - `bump_versions.py --audit-coverage` (`docs/scripts/bump_coverage.py`) places each of the 550 pin-file keys in
