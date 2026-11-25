@@ -191,7 +191,7 @@ _chrome_suites="$(cd "${REPO}/docs/scripts" && python3 -c '
 import json, mutation_push, sys
 root = sys.argv[1]
 cmds = {e["test"] for e in json.load(open("mutations.json"))}
-print(" ".join(sorted(c.rsplit("/", 1)[-1] for c in cmds if mutation_push.needs_chrome(c, root))))' "${REPO}")"
+print(" ".join(sorted({c.rsplit("/", 1)[-1].split()[0] for c in cmds if mutation_push.needs_chrome(c, root)})))' "${REPO}")"
 t_assert_eq "test-check-live-site.sh test-docs-sidebars.sh test-webgpu-canvas-readback.sh" "${_chrome_suites}"
 for _f in linux/scripts/preflight.sh .github/workflows/linux-x64.yml .github/workflows/mutation-gates.yml; do
   t_assert_eq "0" "$(grep -c -e '--delegate-chrome' -e '--push-range' "${REPO}/${_f}")" "${_f} proves every entry"
