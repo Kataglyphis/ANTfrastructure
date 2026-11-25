@@ -21381,7 +21381,7 @@
  },
  {
   "id": "lib.bump-offline-fixture-argv",
-  "target": "linux/scripts/tests/test-bump-versions.sh",
+  "target": "linux/scripts/tests/bump-versions-fixture.sh",
   "find": "| python3 - \"${REPO}\" \"$@\"",
   "replace": "| python3 - \"${REPO}\"",
   "test": "bash linux/scripts/tests/test-bump-versions.sh",
@@ -21389,7 +21389,7 @@
  },
  {
   "id": "lib.bump-offline-fixture-module",
-  "target": "linux/scripts/tests/test-bump-versions.sh",
+  "target": "linux/scripts/tests/bump-versions-fixture.sh",
   "find": "import bump_versions as bv\\n'; cat;",
   "replace": "import bump_versions as absent_module\\n'; cat;",
   "test": "bash linux/scripts/tests/test-bump-versions.sh",
@@ -21397,7 +21397,7 @@
  },
  {
   "id": "lib.bump-offline-tag-fixture",
-  "target": "linux/scripts/tests/test-bump-versions.sh",
+  "target": "linux/scripts/tests/bump-versions-fixture.sh",
   "find": "printf 'bv.ls_remote_tags = lambda repo: %s\\n' \"$tags\"",
   "replace": "printf 'bv.ls_remote_tags = lambda repo: %s\\n' '[]'",
   "test": "bash linux/scripts/tests/test-bump-versions.sh",
@@ -35747,8 +35747,8 @@
  {
   "id": "renovate.pin-sweep-rides-the-report",
   "target": "linux/scripts/renovate-local.sh",
-  "find": "  report) run_report; report_default_submodules; report_lock_maintenance; report_pin_sweep ;;\n",
-  "replace": "  report) run_report; report_default_submodules; report_lock_maintenance ;;\n",
+  "find": "  report) run_report; report_default_submodules; report_lock_maintenance; report_pin_sweep; report_pin_coverage ;;\n",
+  "replace": "  report) run_report; report_default_submodules; report_lock_maintenance; report_pin_coverage ;;\n",
   "test": "bash linux/scripts/tests/test-renovate-pin-sweep.sh",
   "why": "a report that skips the sweep calls a stale vendor pin current"
  },
@@ -66134,5 +66134,45 @@
   "replace": "    m = re.fullmatch(r\"v(\\d)(\\d+)\", tag)",
   "test": "bash linux/scripts/tests/test-bump-versions.sh",
   "why": "Four-digit maintenance tags like v3061 are not NSIS_VERSION releases."
+ },
+ {
+  "id": "lib.bump-coverage-commit-not-hidden",
+  "target": "docs/scripts/bump_coverage.py",
+  "find": "    r\"|^APP_REF$)\"  # a tracked branch, resolved to a commit per run",
+  "replace": "    r\"|_COMMIT$|_ASSET$|^APP_REF$)\"  # a tracked branch, resolved to a commit per run",
+  "test": "bash linux/scripts/tests/test-bump-coverage.sh",
+  "why": "A new commit or asset pin must need an owner instead of passing as a non-version."
+ },
+ {
+  "id": "lib.bump-coverage-drift-needs-set-pin",
+  "target": "docs/scripts/bump_coverage.py",
+  "find": "        if env.get(key) and classes.get(key, (\"\",))[0] == \"hand\"",
+  "replace": "        if classes.get(key, (\"\",))[0] == \"hand\"",
+  "test": "bash linux/scripts/tests/test-bump-coverage.sh",
+  "why": "An empty commit pin follows its tag and must not be reported as drift."
+ },
+ {
+  "id": "lib.bump-coverage-stale-follows-row",
+  "target": "docs/scripts/bump_coverage.py",
+  "find": "        elif classes[key] != (\"hand\", f\"with {owner}\"):",
+  "replace": "        elif False:",
+  "test": "bash linux/scripts/tests/test-bump-coverage.sh",
+  "why": "A FOLLOWS row another class already covers must be deleted, not kept as stale debt."
+ },
+ {
+  "id": "lib.bump-coverage-unclassified-fails",
+  "target": "docs/scripts/bump_coverage.py",
+  "find": "    bad = [k for k, (c, _) in classes.items() if c == \"UNCLASSIFIED\"] + stale_rows(env, classes)",
+  "replace": "    bad = stale_rows(env, classes)",
+  "test": "bash linux/scripts/tests/test-bump-coverage.sh",
+  "why": "The coverage audit must fail on a pin with no class."
+ },
+ {
+  "id": "lib.renovate-apply-coverage-summary",
+  "target": "linux/scripts/renovate-local.sh",
+  "find": "run_apply; apply_pin_sweep; report_pin_coverage ;;",
+  "replace": "run_apply; apply_pin_sweep ;;",
+  "test": "bash linux/scripts/tests/test-renovate-pin-sweep.sh",
+  "why": "An apply run must name the pins it did not move."
  }
 ]

@@ -19,6 +19,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-25 — The Renovate call names the pins it does not move (CON305)
+
+- `bump_versions.py --audit-coverage` (`docs/scripts/bump_coverage.py`) places each of the 550 pin-file keys in
+  one class: Renovate, the bump sweep, a spec extra, `--write-all`, by hand, checksum or not a version. It names
+  the drift pins, whose owner one call moves while they stay, and versions outside the pin files
+  (`source-pins.txt`). `--coverage-json` writes the table.
+- Every `renovate-local.sh` run ends with the brief form. A key in no class or a stale `FOLLOWS`/`STANDALONE`
+  row exits the run 2.
+- `--audit-unclassified` uses the same classes: the non-version filter no longer hides `_COMMIT`, `_ASSET` and
+  `ORT_*` pins, so each of the 43 it hid now names its owner pin. `derived_keys` adds DeepStream's three OSS commits.
+- `test-bump-coverage.sh` (three cases) and one `test-renovate-pin-sweep.sh` case; five new mutations, all
+  proven. Both bump suites share `bump-versions-fixture.sh`, which holds the workspace and the offline helpers
+  `test-bump-versions.sh` carried; its three mutations moved with them.
+
 ## 2026-11-25 — The Windows final stage pins NSIS 3.13 (CON302 step 2)
 
 - `NSIS_VERSION` 3.13 and `NSIS_WINDOWS_ZIP_SHA256` in `versions.env`. `windows/scripts/host/Install-Nsis.ps1`

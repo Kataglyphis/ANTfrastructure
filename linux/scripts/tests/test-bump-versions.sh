@@ -2,10 +2,8 @@
 # bump_versions.py's report/write machinery, in-process with fake specs. See docs/dependency-updates.md#version-bumping-as-agentsmd-carried-it
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=linux/scripts/tests/test-workspace-fixture.sh
-source "${TESTS_DIR}/test-workspace-fixture.sh"
-declare _WORK REPO
-t_fixture_workspace_init _WORK REPO || exit 1
+# shellcheck source=linux/scripts/tests/bump-versions-fixture.sh
+source "${TESTS_DIR}/bump-versions-fixture.sh" || exit 1
 
 
 # The real module on the fixture with one named fake scenario; prints rc, stdout and stderr as three blocks.
@@ -86,18 +84,8 @@ _fixture() {
   printf '%s\n' "${f}"
 }
 
-# _bv_offline [args...] runs a snippet with the real module imported as bv; dependencies remain fixture-owned.
-_bv_offline() {
-  { printf 'import os, sys\nsys.path.insert(0, os.path.join(sys.argv[1], "docs/scripts"))\nimport bump_versions as bv\n'; cat; } \
-    | python3 - "${REPO}" "$@"
-}
 
 
-_bv_tags_offline() {
-  local tags="$1"
-  shift
-  { printf 'bv.ls_remote_tags = lambda repo: %s\n' "$tags"; cat; } | _bv_offline "$@"
-}
 
 t_case "digest fallbacks handle network failures but expose implementation errors"
 _out="$(_bv_offline <<'PY'
@@ -519,19 +507,6 @@ t_assert_contains "${_out}" "  COMMENTED_SHA256" "a comment is not a refresh spe
 t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c -e '  QUOTED_SHA256' || true)" "a quoted key is"
 t_assert_contains "${_out}" "rc 1" "and the audit fails"
 
-# _audit_pins <audit> [<pin file> <line>]... -- one offline audit on a copy of the real pin files, lines appended.
-_audit_pins() {
-  local audit="$1" dir
-  dir="$(mktemp -d "${_WORK}/pins.XXXXXX")"
-  shift
-  cp "${REPO}/linux/scripts/01-core/versions.env" "${REPO}/linux/scripts/01-core/tool-pins.env" "${dir}/"
-  while (( $# >= 2 )); do printf '%s\n' "$2" >> "${dir}/$1"; shift 2; done
-  _bv_offline <<PY
-from pathlib import Path
-bv.VERSIONS_ENV = Path("${dir}/versions.env")
-print("rc", bv.${audit}())
-PY
-}
 
 t_case "--audit-sha-pairs on the REAL versions.env + tool-pins.env: rc 0, and one new unspecced SHA key turns it red"
 t_needs "a POSIX Python that can read the fixture paths" t_posix_python
@@ -581,7 +556,7 @@ t_assert_contains "${_out}" "oss v1.16 open-telemetry/opentelemetry-cpp@v1.23.0"
   "each dep's tag is the script's --branch, and its commit is that tag's in that repo"
 t_assert_contains "${_out}" "refused: install_opensource_deps.sh clones no civetweb/civetweb at a --branch" \
   "a dependency the script no longer clones is a lookup failure, never a stale pin"
-t_assert_contains "${_out}" "derived ['CUDA_VERSION', 'DEEPSTREAM_VERSION'] 13" "the derived keys come from the specs' own tables"
+t_assert_contains "${_out}" "derived ['CUDA_VERSION', 'DEEPSTREAM_VERSION'] 16" "the derived keys, DeepStream's OSS commits included, come from the specs' own tables"
 t_assert_contains "${_out}" "x264 ('165.0-meson', {'X264_MESON_COMMIT': 'https://gitlab.example/x264.git#165.0-meson'}) ('165.0-meson', {})" \
   "the branch is the wrap's revision at GSTREAMER_VERSION, and a new one re-pins its head commit"
 t_assert_contains "${_out}" "rocm ('rocm7.14', {})" \

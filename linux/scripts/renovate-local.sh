@@ -462,6 +462,19 @@ report_pin_sweep() {
   "${PY_BIN}" "${tool}" --check || err "the versions.env sweep could not check every key (above); nothing is reported as current"
 }
 
+# Names what this call cannot move, so a hand-moved pin beside a Renovate-moved one is seen. docs/dependency-updates.md#what-one-call-does-not-move
+report_pin_coverage() {
+  local tool
+  tool="$(pin_sweep_tool)" || return 0
+  [ -f "$(dirname "${tool}")/bump_coverage.py" ] || return 0
+  note ""
+  note "pins this call does not move (bump_versions.py --audit-coverage --coverage-brief):"
+  "${PY_BIN}" "${tool}" --audit-coverage --coverage-brief && return 0
+  note "a pin has no updater or a coverage table row is stale (above)"
+  EXIT_CODE=${EXIT_REFUSED}
+  return 0
+}
+
 # After run_apply, outside its rollback: a failed sweep leaves the Renovate half applied and exits 2, as a refused update does.
 apply_pin_sweep() {
   local tool
@@ -754,8 +767,8 @@ detect_managers
 run_renovate
 scan_default_submodules
 case "${MODE}" in
-  report) run_report; report_default_submodules; report_lock_maintenance; report_pin_sweep ;;
-  apply)  run_report; report_default_submodules; report_lock_maintenance; run_apply; apply_pin_sweep ;;
+  report) run_report; report_default_submodules; report_lock_maintenance; report_pin_sweep; report_pin_coverage ;;
+  apply)  run_report; report_default_submodules; report_lock_maintenance; run_apply; apply_pin_sweep; report_pin_coverage ;;
   *)      err "unreachable mode ${MODE}" ;;
 esac
 # Explicit: the status of that case's last command is no contract.

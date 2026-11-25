@@ -423,7 +423,7 @@ def wheel_url_keys(env: dict[str, str]) -> set[str]:
 def derived_keys() -> dict[str, str]:
     """Version keys a spec writes as extras of its owning key, read from the tables those specs walk."""
     out = {ver: "CUDA_VERSION" for ver, _, _ in _CUDA_WINDOWS_ARM64_COMPONENTS}
-    out.update({ver: "DEEPSTREAM_VERSION" for ver, _, _ in _DEEPSTREAM_OSS_DEPS})
+    out.update({key: "DEEPSTREAM_VERSION" for ver, commit, _ in _DEEPSTREAM_OSS_DEPS for key in (ver, commit)})
     return out
 
 
@@ -543,6 +543,14 @@ def _parse_args() -> argparse.Namespace:
         "--audit-unclassified", action="store_true",
         help="Offline: fail when a pin-file key is in no tier, derivation, wheel group, "
              "renovate annotation or the non-version filter (the --check self-audit, as a gate).")
+    ap.add_argument(
+        "--audit-coverage", action="store_true",
+        help="Offline: print who updates each pin (one renovate-local.sh run, --write-all, or a hand edit), the "
+             "hand-moved pins whose owner one run moves, and pins outside the pin files; fail on a pin with no "
+             "class or a stale FOLLOWS/STANDALONE row (bump_coverage.py).")
+    ap.add_argument("--coverage-json", default="", help="with --audit-coverage: also write the per-key table here")
+    ap.add_argument("--coverage-brief", action="store_true",
+                    help="with --audit-coverage: counts, drift and outside pins only, as renovate-local.sh prints them")
     return ap.parse_args()
 
 
@@ -646,18 +654,10 @@ def _print_manual(env: dict[str, str]) -> None:
 
 
 def unclassified_keys(env: dict[str, str]) -> list[str]:
-    """Keys in no tier, derivation, wheel group, renovate annotation or the non-version filter."""
-    covered = ({k for k, _, _ in SAFE} | {k for k, _ in REPORT} | set(MANUAL) | renovate_owned()
-               | set(derived_keys()) | wheel_url_keys(env))
-    nonversion = re.compile(
-        r"(SHA256|^ORT_|_ENABLE_|^USE_|^FAST_UBUNTU|^IMAGE_REGISTRY_PREFIX$"
-        r"|^CROSS_DEFAULT_ARCHES$|^VENV_PATH$|_OUTPUT_DIR$|^GSTREAMER_PREFIX$"
-        r"|_COMMIT$|_ASSET$|^CUDA_ARCHITECTURES$|^WINDOWS_TARGET_ARCH(ES)?$"
-        r"|^CI_IMAGE_|^ANDROID_TARGET_ABI$|^GENAI_ALLOW_RISCV64$|^FT_TORCH_TWIN$|^JDK_PACKAGE$"
-        r"|^ROCM_WINDOWS_GFX_FAMILY$"  # a GPU target set, like CUDA_ARCHITECTURES
-        r"|^APP_REF$)"  # a tracked branch, resolved to a commit per run
-    )
-    return sorted(k for k in env if k not in covered and not nonversion.search(k))
+    """Keys bump_coverage.classify places in no class: no updater, owner pin or non-version match."""
+    import bump_coverage  # it imports this module, so only at call time
+
+    return sorted(k for k, (cls, _) in bump_coverage.classify(env).items() if cls == "UNCLASSIFIED")
 
 
 def _print_unclassified(env: dict[str, str]) -> None:
@@ -720,6 +720,10 @@ def main() -> int:
         return audit_sha_pairs()
     if args.audit_unclassified:
         return audit_unclassified()
+    if args.audit_coverage:
+        import bump_coverage  # it imports this module, so only at call time
+
+        return bump_coverage.audit_coverage(args.coverage_json, args.coverage_brief)
     if args.write_all:
         args.write = True
     global WRITE_MODE

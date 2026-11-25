@@ -1461,6 +1461,29 @@ Following LiteRT main means "the newest the consumer that uses it has validated"
 Samsung or Qualcomm have uploaded (Samsung served v1.2.1 while LiteRT pinned v1.2.0 on
 2026-11-05); a hand pin ahead of the oracle is reported as behind until the oracle catches up.
 
+### What one call does not move
+
+Both modes end with `bump_versions.py --audit-coverage --coverage-brief`. It places every pin-file
+key in one class:
+
+| class | who moves it |
+|---|---|
+| `renovate`, `bump`, `bump extra` | one call |
+| `report`, `report extra` | only `--write-all` |
+| `hand` | a person: MANUAL, a wheel group, a `FOLLOWS` or a `STANDALONE` row |
+| `checksum`, `not a version` | graded by other audits |
+
+A `bump extra` is a key quoted in its owner's spec. It counts only as far as that spec writes it.
+
+The brief report names two risks. **Drift** is a set `FOLLOWS` pin whose owner one call moves.
+Renovate bumps `LLVM_RELEASE`, and `LLVM_COMMIT` stays. **Outside the pin files** are versions no
+updater reads, such as the ORT and GenAI rows of `source-pins.txt`. The full report also lists
+every version one call does not move.
+
+A key in no class fails the audit, and so does a stale `FOLLOWS` or `STANDALONE` row. The
+Renovate run then exits 2. `--audit-unclassified` uses the same classes, so a new `_COMMIT`,
+`_ASSET` or `ORT_*` pin no longer passes as a non-version.
+
 ## Pins, and why Node is one of them
 
 `RENOVATE_NODE_VERSION` and `RENOVATE_VERSION` live in

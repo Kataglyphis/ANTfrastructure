@@ -2795,6 +2795,18 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       - AccelerANTgine, C++: the count behind `shipped_ort_threads()`.
       - OrchestrANT, Python: the count behind `shipped_intra_op_threads`.
 
+- [ ] **CON305 — one Renovate call moves every pin** [L, ★★]. Owner request 2026-11-25. `bump_versions.py
+      --audit-coverage` lists who moves each pin, and every `renovate-local.sh` run prints its brief form. On
+      2026-11-25 one call wrote 185 of 550 keys; 115 versions move only by `--write-all` or by hand. In order:
+      1. Drift: `LLVM_COMMIT`, `TVM_COMMIT`, the ORT and GenAI Windows source commits, ORT's Dawn tag and
+         `LIBVPX_MESON_COMMIT` stay while Renovate moves their owner. Each gets a spec extra or a Renovate
+         digest hint that moves it in the same call.
+      2. `source-pins.txt`'s ORT and GenAI rows: read them from `versions.env`, or teach a manager the file.
+      3. The report tier and plain MANUAL pins with a feed move to the safe tier, each with its oracle.
+      4. Owner-decided pins (majors, WiX, CUDA architectures, Windows base) get an approval option inside the
+         same call instead of a hand edit; they never move silently.
+      5. Base's floating scoop tools get pins at the next base rebuild, which re-keys the Visual Studio layer.
+
 - [ ] **CON280 — github.com/microsoft/onnxruntime answers 404** [S, ★★]. Since about 2026-11-17 22:20Z the
       repository, its API and its release assets are gone, with `onnxruntime-genai` and other Microsoft ONNX repos;
       third-party reports only, no statement from Microsoft or GitHub; pip and NuGet still serve the packages. Seen in
