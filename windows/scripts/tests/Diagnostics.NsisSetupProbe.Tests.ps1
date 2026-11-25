@@ -22,6 +22,8 @@ Describe 'NSIS setup probe script generation' {
         $nsi = New-NsisProbeScript -OutFile 'o.exe' -Compressor 'zlib' -Shortcut
         Assert-Match 'CreateShortcut "\$SMPROGRAMS\\NsisProbe\\NsisProbe\.lnk"' $nsi
         Assert-Match 'WriteUninstaller "\$INSTDIR\\uninstall\.exe"' $nsi
+        Assert-Match 'Function \.onInit\r\n  SetShellVarContext all\r\nFunctionEnd' $nsi
+        Assert-Match 'Function un\.onInit\r\n  SetShellVarContext all\r\nFunctionEnd' $nsi
         Assert-Match '(?s)Section "Uninstall".*Delete "\$SMPROGRAMS\\NsisProbe\\NsisProbe\.lnk"' $nsi
         Assert-False ($nsi -match 'File /r')
     }

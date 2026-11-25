@@ -10,7 +10,9 @@ param(
     [Parameter(Mandatory)][string]$PayloadZip,
     [Parameter(Mandatory)][string]$OutDir,
     [string]$IconPng = (Join-Path $PSScriptRoot '..\..\..\images\logo.png'),
-    [string[]]$Compressor = @('zlib', '/SOLID lzma')
+    [string[]]$Compressor = @('zlib', '/SOLID lzma'),
+    # makensis 3.13 is not long-path aware, so deep bundle trees need a short root.
+    [string]$WorkRoot = (Join-Path $env:SystemDrive 'np')
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -19,11 +21,11 @@ function New-NsisProbeScript {
     param([string]$OutFile, [string]$Compressor, [string]$PayloadDir = '', [string]$Icon = '', [switch]$Shortcut)
     $smLink = '$SMPROGRAMS\NsisProbe\NsisProbe.lnk'
     $header = @('Unicode true', "SetCompressor $Compressor", "OutFile `"$OutFile`"", 'RequestExecutionLevel admin',
-        'Name "NsisProbe"', 'InstallDir "$PROGRAMFILES64\NsisProbe"') + @(if ($Icon) { "Icon `"$Icon`"" })
+        'Name "NsisProbe"', 'Function .onInit', '  SetShellVarContext all', 'FunctionEnd', 'InstallDir "$PROGRAMFILES64\NsisProbe"') + @(if ($Icon) { "Icon `"$Icon`"" })
     $body = @('Section', '  SetOutPath "$INSTDIR"') + @(if ($PayloadDir) { "  File /r `"$PayloadDir\*`"" })
     $install = @(if ($Shortcut) { '  WriteUninstaller "$INSTDIR\uninstall.exe"', '  CreateDirectory "$SMPROGRAMS\NsisProbe"',
             "  CreateShortcut `"$smLink`" `"`$INSTDIR\uninstall.exe`"" }) + @('SectionEnd')
-    $uninstall = @(if ($Shortcut) { 'Section "Uninstall"', "  Delete `"$smLink`"", '  RMDir "$SMPROGRAMS\NsisProbe"',
+    $uninstall = @(if ($Shortcut) { 'Function un.onInit', '  SetShellVarContext all', 'FunctionEnd', 'Section "Uninstall"', "  Delete `"$smLink`"", '  RMDir "$SMPROGRAMS\NsisProbe"',
             '  Delete "$INSTDIR\uninstall.exe"', '  RMDir "$INSTDIR"', 'SectionEnd' })
     return (($header + $body + $install + $uninstall) -join "`r`n") + "`r`n"
 }
@@ -52,14 +54,14 @@ function Invoke-NsisBuild {
     if (Test-Path -LiteralPath $OutFile) { Remove-Item -LiteralPath $OutFile -Force }
     $log = "$Script.log"
     $clock = [Diagnostics.Stopwatch]::StartNew()
-    $process = Start-Process -FilePath $Makensis -ArgumentList @('/V2', "`"$Script`"") -NoNewWindow -PassThru -RedirectStandardOutput $log
+    $process = Start-Process -FilePath $Makensis -ArgumentList @('/V2', "`"$Script`"") -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
     $peak = 0L
     while (-not $process.HasExited) { $process.Refresh(); $peak = [Math]::Max($peak, $process.PeakWorkingSet64); Start-Sleep -Milliseconds 200 }
     $process.WaitForExit()
     $clock.Stop()
     $size = if (Test-Path -LiteralPath $OutFile) { (Get-Item -LiteralPath $OutFile).Length } else { 0 }
     return [ordered]@{ ExitCode = $process.ExitCode; Seconds = [Math]::Round($clock.Elapsed.TotalSeconds, 1)
-        PeakWorkingSetMB = [Math]::Round($peak / 1MB); SetupBytes = $size; LogTail = @(Get-Content -LiteralPath $log -Tail 5) }
+        PeakWorkingSetMB = [Math]::Round($peak / 1MB); SetupBytes = $size; LogTail = @(Get-Content -LiteralPath $log, "$log.err" -Tail 5) }
 }
 
 function Get-SevenZipFacts {
@@ -115,14 +117,16 @@ function Test-NsisStartMenuShortcut {
 
 function Invoke-NsisProbe {
     $null = New-Item -ItemType Directory -Force -Path $OutDir
-    $work = Join-Path ([IO.Path]::GetTempPath()) ('nsis-probe-' + [guid]::NewGuid().ToString('N'))
+    $work = Join-Path $WorkRoot ([guid]::NewGuid().ToString('N').Substring(0, 8))
     $payload = Join-Path $work 'payload'
     $null = New-Item -ItemType Directory -Force -Path $payload
     # A Scoop shim would report its own working set, not the compiler's.
     $makensis = Resolve-ScoopShimTarget -Path (Get-Command makensis.exe -ErrorAction Stop).Source
     $report = [ordered]@{ Makensis = $makensis; Version = "$(& $makensis /VERSION)".Trim(); PayloadZip = $PayloadZip }
     Expand-Archive -LiteralPath $PayloadZip -DestinationPath $payload
-    $report.PayloadBytes = (Get-ChildItem -LiteralPath $payload -Recurse -File | Measure-Object Length -Sum).Sum
+    $files = @(Get-ChildItem -LiteralPath $payload -Recurse -File)
+    $report.PayloadBytes = ($files | Measure-Object Length -Sum).Sum
+    $report.PayloadLongestPath = ($files | ForEach-Object { $_.FullName.Length } | Measure-Object -Maximum).Maximum
     $report.Compressors = @($Compressor | ForEach-Object { Measure-NsisCompressor -Makensis $makensis -Work $work -Payload $payload -Name $_ })
     $report.PngIcon = Test-NsisPngIcon -Makensis $makensis -Work $work -Png $IconPng
     $report.StartMenuShortcut = Test-NsisStartMenuShortcut -Makensis $makensis -Work $work

@@ -2708,6 +2708,11 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
          DirectML bundle size, and whether Start-menu shortcuts work in a Server Core container.
          The probe is `windows-nsis-probe.yml` with `Measure-NsisSetup.ps1` (2026-11-25); it measures everything above
          except the NVIDIA DirectML bundle size, which needs a released NVIDIA bundle and stays open.
+         First run (2026-11-25, run 45669420315): the image carries makensis v3.13 and it takes the one-frame PNG
+         `.ico`. Both compressors failed on OrchestrANT's bundle: makensis is not long-path aware and could not open
+         a `hydra	est_utils` file past 260 characters under a long temp root, so a packager must build from a
+         short root and check the bundle's longest path. Without `SetShellVarContext all` the shortcut went into the
+         user's Start menu. Rerun pending with a short root and stderr in the report.
       2. Pin makensis at 3.12 or later (owner: the Windows session, after the same proof; it changes
          the Windows image files and `versions.env`): 3.11 fixes CVE-2025-43715, 3.12 fixes CVE-2026-42171, Scoop ships 3.13.
          First read which NSIS built the setups AccelerANTgine and BeschleunigerBallett already released; below
