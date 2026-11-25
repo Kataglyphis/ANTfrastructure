@@ -29,6 +29,8 @@
   shorter, and both of its "under 60 s" checks are now "under 20 s", so a mutant that waits them out still fails.
 - The cost table gets a row per section, scaled from local runs; the next green run's logs replace them. The plan
   predicts about 17 minutes per shard, against 27 to 28 for three of eight before.
+- The cost table is rebuilt from the nine green shard logs of run 45526187655; all 996 test commands now have a
+  measured cost. That run's shards took 13 to 20 minutes.
 
 ## 2026-11-24 — An isolated web app on a docs site
 
