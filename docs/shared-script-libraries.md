@@ -1307,7 +1307,7 @@ bash third_party/ANTfrastructure/linux/scripts/run-in-ci-image.sh . -- bash scri
 
 `<repo-root> [--engine docker|nerdctl] [--image REF] [--platform ...] [--workdir ...]
 [--mount-hub-scripts] [--name N] [--user U[:G]] [--keep] [--volume NAME:/PATH]... [--env NAME=VALUE]...
-[--privileged] -- <command...>`.
+[--privileged] [--memory SIZE] [--cpus N] -- <command...>`.
 
 Every consumer README, every "reproducing CI locally" section and half the agent
 prompts carried the same hand-typed `docker run`, and they had all drifted: a
@@ -1355,6 +1355,12 @@ is; the consumers' CI lanes run privileged, so a local run that should match the
 has the two failures behind that). An explicit `--user` is kept, and so is a `TAR_OPTIONS` the caller
 passes with `--env`. Docker on a CI runner and Rancher Desktop on Windows are not rootless in this
 sense and keep the image's user.
+
+`--memory SIZE` (`12g`) and `--cpus N` (`6`, `2.5`) cap the container. Without them, `RUN_IN_CI_IMAGE_MEMORY`
+and `RUN_IN_CI_IMAGE_CPUS` from the environment do. The swap limit equals the memory limit, so a container at its cap
+is killed instead of swapping the VM full
+([`rancher-desktop-linux-containers.md` § Sizing the VM](rancher-desktop-linux-containers.md#sizing-the-vm-for-container-builds)).
+A malformed value is refused before any engine call. The stderr line names the caps.
 
 **How old the image is.** Every run prints one line on stderr before the command starts:
 `run-in-ci-image.sh: image <ref>, local copy created <date>`, or `no local copy; the engine pulls it`.

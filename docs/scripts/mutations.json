@@ -37819,7 +37819,7 @@
  {
   "id": "host.run-image-age-line",
   "target": "linux/scripts/run-in-ci-image.sh",
-  "find": "printf 'run-in-ci-image.sh: image %s, %s\\n' \"${IMAGE}\" \"${AGE}\" >&2",
+  "find": "printf 'run-in-ci-image.sh: image %s, %s%s\\n' \"${IMAGE}\" \"${AGE}\" \"${LIMITS}\" >&2",
   "replace": ":",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "A month-old local image looked like broken code; every run names the image and its creation date on stderr."
@@ -37855,6 +37855,22 @@
   "replace": "true || \"${ENGINE}\" pull",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "Only a local copy names the image's user; without one the helper pulls before it asks."
+ },
+ {
+  "id": "host.run-image-memory-reaches-run",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "[ -z \"${MEMORY}\" ] || ARGS+=(--memory \"${MEMORY}\" --memory-swap \"${MEMORY}\")",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-run-in-ci-image-limits.sh",
+  "why": "A build at the WSL VM's cap swapped the VM until the Windows host froze; the cap must reach the container."
+ },
+ {
+  "id": "host.run-image-memory-shape-refused",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "[ -z \"${MEMORY}\" ] || [[ \"${MEMORY}\" =~ ^[1-9][0-9]*[kmgKMG]?$ ]] || die",
+  "replace": "[ -z \"${MEMORY}\" ] || true || die",
+  "test": "bash linux/scripts/tests/test-run-in-ci-image-limits.sh",
+  "why": "A malformed size reached the engine as an error after the image check; it is refused first."
  },
  {
   "id": "quality-report.perf-engine-security-option",
