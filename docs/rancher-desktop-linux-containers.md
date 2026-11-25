@@ -522,6 +522,49 @@ appendWindowsPath=false
 Windows executables remain callable by full path; they just stop winning `PATH`
 lookups. Restart the distro (`wsl --shutdown`) for it to take effect.
 
+### Sizing the VM for container builds
+
+All WSL2 distros run in one VM. The editor's remote server, its language
+servers and every build container share its `memory=` cap. A build that reaches
+the cap makes the VM swap. A swapping VM freezes the Windows host with it.
+
+Size the VM in `%UserProfile%\.wslconfig`, then run `wsl --shutdown`:
+
+```ini
+[wsl2]
+# Host RAM minus what Windows keeps: 20GB on a 32 GB host, 16GB if models run on Windows too.
+memory=20GB
+# One core fewer than the host has, so the desktop stays responsive.
+processors=7
+# A buffer for peaks, not working memory.
+swap=8GB
+
+[experimental]
+autoMemoryReclaim=gradual
+sparseVhd=true
+```
+
+Inside the distro, four guards stop one build from taking the host down.
+
+- earlyoom kills the largest build process before the VM swaps:
+
+  ```bash
+  sudo apt-get install -y earlyoom
+  echo "EARLYOOM_ARGS=\"-m 8 -s 20 --prefer '(cc1plus|clang|rustc|ld|lld|cargo|chrome)' --avoid '(node|code|claude|systemd|init)'\"" \
+    | sudo tee /etc/default/earlyoom
+  sudo systemctl enable --now earlyoom
+  ```
+
+- Cap each container. The CI-image driver takes `--memory` and `--cpus`. It also reads `RUN_IN_CI_IMAGE_MEMORY`
+  and `RUN_IN_CI_IMAGE_CPUS` ([flags](shared-script-libraries.md#run-in-ci-imagesh--run-a-command-in-the-ci-image)). Keep the cap below
+  what `free -g` reports as available with the editor open. A container at its cap is killed alone.
+- Run one heavy job at a time. Two parallel builds double the peak; serialise them with `flock` on one lock file.
+- Keep the editor lean. Every extension's language server runs in the same VM; an idle Java pack held about 2.8 GB.
+  Give rust-analyzer its own target directory (`"rust-analyzer.cargo.targetDir": true`) and two threads
+  (`"rust-analyzer.numThreads": 2`).
+
+A headless browser on a software GPU takes every core and grows until the cap. Leave that run to CI.
+
 ### The virtual disk only grows
 
 WSL2's ext4 disk never shrinks on its own. Reclaim it the same way as the

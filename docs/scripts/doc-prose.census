@@ -196,10 +196,10 @@ docs/qnn-linux.md | avg-sentence | 23.6
 docs/qnn-linux.md | long-share | 25.3
 docs/qnn-linux.md | ids-per-k | 3.7
 docs/qnn-linux.md | bold-per-k | 10.7
-docs/rancher-desktop-linux-containers.md | avg-sentence | 18.2
-docs/rancher-desktop-linux-containers.md | long-share | 12.7
-docs/rancher-desktop-linux-containers.md | ids-per-k | 5.2
-docs/rancher-desktop-linux-containers.md | bold-per-k | 7.3
+docs/rancher-desktop-linux-containers.md | avg-sentence | 17.4
+docs/rancher-desktop-linux-containers.md | long-share | 11.4
+docs/rancher-desktop-linux-containers.md | ids-per-k | 4.9
+docs/rancher-desktop-linux-containers.md | bold-per-k | 6.9
 docs/repository-family.md | avg-sentence | 16.3
 docs/repository-family.md | long-share | 4.1
 docs/repository-family.md | ids-per-k | 1.0
@@ -225,7 +225,7 @@ docs/sbom.md | long-share | 21.1
 docs/sbom.md | ids-per-k | 6.5
 docs/sbom.md | bold-per-k | 22.7
 docs/shared-script-libraries.md | avg-sentence | 17.2
-docs/shared-script-libraries.md | long-share | 8.4
+docs/shared-script-libraries.md | long-share | 8.3
 docs/shared-script-libraries.md | ids-per-k | 1.9
 docs/shared-script-libraries.md | bold-per-k | 3.0
 docs/slang-shader-compilation.md | avg-sentence | 17.6

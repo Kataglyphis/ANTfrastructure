@@ -16,6 +16,12 @@ PLATFORM=""
 WORKDIR="/workspace"
 NAME=""
 USER_SPEC=""
+# Owned at the reader, not in lint-env-knobs.allow: empty means no cap, the default an operator overrides.
+: "${RUN_IN_CI_IMAGE_MEMORY:=}"
+: "${RUN_IN_CI_IMAGE_CPUS:=}"
+# A cap turns a runaway build into one killed container instead of a host that swaps until it freezes.
+MEMORY="${RUN_IN_CI_IMAGE_MEMORY:-}"
+CPUS="${RUN_IN_CI_IMAGE_CPUS:-}"
 KEEP=0
 MOUNT_HUB=0
 PRIVILEGED=0
@@ -30,6 +36,7 @@ shift
 declare -A CI_IMAGE_VALUE_OPTIONS=(
   [--image]=IMAGE [--engine]=ENGINE [--platform]=PLATFORM
   [--workdir]=WORKDIR [--name]=NAME [--user]=USER_SPEC
+  [--memory]=MEMORY [--cpus]=CPUS
 )
 while [ "$#" -gt 0 ]; do
   if [ -n "${CI_IMAGE_VALUE_OPTIONS[$1]:-}" ]; then
@@ -55,6 +62,9 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ "${#CMD[@]}" -gt 0 ] || die "no command given; everything after -- is the command"
+[ -z "${MEMORY}" ] || [[ "${MEMORY}" =~ ^[1-9][0-9]*[kmgKMG]?$ ]] || die "--memory needs a size like 12g, got \"${MEMORY}\""
+[ -z "${CPUS}" ] || [[ "${CPUS}" =~ ^[0-9]+(\.[0-9]+)?$ && ! "${CPUS}" =~ ^0+(\.0+)?$ ]] \
+  || die "--cpus needs a positive number like 6 or 2.5, got \"${CPUS}\""
 
 if [ -z "${ENGINE}" ]; then
   if command -v nerdctl >/dev/null 2>&1; then ENGINE=nerdctl; else ENGINE=docker; fi
@@ -79,7 +89,10 @@ fi
 # A month-old local copy reads as broken code, so every run says how old the image is.
 CREATED="$(engine_says image inspect --format '{{.Created}}' "${IMAGE}")"
 if [ -n "${CREATED}" ]; then AGE="local copy created ${CREATED}"; else AGE="no local copy; the engine pulls it"; fi
-printf 'run-in-ci-image.sh: image %s, %s\n' "${IMAGE}" "${AGE}" >&2
+LIMITS=""
+[ -z "${MEMORY}" ] || LIMITS+=", memory ${MEMORY}"
+[ -z "${CPUS}" ] || LIMITS+=", ${CPUS} cpus"
+printf 'run-in-ci-image.sh: image %s, %s%s\n' "${IMAGE}" "${AGE}" "${LIMITS}" >&2
 
 ON_PLATFORM=()
 [ -z "${PLATFORM}" ] || ON_PLATFORM=(--platform "${PLATFORM}")
@@ -111,6 +124,9 @@ ARGS+=("${COMMON[@]}")
 [ -z "${NAME}" ] || ARGS+=(--name "${NAME}")
 [ -z "${USER_SPEC}" ] || ARGS+=(--user "${USER_SPEC}")
 [ "${PRIVILEGED}" -eq 0 ] || ARGS+=(--privileged)
+# The swap limit equals the memory limit, so the container is killed at the cap rather than swapping past it.
+[ -z "${MEMORY}" ] || ARGS+=(--memory "${MEMORY}" --memory-swap "${MEMORY}")
+[ -z "${CPUS}" ] || ARGS+=(--cpus "${CPUS}")
 for volume in "${VOLUMES[@]}"; do ARGS+=(--mount "type=volume,source=${volume%%:*},target=${volume#*:}"); done
 for pair in "${ENVS[@]}"; do ARGS+=(-e "${pair}"); done
 ARGS+=(-v "${REPO_ROOT}:/workspace" -w "${WORKDIR}")

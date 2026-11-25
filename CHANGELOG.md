@@ -30,6 +30,15 @@
 - `test-flutter-smoke-test.sh`: three new cases; `test-fetch-fallback-fonts.sh`: one. Four new mutations, and
   `web-smoke.fallback-fonts-served` re-pointed, all proven.
 
+## 2026-11-25 — `run-in-ci-image.sh` caps a container's memory and CPUs; sizing WSL2 for builds
+
+- `--memory SIZE` and `--cpus N`, or `RUN_IN_CI_IMAGE_MEMORY` and `RUN_IN_CI_IMAGE_CPUS`, limit the run; the swap
+  limit equals the memory limit, so a container at its cap is killed instead of swapping the WSL VM until the
+  Windows host freezes, which a consumer's local builds did twice. A malformed value exits 2 before any engine
+  call. `test-run-in-ci-image-limits.sh` holds both, over a fake engine; checked against nerdctl's cgroup files.
+- `rancher-desktop-linux-containers.md` § Sizing the VM for container builds: the shared VM cap, `.wslconfig`,
+  earlyoom, a cap per container, one heavy job at a time and a lean editor.
+
 ## 2026-11-25 — local proofs take the preflight group count from their source
 
 - `normal_stage_launch.full_source` requires as many distinct groups as the proved checkout's `KNOWN_SLUGS`

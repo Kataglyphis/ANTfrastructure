@@ -173,6 +173,9 @@ docs_site_check() {
 
 # live <site>: after the publish, check-live-site.js --isolated on each DOCS_ISOLATED_APPS app at DOCS_LIVE_URL, against the files published.
 docs_site_live() {
+  # Owned at the reader, not in lint-env-knobs.allow: empty is refused below, as build-docs.yml's inputs left unset.
+  : "${DOCS_LIVE_URL:=}"
+  : "${DOCS_ISOLATED_APPS:=}"
   local site="${1:?usage: docs-site.sh live <site dir>}" base="${DOCS_LIVE_URL:-}" app failed=0
   local -a apps=()
   case "${base}" in
