@@ -393,6 +393,71 @@ fn poisoned_registration_lock_is_not_reused() {
     );
 }
 #[test]
+fn reuse_attaches_an_externally_listed_device_without_registering() {
+    let f = Fixture::new();
+    let bundle = f.module("bundle");
+    for _ in 0..2 {
+        f.registry
+            .append_provider_reusing_external(
+                &mut (),
+                &MIGRAPHX,
+                1,
+                &bundle,
+                None,
+                &[("device_id", "1")],
+            )
+            .unwrap();
+    }
+    assert_eq!(f.state.registrations.load(Ordering::SeqCst), 0);
+    let attached: Vec<u32> = f
+        .state
+        .appended
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|a| a.0)
+        .collect();
+    assert_eq!(attached, vec![22, 22]);
+}
+#[test]
+fn reuse_without_a_listed_device_registers_once_and_owns_it() {
+    let f = Fixture::new();
+    f.state
+        .devices
+        .lock()
+        .unwrap()
+        .retain(|device| device.provider != MIGRAPHX.name);
+    let bundle = f.module("bundle");
+    for _ in 0..2 {
+        let error = f
+            .registry
+            .append_provider_reusing_external(&mut (), &MIGRAPHX, 0, &bundle, None, &[])
+            .unwrap_err();
+        assert!(
+            error.contains("MIGraphX device index 0 is unavailable; found 0"),
+            "{error}"
+        );
+    }
+    assert_eq!(f.state.registrations.load(Ordering::SeqCst), 1);
+}
+#[test]
+fn reuse_preserves_an_enumeration_error_and_registers_nothing() {
+    let f = Fixture::new();
+    f.state.fail_enumeration.store(true, Ordering::SeqCst);
+    let error = f
+        .registry
+        .append_provider_reusing_external(&mut (), &MIGRAPHX, 0, &f.module("bundle"), None, &[])
+        .unwrap_err();
+    assert_eq!(error, "enumeration failed 38");
+    assert_eq!(f.state.registrations.load(Ordering::SeqCst), 0);
+}
+#[test]
+fn default_append_registers_even_when_a_device_is_listed() {
+    let f = Fixture::new();
+    f.append(&f.module("bundle")).unwrap();
+    assert_eq!(f.state.registrations.load(Ordering::SeqCst), 1);
+}
+#[test]
 fn negative_control() {
     assert!(
         std::env::var_os("ORT_PLUGIN_FAIL_CONTROL").is_none(),

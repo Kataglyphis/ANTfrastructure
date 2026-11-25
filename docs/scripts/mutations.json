@@ -41547,8 +41547,8 @@
  {
   "id": "lib.ort-plugin-rust-enumeration-status",
   "target": "shared/rust/ort_plugin_eps.rs",
-  "find": ".devices()?",
-  "replace": ".devices().unwrap_or_default()",
+  "find": "            .devices()?\n            .into_iter()",
+  "replace": "            .devices()\n            .unwrap_or_default()\n            .into_iter()",
   "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
   "why": "An enumeration error must retain its cause rather than become a missing-device verdict."
  },
@@ -65670,5 +65670,37 @@
   "replace": "    assert_app_venv_parity\n",
   "test": "bash linux/scripts/tests/test-smoke-arch-parity.sh",
   "why": "the runtime-image gate runs only the assert-only smoke, so the TVM check must run there to reach the shipped venv"
+ },
+ {
+  "id": "lib.ort-plugin-rust-reuse-skips-registration",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": "        {\n            return Ok(());\n        }\n        self.binding.register_library",
+  "replace": "        {\n        }\n        self.binding.register_library",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "a device another library registered must be attached without registering the module again"
+ },
+ {
+  "id": "lib.ort-plugin-rust-reuse-opt-in",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": "        self.append(options, plugin, index, bundled, advertised, values, false)\n",
+  "replace": "        self.append(options, plugin, index, bundled, advertised, values, true)\n",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "the ordinary append owns its registration; reuse of an external one is an explicit opt-in"
+ },
+ {
+  "id": "lib.ort-plugin-rust-reuse-selected",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": "        self.append(options, plugin, index, bundled, advertised, values, true)\n",
+  "replace": "        self.append(options, plugin, index, bundled, advertised, values, false)\n",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "the reusing append must not register over a device another library already listed"
+ },
+ {
+  "id": "lib.ort-plugin-rust-reuse-enumeration-error",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": "                .devices()?\n                .iter()",
+  "replace": "                .devices()\n                .unwrap_or_default()\n                .iter()",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "an enumeration failure must stay an error, never read as no external device"
  }
 ]

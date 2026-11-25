@@ -1222,6 +1222,9 @@ The pinned crate's `Environment::devices()` discards `GetEpDevices` errors, so a
 use its typed C API when preserving that error. `register_ep_library` returns a weak handle;
 dropping that handle does not unregister the library. Keep one locked registration cache per
 environment and never replace a successfully registered name with another canonical path.
+`append_provider_reusing_external` attaches a device another library of the process already
+registered, as the native helper's `reuse_existing` does. It never records that registration as
+its own and keeps an enumeration failure an error; ordinary `append_provider` always registers.
 The prepared OxidANT adapter holds a weak environment reference and resolves its bundled module
 beside the actual loaded C API owner. Its fake-adapter tests prove policy/concurrency only;
 actual crate compilation, runtime teardown and finished-package inference remain separate checks.

@@ -19,6 +19,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-25 — the Rust plugin helper can reuse another library's registration
+
+- `shared/rust/ort_plugin_eps.rs` gains `append_provider_reusing_external`, the Rust form of the native helper's
+  `reuse_existing`: a device another library of the process already listed is attached without registering the
+  module again, and is never recorded as this registry's own. OxidANT needs it to keep using AccelerANTgine's
+  registration in one app. Four cases, four mutations.
+
 ## 2026-11-24 — nine mutation shards, and the four slowest suites in sections
 
 - Owner decision: both. The hub's mutation lane runs nine shards, and `source_ci/linux.py` reads the shard count

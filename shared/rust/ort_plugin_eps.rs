@@ -128,6 +128,7 @@ impl<B: RuntimeBinding> PluginRegistry<B> {
         plugin: &PluginLibrary,
         bundled: &Path,
         advertised: Option<&OsStr>,
+        reuse_existing: bool,
     ) -> Result<(), String> {
         let path = plugin_library_path(plugin, bundled, advertised)?
             .ok_or_else(|| format!("{} plugin is unavailable", plugin.name))?;
@@ -140,6 +141,16 @@ impl<B: RuntimeBinding> PluginRegistry<B> {
                     path.display()
                 ));
             }
+            return Ok(());
+        }
+        // Another library's registration is used, never recorded as this registry's own.
+        if reuse_existing
+            && self
+                .binding
+                .devices()?
+                .iter()
+                .any(|device| device.provider == plugin.name)
+        {
             return Ok(());
         }
         self.binding.register_library(plugin.name, &path)?;
@@ -156,11 +167,38 @@ impl<B: RuntimeBinding> PluginRegistry<B> {
         advertised: Option<&OsStr>,
         values: &[(&str, &str)],
     ) -> Result<(), String> {
+        self.append(options, plugin, index, bundled, advertised, values, false)
+    }
+
+    /// Uses a device another library of the process already registered instead of registering the module again.
+    pub fn append_provider_reusing_external(
+        &self,
+        options: &mut B::Options,
+        plugin: &PluginLibrary,
+        index: usize,
+        bundled: &Path,
+        advertised: Option<&OsStr>,
+        values: &[(&str, &str)],
+    ) -> Result<(), String> {
+        self.append(options, plugin, index, bundled, advertised, values, true)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn append(
+        &self,
+        options: &mut B::Options,
+        plugin: &PluginLibrary,
+        index: usize,
+        bundled: &Path,
+        advertised: Option<&OsStr>,
+        values: &[(&str, &str)],
+        reuse_existing: bool,
+    ) -> Result<(), String> {
         let mut registered = self
             .registered
             .lock()
             .map_err(|_| "Plugin registry lock is poisoned".to_string())?;
-        self.ensure_registered(&mut registered, plugin, bundled, advertised)?;
+        self.ensure_registered(&mut registered, plugin, bundled, advertised, reuse_existing)?;
         let devices: Vec<_> = self
             .binding
             .devices()?
