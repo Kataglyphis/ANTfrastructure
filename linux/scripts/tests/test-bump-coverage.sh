@@ -9,10 +9,12 @@ t_case "--audit-coverage on the REAL pin files: who updates each pin, the drift 
 t_needs "a POSIX Python that can read the fixture paths" t_posix_python
 _real="$(_audit_expr "bump_coverage.audit_coverage()")"
 t_assert_contains "${_real}" "rc 0" "every committed pin has a class and no table row is stale"
-t_assert_contains "${_real}" "LIBVPX_MESON_COMMIT" "a hand-moved commit whose owner Renovate moves is named as drift"
-t_assert_contains "${_real}" "with GSTREAMER_VERSION (renovate)" "with its owner and the owner's updater"
+t_assert_contains "${_real}" "ORT_WEBGPU_WINDOWS_DAWN_VERSION" "a hand-moved pin whose owner Renovate moves is named as drift"
+t_assert_contains "${_real}" "with ONNXRUNTIME_VERSION (renovate)" "with its owner and the owner's updater"
 t_assert_contains "${_real}" "with ONNXRUNTIME_VERSION (renovate), held" "a held drift pin says so"
-t_assert_eq "0" "$(printf '%s\n' "${_real}" | grep -c -e 'LLVM_COMMIT .*(renovate)' || true)" "a commit the sweep moves in the same call is no drift"
+for _moved in LLVM_COMMIT TVM_COMMIT LIBVPX_MESON_COMMIT; do
+  t_assert_eq "0" "$(printf '%s\n' "${_real}" | grep -c -e "${_moved} .*(renovate)" || true)" "${_moved}, which the sweep moves in the same call, is no drift"
+done
 t_assert_contains "${_real}" "source-pins.txt: onnxruntime v" "a version kept outside the pin files is listed"
 t_assert_eq "0" "$(printf '%s\n' "${_real}" | grep -c -e 'OPENCV_COMMIT .*(renovate)' || true)" "an empty commit pin follows its tag and is no drift"
 

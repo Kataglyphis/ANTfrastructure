@@ -1476,10 +1476,13 @@ key in one class:
 A `bump extra` is a key quoted in its owner's spec. It counts only as far as that spec writes it.
 
 The brief report names two risks. **Drift** is a set `FOLLOWS` pin whose owner one call moves.
-Renovate bumps `GSTREAMER_VERSION`, and `LIBVPX_MESON_COMMIT` stays. A held drift pin says so.
-A commit that a tag fixes becomes a safe-tier spec. The sweep runs after Renovate in the same
+Renovate bumps `ONNXRUNTIME_VERSION`, and ORT's Dawn tag stays. A held drift pin says so.
+A commit its owner fixes becomes a safe-tier spec. The sweep runs after Renovate in the same
 call. So `spec_llvm_commit` and `spec_tvm_commit` read the tag Renovate just wrote, and
-`LLVM_COMMIT` and `TVM_COMMIT` move with it. **Outside the pin files** are versions no
+`LLVM_COMMIT` and `TVM_COMMIT` move with it. `spec_libvpx_meson_commit` takes the head of
+the branch the new GStreamer's `vpx.wrap` names, and hashes its archive. It runs once per
+GStreamer version: `LIBVPX_MESON_GSTREAMER_VERSION` records the last one, so a moving branch
+alone never re-keys the Windows media build. **Outside the pin files** are versions no
 updater reads, such as the ORT and GenAI rows of `source-pins.txt`. The full report also lists
 every version one call does not move.
 

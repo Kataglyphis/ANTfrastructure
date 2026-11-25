@@ -301,18 +301,43 @@ def spec_dav1d(cur: str) -> SpecResult:
     return v, ({"DAV1D_SHA256": sha} if v != cur and bv.WRITE_MODE else {})
 
 
-def spec_x264_meson(cur: str) -> SpecResult:
-    """Slaved to GSTREAMER_VERSION: x264.wrap names a meson-ports branch, and its head commit pins it."""
-    text = bv.http_text(
-        f"https://gitlab.freedesktop.org/gstreamer/gstreamer/-/raw/{bv.read_env()['GSTREAMER_VERSION']}/subprojects/x264.wrap")
+def gstreamer_git_wrap(gst_version: str, wrap: str) -> tuple[str, str]:
+    """(url, revision) of a GStreamer subprojects/<wrap>.wrap [wrap-git] at a GStreamer tag."""
+    text = bv.http_text(f"https://gitlab.freedesktop.org/gstreamer/gstreamer/-/raw/{gst_version}/subprojects/{wrap}.wrap")
     url = re.search(r"^url\s*=\s*(\S+)\s*$", text, re.MULTILINE)
     rev = re.search(r"^revision\s*=\s*(\S+)\s*$", text, re.MULTILINE)
     if not (url and rev):
-        raise RuntimeError("GStreamer's x264.wrap names no url or revision")
+        raise RuntimeError(f"GStreamer's {wrap}.wrap names no url or revision")
+    return url.group(1), rev.group(1)
+
+
+def spec_x264_meson(cur: str) -> SpecResult:
+    """Slaved to GSTREAMER_VERSION: x264.wrap names a meson-ports branch, and its head commit pins it."""
+    url, rev = bv.gstreamer_git_wrap(bv.read_env()["GSTREAMER_VERSION"], "x264")
     extras = {}
-    if rev.group(1) != cur and bv.WRITE_MODE:
-        extras["X264_MESON_COMMIT"] = bv.ls_remote_branch_commit(url.group(1), rev.group(1))
-    return rev.group(1), extras
+    if rev != cur and bv.WRITE_MODE:
+        extras["X264_MESON_COMMIT"] = bv.ls_remote_branch_commit(url, rev)
+    return rev, extras
+
+
+LIBVPX_MESON_URL = "https://gitlab.freedesktop.org/gstreamer/meson-ports/libvpx.git"
+
+
+def spec_libvpx_meson_commit(cur: str) -> SpecResult:
+    """The head of the branch GSTREAMER_VERSION's vpx.wrap names, taken once per GStreamer version, not per run."""
+    env = bv.read_env()
+    gst = env["GSTREAMER_VERSION"]
+    if env.get("LIBVPX_MESON_GSTREAMER_VERSION") == gst:
+        return cur, {}
+    url, rev = bv.gstreamer_git_wrap(gst, "vpx")
+    if url.removesuffix("/") != LIBVPX_MESON_URL:
+        raise RuntimeError(f"GStreamer {gst}'s vpx.wrap moved libvpx to {url}; Build-GstreamerFromSource.ps1 fetches {LIBVPX_MESON_URL}")
+    commit = rev if re.fullmatch(r"[0-9a-f]{40}", rev) else bv.ls_remote_branch_commit(url, rev)
+    extras = {"LIBVPX_MESON_GSTREAMER_VERSION": gst}
+    if commit != cur and bv.WRITE_MODE:
+        archive = f"{LIBVPX_MESON_URL.removesuffix('.git')}/-/archive/{commit}/libvpx-{commit}.tar.gz"
+        extras["LIBVPX_MESON_SHA256"] = bv.sha256_of_url(archive)
+    return commit, extras
 
 
 def spec_webdavclient(cur: str) -> SpecResult:

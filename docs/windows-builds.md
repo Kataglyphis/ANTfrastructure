@@ -1275,7 +1275,8 @@ stage.
 **`vpx` joined the contract on 2026-11-04 (CON183), fourteen entries.** gst-plugins-good reaches libvpx only
 through `subprojects/vpx.wrap`'s `[provide]`. Wrap provisioning deletes each git wrap it extracts, so `auto`
 skipped the plugin silently. `Install-GstVpxWrap` replaces the wrap with a hash-pinned wrap-file
-(`LIBVPX_MESON_COMMIT`, `LIBVPX_MESON_SHA256` in `tool-pins.env`; bump them with `GSTREAMER_VERSION`), and
+(`LIBVPX_MESON_COMMIT`, `LIBVPX_MESON_SHA256` in `tool-pins.env`; the bump sweep moves both when
+`GSTREAMER_VERSION` moves: [what one call does not move](dependency-updates.md#what-one-call-does-not-move)), and
 `-Dvpx:default_library=static` answers the port's refusal of a shared build off ELF and Darwin.
 `002-libvpx-clangcl-simd-flags.patch` keeps the per-file SIMD flags under clang-cl; without it SSSE3 and SSE4.1 files fail with
 `always_inline function ... requires target feature`.

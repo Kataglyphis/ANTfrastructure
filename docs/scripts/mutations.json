@@ -66198,5 +66198,29 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-bump-coverage.sh",
   "why": "A held drift pin must say it is held, so nobody expects the call to move it."
+ },
+ {
+  "id": "lib.bump-libvpx-once-per-gstreamer",
+  "target": "docs/scripts/bump_images.py",
+  "find": "    if env.get(\"LIBVPX_MESON_GSTREAMER_VERSION\") == gst:\n        return cur, {}\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "The libvpx commit must stay put while GStreamer does, or every run re-pins a moving branch head and re-keys the Windows media build."
+ },
+ {
+  "id": "lib.bump-libvpx-sha-with-commit",
+  "target": "docs/scripts/bump_images.py",
+  "find": "        extras[\"LIBVPX_MESON_SHA256\"] = bv.sha256_of_url(archive)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "A new libvpx commit must carry its archive SHA256, or the Windows download gate refuses it mid-build."
+ },
+ {
+  "id": "lib.bump-libvpx-repo-pinned",
+  "target": "docs/scripts/bump_images.py",
+  "find": "    if url.removesuffix(\"/\") != LIBVPX_MESON_URL:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "A wrap that names another repository must refuse, since the Windows build fetches the fixed meson-ports URL."
  }
 ]

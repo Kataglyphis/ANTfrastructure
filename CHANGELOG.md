@@ -19,6 +19,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — LIBVPX_MESON_COMMIT moves with GStreamer in the same Renovate call (CON305 step 1)
+
+- `spec_libvpx_meson_commit` joins the safe tier. When `GSTREAMER_VERSION` moves, it reads that release's
+  `vpx.wrap`, pins the head of the branch it names and hashes the archive into `LIBVPX_MESON_SHA256`. The new
+  `LIBVPX_MESON_GSTREAMER_VERSION` in `tool-pins.env` records the release, so a moving branch alone changes
+  nothing. A wrap that names another repository refuses. Live it reproduces both of today's pins.
+- `gstreamer_git_wrap` reads a `[wrap-git]` for it and for `spec_x264_meson`. `LIBVPX_MESON_SHA256` leaves the
+  SHA exemptions; drift is down to the three pins on Microsoft's ORT and GenAI repositories.
+- A `test-bump-versions.sh` case and `test-bump-coverage.sh` assertions; three new mutations, all proven.
+  `tool-pins.env` is a Windows build input, so the four lanes need a new proof at their next build.
+
 ## 2026-11-25 — LLVM_COMMIT and TVM_COMMIT move in the same Renovate call (CON305 step 1)
 
 - `spec_llvm_commit` and `spec_tvm_commit` join the safe tier. The sweep runs after Renovate, so they read the

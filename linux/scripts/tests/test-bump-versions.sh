@@ -759,4 +759,29 @@ t_assert_contains "${_out}" "llvm ('$(printf 'c%.0s' {1..40})', {})" "the releas
 t_assert_contains "${_out}" "('llvm/llvm-project', 'llvmorg-23.2.0')" "read from the llvmorg tag of the current LLVM_RELEASE"
 t_assert_contains "${_out}" "('apache/tvm', 'v0.28.0')" "and TVM_COMMIT from the current TVM_REF tag"
 
+t_case "LIBVPX_MESON_COMMIT moves once per GStreamer version, with its archive SHA256 (offline)"
+_out="$(_bv_offline <<'PY'
+wrap = {"url": "https://gitlab.freedesktop.org/gstreamer/meson-ports/libvpx.git"}
+env = {"GSTREAMER_VERSION": "1.30.0", "LIBVPX_MESON_GSTREAMER_VERSION": "1.30.0"}
+bv.read_env = lambda: env
+bv.http_text = lambda url: f"[wrap-git]\nurl = {wrap['url']}\nrevision = meson-1.16\n" if "/1.30.0/subprojects/vpx.wrap" in url else ""
+bv.ls_remote_branch_commit = lambda url, branch: "d" * 40
+bv.sha256_of_url = lambda url: "sha:" + url.rsplit("/", 1)[1]
+bv.WRITE_MODE = True
+print("same", bv.spec_libvpx_meson_commit("a" * 40))
+env["LIBVPX_MESON_GSTREAMER_VERSION"] = "1.29.2"
+print("moved", bv.spec_libvpx_meson_commit("a" * 40))
+wrap["url"] = "https://gitlab.example/libvpx.git"
+try:
+    bv.spec_libvpx_meson_commit("a" * 40)
+except RuntimeError as e:
+    print("raised", e)
+PY
+)"
+_d40="$(printf 'd%.0s' {1..40})"
+t_assert_contains "${_out}" "same ('$(printf 'a%.0s' {1..40})', {})" "the same GStreamer version keeps the commit, however far the branch moved"
+t_assert_contains "${_out}" "moved ('${_d40}', {'LIBVPX_MESON_GSTREAMER_VERSION': '1.30.0', 'LIBVPX_MESON_SHA256': 'sha:libvpx-${_d40}.tar.gz'})" \
+  "a new GStreamer version takes its wrap's branch head, records the version and hashes that archive"
+t_assert_contains "${_out}" "raised GStreamer 1.30.0's vpx.wrap moved libvpx to https://gitlab.example/libvpx.git" "a wrap naming another repository refuses"
+
 t_summary

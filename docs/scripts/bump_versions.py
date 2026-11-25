@@ -58,6 +58,7 @@ from bump_images import (  # noqa: F401  re-exported: tests and the spec modules
     deepstream_pins,
     deepstream_trt_pins,
     gitleaks_pins,
+    gstreamer_git_wrap,
     gstreamer_wrap_pin,
     hailo_protobuf_version,
     lavapipe_pins,
@@ -80,6 +81,7 @@ from bump_images import (  # noqa: F401  re-exported: tests and the spec modules
     spec_hailo_protobuf,
     spec_hailort,
     spec_lavapipe,
+    spec_libvpx_meson_commit,
     spec_llama_cpp_hip,
     spec_mold,
     spec_ort_webgpu_dxc,
@@ -292,6 +294,7 @@ SAFE: list[tuple[str, Spec, str]] = [
     # Commits of tags Renovate moves: the sweep runs after Renovate in the same call.
     ("LLVM_COMMIT", spec_llvm_commit, "linux toolchain LLVM source build (with LLVM_RELEASE)"),
     ("TVM_COMMIT", spec_tvm_commit, "linux sdk + windows TVM source builds (with TVM_REF)"),
+    ("LIBVPX_MESON_COMMIT", spec_libvpx_meson_commit, "windows GStreamer media branch (with GSTREAMER_VERSION)"),
     ("ANDROID_NDK_VERSION", spec_android_ndk, "linux android stage (every android library)"),
     ("LITECORE_VERSION", spec_litecore, "linux android litert stage"),
     ("QNN_SDK_VERSION", spec_qnn_sdk, "linux media arm64 (onnxruntime, genai, tvm, app wheelhouse)"),
@@ -436,8 +439,6 @@ def derived_keys() -> dict[str, str]:
 SHA_PAIR_EXEMPT = {
     # Slaved to TENSORRT_VERSION; the Windows lane downloads the zip and the hash is re-measured from it.
     "TENSORRT_ZIP_SHA256",
-    # Slaved to LIBVPX_MESON_COMMIT, which moves with GSTREAMER_VERSION's vpx.wrap; re-measured from the archive.
-    "LIBVPX_MESON_SHA256",
     # Slaved to the DirectML nuget ORT's packages.config names; a mismatch is the signal to re-read its licence.
     "DIRECTML_NUPKG_SHA256",
     # Always-latest bootstrap installers: the hash is re-reviewed by hand on each deliberate update.
