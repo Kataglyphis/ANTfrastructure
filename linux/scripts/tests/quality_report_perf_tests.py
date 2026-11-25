@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -286,11 +287,49 @@ class GenaiThreads(unittest.TestCase):
         self.assertEqual(out.joinpath("model.onnx").read_text(encoding="utf-8"), "weights")
         self.assertEqual(json.loads(model.joinpath("genai_config.json").read_text(encoding="utf-8")), config)
 
-    def test_auto_is_the_usable_cpus_but_one_from_one_to_eight(self) -> None:
+    @staticmethod
+    def load_tool() -> types.ModuleType:
         spec = importlib.util.spec_from_file_location("genai_model_threads", SCRIPTS.joinpath("lib", "genai-model-threads.py"))
         assert spec is not None and spec.loader is not None
         tool = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(tool)
+        return tool
+
+    def test_usable_cpus_replays_the_shared_cases(self) -> None:
+        tool = self.load_tool()
+        doc = json.loads(HUB.joinpath("shared", "contracts", "usable-cpus.json").read_text(encoding="utf-8"))
+        for case in doc["cases"]:
+            with self.subTest(case["name"]):
+                self.assertEqual(tool.usable_cpus(case["affinity"], case["cpu_max"]), case["expect"]["usable"])
+
+    def test_cgroup_cpu_max_walks_from_the_own_cgroup_to_the_root(self) -> None:
+        tool = self.load_tool()
+        base = Path(tempfile.mkdtemp(prefix="usable-cpus-"))
+        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
+        root, proc = base.joinpath("cgroup"), base.joinpath("proc-cgroup")
+        root.joinpath("a", "b").mkdir(parents=True)
+        root.joinpath("a", "b", "cpu.max").write_text("max 100000\n", encoding="utf-8")
+        root.joinpath("a", "cpu.max").write_text("200000 100000\n", encoding="utf-8")
+        cases = {"0::/a/b\n": ["max 100000", "200000 100000", None],
+                 "12:cpu:/x\n0::/a\n": ["200000 100000", None],
+                 "0::/\n": [None],
+                 "0::/../../a\n": [None],
+                 "12:cpu:/x\n": []}
+        for text, want in cases.items():
+            with self.subTest(text):
+                proc.write_text(text, encoding="utf-8")
+                self.assertEqual(tool.cgroup_cpu_max(root, proc), want)
+        self.assertEqual(tool.cgroup_cpu_max(root, base.joinpath("missing")), [])
+
+    def test_auto_honours_the_cgroup_quota(self) -> None:
+        tool = self.load_tool()
+        with mock.patch.object(tool, "affinity_count", return_value=8), \
+                mock.patch.object(tool, "cgroup_cpu_max", return_value=["max 100000", "300000 100000", None]):
+            self.assertEqual(tool.family_threads(), 2)
+            self.assertEqual(tool.thread_count("auto"), 2)
+
+    def test_auto_is_the_usable_cpus_but_one_from_one_to_eight(self) -> None:
+        tool = self.load_tool()
         self.assertEqual([tool.family_threads(n) for n in (1, 2, 4, 8, 16)], [1, 1, 3, 7, 8])
         self.assertEqual(tool.thread_count("auto"), tool.family_threads())
         self.assertEqual([tool.text_threads(n) for n in (1, 4, 8, 16, 32)], [1, 1, 3, 4, 4])

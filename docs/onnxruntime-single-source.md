@@ -519,10 +519,21 @@ host re-proves at launch, and AccelerANTgine's install tree and Python package.
 ## The ORT thread rule
 
 A detector's session takes the **usable CPUs but one, at least 1 and at most 8**, for its intra-op
-pool: the CPUs of the process's affinity mask, not the machine's, since ORT's own default ignores
-the mask (CON218, CON240). A config value, a command-line flag or an environment variable still
-wins. The pool leaves one CPU free because a pool that fills the mask loses its tail latency to
-whatever else needs a CPU.
+pool. A config value, a command-line flag or an environment variable still wins. The pool leaves
+one CPU free because a pool that fills the mask loses its tail latency to whatever else needs a CPU.
+
+The **usable CPUs** are `max(1, floor(min(affinity, quota)))`:
+
+- `affinity` is the count of CPUs in the process's affinity mask, not the machine's. ORT's own
+  default ignores the mask (CON218, CON240).
+- `quota` is the smallest cgroup v2 `cpu.max` quota, divided by its period, on the path from the
+  process's own cgroup up to the root. The kernel enforces every quota on that path, so a limited
+  parent limits an unlimited child.
+- A quota of `max` or a missing `cpu.max` sets no limit.
+
+[`shared/contracts/usable-cpus.json`](../shared/contracts/usable-cpus.json) holds the cases, and
+`test-usable-cpus.sh` replays them through a reference rule. Each binding replays the same file:
+`genai-model-threads.py` in the hub (`usable_cpus`), and the consumers below at their next pin.
 
 | Consumer | Where | Since |
 | --- | --- | --- |

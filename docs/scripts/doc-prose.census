@@ -172,9 +172,9 @@ docs/mistral-vibe-glm-setup.md | avg-sentence | 12.9
 docs/mistral-vibe-glm-setup.md | long-share | 2.6
 docs/mistral-vibe-glm-setup.md | ids-per-k | 4.0
 docs/mistral-vibe-glm-setup.md | bold-per-k | 17.0
-docs/onnxruntime-single-source.md | avg-sentence | 19.2
-docs/onnxruntime-single-source.md | long-share | 12.4
-docs/onnxruntime-single-source.md | ids-per-k | 5.6
+docs/onnxruntime-single-source.md | avg-sentence | 19.0
+docs/onnxruntime-single-source.md | long-share | 11.8
+docs/onnxruntime-single-source.md | ids-per-k | 5.5
 docs/onnxruntime-single-source.md | bold-per-k | 9.1
 docs/overview.md | avg-sentence | 16.4
 docs/overview.md | long-share | 13.4

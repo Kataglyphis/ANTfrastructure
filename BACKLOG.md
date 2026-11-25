@@ -2748,22 +2748,13 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
         unseen.
       - Let `agents-drift` also check from docs to tree, so a deleted package the docs still name fails.
 
-- [ ] **CON304 — a shared case file for the usable-CPU rule** [S, ★★]. OxidANT's rule from the oxidation review
-      (D16): the usable CPUs are the smaller of the affinity mask and the cgroup v2 `cpu.max` quota, in whole CPUs
-      rounded down, and at least 1. The hub's `linux/scripts/lib/genai-model-threads.py` reads the affinity mask
-      alone today.
-      - Write `shared/contracts/usable-cpus.json` beside the other shared cases (`think-split.json`,
-        `openai-stream-lines.json`). Each case gives the affinity count and the text of `cpu.max`, or none when the
-        file is missing, and the usable count. Cover `max 100000`, a quota of 1.5 CPUs, a quota under one CPU, a
-        quota above the affinity count and a missing file.
-      - A hub test replays the cases through a reference function, as `test-think-split.sh` does, so the file
-        cannot ask a binding for an outcome the rule does not give.
-      - The bindings replay the file at their next pin: Rust (OxidANT `kataglyphis_core::config::usable_cpus`),
-        C++ (AccelerANTgine) and Python (OrchestrANT and `genai-model-threads.py`).
-      - The rule's owning page is [`onnxruntime-single-source.md` § The ORT thread rule](docs/onnxruntime-single-source.md#the-ort-thread-rule),
-        which defines the usable CPUs as the affinity mask today; it gains the quota and links the file.
-      - Open, with a recommendation: whether a parent cgroup's `cpu.max` counts too (recommend the smallest quota
-        on the path, which is what the kernel enforces).
+- [ ] **CON304 — the consumers replay the usable-CPU cases** [S, ★★]. The hub holds the rule and its cases:
+      [`shared/contracts/usable-cpus.json`](shared/contracts/usable-cpus.json), replayed by `test-usable-cpus.sh`,
+      and `genai-model-threads.py` follows it. Each binding replays the file in its own tests at its next pin,
+      and takes the smallest quota on the path to the root where it reads only its own cgroup or none:
+      - OxidANT, Rust: `kataglyphis_core::config::usable_cpus`.
+      - AccelerANTgine, C++: the count behind `shipped_ort_threads()`.
+      - OrchestrANT, Python: the count behind `shipped_intra_op_threads`.
 
 - [ ] **CON280 — github.com/microsoft/onnxruntime answers 404** [S, ★★]. Since about 2026-11-17 22:20Z the
       repository, its API and its release assets are gone, with `onnxruntime-genai` and other Microsoft ONNX repos;

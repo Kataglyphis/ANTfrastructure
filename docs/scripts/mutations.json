@@ -62056,6 +62056,78 @@
   "why": "owner D5: text before a late close in its own piece is never shown, so no binding may flash thinking as answer"
  },
  {
+  "id": "lib.usable-cpus-floor",
+  "target": "shared/contracts/usable-cpus.json",
+  "find": "\"affinity\": 4, \"cpu_max\": [\"150000 100000\"],\n   \"expect\": {\"usable\": 1}",
+  "replace": "\"affinity\": 4, \"cpu_max\": [\"150000 100000\"],\n   \"expect\": {\"usable\": 2}",
+  "test": "bash linux/scripts/tests/test-usable-cpus.sh",
+  "why": "a quota of 1.5 CPUs gives one usable CPU, so no binding rounds up and oversubscribes the quota"
+ },
+ {
+  "id": "lib.usable-cpus-parent-counts",
+  "target": "shared/contracts/usable-cpus.json",
+  "find": "\"affinity\": 8, \"cpu_max\": [\"max 100000\", \"200000 100000\", null],\n   \"expect\": {\"usable\": 2}",
+  "replace": "\"affinity\": 8, \"cpu_max\": [\"max 100000\", \"200000 100000\", null],\n   \"expect\": {\"usable\": 8}",
+  "test": "bash linux/scripts/tests/test-usable-cpus.sh",
+  "why": "the owner counts every cpu.max up to the root, since the kernel enforces a parent's quota on its children"
+ },
+ {
+  "id": "lib.usable-cpus-at-least-one",
+  "target": "shared/contracts/usable-cpus.json",
+  "find": "\"affinity\": 4, \"cpu_max\": [\"50000 100000\"],\n   \"expect\": {\"usable\": 1}",
+  "replace": "\"affinity\": 4, \"cpu_max\": [\"50000 100000\"],\n   \"expect\": {\"usable\": 0}",
+  "test": "bash linux/scripts/tests/test-usable-cpus.sh",
+  "why": "a quota under one CPU still leaves one, or a binding asks ORT for zero threads, which is ORT's own default"
+ },
+ {
+  "id": "quality-report.perf-genai-threads-own-cgroup-only",
+  "target": "linux/scripts/lib/genai-model-threads.py",
+  "find": "    for text in cpu_max:\n",
+  "replace": "    for text in cpu_max[:1]:\n",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_usable",
+  "why": "a parent's cpu.max limits the process too, so reading only the own cgroup oversubscribes a limited slice"
+ },
+ {
+  "id": "quality-report.perf-genai-threads-fixed-period",
+  "target": "linux/scripts/lib/genai-model-threads.py",
+  "find": "Fraction(int(quota), int(period))",
+  "replace": "Fraction(int(quota), 100000)",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_usable",
+  "why": "the period is each cgroup's own; a fixed 100 ms one misreads every other quota"
+ },
+ {
+  "id": "quality-report.perf-genai-threads-zero-cpus",
+  "target": "linux/scripts/lib/genai-model-threads.py",
+  "find": "    return max(1, math.floor(limit))\n",
+  "replace": "    return math.floor(limit)\n",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_usable",
+  "why": "a quota under one CPU still leaves one usable CPU"
+ },
+ {
+  "id": "quality-report.perf-genai-threads-walk-stops",
+  "target": "linux/scripts/lib/genai-model-threads.py",
+  "find": "    for depth in range(len(parts), -1, -1):\n",
+  "replace": "    for depth in range(len(parts), len(parts) - 1, -1):\n",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_cgroup",
+  "why": "the reader must return every cpu.max up to the root, or the parent's quota never reaches the rule"
+ },
+ {
+  "id": "quality-report.perf-genai-threads-outside-namespace",
+  "target": "linux/scripts/lib/genai-model-threads.py",
+  "find": "        parts = []\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_cgroup",
+  "why": "a cgroup outside the namespace shows as ../..; followed, it reads files beside the cgroup root"
+ },
+ {
+  "id": "quality-report.perf-genai-threads-auto-ignores-quota",
+  "target": "linux/scripts/lib/genai-model-threads.py",
+  "find": "        usable = usable_cpus(affinity_count(), cgroup_cpu_max())\n",
+  "replace": "        usable = affinity_count()\n",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_auto_honours",
+  "why": "auto must honour the cgroup quota, or a perf copy in a limited container oversubscribes it"
+ },
+ {
   "id": "lib.openai-chat-answers-shape",
   "target": "shared/contracts/openai-chat-answers.json",
   "find": "\"expect\": {\"text\": \"Paris\", \"thinking\": \"\", \"finish\": \"stop\", \"usage\": [7, 2]}",

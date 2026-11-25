@@ -2147,9 +2147,17 @@
   "baseline": 0.21,
   "per_entry": 0.2
  },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_auto_honours": {
+  "baseline": 0.15,
+  "per_entry": 0.16
+ },
  "bash linux/scripts/tests/test-quality-report-perf.sh -k test_busy_host_is_refused": {
   "baseline": 0.23,
   "per_entry": 0.62
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_cgroup": {
+  "baseline": 0.16,
+  "per_entry": 0.16
  },
  "bash linux/scripts/tests/test-quality-report-perf.sh -k test_copy_fixes": {
   "baseline": 0.28,
@@ -2194,6 +2202,10 @@
  "bash linux/scripts/tests/test-quality-report-perf.sh -k test_update_writes_twenty_samples": {
   "baseline": 0.38,
   "per_entry": 0.37
+ },
+ "bash linux/scripts/tests/test-quality-report-perf.sh -k test_usable": {
+  "baseline": 0.21,
+  "per_entry": 0.16
  },
  "bash linux/scripts/tests/test-quality-report-perf.sh -k test_zero_value_is_incomplete": {
   "baseline": 0.43,
@@ -2754,6 +2766,10 @@
  "bash linux/scripts/tests/test-ubuntu-mirror-source-files.sh": {
   "baseline": 0.31,
   "per_entry": 0.19
+ },
+ "bash linux/scripts/tests/test-usable-cpus.sh": {
+  "baseline": 0.04,
+  "per_entry": 0.05
  },
  "bash linux/scripts/tests/test-uv-cache-seed.sh": {
   "baseline": 4.51,

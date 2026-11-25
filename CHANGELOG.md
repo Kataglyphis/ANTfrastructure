@@ -19,6 +19,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-25 — the usable CPUs honour the cgroup quota
+
+- Owner decision: every cgroup v2 `cpu.max` from the process's own cgroup up to the root counts, and the
+  smallest quota on that path wins. The usable CPUs are `max(1, floor(min(affinity, quota)))`.
+- `shared/contracts/usable-cpus.json` holds 11 cases: `max`, 1.5 CPUs, under one CPU, above the affinity, a
+  missing file, no cgroup path, a limited parent, a tighter child, a tighter parent, another period, and a
+  smallest share that is not the smallest number. `test-usable-cpus.sh` replays them through a reference rule.
+- `genai-model-threads.py` follows the rule: `auto` and `text` read the affinity mask and every `cpu.max` up to
+  the root. Its tests replay the case file and walk a fixture cgroup tree. Nine mutations, all proven.
+- `onnxruntime-single-source.md` § The ORT thread rule defines the usable CPUs and links the file. CON304 keeps
+  the consumer bindings: OxidANT, AccelerANTgine and OrchestrANT.
+
 ## 2026-11-25 — the Rust plugin helper can reuse another library's registration
 
 - `shared/rust/ort_plugin_eps.rs` gains `append_provider_reusing_external`, the Rust form of the native helper's
