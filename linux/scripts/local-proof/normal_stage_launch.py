@@ -58,6 +58,16 @@ def downstream_record(invocation: Json, invocation_path: Path, proof_path: Path,
             'parent_OCI_index_sha256': parent['index_sha256']}
 
 
+def preflight_slugs(source: Path) -> list[str]:
+    """The default preflight groups the source's own KNOWN_SLUGS declares, one group per slug."""
+    text = (source / 'linux/scripts/preflight.sh').read_text()
+    blocks = re.findall(r'^KNOWN_SLUGS=\(([^)]*)\)', text, re.MULTILINE)
+    assert len(blocks) == 1, 'preflight.sh must declare KNOWN_SLUGS once'
+    slugs = [word for word in blocks[0].replace('\\', ' ').split()]
+    assert slugs and all(re.fullmatch(r'[a-z0-9-]+', slug) for slug in slugs) and len(slugs) == len(set(slugs)), 'Malformed KNOWN_SLUGS'
+    return slugs
+
+
 def full_source(source: Path, proof_path: Path, revision: str) -> Json:
     assert checked_run(['git', '-C', str(source), 'rev-parse', 'HEAD']).stdout.strip() == revision, 'Source revision differs'
     assert not checked_run(['git', '-C', str(source), 'status', '--porcelain']).stdout.strip(), 'Source must be clean'
@@ -65,7 +75,8 @@ def full_source(source: Path, proof_path: Path, revision: str) -> Json:
     registry = json.loads((source / 'docs/scripts/mutations.json').read_text())
     assert proof['status'] == 'passed-complete-Linux-source-preflight-only' and proof['source_revision'] == revision, 'Complete exact source proof required'
     assert proof['actual_full_registry_mutations'] == len(registry) == len({row['id'] for row in registry}), 'Full mutation coverage differs'
-    assert proof['actual_preflight_group_count'] == len(proof['all_default_preflight_groups']) == 42, 'All preflight groups are required'
+    groups = proof['all_default_preflight_groups']
+    assert proof['actual_preflight_group_count'] == len(groups) == len(set(groups)) == len(preflight_slugs(source)), 'All preflight groups are required'
     assert proof['command_exit_status'] == proof['cleanup_exit_status'] == proof['independent_engine_query_exit_status'] == 0, 'Source proof contains a failed command'
     assert proof['unit_stopped_after_seal'] and proof['owned_container_absent'], 'Source proof lacks cleanup'
     assert proof['script_suites'] > 0 and proof['script_assertions'] > 0, 'Source proof lacks actual suite accounting'

@@ -88,6 +88,6 @@ def select_media_source(gpu: Json, selected: Path, proof_path: Path) -> tuple[Pa
     assert _closures(producer) == _closures(source), 'Media source changes a selected SDK or GPU script closure'
     review = {'profile': 'media-only-source-delta', 'GPU_source_revision': parent, 'Media_source_revision': head,
               'changed_paths': changed, 'upstream_inputs_compared': len(inputs),
-              'full_registry_mutations': full['actual_full_registry_mutations'], 'all_preflight_groups': 42,
+              'full_registry_mutations': full['actual_full_registry_mutations'], 'all_preflight_groups': full['actual_preflight_group_count'],
               'compiler_SDK_and_GPU_inputs_preserved': True, 'cache_hits_claimed': False, 'scope': __doc__}
     return source, head, proof_path.resolve(strict=True), review

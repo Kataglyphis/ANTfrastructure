@@ -51,7 +51,7 @@ class GpuSourceProfileTests(unittest.TestCase):
         (self.source / HIP_PATH).write_text(NEW_HIP)
         self.plan: dict[str, Any] = {'source': str(self.producer), 'source_revision': SDK,
                                      'full_source_preflight_proof': str(self.root / 'original full proof.json')}
-        self.full = mock.Mock(return_value={'actual_full_registry_mutations': 17})
+        self.full = mock.Mock(return_value={'actual_full_registry_mutations': 17, 'actual_preflight_group_count': 43})
         for name, replacement in [('checked_run', self.git_command), ('full_source', self.full)]:
             patcher = mock.patch.object(PROFILE, name, replacement)
             patcher.start()
@@ -89,7 +89,7 @@ class GpuSourceProfileTests(unittest.TestCase):
         self.assertEqual(review['profile'], 'hip-object-output')
         self.assertEqual(review['SDK_source_revision'], SDK)
         self.assertEqual(review['GPU_source_revision'], self.head)
-        self.assertEqual(review['full_registry_mutations'], 17)
+        self.assertEqual((review['full_registry_mutations'], review['all_preflight_groups']), (17, 43))
         self.assertTrue(review['compiler_and_SDK_inputs_preserved'])
         self.assertFalse(review['cache_hits_claimed'])
 

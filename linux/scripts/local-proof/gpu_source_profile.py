@@ -92,6 +92,6 @@ def select_gpu_source(plan: Json, selected: Path | None, proof_path: Path | None
     full = full_source(source, proof_path, head)
     review = {'profile': profile, 'SDK_source_revision': SDK_REVISION, 'tool_base': TOOL_BASE,
               'GPU_source_revision': head, 'reviewed_changes': sorted(paths),
-              'full_registry_mutations': full['actual_full_registry_mutations'], 'all_preflight_groups': 42,
+              'full_registry_mutations': full['actual_full_registry_mutations'], 'all_preflight_groups': full['actual_preflight_group_count'],
               'compiler_and_SDK_inputs_preserved': True, 'cache_hits_claimed': False, 'scope': __doc__}
     return source, head, proof_path.resolve(strict=True), review

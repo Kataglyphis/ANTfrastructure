@@ -103,7 +103,7 @@ class MediaSourceProfileTests(unittest.TestCase):
         self.assertEqual((source, revision, proof), (self.media_source.resolve(), git(self.media_source, 'rev-parse', 'HEAD'),
                                                      self.proof.resolve()))
         self.assertEqual(review['changed_paths'], ['linux/scripts/04-runtime/media-only.sh', 'notes/page.txt'])
-        self.assertEqual((review['GPU_source_revision'], review['full_registry_mutations']), (self.parent, 17))
+        self.assertEqual((review['GPU_source_revision'], review['full_registry_mutations'], review['all_preflight_groups']), (self.parent, 17, 42))
         self.assertGreater(review['upstream_inputs_compared'], len(DOCKERFILES))
         self.full.assert_called_once_with(self.media_source.resolve(), self.proof, revision)
 

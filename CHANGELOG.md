@@ -19,6 +19,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-25 — local proofs take the preflight group count from their source
+
+- `normal_stage_launch.full_source` requires as many distinct groups as the proved checkout's `KNOWN_SLUGS`
+  (42 at the earlier reference, 43 today) instead of a literal 42; the GPU and Media reviews record that checked
+  count. Five mutations hold the slug comparison, uniqueness, slug parsing and both reviews. The 2026-11-25
+  Omni comparison at 647bccb showed its NVIDIA candidate's missing `libonnxruntime.so.1` predates the CON231 pins.
+
 ## 2026-11-25 — The fallback-font check accepts the 3.47.9 engine while the image switches Flutter
 
 - The published image still runs Flutter 3.47.9, whose engine requests Noto Color Emoji v32 and Noto Sans Symbols 2

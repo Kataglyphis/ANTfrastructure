@@ -46,8 +46,10 @@ class StageTests(unittest.TestCase):
         source = self.work / 'source'
         (source / 'docs/scripts').mkdir(parents=True)
         (source / 'docs/scripts/mutations.json').write_text(json.dumps([{'id':'synthetic-1'}, {'id':'synthetic-2'}]))
+        (source / 'linux/scripts').mkdir(parents=True)
+        (source / 'linux/scripts/preflight.sh').write_text('KNOWN_SLUGS=(alpha beta \\\n  gamma)\n')
         proof = {'status':'passed-complete-Linux-source-preflight-only', 'source_revision':'synthetic-fixture',
-                 'actual_full_registry_mutations':2, 'actual_preflight_group_count':42, 'all_default_preflight_groups':list(range(42)),
+                 'actual_full_registry_mutations':2, 'actual_preflight_group_count':3, 'all_default_preflight_groups':['A','B','C'],
                  'command_exit_status':0, 'cleanup_exit_status':0, 'independent_engine_query_exit_status':0,
                  'unit_stopped_after_seal':True, 'owned_container_absent':True, 'script_suites':1, 'script_assertions':2}
         path = self.work / 'full.json'
@@ -59,7 +61,8 @@ class StageTests(unittest.TestCase):
         with mock.patch.object(STAGE, 'checked_run', side_effect=[subprocess.CompletedProcess([],0,'synthetic-fixture\n',''), subprocess.CompletedProcess([],0,'','')]):
             self.assertEqual(STAGE.full_source(source,path,'synthetic-fixture'),proof)
         for field,value in [('status','pending'), ('source_revision','different'), ('actual_full_registry_mutations',1),
-                            ('actual_preflight_group_count',41), ('all_default_preflight_groups',[]), ('command_exit_status',47),
+                            ('actual_preflight_group_count',2), ('all_default_preflight_groups',[]),
+                            ('all_default_preflight_groups',['A','A','C']), ('command_exit_status',47),
                             ('cleanup_exit_status',47), ('independent_engine_query_exit_status',47), ('unit_stopped_after_seal',False),
                             ('owned_container_absent',False), ('script_suites',0), ('script_assertions',0)]:
             with self.subTest(field=field), mock.patch.object(STAGE,'checked_run',side_effect=[subprocess.CompletedProcess([],0,'synthetic-fixture\n',''),subprocess.CompletedProcess([],0,'','')]):
@@ -67,6 +70,19 @@ class StageTests(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     STAGE.full_source(source,path,'synthetic-fixture')
         path.write_text(json.dumps(proof))
+        two = dict(proof, actual_preflight_group_count=2, all_default_preflight_groups=['A','B'])
+        path.write_text(json.dumps(two))
+        with mock.patch.object(STAGE,'checked_run',side_effect=[subprocess.CompletedProcess([],0,'synthetic-fixture\n',''),subprocess.CompletedProcess([],0,'','')]), self.assertRaisesRegex(AssertionError,'All preflight groups'):
+            STAGE.full_source(source,path,'synthetic-fixture')
+        path.write_text(json.dumps(proof))
+        for bad in ['KNOWN_SLUGS=()\n', 'KNOWN_SLUGS=(a a)\n', 'KNOWN_SLUGS=(Bad)\n', 'KNOWN_SLUGS=(a)\nKNOWN_SLUGS=(b)\n', 'SLUGS=(a)\n']:
+            with self.subTest(preflight=bad):
+                (source / 'linux/scripts/preflight.sh').write_text(bad)
+                with self.assertRaises(AssertionError):
+                    STAGE.preflight_slugs(source)
+        (source / 'linux/scripts/preflight.sh').write_text('KNOWN_SLUGS=(alpha beta \\\n  gamma)\n')
+        self.assertEqual(STAGE.preflight_slugs(source), ['alpha','beta','gamma'])
+        self.assertEqual(len(STAGE.preflight_slugs(ROOT)), len(set(STAGE.preflight_slugs(ROOT))))
         for head,dirty in [('wrong',''), ('synthetic-fixture',' M file')]:
             with mock.patch.object(STAGE,'checked_run',side_effect=[subprocess.CompletedProcess([],0,head,''),subprocess.CompletedProcess([],0,dirty,'')]), self.assertRaises(AssertionError):
                 STAGE.full_source(source,path,'synthetic-fixture')

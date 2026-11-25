@@ -177,7 +177,7 @@ an incomplete attach stream from becoming the only retained test output. The obs
 transport cause is not established. Fixtures cover clipped attachment, binary bytes,
 missing/linked transcripts, both redirected streams and raw failed command status;
 they do not prove a real container run. Complete acceptance still requires the existing
-42-group, exact-registry, source, terminal and cleanup checks. Keep earlier incomplete
+all-group, exact-registry, source, terminal and cleanup checks. Keep earlier incomplete
 logs and failed sealing attempts unchanged; do not add a success footer to them.
 
 The final receipt reader accepts the original `--property=ExecStopPost=...`,
@@ -513,9 +513,14 @@ The explicit pair `--runtime-source REPAIRED_SOURCE --runtime-source-proof
 COMPLETE_SOURCE_PROOF` selects only the reviewed wheel-context and unused-smoke-export
 repair pinned in `runtime_source_profile.py`. Both arguments are required together. Its complete
 proof must match that exact clean source commit, every current registry mutation,
-all 42 default groups, actual script suites and cleanup. A targeted source receipt
+all default groups, actual script suites and cleanup. A targeted source receipt
 or the original Android proof cannot satisfy it. Copy that new module beside the
 runtime profile and existing native/normal-stage companions.
+
+The source sets the group count. `normal_stage_launch.preflight_slugs` reads `KNOWN_SLUGS` from the
+proved checkout's `preflight.sh`. A complete proof must record one distinct group per slug. A new slug
+needs a new complete proof, so a 42-group receipt cannot qualify a 43-slug source.
+`launch-normal-compiler-plan.py` keeps its 42: it is bound to fixed older checkouts.
 
 The current reviewed source is `2aa1a7780861db8012cb769e04d3de474dddca37`:
 it keeps the stable wheel contexts and disables push, store and unpack only for the
