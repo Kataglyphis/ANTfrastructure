@@ -142,6 +142,41 @@ chmod +x "${_work}/beside/runner-old-host" "${_work}/beside/runner-no-loader"
 t_assert_contains "$(env -i "${_work}/beside/runner-old-host")" "data-found ld-linux" "an older host glibc takes the bundled loader"
 t_assert_contains "$(env -i "${_work}/beside/runner-no-loader")" "data-found ld-linux" "so does a host without that loader"
 
+t_case "--gcc-unwinder: the bundled libgcc_s owns _Unwind_RaiseException on both paths, only the host path exports LD_PRELOAD"
+mkdir -p "${_work}/unwind/lib"
+printf 'void _Unwind_RaiseException(void) {}\n' > "${_work}/fake-unwind.c"
+cc -shared -fPIC -o "${_work}/unwind/lib/libfakeunwind.so" "${_work}/fake-unwind.c"
+cp -L "$(c++ -print-file-name=libgcc_s.so.1)" "${_work}/unwind/lib/libgcc_s.so.1"
+cat > "${_work}/unwind.cpp" <<'EOF'
+#include <dlfcn.h>
+#include <cstdlib>
+#include <filesystem>
+#include <iostream>
+int main() {
+  Dl_info info{};
+  dladdr(dlsym(RTLD_DEFAULT, "_Unwind_RaiseException"), &info);
+  const char *preload = std::getenv("LD_PRELOAD");
+  std::cout << std::filesystem::path(info.dli_fname).filename().string() << ' ' << (preload ? "preload-exported" : "preload-unset") << '\n';
+}
+EOF
+c++ -std=c++17 -o "${_work}/unwind/plain" "${_work}/unwind.cpp" -Wl,--no-as-needed -L"${_work}/unwind/lib" -lfakeunwind -Wl,-rpath,'$ORIGIN/lib'
+cp "${_work}/unwind/plain" "${_work}/unwind/fixed"
+t_assert_eq "libfakeunwind.so preload-unset" "$(env -i "${_work}/unwind/plain")" "the fixture's earlier library wins the lookup, as Flutter's engine does"
+t_assert_ok bash "${_loader}" --beside "${_work}/unwind" "${_work}/unwind/lib" plain
+t_assert_ok bash "${_loader}" --beside --gcc-unwinder "${_work}/unwind" "${_work}/unwind/lib" fixed
+t_assert_ok bash "${_loader}" --beside --gcc-unwinder "${_work}/unwind" "${_work}/unwind/lib" fixed
+t_assert_eq "libfakeunwind.so preload-unset" "$(env -i "${_work}/unwind/plain")" "without the option the launcher changes nothing"
+t_assert_eq "libgcc_s.so.1 preload-exported" "$(env -i "${_work}/unwind/fixed")" "the host path preloads the bundled unwinder"
+t_assert_eq "libgcc_s.so.1 preload-unset" "$(env -i KATAGLYPHIS_BUNDLED_GLIBC=1 "${_work}/unwind/fixed")" \
+  "the bundled loader preloads it without handing LD_PRELOAD to host children"
+t_assert_contains "$(env -i LD_PRELOAD=/nonexistent/keep.so "${_work}/unwind/fixed" 2>&1)" "libgcc_s.so.1 preload-exported" "a caller's LD_PRELOAD is kept behind it"
+t_assert_contains "$(bash "${_loader}" --beside "${_work}/unwind" "${_work}/unwind/lib" fixed 2>&1)" "different unwinder policy"
+t_assert_contains "$(bash "${_loader}" --beside --gcc-unwinder "${_work}/unwind" "${_work}/unwind/lib" plain 2>&1)" "different unwinder policy"
+mkdir -p "${_work}/no-unwind/lib"
+cp "${_work}/unwind/plain.bin" "${_work}/no-unwind/runner"
+t_assert_contains "$(bash "${_loader}" --beside --gcc-unwinder "${_work}/no-unwind" "${_work}/no-unwind/lib" runner 2>&1)" "--gcc-unwinder needs a regular"
+t_assert_ok test -f "${_work}/no-unwind/runner"
+
 t_case "the AppImage generator's patchelf leaves glibc as built and passes everything else on"
 _keep="${CMAKE_MODULES}/../linux/scripts/06-packaging/patchelf-keep-glibc.sh"
 printf '#!/bin/sh\necho "patched $*"\n' > "${_work}/stub-patchelf"

@@ -472,6 +472,10 @@ without the option must be restaged. Specify the vendor libraries separately as 
 an empty path element never adds the current directory to the loader search. The staging and closure
 suites exercise these behaviors, but do not establish GPU compatibility or runtime redistribution.
 
+`bundle-loader.sh --gcc-unwinder` preloads the bundle's `libgcc_s.so.1` so GCC's unwinder owns
+`_Unwind_*` ahead of a Flutter engine's own; an AMD bundle needs it
+([the failure](failure-modes.md#a-flutter-app-on-rocm-aborts-with-filesystem_error)).
+
 `LOADER` turns `dpkg-shlibdeps` off (it reads the bundled glibc as the system's and pins
 `libc6 (<< 2.44)`), so `DEBIAN_DEPENDS` names what the system still brings; it also hands CPack's
 AppImage generator `patchelf-keep-glibc.sh`, because the generator patches every library without a

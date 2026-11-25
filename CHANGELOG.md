@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-25 — a bundle launcher can preload GCC's unwinder (CON231)
+
+- `bundle-loader.sh --gcc-unwinder` preloads the bundle's `libgcc_s.so.1`. OmniAccelerANT's AMD bundle
+  aborted on the RX 9070 XT because `libflutter_linux_gtk.so` exports its own `_Unwind_*`, which cannot
+  catch the `filesystem_error` ROCm's `librocm_kpack` throws and handles inside `libhipblaslt`'s
+  constructor. With the preload the same bundle ran MIGraphX operators and passed CPU detector parity.
+  Four mutations hold both preload paths, the rerun policy and the missing-library refusal.
+
 ## 2026-11-25 — the usable CPUs honour the cgroup quota
 
 - Owner decision: every cgroup v2 `cpu.max` from the process's own cgroup up to the root counts, and the

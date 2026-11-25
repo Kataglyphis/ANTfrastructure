@@ -65798,5 +65798,37 @@
   "replace": "    environ: Mapping[str, str] | None = None,\n    reuse_existing: bool = True,\n) -> Path | None:",
   "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
   "why": "ordinary registration owns its name; reusing another library's registration is an explicit opt-in"
+ },
+ {
+  "id": "packaging.gcc-unwinder-host-preload",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "    host_preload=\"$(printf '\\n  export LD_PRELOAD=\"$here/%s/libgcc_s.so.1${LD_PRELOAD:+:$LD_PRELOAD}\"' \"${to_lib}\")\"\n",
+  "replace": "    host_preload=\"\"\n",
+  "test": "bash linux/scripts/tests/test-linux-closure-install.sh",
+  "why": "a Flutter app on the host glibc must resolve _Unwind_* from the bundled libgcc_s or ROCm's caught exceptions terminate it"
+ },
+ {
+  "id": "packaging.gcc-unwinder-bundled-preload",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "    bundled_preload=\" --preload \\\"\\$here/${to_lib}/libgcc_s.so.1\\\"\"\n",
+  "replace": "    bundled_preload=\"\"\n",
+  "test": "bash linux/scripts/tests/test-linux-closure-install.sh",
+  "why": "the bundled loader must preload the unwinder too, without exporting LD_PRELOAD to host children"
+ },
+ {
+  "id": "packaging.gcc-unwinder-policy-unchecked",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "    [ \"${GCC_UNWINDER}\" = \"${unwinder}\" ] || err \"${rel} has a different unwinder policy; restage the executable\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-linux-closure-install.sh",
+  "why": "a rerun must not silently keep a launcher built under the other unwinder policy"
+ },
+ {
+  "id": "packaging.gcc-unwinder-missing-library",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "  [ -f \"${LIB_DIR}/libgcc_s.so.1\" ] && [ ! -L \"${LIB_DIR}/libgcc_s.so.1\" ] || err \"--gcc-unwinder needs a regular ${LIB_DIR}/libgcc_s.so.1\"\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-linux-closure-install.sh",
+  "why": "a launcher must not preload an unwinder the bundle does not carry"
  }
 ]
