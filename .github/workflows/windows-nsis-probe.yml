@@ -1,0 +1,75 @@
+# CON302 phase 0: measures the published image's makensis on a real bundle before any installer change rides on it.
+name: Windows x64 · NSIS setup probe
+on:
+  workflow_dispatch:
+    inputs:
+      payload-repo:
+        description: 'Repository whose latest release carries the x64 bundle ZIP'
+        required: false
+        default: 'Kataglyphis/OrchestrANT'
+        type: string
+      payload-pattern:
+        description: 'Release asset glob of that ZIP'
+        required: false
+        default: '*-windows-x64.zip'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-nsis-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: probe makensis (windows-2025)
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - name: Check out the probe source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: 'false'
+
+      - name: Prepare the Windows container host
+        id: prep
+        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-windows-container-host@develop
+        with:
+          checkout: 'false'
+          submodules: 'false'
+
+      - name: Download the bundle
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAYLOAD_REPO: ${{ inputs.payload-repo }}
+          PAYLOAD_PATTERN: ${{ inputs.payload-pattern }}
+          PROBE_WORKSPACE: ${{ steps.prep.outputs.workspace }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $dir = Join-Path $env:PROBE_WORKSPACE 'dist/nsis-payload'
+          gh release download -R $env:PAYLOAD_REPO --pattern $env:PAYLOAD_PATTERN --dir $dir
+          $zip = @(Get-ChildItem -LiteralPath $dir -Filter *.zip)
+          if ($zip.Count -ne 1) { throw "expected one ZIP for $env:PAYLOAD_PATTERN, found $($zip.Count)" }
+          Rename-Item -LiteralPath $zip[0].FullName -NewName 'payload.zip'
+
+      - name: Measure makensis in the image
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-windows-container@develop
+        with:
+          file: C:\ws\windows\scripts\diagnostics\Measure-NsisSetup.ps1
+          file-args: |
+            -PayloadZip
+            C:\ws\dist\nsis-payload\payload.zip
+            -OutDir
+            C:\ws\dist\nsis-probe
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nsis-probe
+          path: ${{ steps.prep.outputs.workspace }}/dist/nsis-probe
+          if-no-files-found: error
+          retention-days: 14

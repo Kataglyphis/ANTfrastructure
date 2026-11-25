@@ -28,6 +28,16 @@
   (286 passed, MIGraphX plugin EP). No smoke check failed. GPU execution stays unproven: this host has no NVIDIA driver,
   DirectML adapter or AMD GPU. The consumers' Windows lanes were dispatched on each tag.
 
+## 2026-11-25 — A CI probe measures the image's makensis (CON302 phase 0)
+
+- `windows/scripts/diagnostics/Measure-NsisSetup.ps1` packs a release's x64 bundle ZIP with zlib and with
+  `/SOLID lzma` in the published `:winamd64` image. It records the makensis version, time, peak RAM and setup
+  size, the 7-Zip listing, whether makensis takes the one-frame PNG `.ico`, and whether a silent install creates
+  and removes a Start-menu shortcut. It resolves Scoop's shim, so the RAM figure is the compiler's.
+- `windows-nsis-probe.yml` runs it on dispatch and uploads `nsis-probe.json`; it proves no shipped installer.
+- `Diagnostics.NsisSetupProbe.Tests.ps1`: seven cases for the script generator, the listing parser and the shim
+  reader; three new mutations, all proven.
+
 ## 2026-11-25 — The web smoke test accepts the fallback fonts of the transition lock
 
 - `flutter_integration_smoke_test.sh` with `CHECK_FALLBACK_FONTS=1` still required every row of
