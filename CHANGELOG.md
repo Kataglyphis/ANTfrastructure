@@ -30,6 +30,12 @@
 - `test-flutter-smoke-test.sh`: three new cases; `test-fetch-fallback-fonts.sh`: one. Four new mutations, and
   `web-smoke.fallback-fonts-served` re-pointed, all proven.
 
+## 2026-11-25 — A Windows-on-Arm laptop as a development host
+
+- `docs/windows-on-arm-dev-host.md`: what an aarch64 laptop with unified memory carries, the sizing on a 32 GB,
+  8-core device, which jobs run locally and which stay in CI, lavapipe's vector width there, and what to read after
+  a freeze. Indexed in `docs/INDEX.md`.
+
 ## 2026-11-25 — `run-in-ci-image.sh` caps a container's memory and CPUs; sizing WSL2 for builds
 
 - `--memory SIZE` and `--cpus N`, or `RUN_IN_CI_IMAGE_MEMORY` and `RUN_IN_CI_IMAGE_CPUS`, limit the run; the swap
