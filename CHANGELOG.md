@@ -19,6 +19,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-25 — :winamd64, :winamd64-nvidia and :winamd64-rocm carry 58d00ec7
+
+- With the owner's approval, the three Windows images built at `58d00ec7` are published after their smoke and
+  publish gates passed again in the push run: `:winamd64` `sha256:74d35f135f74ecb065a793bcf9861f216f3c4b3cd218467e315351b614213b3d`
+  (289 passed), `:winamd64-nvidia` `sha256:ae107fbffbb99205e317137bcb5cb79888d4324db5d7888f087ebe521588a9ca` (319 passed,
+  CUDA and TensorRT plugin EPs) and `:winamd64-rocm` `sha256:0e1d2f858d83357d4359727c92ad06b8ebf1668ca2e68fad8fcbeba7c2db4ffb`
+  (286 passed, MIGraphX plugin EP). No smoke check failed. GPU execution stays unproven: this host has no NVIDIA driver,
+  DirectML adapter or AMD GPU. The consumers' Windows lanes were dispatched on each tag.
+
 ## 2026-11-25 — The web smoke test accepts the fallback fonts of the transition lock
 
 - `flutter_integration_smoke_test.sh` with `CHECK_FALLBACK_FONTS=1` still required every row of
