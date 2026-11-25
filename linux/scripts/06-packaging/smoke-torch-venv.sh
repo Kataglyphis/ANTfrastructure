@@ -198,6 +198,7 @@ assert_tvm_codegen() {
   local out rc
   if out="$("${PY}" - 2>&1 <<'PYEOF'
 import os
+import subprocess
 import sys
 
 try:
@@ -205,7 +206,8 @@ try:
 except ImportError as e:
     print(f"TVM-CODEGEN SKIP: tvm not importable ({e})")
     sys.exit(3)
-if not os.path.exists(os.path.join(os.path.dirname(tvm.__file__), "lib", "libtvm_compiler.so")):
+compiler = os.path.join(os.path.dirname(tvm.__file__), "lib", "libtvm_compiler.so")
+if not os.path.exists(compiler):
     print("TVM-CODEGEN SKIP: a runtime-only tvm, no libtvm_compiler.so")
     sys.exit(3)
 if tvm.base._RUNTIME_ONLY:
@@ -220,10 +222,11 @@ from tvm import te
 a = te.placeholder((8,), name="a")
 f = te.create_prim_func([a, te.compute((8,), lambda i: a[i] * 2.0, name="b")])
 (tvm.compile if hasattr(tvm, "compile") else tvm.build)(f, target="llvm")
-with open("/proc/self/maps", encoding="utf-8") as maps:
-    shared = sorted({line.split()[-1] for line in maps if "/libLLVM" in line})
-if shared:
-    print(f"TVM-CODEGEN FAIL: tvm loaded a shared LLVM, which another LLVM can interpose: {shared}")
+# Torch-ROCm maps its own libLLVM too; only TVM's link to a shared one lets that copy interpose.
+dynamic = subprocess.run(["readelf", "-d", "-W", compiler], capture_output=True, text=True, check=True,
+                         env={**os.environ, "LC_ALL": "C"}).stdout
+if "Shared library: [libLLVM" in dynamic:
+    print("TVM-CODEGEN FAIL: libtvm_compiler.so needs a shared libLLVM, which another LLVM can interpose")
     sys.exit(1)
 print(f"TVM-CODEGEN OK: one PrimFunc compiled for llvm (USE_LLVM={llvm})")
 PYEOF
@@ -305,6 +308,7 @@ main() {
   if [ "${STV_ASSERT_ONLY:-0}" = "1" ]; then
     assert_pinned_versions
     assert_app_venv_parity
+    assert_tvm_codegen
     smoke_summary
     return 0
   fi

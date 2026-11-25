@@ -510,11 +510,12 @@ _tvm_out="$(_tvm_codegen)"
 t_assert_contains "${_tvm_out}" "AssertionError: unexpected TVM initialization bug"
 t_assert_contains "${_tvm_out}" "FAILURES=1"
 
-t_case "a tvm process that maps a shared LLVM fails the codegen smoke; a private one passes"
+# shellcheck source=linux/scripts/tests/llvm-elf-fixture.sh
+source "${TESTS_DIR}/llvm-elf-fixture.sh"
+t_case "a libtvm_compiler that needs a shared libLLVM fails the codegen smoke; another mapped LLVM does not"
 rm -f "${_STV}/stubs/tvm.py"
 mkdir -p "${_STV}/stubs/tvm/lib"
-: > "${_STV}/stubs/tvm/lib/libtvm_compiler.so"
-cp "$(python3 -c 'import _ctypes; print(_ctypes.__file__)')" "${_STV}/libLLVM.so.99"
+t_llvm_elf_fixture "${_STV}" || t_assert_eq 0 1 "the host compiler could not build the ELF fixture"
 cat > "${_STV}/stubs/tvm/__init__.py" <<'PY'
 import ctypes
 import os
@@ -522,8 +523,8 @@ import types
 
 base = types.SimpleNamespace(_RUNTIME_ONLY=False)
 support = types.SimpleNamespace(libinfo=lambda: {"USE_LLVM": "ON"})
-if os.environ.get("STUB_TVM_SHARED_LLVM"):
-    ctypes.CDLL(os.environ["STUB_TVM_SHARED_LLVM"])
+if os.environ.get("STUB_FOREIGN_LLVM"):
+    ctypes.CDLL(os.environ["STUB_FOREIGN_LLVM"])
 
 
 def compile(func, target):
@@ -531,13 +532,18 @@ def compile(func, target):
 PY
 printf '%s\n' 'def placeholder(shape, name): return name' 'def compute(shape, fn, name): return name' \
   'def create_prim_func(args): return args' > "${_STV}/stubs/tvm/te.py"
-_tvm_out="$(_tvm_codegen)"
+cp "${_STV}/private.so" "${_STV}/stubs/tvm/lib/libtvm_compiler.so"
+_tvm_out="$(_tvm_codegen STUB_FOREIGN_LLVM="${_STV}/libLLVM.so.99")"
 t_assert_contains "${_tvm_out}" "tvm codegen: one PrimFunc compiled for llvm"
 t_assert_contains "${_tvm_out}" "FAILURES=0"
-_tvm_out="$(_tvm_codegen STUB_TVM_SHARED_LLVM="${_STV}/libLLVM.so.99")"
-t_assert_contains "${_tvm_out}" "TVM-CODEGEN FAIL: tvm loaded a shared LLVM, which another LLVM can interpose: ['${_STV}/libLLVM.so.99']"
+cp "${_STV}/shared.so" "${_STV}/stubs/tvm/lib/libtvm_compiler.so"
+_tvm_out="$(_tvm_codegen)"
+t_assert_contains "${_tvm_out}" "TVM-CODEGEN FAIL: libtvm_compiler.so needs a shared libLLVM, which another LLVM can interpose"
 t_assert_contains "${_tvm_out}" "FAILURES=1"
-rm -rf "${_STV}/stubs/tvm" "${_STV}/libLLVM.so.99"
+rm -rf "${_STV}/stubs/tvm" "${_STV}/libLLVM.so.99" "${_STV}/private.so" "${_STV}/shared.so"
+
+t_case "the runtime-image assert-only smoke runs the TVM codegen check on the shipped venv"
+t_assert_contains "$(sed -n '/^  if \[ "${STV_ASSERT_ONLY:-0}" = "1" \]; then/,/^  fi/p' "${TESTS_DIR}/../06-packaging/smoke-torch-venv.sh")" "    assert_tvm_codegen"
 
 # D3: smoke-common's gate helpers must (A) fail when they should and (B) stay the only copy
 

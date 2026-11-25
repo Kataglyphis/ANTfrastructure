@@ -1215,9 +1215,11 @@ back to the dylib. `tvm.sh` now does four things:
 - A version script keeps every `llvm::` symbol of `libtvm_compiler` local. TVM's own
   objects instantiate inline LLVM members, which `--exclude-libs` does not reach.
 - The build fails when the library needs a `libLLVM` or exports an `llvm::` symbol.
-- The runtime codegen smoke fails a process that mapped any `libLLVM`.
+- The runtime-image smoke fails a shipped `libtvm_compiler.so` that needs a `libLLVM`.
+  It runs in the assert-only mode the runtime gate uses. Torch-ROCm's own mapped copy
+  is expected there and does not fail it.
 
-The gates read ELF metadata and one process map. They do not prove that no other
+The gates read ELF metadata. They do not prove that no other
 library shares symbols with TVM. `libtvm_compiler.so` grows by its LLVM archives.
 
 ### Operational env knobs (not versions.env)

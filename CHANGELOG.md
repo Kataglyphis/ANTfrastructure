@@ -44,6 +44,13 @@
 - `check-live-site.js --isolated` fails a route whose `crossOriginIsolated` is false and a base URL without
   COOP `same-origin` and COEP `require-corp`.
 
+## 2026-11-25 — the TVM smoke reaches the shipped image and reads the right fact
+
+- The runtime gate calls `smoke-torch-venv.sh` only with `STV_ASSERT_ONLY=1`, so `assert_tvm_codegen` never ran on a
+  shipped venv; it runs there now. Its shared-LLVM check read the process map and failed on Torch-ROCm's own
+  `libLLVM`, which a ROCm image always maps; it now fails only a `libtvm_compiler.so` that needs a `libLLVM`.
+  Two cases, two mutations.
+
 ## 2026-11-24 — TVM links a private static LLVM
 
 - `import tvm` crashed in about two of three ROCm app smokes: Torch-ROCm's own LLVM, loaded process-wide,
