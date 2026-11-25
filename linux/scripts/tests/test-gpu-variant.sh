@@ -101,8 +101,14 @@ t_assert_contains "$(_chain CROSS_VARIANT=nvidia bash "${CHAIN}" --describe-chai
   "cannot build sdk" "and refuses to re-push the shared stages"
 t_assert_contains "$(_chain CROSS_VARIANT=rocm bash "${CHAIN}" --describe-chain --target-arches amd64,arm64)" \
   "the rocm variant is amd64-only"
-t_assert_contains "$(_chain CROSS_VARIANT=nvidia bash "${CHAIN}" --describe-chain --target-arches amd64,arm64)" \
-  "cannot cross-build arm64" "a foreign-arch CUDA build would ship build-platform GPU libraries under its tag"
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=0 bash "${CHAIN}" --describe-chain --target-arches amd64,arm64)" \
+  "cannot cross-build arm64" "opted out of the SBSA cross route, a foreign-arch CUDA build would ship build-platform GPU libraries"
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia bash "${CHAIN}" --describe-chain)" \
+  "arches=amd64,arm64 " "an nvidia chain on amd64 builds arm64 through the SBSA cross route by default"
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=0 bash "${CHAIN}" --describe-chain)" \
+  "arches=amd64 " "opting out leaves an nvidia chain the build platform's arch"
+t_assert_contains "$(_chain CROSS_VARIANT=rocm bash "${CHAIN}" --describe-chain)" "arches=amd64 " "a rocm chain defaults to amd64"
+t_assert_contains "$(_chain bash "${CHAIN}" --describe-chain)" "arches=amd64,arm64,riscv64 " "the default chain keeps every arch"
 t_assert_contains "$(_chain CROSS_VARIANT=nvidia CROSS_BUILD_PLATFORM=linux/arm64 bash "${CHAIN}" --describe-chain --target-arches arm64)" \
   "can only PUSH from an amd64 build platform" "off amd64 the shared sdk is the amd64 lane's"
 t_assert_contains "$(_chain CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1 bash "${CHAIN}" --describe-chain --target-arches arm64 --only gpu)" \

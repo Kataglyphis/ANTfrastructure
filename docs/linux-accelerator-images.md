@@ -28,7 +28,7 @@ The three stage tags live in a separate, private package,
 ## NVIDIA GPU Build (Linux)
 
 > **Tag: `:latest-nvidia`** (a manifest; today one per-arch wrapper,
-> `:latest-nvidia-amd64` — arm64 joins when the cross-sbsa lane exists),
+> `:latest-nvidia-amd64` and `:latest-nvidia-arm64`; an amd64 host cross-builds the arm64 one by default),
 > per [`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags).
 > **Published for amd64.** The 2026-10-11 index (`sha256:810f36b3…`) ran on a GPU on 2026-10-12
 > ([§ The GPU run on the published image](#the-gpu-run-on-the-published-image-2026-10-12)).
@@ -84,11 +84,10 @@ What the variant changes, all in `build-cross-chain.sh` / `stage-defs.sh`:
   amd64 CPU `onnxruntime_dnnl` wheel is pruned from a GPU venv. Both flavours' `cp3XYt`
   twins stay in `/opt/wheels-free-threaded`, and an X.Yt venv takes the one its GIL store names
   ([free-threaded wheels](consumer-image-contract.md#the-free-threaded-wheels)). The manifest is
-  `:latest-nvidia` over the `:latest-nvidia-<arch>` the run built. There is no
-  route yet to add an arm64 entry: the Jetson lane's image is host-infixed and
-  local, and once the cross-sbsa lane exists it builds BOTH arches in one run —
-  after which an amd64-only run is refused by the completeness gate, as for
-  `:latest`.
+  `:latest-nvidia` over the `:latest-nvidia-<arch>` the run built. An nvidia chain
+  on amd64 builds BOTH arches in one run by default, arm64 through the SBSA cross
+  route below, so an amd64-only run (`CROSS_NVIDIA_SBSA=0`) is refused by the
+  completeness gate, as for `:latest`.
 - **The standalone runtime helpers refuse a default output tag** under a
   variant: `build-runtime-artifacts.sh` / `build-runtime-manifest.sh` read the
   variant's android, so a prefix without `-nvidia` (a plain `:latest`) is an
@@ -497,8 +496,10 @@ USB-camera object detection at 30 fps with 13 ms GPU inference.
 
 ### Cross from the amd64 host (SBSA), phases C and D: the gpu stage and the media consumers
 
-Since 2026-10-28 `CROSS_NVIDIA_SBSA=1` lets the nvidia chain cross-build the **arm64 gpu
-stage** on the amd64 host, from NVIDIA's `ubuntu2604/cross-linux-sbsa` packages:
+The nvidia chain cross-builds the **arm64 gpu stage** on the amd64 host, from NVIDIA's
+`ubuntu2604/cross-linux-sbsa` packages. It is the default (owner directive): `CROSS_VARIANT=nvidia`
+without `--target-arches` builds `amd64,arm64`, and `CROSS_NVIDIA_SBSA=0` turns the route off.
+The explicit forms still work:
 
 ```bash
 CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1 bash linux/scripts/build-cross-chain.sh --target-arches arm64 --only gpu

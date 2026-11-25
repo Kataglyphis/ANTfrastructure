@@ -19,6 +19,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-25 — an nvidia chain on amd64 builds arm64 by default (owner directive)
+
+- `cross_nvidia_sbsa_active` is on unless `CROSS_NVIDIA_SBSA=0`, and a variant chain without `--target-arches`
+  takes `cross_variant_default_arches`: `amd64,arm64` for nvidia on amd64 (arm64 through the SBSA cross route),
+  `amd64` for rocm, the full default set otherwise. Before, a bare nvidia chain fell back to `amd64,arm64,riscv64`
+  and was refused. Four stage-graph mutations hold the default, both variant defaults and the chain's use of them.
+
 ## 2026-11-25 — the NVIDIA AppImage check accepts a bundle's bare ORT soname
 
 - `verify-ort-appimage-payload.sh --nvidia-core libonnxruntime.so` lets a bundle that ships only the soname ort

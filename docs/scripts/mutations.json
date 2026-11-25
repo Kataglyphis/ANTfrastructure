@@ -66054,5 +66054,37 @@
   "replace": "  nvidia_core=\"${2:-}\"\n",
   "test": "bash linux/scripts/tests/test-ort-appimage-payload.sh",
   "why": "Only an ORT core soname may stand in for the core; a provider name would let a bundle without its core pass."
+ },
+ {
+  "id": "stage-graph.nvidia-sbsa-default-on",
+  "target": "linux/scripts/01-core/stage-defs.sh",
+  "find": "[ \"${CROSS_NVIDIA_SBSA:-1}\" = \"1\" ]",
+  "replace": "[ \"${CROSS_NVIDIA_SBSA:-0}\" = \"1\" ]",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": "Owner directive: an nvidia chain on amd64 cross-builds arm64 through SBSA unless CROSS_NVIDIA_SBSA=0."
+ },
+ {
+  "id": "stage-graph.nvidia-default-arches-include-arm64",
+  "target": "linux/scripts/01-core/stage-defs.sh",
+  "find": "then printf 'amd64,arm64'; else",
+  "replace": "then printf 'amd64'; else",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": "Without named arches an nvidia chain must build both entries of :latest-nvidia."
+ },
+ {
+  "id": "stage-graph.rocm-default-arches-amd64",
+  "target": "linux/scripts/01-core/stage-defs.sh",
+  "find": "    rocm) printf 'amd64' ;;\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": "A rocm chain without named arches would fall back to riscv64 and be refused."
+ },
+ {
+  "id": "disk-guard.chain-uses-variant-default-arches",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "TARGET_ARCHES=\"$(resolve_arch_list \"$(cross_variant_default_arches)\")\"",
+  "replace": "TARGET_ARCHES=\"$(resolve_arch_list)\"",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": "The chain must take the variant's default arches when none are named."
  }
 ]

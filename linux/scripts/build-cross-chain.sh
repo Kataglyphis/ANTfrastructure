@@ -12,7 +12,7 @@ orchestrator_preamble
 FINAL_IMAGE="${FINAL_IMAGE:-$(cross_final_image_tag)}"
 # Set by --final-image: comparing against the default string cannot tell a chosen default apart.
 FINAL_IMAGE_SET=0
-TARGET_ARCHES="$(resolve_arch_list)"
+TARGET_ARCHES="$(resolve_arch_list "$(cross_variant_default_arches)")"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
 # A GPU wrapper carries the CUDA/ROCm runtime and GPU torch wheels, so budget more than the CPU amd64 165G.
 [ -z "${CROSS_GPU_VARIANT:-}" ] || : "${CROSS_RUNTIME_LANE_GB:=180}"

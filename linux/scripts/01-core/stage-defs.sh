@@ -33,11 +33,21 @@ if [ "${ENABLE_DEEPSTREAM:-false}" = "true" ] && [ "${CROSS_GPU_VARIANT}" != "nv
   return 1
 fi
 
-# nvidia + arm64 target + amd64 build platform under CROSS_NVIDIA_SBSA=1: NVIDIA's cross-linux-sbsa packages make the gpu stage cross-buildable.
+# nvidia + arm64 target + amd64 build platform, on unless CROSS_NVIDIA_SBSA=0: NVIDIA's cross-linux-sbsa packages make the gpu stage cross-buildable.
 cross_nvidia_sbsa_active() {
-  [ "${CROSS_GPU_VARIANT:-}" = "nvidia" ] && [ "${CROSS_NVIDIA_SBSA:-0}" = "1" ] \
+  [ "${CROSS_GPU_VARIANT:-}" = "nvidia" ] && [ "${CROSS_NVIDIA_SBSA:-1}" = "1" ] \
     && [ "${1:-}" = "arm64" ] && [ "${2:-}" = "amd64" ] || return 1
   return 0
+}
+
+# The arches a chain builds when none are named: a variant's own, the default set otherwise.
+cross_variant_default_arches() {
+  local plat_arch; plat_arch="$(cross_build_platform)"; plat_arch="${plat_arch#linux/}"
+  case "${CROSS_GPU_VARIANT:-}" in
+    rocm) printf 'amd64' ;;
+    nvidia) if cross_nvidia_sbsa_active arm64 "${plat_arch}"; then printf 'amd64,arm64'; else printf '%s' "${plat_arch}"; fi ;;
+    *) printf '%s' "${CROSS_DEFAULT_ARCHES:-amd64,arm64,riscv64}" ;;
+  esac
 }
 
 # <first_stage> <arches> [last_stage]: prints why a variant run must not start. docs/linux-accelerator-images.md#nvidia-gpu-build-linux

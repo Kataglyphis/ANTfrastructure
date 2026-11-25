@@ -989,8 +989,9 @@ at `gpu` and refuses the shared stages, keeps its own `chain-status-<variant>.js
 `logs/build-logs/<variant>/`, and refuses what it cannot build (`stage-defs.sh`
 `cross_variant_refusal`, shared with `build-cross-stage.sh`): rocm off amd64; any target that is
 not the build platform's arch (CUDA/ROCm install for the BUILD platform, so a cross target would
-ship its GPU libraries); and a PUSHING run off `CROSS_BUILD_PLATFORM=linux/amd64` (the shared
-`:cross-sdk-<arch>` is the amd64 lane's). The runtime helpers refuse a default output tag under a
+ship its GPU libraries), except nvidia arm64; and a PUSHING run off `CROSS_BUILD_PLATFORM=linux/amd64`
+(the shared `:cross-sdk-<arch>` is the amd64 lane's). **An nvidia chain on amd64 cross-builds arm64
+(SBSA) by default** (owner directive): bare, it builds `amd64,arm64`; `CROSS_NVIDIA_SBSA=0` opts out. The runtime helpers refuse a default output tag under a
 variant. **Chains run strictly one at a time**: the pidfile is claimed atomically at start, and a
 live one makes a second chain refuse. Commands:
 [`linux-accelerator-images.md`](docs/linux-accelerator-images.md).
@@ -1425,9 +1426,8 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
 - **The arm64 GPU lane is SBSA CUDA: one image for Arm servers and Jetson.** Build with the
   image's GCC 16 (`NVCC_PREPEND_FLAGS=-allow-unsupported-compiler`), never a downgraded
   `CUDAHOSTCXX`, and keep `87` (Orin) in `CUDA_ARCHITECTURES` (ascending for readability only;
-  nothing depends on the order since 2026-09-23). The chain's `gpu` stage cannot push from an
-  arm64 build platform (the shared sdk is the amd64 lane's), so on the Jetson the lane stays
-  `--no-push` and the layer is handed on by hand:
+  nothing depends on the order since 2026-09-23). The amd64 host cross-builds it; a Jetson build
+  stays `--no-push`:
   [`linux-accelerator-images.md` § NVIDIA on arm64 (SBSA)](docs/linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson).
 - **Never give one nerdctl build two `oci-layout://` contexts.** nerdctl maps them onto one store
   id and one becomes unresolvable:
