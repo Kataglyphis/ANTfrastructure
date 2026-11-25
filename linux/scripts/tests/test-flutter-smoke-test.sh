@@ -92,7 +92,7 @@ t_case "every font of the lock under the base passes"
 for font in $(awk '!/^#/ && NF == 3 { sub("https://fonts.gstatic.com/s/", "", $3); print $3 }' "${LOCK}"); do
   mkdir -p "$(dirname "${work}/site/fallback-fonts/${font}")" && : > "${work}/site/fallback-fonts/${font}"
 done
-t_assert_contains "$(CHECK_FALLBACK_FONTS=1 t_out _smoke)" "PASS: all ${FONT_ROWS} locked fallback fonts served under fallback-fonts/"
+t_assert_contains "$(CHECK_FALLBACK_FONTS=1 t_out _smoke)" "PASS: all ${FONT_ROWS} locked fallback fonts of fallback-fonts.lock served under fallback-fonts/"
 t_assert_rc 0 env CHECK_FALLBACK_FONTS=1 PATH="${work}/bin:${PATH}" SITE="${work}/site" bash "${SMOKE}" http://site
 
 _assert_smoke_outcome() {
@@ -101,6 +101,32 @@ _assert_smoke_outcome() {
   t_assert_eq "$expected" "$status"
   t_assert_contains "$output" "$message"
 }
+
+# A fixture lock whose transition line names old.lock beside it, as fetch-fallback-fonts.py reads it.
+mkdir -p "${work}/locks/sub"
+_row() { printf '%064d  %s  https://fonts.gstatic.com/s/%s\n' 0 "${1##*/}" "$1"; }
+{ printf '# transition: Flutter 1.0, rows in old.lock\n'; _row emoji/v2/a.woff2; _row emoji/v2/b.woff2; } > "${work}/locks/new.lock"
+{ _row emoji/v1/a.woff2; _row emoji/v1/b.woff2; } > "${work}/locks/old.lock"
+grep -v '^# transition:' "${work}/locks/new.lock" > "${work}/locks/plain.lock"
+sed 's#rows in old.lock#rows in ../old.lock#' "${work}/locks/new.lock" > "${work}/locks/sub/new.lock"
+_serve_only() { rm -rf "${work}/site/tr"; for font in "$@"; do mkdir -p "${work}/site/tr/${font%/*}" && : > "${work}/site/tr/${font}"; done; }
+_bootstrap '_flutter.loader.load({config: {fontFallbackBaseUrl: "tr/"}});'
+
+t_case "a site that serves the transition lock's whole set passes, naming that lock"
+_serve_only emoji/v1/a.woff2 emoji/v1/b.woff2
+t_assert_contains "$(FALLBACK_FONTS_LOCK="${work}/locks/new.lock" CHECK_FALLBACK_FONTS=1 t_out _smoke)" "PASS: all 2 locked fallback fonts of old.lock served under tr/"
+_serve_only emoji/v2/a.woff2 emoji/v2/b.woff2
+t_assert_contains "$(FALLBACK_FONTS_LOCK="${work}/locks/new.lock" CHECK_FALLBACK_FONTS=1 t_out _smoke)" "PASS: all 2 locked fallback fonts of new.lock served under tr/"
+
+t_case "a mix of both locks' fonts fails, and so does the older set without a transition line"
+_serve_only emoji/v2/a.woff2 emoji/v1/b.woff2
+FALLBACK_FONTS_LOCK="${work}/locks/new.lock" CHECK_FALLBACK_FONTS=1 _assert_smoke_outcome 1 "FAIL: the site serves no lock's whole set of fallback fonts"
+t_assert_contains "$(FALLBACK_FONTS_LOCK="${work}/locks/new.lock" CHECK_FALLBACK_FONTS=1 t_out _smoke)" "FAIL: tr/emoji/v2/b.woff2 returned HTTP 404"
+_serve_only emoji/v1/a.woff2 emoji/v1/b.woff2
+FALLBACK_FONTS_LOCK="${work}/locks/plain.lock" CHECK_FALLBACK_FONTS=1 _assert_smoke_outcome 1 "FAIL: tr/emoji/v2/a.woff2 returned HTTP 404"
+
+t_case "a transition line naming a lock elsewhere fails"
+FALLBACK_FONTS_LOCK="${work}/locks/sub/new.lock" CHECK_FALLBACK_FONTS=1 _assert_smoke_outcome 1 "the transition lock '../old.lock' is no file beside it"
 
 t_case "JavaScript sizes remain strictly above their distinct thresholds"
 for spec in 'main.dart.js:10000:too small or missing (10000 bytes)' 'flutter_bootstrap.js:100:missing'; do

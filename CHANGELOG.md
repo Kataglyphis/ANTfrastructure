@@ -19,6 +19,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-25 — The web smoke test accepts the fallback fonts of the transition lock
+
+- `flutter_integration_smoke_test.sh` with `CHECK_FALLBACK_FONTS=1` still required every row of
+  `fallback-fonts.lock`, but a build on the 3.47.9 image places the transition lock's rows. OmniAccelerANT's
+  `[ci web]` lane failed on `notocoloremoji/v39` with HTTP 404.
+- `fetch-fallback-fonts.py --print-generations` prints the lock's font paths, then its transition lock's, and needs
+  no engine. The smoke test reads them from there and passes when the site serves one lock's whole set. A mix or a
+  partial set fails. `FALLBACK_FONTS_LOCK` names another lock for the suite's fixtures.
+- `test-flutter-smoke-test.sh`: three new cases; `test-fetch-fallback-fonts.sh`: one. Four new mutations, and
+  `web-smoke.fallback-fonts-served` re-pointed, all proven.
+
 ## 2026-11-25 — local proofs take the preflight group count from their source
 
 - `normal_stage_launch.full_source` requires as many distinct groups as the proved checkout's `KNOWN_SLUGS`

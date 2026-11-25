@@ -103,6 +103,11 @@ sed 's#rows in old.lock#rows in ../old.lock#' "${w}/tr/fonts.lock" > "${w}/tr/su
 t_assert_rc 2 "${PY}" -I "${FONTS}" --engine-data "${w}/engine.dart" --lock "${w}/tr/sub/fonts.lock" --check
 t_assert_contains "$(t_out "${PY}" -I "${FONTS}" --engine-data "${w}/engine.dart" --lock "${w}/tr/sub/fonts.lock" --check)" "the transition lock '../old.lock' is no file beside it"
 
+t_case "--print-generations lists the lock's font paths, then its transition lock's, each after its lock's name, with no engine"
+t_assert_eq "$(printf 'fonts.lock\temoji/v2/e.0.woff2\nfonts.lock\tsym/v2/s.woff2\nold.lock\temoji/v1/e.0.woff2\nold.lock\temoji/v1/e.1.woff2\nold.lock\tsym/v2/s.woff2')" "$("${PY}" -I "${FONTS}" --engine-data "${w}/none.dart" --lock "${w}/tr/fonts.lock" --print-generations)"
+t_assert_eq "$(printf 'fonts.lock\temoji/v1/e.0.woff2\nfonts.lock\temoji/v1/e.1.woff2\nfonts.lock\tsym/v2/s.woff2')" "$("${PY}" -I "${FONTS}" --lock "${w}/fonts.lock" --print-generations)"
+t_assert_rc 2 "${PY}" -I "${FONTS}" --lock "${w}/tr/sub/fonts.lock" --print-generations
+
 # In the family image the hub's own lock is graded against the SDK the lanes build with.
 ENGINE_LIST=/opt/flutter/engine/src/flutter/lib/web_ui/lib/src/engine/font_fallback_data.dart
 if [ -f "${ENGINE_LIST}" ]; then

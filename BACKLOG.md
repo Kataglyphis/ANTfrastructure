@@ -664,7 +664,9 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       consumers green on 3.50.1, then the workaround out again and 50 consecutive clean runs on the main domain.
       After the 3.50.1 image publishes, drop the transition rows and rule: the `# transition:` line in
       `fallback-fonts.lock`, `fallback-fonts-flutter-3.47.9.lock`, `generation`'s fallback in
-      `fetch-fallback-fonts.py`, its two test cases and the four `fallback-fonts.transition-*` recipes.
+      `fetch-fallback-fonts.py`, its two test cases and the four `fallback-fonts.transition-*` recipes, and
+      the transition lock in `--print-generations` with its smoke-test cases and the
+      `fallback-fonts.generations-transition` and `web-smoke.fallback-fonts-transition-set` recipes.
 
 - [ ] **CON236 — the Windows publish dispatches the consumers' lanes too** [S, ★★]. Owner decision 2026-11-13:
       after each publish every consumer's lanes run once on the new image. `build-runtime-manifest.sh`

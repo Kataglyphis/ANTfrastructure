@@ -9,7 +9,8 @@ REQUIRED_CSP_HOSTS="${REQUIRED_CSP_HOSTS:-}"
 CHECK_LOADING_SHELL="${CHECK_LOADING_SHELL:-1}"
 CHECK_LOCAL_ENGINE="${CHECK_LOCAL_ENGINE:-1}"
 CHECK_FALLBACK_FONTS="${CHECK_FALLBACK_FONTS:-0}"
-FALLBACK_FONTS_LOCK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/05-frameworks/flutter" && pwd)/fallback-fonts.lock"
+FLUTTER_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/05-frameworks/flutter" && pwd)"
+FALLBACK_FONTS_LOCK="${FALLBACK_FONTS_LOCK:-${FLUTTER_SCRIPTS}/fallback-fonts.lock}"
 
 # expect_wasm <path>: served as application/wasm, or the browser refuses to compile it.
 expect_wasm() {
@@ -131,15 +132,30 @@ if [ "$CHECK_FALLBACK_FONTS" = "1" ]; then
       exit 1
       ;;
   esac
-  FONT_COUNT=0
-  while read -r _sha _file url; do
-    case "$_sha" in "" | \#*) continue ;; esac
-    url="${url%$'\r'}"
-    font="${FONT_BASE%/}/${url#https://fonts.gstatic.com/s/}"
-    expect_http_200 "${font#/}" "${font#/}"
-    FONT_COUNT=$((FONT_COUNT + 1))
-  done < "$FALLBACK_FONTS_LOCK"
-  echo "PASS: all ${FONT_COUNT} locked fallback fonts served under ${FONT_BASE}"
+  # fetch-fallback-fonts.py places every row of one lock, its own or its transition lock's, so the site must serve one whole set.
+  FONT_SETS="$(python3 -I "${FLUTTER_SCRIPTS}/fetch-fallback-fonts.py" --lock "$FALLBACK_FONTS_LOCK" --print-generations)" || exit 1
+  FONT_SERVED="" FONT_FAILS=""
+  for lock_name in $(cut -f1 <<< "$FONT_SETS" | uniq); do
+    lock_fails="" lock_count=0
+    while IFS=$'\t' read -r row_lock rel; do
+      [ "$row_lock" = "$lock_name" ] || continue
+      font="${FONT_BASE%/}/${rel}"
+      status="$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/${font#/}" || true)"
+      [ "$status" = 200 ] || lock_fails+="FAIL: ${font#/} returned HTTP $status"$'\n'
+      lock_count=$((lock_count + 1))
+    done <<< "$FONT_SETS"
+    if [ -z "$lock_fails" ]; then
+      FONT_SERVED="all ${lock_count} locked fallback fonts of ${lock_name} served under ${FONT_BASE}"
+      break
+    fi
+    FONT_FAILS+="$lock_fails"
+  done
+  if [ -z "$FONT_SERVED" ]; then
+    printf '%s' "$FONT_FAILS"
+    echo "FAIL: the site serves no lock's whole set of fallback fonts"
+    exit 1
+  fi
+  echo "PASS: $FONT_SERVED"
 fi
 
 if [ "$CHECK_LOADING_SHELL" = "1" ]; then

@@ -18590,10 +18590,42 @@
  {
   "id": "web-smoke.fallback-fonts-served",
   "target": "linux/webserver/scripts/flutter_integration_smoke_test.sh",
-  "find": "    expect_http_200 \"${font#/}\" \"${font#/}\"",
-  "replace": "    :",
+  "find": "      [ \"$status\" = 200 ] || lock_fails+=\"FAIL: ${font#/} returned HTTP $status\"$'\\n'",
+  "replace": "      :",
   "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
   "why": "a build without its fonts 404s every emoji the engine falls back for"
+ },
+ {
+  "id": "web-smoke.fallback-fonts-transition-set",
+  "target": "linux/webserver/scripts/flutter_integration_smoke_test.sh",
+  "find": "  for lock_name in $(cut -f1 <<< \"$FONT_SETS\" | uniq); do",
+  "replace": "  for lock_name in $(cut -f1 <<< \"$FONT_SETS\" | head -n 1); do",
+  "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
+  "why": "a build on the older Flutter places its transition lock's fonts, which the site must be allowed to serve instead"
+ },
+ {
+  "id": "web-smoke.fallback-fonts-no-mix",
+  "target": "linux/webserver/scripts/flutter_integration_smoke_test.sh",
+  "find": "    lock_fails=\"\" lock_count=0",
+  "replace": "    lock_count=0",
+  "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
+  "why": "each lock's set is judged alone, so a mix of two generations never passes"
+ },
+ {
+  "id": "web-smoke.fallback-fonts-one-whole-set",
+  "target": "linux/webserver/scripts/flutter_integration_smoke_test.sh",
+  "find": "    if [ -z \"$lock_fails\" ]; then",
+  "replace": "    if [ \"$lock_count\" -gt 0 ]; then",
+  "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
+  "why": "a partial set is an empty box for every emoji its missing chunks hold"
+ },
+ {
+  "id": "fallback-fonts.generations-transition",
+  "target": "linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py",
+  "find": "        locks.append(found[1])",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-fetch-fallback-fonts.sh",
+  "why": "the smoke test learns the older Flutter's set only from here, or it fails every build on that image"
  },
  {
   "id": "docs-site.sidebars-browsers-side-by-side",

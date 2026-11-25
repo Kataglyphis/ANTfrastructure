@@ -66,20 +66,45 @@ def check_against_engine(rows: Sequence[tuple[str, str, str]], requested: list[s
     return problems
 
 
+def transition(lock: ModuleType, path: Path) -> tuple[str, Path] | None:
+    """The older Flutter and the lock beside this one that its transition line names, if it has one."""
+    found = TRANSITION.search(path.read_text(encoding="utf-8"))
+    if found is None:
+        return None
+    version, name = found[1], found[2]
+    if Path(name).name != name:
+        raise lock.FetchError(f"{path}: the transition lock {name!r} is no file beside it")
+    return version, path.parent / name
+
+
 def generation(lock: ModuleType, path: Path, requested: list[str]) -> tuple[list[tuple[str, str, str]], list[str], str]:
     """The lock's rows, else all of the older Flutter's its transition line names; with the problems and a note naming that Flutter."""
     rows = lock.read_lock(path)
     problems = check_against_engine(rows, requested)
-    found = TRANSITION.search(path.read_text(encoding="utf-8"))
+    found = transition(lock, path)
     if not problems or found is None:
         return rows, problems, ""
-    version, name = found[1], found[2]
-    if Path(name).name != name:
-        raise lock.FetchError(f"{path}: the transition lock {name!r} is no file beside it")
-    older = lock.read_lock(path.parent / name)
+    version, older_lock = found
+    older = lock.read_lock(older_lock)
     if check_against_engine(older, requested):
-        return rows, [*problems, f"nor is this Flutter {version}'s engine, whose rows {name} holds"], ""
+        return rows, [*problems, f"nor is this Flutter {version}'s engine, whose rows {older_lock.name} holds"], ""
     return older, [], f" (Flutter {version}'s transition rows)"
+
+
+def print_generations(path: Path) -> int:
+    """<lock file>TAB<family>/<version>/<file> for the lock's rows, then for its transition lock's: the sets a build may place."""
+    lock = _fetcher()
+    try:
+        locks = [path]
+        found = transition(lock, path)
+        if found is not None:
+            locks.append(found[1])
+        lines = [f"{each.name}\t{url.removeprefix(GSTATIC)}\n" for each in locks for _sha, _name, url in lock.read_lock(each)]
+    except (OSError, lock.FetchError) as exc:
+        sys.stderr.write(f"{exc}\n")
+        return 2
+    sys.stdout.write("".join(lines))
+    return 0
 
 
 def print_lock(families: list[str], requested: list[str]) -> int:
@@ -110,6 +135,11 @@ def default_cache() -> Path:
     if os.getenv("KATAGLYPHIS_FONT_CACHE"):
         return Path(os.environ["KATAGLYPHIS_FONT_CACHE"])
     return Path(os.getenv("XDG_CACHE_HOME") or Path.home() / ".cache") / "kataglyphis-fonts"
+
+
+def default_store(given: Path | None) -> Path | None:
+    """--store, else $KATAGLYPHIS_FONT_STORE, else none."""
+    return given or (Path(os.environ[STORE_ENV]) if os.getenv(STORE_ENV) else None)
 
 
 def place(
@@ -153,7 +183,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--store", type=Path, help=f"read-only copy the image's SDK stage filled; default: ${STORE_ENV}")
     parser.add_argument("--check", action="store_true", help="only compare the lock with the engine's list; fetch nothing")
     parser.add_argument("--print-lock", nargs="+", metavar="FAMILY", help="print lock lines for every chunk of these families and exit")
+    parser.add_argument("--print-generations", action="store_true", help="print each font path of the lock, then of its transition lock, after that lock's name; needs no engine")
     args = parser.parse_args(argv)
+    # The smoke test reads the sets a build may place from here, so the transition rule stays in this file alone.
+    if args.print_generations:
+        return print_generations(args.lock)
     data = engine_data(args.engine_data)
     if data is None:
         sys.stderr.write(f"no engine font list at {args.engine_data or '<Flutter SDK>/' + ENGINE_DATA.as_posix()}: pass --engine-data\n")
@@ -173,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"FAIL: {problem}\n")
     if problems or args.check:
         return 1 if problems else 0
-    store = args.store or (Path(os.environ[STORE_ENV]) if os.getenv(STORE_ENV) else None)
+    store = default_store(args.store)
     try:
         place(lock, rows, args.dest, args.cache or default_cache(), store)
     except lock.FetchError as exc:
