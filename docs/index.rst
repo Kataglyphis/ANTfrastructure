@@ -192,6 +192,7 @@ Common development targets:
    windows-clang-cl-sanitizers
    windows-cross-builds
    windows-host-setup
+   windows-on-arm-dev-host
    windows-stevedore-and-docker
    windows-container-build-performance
    windows-reference
