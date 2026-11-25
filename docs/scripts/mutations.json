@@ -50320,7 +50320,7 @@
  {
   "id": "compiler-llvm-tools.normal-stage-shared-05",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "    assert proof['actual_preflight_group_count'] == len(proof['all_default_preflight_groups']) == 42, 'All preflight groups are required'",
+  "find": "    assert proof['actual_preflight_group_count'] == len(groups) == len(set(groups)) == len(preflight_slugs(source)), 'All preflight groups are required'",
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
   "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: All preflight groups are required"
