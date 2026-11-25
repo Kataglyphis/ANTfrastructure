@@ -107,6 +107,7 @@ def register_plugin_library(
     plugin: PluginLibrary = MIGRAPHX,
     *,
     environ: Mapping[str, str] | None = None,
+    reuse_existing: bool = False,
 ) -> Path | None:
     """Register once per binding and name; failed calls remain retryable."""
     path = plugin_library_path(binding, plugin, environ=environ)
@@ -119,6 +120,11 @@ def register_plugin_library(
                 message = f"{plugin.name} is already registered from {previous}, refusing {path}"
                 raise RuntimeError(message)
             return previous
+        # Another library's registration is used, never recorded as this helper's own.
+        if reuse_existing and any(
+            device.ep_name == plugin.name for device in binding.get_ep_devices()
+        ):
+            return path
         register = getattr(binding, "register_execution_provider_library", None)
         if not callable(register):
             message = f"The owning ONNX Runtime binding cannot register {plugin.name}"
@@ -140,12 +146,18 @@ def select_plugin_device(
     plugin: PluginLibrary = MIGRAPHX,
     *,
     environ: Mapping[str, str] | None = None,
+    reuse_existing: bool = False,
 ) -> PluginDevice | None:
     """Select one matching runtime-enumerated device, without caching availability."""
     if device_index < 0:
         message = f"GPU device index must be non-negative: {device_index}"
         raise ValueError(message)
-    if register_plugin_library(binding, plugin, environ=environ) is None:
+    if (
+        register_plugin_library(
+            binding, plugin, environ=environ, reuse_existing=reuse_existing
+        )
+        is None
+    ):
         return None
     devices = [
         device for device in binding.get_ep_devices() if device.ep_name == plugin.name

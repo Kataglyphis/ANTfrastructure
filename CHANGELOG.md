@@ -31,6 +31,13 @@
 - `onnxruntime-single-source.md` § The ORT thread rule defines the usable CPUs and links the file. CON304 keeps
   the consumer bindings: OxidANT, AccelerANTgine and OrchestrANT.
 
+## 2026-11-25 — the Python plugin helper can reuse another library's registration
+
+- `shared/python/ort_plugin_eps.py` takes `reuse_existing=True` in `register_plugin_library` and
+  `select_plugin_device`, as the native and Rust helpers do: a device another library of the process already listed
+  is used without registering the module again and is never reported as this helper's registration. OrchestrANT
+  needs it to keep its current behaviour. Four cases, three mutations.
+
 ## 2026-11-25 — the Rust plugin helper can reuse another library's registration
 
 - `shared/rust/ort_plugin_eps.rs` gains `append_provider_reusing_external`, the Rust form of the native helper's

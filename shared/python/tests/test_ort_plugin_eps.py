@@ -277,6 +277,47 @@ class RegistrationTest(unittest.TestCase):
         self.assertEqual(len(self.binding.calls), 1)
         self.assertEqual(self.binding.device_calls, 2)
 
+    def test_reuse_attaches_an_externally_listed_device_without_registering(
+        self,
+    ) -> None:
+        self.image_library()
+        external = Device("MIGraphX")
+        self.binding.devices = [Device("CPUExecutionProvider"), external]
+        for _ in range(2):
+            self.assertIs(
+                plugin.select_plugin_device(
+                    self.binding, environ=self.settings, reuse_existing=True
+                ),
+                external,
+            )
+        self.assertEqual(self.binding.calls, [])
+        self.assertEqual(plugin.registered_plugin_names(self.binding), ())
+
+    def test_reuse_without_a_listed_device_registers_once_and_owns_it(self) -> None:
+        library = self.image_library()
+        for _ in range(2):
+            with self.assertRaisesRegex(RuntimeError, "found 0"):
+                plugin.select_plugin_device(
+                    self.binding, environ=self.settings, reuse_existing=True
+                )
+        self.assertEqual(self.binding.calls, [("MIGraphX", str(library))])
+        self.assertEqual(plugin.registered_plugin_names(self.binding), ("MIGraphX",))
+
+    def test_reuse_still_refuses_a_missing_advertised_module(self) -> None:
+        self.binding.devices = [Device("MIGraphX")]
+        self.image.mkdir()
+        with self.assertRaises(FileNotFoundError):
+            plugin.select_plugin_device(
+                self.binding, environ=self.settings, reuse_existing=True
+            )
+        self.assertEqual(self.binding.calls, [])
+
+    def test_default_registers_even_when_a_device_is_listed(self) -> None:
+        library = self.image_library()
+        self.binding.devices = [Device("MIGraphX")]
+        plugin.select_plugin_device(self.binding, environ=self.settings)
+        self.assertEqual(self.binding.calls, [("MIGraphX", str(library))])
+
 
 if __name__ == "__main__":
     unittest.main()
