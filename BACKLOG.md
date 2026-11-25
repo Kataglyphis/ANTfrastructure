@@ -2701,6 +2701,8 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
          the one-frame PNG `.ico`, time, RAM and size of zlib on OrchestrANT's 0.56 GB bundle (and of `/SOLID lzma`
          for the day it has its notice), the NVIDIA
          DirectML bundle size, and whether Start-menu shortcuts work in a Server Core container.
+         The probe is `windows-nsis-probe.yml` with `Measure-NsisSetup.ps1` (2026-11-25); it measures everything above
+         except the NVIDIA DirectML bundle size, which needs a released NVIDIA bundle and stays open.
       2. Pin makensis at 3.12 or later (owner: the Windows session, after the same proof; it changes
          the Windows image files and `versions.env`): 3.11 fixes CVE-2025-43715, 3.12 fixes CVE-2026-42171, Scoop ships 3.13.
          First read which NSIS built the setups AccelerANTgine and BeschleunigerBallett already released; below

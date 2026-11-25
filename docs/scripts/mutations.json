@@ -66006,5 +66006,29 @@
   "replace": "'all_preflight_groups': 0,",
   "test": "bash linux/scripts/tests/test-media-source-profile.sh",
   "why": "The Media review records the checked proof's group count, not a constant."
+ },
+ {
+  "id": "windows-lane.nsis-probe-compressor-line",
+  "target": "windows/scripts/diagnostics/Measure-NsisSetup.ps1",
+  "find": "\"SetCompressor $Compressor\"",
+  "replace": "'SetCompressor lzma'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Diagnostics.NsisSetupProbe.Tests.ps1",
+  "why": "Each measured setup must use the compressor it is reported under."
+ },
+ {
+  "id": "windows-lane.nsis-probe-first-listing-fact",
+  "target": "windows/scripts/diagnostics/Measure-NsisSetup.ps1",
+  "find": "        if (-not $facts.Contains($group[1].Value)) { $facts[$group[1].Value] = $group[2].Value.Trim() }",
+  "replace": "        $facts[$group[1].Value] = $group[2].Value.Trim()",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Diagnostics.NsisSetupProbe.Tests.ps1",
+  "why": "The archive's own method must not be overwritten by a member file's row."
+ },
+ {
+  "id": "windows-lane.nsis-probe-shim-target",
+  "target": "windows/scripts/diagnostics/Measure-NsisSetup.ps1",
+  "find": "    if ($null -eq $hit) { throw \"$shim names no target path\" }\n",
+  "replace": "    if ($null -eq $hit) { return $Path }\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Diagnostics.NsisSetupProbe.Tests.ps1",
+  "why": "A shim without a target must fail rather than measure the shim's own working set."
  }
 ]
