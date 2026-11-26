@@ -6,20 +6,30 @@ Import-Module (Join-Path $PSScriptRoot 'WindowsTest.MutationCases.psm1') -ErrorA
 Import-Module (Join-Path $PSScriptRoot 'WindowsConsumer.ExecutionFixtures.psm1') -ErrorAction Stop
 Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsScripts.Shared.psm1') -ErrorAction Stop
 
+# One fake build per outcome; $AfterEach stays a plain block, since a nested closure drops the outer one's $State.
+function Invoke-CmakeBuildOutcomes {
+    param($State, [hashtable]$Parameters, [scriptblock]$AfterEach)
+    foreach ($mode in @('success', 'nonzero', 'throw')) {
+        $State.Throw = $mode -eq 'throw'; $State.Code = if ($mode -eq 'nonzero') { 9 } else { 0 }
+        $invoke = { Invoke-MutCmakeBuildCommand -Context ([pscustomobject]@{}) @Parameters }.GetNewClosure()
+        if ($mode -eq 'success') { Assert-Equal 0 @(& $invoke).Count 'the build adds no result objects to its output' }
+        else { Assert-Throws $invoke -MessagePattern ('CMake build failed with exit code ' + $(if ($mode -eq 'throw') { 1 } else { 9 })) }
+        & $AfterEach $mode
+    }
+}
+
 function Assert-CmakeRuntimeEnvironment {
     param($State)
+    $outcomes = ${function:Invoke-CmakeBuildOutcomes}
     foreach ($debug in @($false, $true)) {
         Invoke-TestEnvironmentCases -Name PATH -Value @($null, '', 'parent path') -With @{ SCCACHE_MAX_JOBS = '1' } -AssertRestored -Body {
                 param($parent)
                 $State.Runtime = if ($debug) { [IO.FileInfo]::new((Join-Path ([IO.Path]::GetTempPath()) 'clang_rt.fixture.dll')) } else { $null }
                 $configuration = if ($debug) { 'Debug' } else { 'Release' }
                 $expected = if ($debug) { $State.Runtime.DirectoryName + ';' + $parent } else { $parent }
-                foreach ($mode in @('success', 'nonzero', 'throw')) {
-                    $State.Throw = $mode -eq 'throw'; $State.Code = if ($mode -eq 'nonzero') { 9 } else { 0 }
-                    $runtimeDirs = if ($debug) { @($State.Runtime.DirectoryName) } else { @() }
-                    $invoke = { Invoke-MutCmakeBuildCommand -Context ([pscustomobject]@{}) -BuildArgs @('--build', 'fixture build', '--config', $configuration, '--parallel', '2', '--verbose') -SanitizerRuntimeDirs $runtimeDirs }.GetNewClosure()
-                    if ($mode -eq 'success') { Assert-Equal 0 @(& $invoke).Count 'the build adds no result objects to its output' }
-                    else { Assert-Throws $invoke -MessagePattern ('CMake build failed with exit code ' + $(if ($mode -eq 'throw') { 1 } else { 9 })) }
+                $runtimeDirs = if ($debug) { @($State.Runtime.DirectoryName) } else { @() }
+                $build = @{ BuildArgs = @('--build', 'fixture build', '--config', $configuration, '--parallel', '2', '--verbose'); SanitizerRuntimeDirs = $runtimeDirs }
+                & $outcomes $State $build {
                     Assert-Equal $expected $State.Paths[-1] 'CMake runtime PATH preserves directory precedence'
                     Assert-Equal "--build|fixture build|--config|$configuration|--parallel|2|--verbose" ($State.Calls[-1] -join '|')
                 }
@@ -30,13 +40,15 @@ function Assert-CmakeRuntimeEnvironment {
 
 function Assert-CmakeBuildOutputLog {
     param($State)
+    $outcomes = ${function:Invoke-CmakeBuildOutcomes}
     Invoke-InTestDir { param($dir)
-        foreach ($mode in @('success', 'nonzero', 'throw')) {
-            $State.Throw = $mode -eq 'throw'; $State.Code = if ($mode -eq 'nonzero') { 9 } else { 0 }
-            $log = Join-Path $dir 'logs' $mode 'build.log'
-            $invoke = { Invoke-MutCmakeBuildCommand -Context ([pscustomobject]@{}) -BuildArgs @('--build', 'fixture build') -OutputLogPath $log }.GetNewClosure()
-            if ($mode -eq 'success') { $null = & $invoke } else { Assert-Throws $invoke -MessagePattern 'CMake build failed' }
+        # Removed after each outcome, so an outcome that writes no log cannot pass on the one before.
+        $log = Join-Path $dir 'logs' 'windows' 'build.log'
+        & $outcomes $State @{ BuildArgs = @('--build', 'fixture build'); OutputLogPath = $log } {
+            param($mode)
+            Assert-True (Test-Path -LiteralPath $log) "the $mode build writes its output log"
             Assert-Equal 'build output| ' ((Get-Content -LiteralPath $log) -join '|') "the build output log holds what the $mode build printed"
+            Remove-Item -LiteralPath $log
         }
     }.GetNewClosure()
 }
