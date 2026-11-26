@@ -615,6 +615,8 @@ _torch_build_free_threaded_wheel() {
     _torch_cmake_args cmake_args
     # On the command line: the toolchain file's CACHE sets cannot move the GIL pass's cached Python, nor its FindPython results.
     cmake_args+=("-U" "_Python*" "-U" "Python_NumPy*" "-U" "Python3_NumPy*"
+        # scikit-build-core's -C init cache sets FIND_ABI for a 3.Xt interpreter, and CMake 4.4.5's cross FindPython then finds no Development.Module.
+        "-U" "Python_FIND_ABI" "-U" "Python3_FIND_ABI"
         "-DPython_INCLUDE_DIR=${FT_TARGET_INCLUDE}" "-DPython3_INCLUDE_DIRS=${FT_TARGET_INCLUDE}" "-DPython_LIBRARY=${FT_TARGET_LIBRARY}")
     cmake_args_string="$(shell_quote_args "${cmake_args[@]}")"
     rm -rf "${dist_dir}"; mkdir -p "${dist_dir}"
@@ -622,6 +624,11 @@ _torch_build_free_threaded_wheel() {
     rm -f "${src_dir}"/torch/_C.cpython-*.so
     if ! _torch_run_setup_py; then
         warn "torch: the free-threaded pass over ${src_dir} failed"
+        return 1
+    fi
+    # torch only warns when FindPython misses Development.Module, then ships a wheel without torch_python or _C.
+    if ! grep -qx -e 'BUILD_PYTHON:BOOL=ON' "${src_dir}/build/CMakeCache.txt" 2>/dev/null; then
+        warn "torch: the free-threaded configure turned BUILD_PYTHON off (FindPython found no Development.Module for the target 3.Xt), so the twin has no _C"
         return 1
     fi
     log "torch: the free-threaded pass took $(( $(date +%s) - t0 ))s in the warm tree"

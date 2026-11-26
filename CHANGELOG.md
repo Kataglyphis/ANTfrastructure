@@ -19,6 +19,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — the riscv64 torch twin builds torch_python again
+
+- The riscv64 media stage failed its final store check: the `cp315t` torch wheel had no `_C`. scikit-build-core 1.1.2
+  sets `Python_FIND_ABI=ANY;ANY;ANY;ON` for a free-threaded interpreter, and CMake 4.4.5's cross FindPython then found
+  no `Development.Module`, so torch turned `BUILD_PYTHON` off with a warning. A probe build of the app-wheelhouse step
+  showed the cache; a toy project in the sdk image showed that any explicit `FIND_ABI` fails and an unset one works.
+- `_torch_build_free_threaded_wheel` drops both `FIND_ABI` cache values after the init cache and fails the twin unless
+  `BUILD_PYTHON:BOOL=ON`. `wheels.torch-ft-drops-find-abi` and `wheels.torch-ft-requires-build-python` hold it.
+  Only the riscv64 app-wheelhouse RUN re-keys.
+
 ## 2026-11-26 — NSIS setups and their uninstallers are test-signed (CON302 step 5)
 
 - `WindowsMsix.Signing` gains `Invoke-AuthenticodeSign`, the format-neutral signtool step that `Invoke-MsixSign` now
