@@ -658,6 +658,13 @@ builds therefore fetch every ORT-family source through
 - **GenAI's extensions dependency is pinned too.** GenAI's own `cmake/deps.txt` must name the
   pinned `onnxruntime-extensions` commit. `20-fetch.sh` fetches it beside the GenAI tree and
   `60-build-genai.sh` points `FETCHCONTENT_SOURCE_DIR_ONNXRUNTIME_EXTENSIONS` at it.
+- **The QNN plugin's `ort_core` takes the same path.** The fork's `deps.txt` downloads ORT
+  1.29.0 as a GitHub archive. `36-build-qnn-plugin-ep.sh` fetches `ORT_QNN_EP_CORE_COMMIT` from
+  Microsoft, then from the `onnxruntime` row's fallbacks, and checks `VERSION_NUMBER`. It
+  archives the commit as a local `refs/tags/v<ver>.zip` and points the `ort_core` row and its
+  `URL_HASH` (SHA256) at it, so FetchContent still applies the fork's `ort_core` patches. A
+  `FETCHCONTENT_SOURCE_DIR` would skip them. The Windows lane does the same
+  (`Build-OrtQnnEpFromSource.ps1`).
 - **Why not `versions.env`.** `Dockerfile.base` mounts `versions.env`, so a pin there re-keys
   the whole chain. The pins stay beside the Media scripts until the next full rebuild moves
   them (owner decision 2026-11-23). The ORT and GenAI rows are derived: `sync_versions.py

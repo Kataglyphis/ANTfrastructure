@@ -66294,5 +66294,61 @@
   "replace": "if seen.get(n, 0) > 1]",
   "test": "bash linux/scripts/tests/test-version-snapshot.sh",
   "why": "a deleted row compares nothing and must not read as a match"
+ },
+ {
+  "id": "onnx-ep-qnn.ort-core-from-verified-source",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  sed -i \"s|^ort_core;.*|ort_core;${archive};${digest}|\" \"${deps}\" && ",
+  "replace": "  ",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "FetchContent would download ort_core from microsoft/onnxruntime again, which GitHub has served as 404 since 2026-11-17"
+ },
+ {
+  "id": "onnx-ep-qnn.ort-core-identity-checked",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  if [ \"$(grep -cE \"^ort_core;https",
+  "replace": "  if false && [ \"$(grep -cE \"^ort_core;https",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "a changed fork dependency row would be replaced silently instead of re-reviewed"
+ },
+ {
+  "id": "onnx-ep-qnn.ort-core-sha256-hash",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": " && sed -i 's|URL_HASH SHA1=${DEP_SHA1_ort_core}|URL_HASH SHA256=${DEP_SHA1_ort_core}|' \"${ext}\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "FetchContent would check the local archive's SHA256 as a SHA1 and refuse it"
+ },
+ {
+  "id": "onnx-ep-qnn.ort-core-before-shim",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  qnnep_ort_core_archive \"${QNNEP_SRC}\" \"${work}/ort-core-git\" \"${work}/ort-core-archive\" || err \"the QNN plugin EP's ort_core archive failed\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "the build would reach configure with the upstream ort_core URL"
+ },
+ {
+  "id": "onnx-ep-qnn.ort-core-version-checked",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "    [ \"${got}\" = \"${ver}\" ] && return 0\n",
+  "replace": "    return 0\n",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "a pinned commit whose VERSION_NUMBER is not the fork's ort_core tag would give the plugin another release's headers"
+ },
+ {
+  "id": "onnx-ep-qnn.ort-core-uses-fallbacks",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  urls+=(\"${fallbacks[@]}\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "with upstream gone, only the ORT pin's fallback repositories still serve the release commit"
+ },
+ {
+  "id": "onnx-ep-qnn.ort-core-full-commit",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  [[ \"${commit}\" =~ ^[0-9a-f]{40}$ ]] ||",
+  "replace": "  true ||",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "an abbreviated pin would let a fallback repository answer with a different object"
  }
 ]

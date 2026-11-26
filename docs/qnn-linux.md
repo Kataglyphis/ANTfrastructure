@@ -69,6 +69,8 @@ would not fit the image's 3.15 anyway).
   `versions.env`, bumped by hand together. The fork's `cmake/deps.txt` keeps upstream's SHA1 pins, as
   the in-tree ORT build's does; one of them, `ort_core`, is microsoft/onnxruntime's source at the
   version the fork was developed against (1.29.0 for 2.7.0), fetched for the EP's internal headers.
+  Upstream is gone, so the build archives the verified `ORT_QNN_EP_CORE_COMMIT` locally and points
+  that row at it ([source pins](onnxruntime-single-source.md#source-pins-and-fork-fallback)).
   It does not have to match the chain's ORT: compatibility is the plugin ABI (`MIN_ORT_API_VERSION`
   24, ORT ≥ 1.24.1), and the chain's 1.31 is what loads it.
 - **Build** (`03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh`, the GPU RUN of

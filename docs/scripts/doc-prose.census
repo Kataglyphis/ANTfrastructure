@@ -172,9 +172,9 @@ docs/mistral-vibe-glm-setup.md | avg-sentence | 12.9
 docs/mistral-vibe-glm-setup.md | long-share | 2.6
 docs/mistral-vibe-glm-setup.md | ids-per-k | 4.0
 docs/mistral-vibe-glm-setup.md | bold-per-k | 17.0
-docs/onnxruntime-single-source.md | avg-sentence | 19.0
-docs/onnxruntime-single-source.md | long-share | 11.7
-docs/onnxruntime-single-source.md | ids-per-k | 5.5
+docs/onnxruntime-single-source.md | avg-sentence | 18.9
+docs/onnxruntime-single-source.md | long-share | 11.5
+docs/onnxruntime-single-source.md | ids-per-k | 5.4
 docs/onnxruntime-single-source.md | bold-per-k | 9.1
 docs/overview.md | avg-sentence | 16.4
 docs/overview.md | long-share | 13.4
@@ -193,9 +193,9 @@ docs/python-ci.md | long-share | 13.5
 docs/python-ci.md | ids-per-k | 5.2
 docs/python-ci.md | bold-per-k | 9.5
 docs/qnn-linux.md | avg-sentence | 23.6
-docs/qnn-linux.md | long-share | 25.3
+docs/qnn-linux.md | long-share | 25.0
 docs/qnn-linux.md | ids-per-k | 3.7
-docs/qnn-linux.md | bold-per-k | 10.7
+docs/qnn-linux.md | bold-per-k | 10.6
 docs/rancher-desktop-linux-containers.md | avg-sentence | 17.4
 docs/rancher-desktop-linux-containers.md | long-share | 11.4
 docs/rancher-desktop-linux-containers.md | ids-per-k | 4.9

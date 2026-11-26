@@ -8,6 +8,8 @@ QNNEP_ORT_DIR="${QNNEP_ORT_DIR:-/usr/local/lib/onnxruntime-cpu}"
 QNNEP_WORK_DIR="${QNNEP_WORK_DIR:-/tmp/onnxruntime-ep-qnn}"
 # shellcheck source=35-build-migraphx-plugin-ep.sh
 source "${SCRIPT_DIR}/35-build-migraphx-plugin-ep.sh"
+# shellcheck source=lib/source-fetch.sh
+source "${SCRIPT_DIR}/lib/source-fetch.sh"
 
 # The media RUN carries TARGET_ARCH; a sourced 01-core gives arch_oci. Either names the image the plugin is built for.
 qnnep_target_arch() { if command -v arch_oci >/dev/null 2>&1; then arch_oci; else printf '%s' "${TARGET_ARCH:-${TARGETARCH:-}}"; fi; }
@@ -54,6 +56,45 @@ qnnep_assert_no_foreign_core() {
   done < <(find "${build}" -name 'libonnxruntime.so*' -type f 2>/dev/null)
 }
 
+# <fork src> <dest>: ort_core's pinned release commit, from microsoft/onnxruntime or the ORT pin's fallbacks; its VERSION_NUMBER must be the fork's tag.
+qnnep_ort_core_source() {
+  local src="$1" dest="$2" ver commit url pin got
+  local -a urls=(https://github.com/microsoft/onnxruntime.git) fallbacks=()
+  ver="$(qnnep_ort_core_version "${src}")" || return 1
+  commit="$(mgxep_pin ORT_QNN_EP_CORE_COMMIT)" || return 1
+  [[ "${commit}" =~ ^[0-9a-f]{40}$ ]] || { printf 'ERROR: ORT_QNN_EP_CORE_COMMIT=%s is not a full commit\n' "${commit}" >&2; return 1; }
+  pin="$(ort_source_pin onnxruntime)" || return 1
+  IFS=' ' read -r -a fallbacks <<< "${pin##*|}"
+  urls+=("${fallbacks[@]}")
+  for url in "${urls[@]}"; do
+    if ! _ort_source_by_commit "${url}" "${commit}" "${dest}" - || ! _ort_source_verified ort_core "${commit}" "${dest}" "${url}"; then continue; fi
+    got="$(tr -d '[:space:]' < "${dest}/VERSION_NUMBER" 2>/dev/null || true)"
+    [ "${got}" = "${ver}" ] && return 0
+    printf 'ERROR: ort_core %s from %s says VERSION_NUMBER %s, not the fork'"'"'s %s\n' "${commit}" "${url}" "${got:-<none>}" "${ver}" >&2
+    return 1
+  done
+  rm -rf "${dest}"
+  printf 'ERROR: ort_core %s (v%s) is unavailable from %s repositories\n' "${commit}" "${ver}" "${#urls[@]}" >&2
+  return 1
+}
+
+# <fork src> <core checkout> <archive root>: the committed bytes as a local refs/tags/v<ver>.zip, so FetchContent still extracts it and applies the fork's ort_core patches.
+qnnep_ort_core_archive() {
+  local src="$1" core="$2" root="$3" ver archive digest deps="$1/cmake/deps.txt" ext="$1/cmake/external/onnxruntime_external_deps.cmake"
+  ver="$(qnnep_ort_core_version "${src}")" || return 1
+  archive="${root}/refs/tags/v${ver}.zip"
+  mkdir -p "${archive%/*}" || return 1
+  git -c core.autocrlf=false -C "${core}" archive --format=zip "--prefix=onnxruntime-${ver}/" "--output=${archive}" HEAD || { printf 'ERROR: archiving ort_core failed\n' >&2; return 1; }
+  digest="$(sha256sum "${archive}" | cut -c1-64)"
+  if [ "$(grep -cE "^ort_core;https://github\.com/microsoft/onnxruntime/archive/refs/tags/v${ver//./\\.}\.zip;[0-9a-f]{40}\$" "${deps}")" != 1 ] \
+     || [ "$(grep -c 'URL_HASH SHA1=${DEP_SHA1_ort_core}' "${ext}")" != 1 ]; then
+    printf 'ERROR: the fork'"'"'s ort_core dependency changed; refusing the archive substitution\n' >&2; return 1
+  fi
+  sed -i "s|^ort_core;.*|ort_core;${archive};${digest}|" "${deps}" && sed -i 's|URL_HASH SHA1=${DEP_SHA1_ort_core}|URL_HASH SHA256=${DEP_SHA1_ort_core}|' "${ext}" || return 1
+  grep -qxF -e "ort_core;${archive};${digest}" "${deps}" && grep -qF -e 'URL_HASH SHA256=${DEP_SHA1_ort_core}' "${ext}" \
+    || { printf 'ERROR: the ort_core archive substitution did not persist\n' >&2; return 1; }
+}
+
 qnnep_source_url() { printf 'https://github.com/onnxruntime/onnxruntime-qnn/archive/refs/tags/v%s.tar.gz' "$1"; }
 
 # <so>: every NEEDED name is the chain's, a QAIRT backend beside it or the target's C/C++ runtime; ldd cannot run a cross-built module.
@@ -73,13 +114,16 @@ qnnep_closure_ok() {
 # <so>: the two plugin exports and the NEEDED walk above.
 qnnep_verify_library() { plugin_ep_verify_library "$1" qnnep_closure_ok; }
 
-# The QAIRT SDK, the pinned fork and the --ort_home shim; sets QNNEP_QAIRT, QNNEP_VERSION, QNNEP_SHA, QNNEP_SRC and QNNEP_ORT_HOME.
+# The QAIRT SDK, the pinned fork with its ort_core archive and the --ort_home shim; sets QNNEP_QAIRT, QNNEP_VERSION, QNNEP_SHA, QNNEP_SRC and QNNEP_ORT_HOME.
 qnnep_sources() {
   local work="${QNNEP_WORK_DIR}"
   QNNEP_QAIRT="$(resolve_qnn_sdk)"
   [ -n "${QNNEP_QAIRT}" ] || err "arm64 builds the plugin QNN EP, but no QAIRT SDK resolved (QNN_SDK_VERSION pin or a zip in linux/qnn-sdk/)"
   QNNEP_VERSION="$(mgxep_pin ORT_QNN_EP_VERSION)"; QNNEP_SHA="$(plugin_ep_sha_pin ORT_QNN_EP_SOURCE_SHA256)"
   QNNEP_SRC="$(plugin_ep_source onnxruntime-qnn "$(qnnep_source_url "${QNNEP_VERSION}")" ORT_QNN_EP_SOURCE_SHA256 "${work}")"
+  qnnep_ort_core_source "${QNNEP_SRC}" "${work}/ort-core-git" || err "the QNN plugin EP's ort_core source is unavailable"
+  qnnep_ort_core_archive "${QNNEP_SRC}" "${work}/ort-core-git" "${work}/ort-core-archive" || err "the QNN plugin EP's ort_core archive failed"
+  rm -rf "${work}/ort-core-git"
   QNNEP_ORT_HOME="$(qnnep_ort_home "${QNNEP_ORT_DIR}" "${work}/ort-home" "$(qnnep_ort_core_version "${QNNEP_SRC}")")"
 }
 
@@ -118,7 +162,7 @@ qnnep_compile() {
   info ">>> QNN plugin EP v${QNNEP_VERSION}: ${JOBS} jobs, QAIRT at ${QNNEP_QAIRT}, chain ORT at ${QNNEP_ORT_DIR}"
   # -S: the fork's tools/python/util imports a helper it no longer ships whenever torch is importable; build.py needs only the stdlib.
   qnnep_configure "${HOST_PYTHON_BIN}" -S "${QNNEP_SRC}/tools/ci_build/build.py" "${args[@]}" --update 2>&1 | tee "${work}/build.log"
-  # Configure fetches ort_core; the headers go into --ort_home before the compile reads them.
+  # Configure populates ort_core from the local archive; the headers go into --ort_home before the compile reads them.
   info "ORT headers for the plugin: $(qnnep_ort_home_headers "${QNNEP_ORT_HOME}" "${work}/build/Release/_deps/ort_core-src") files from the fork's ort_core"
   "${HOST_PYTHON_BIN}" -S "${QNNEP_SRC}/tools/ci_build/build.py" "${args[@]}" --build 2>&1 | tee -a "${work}/build.log"
   cmake_assert_compiler_cache_pin "${work}/build/Release" "${_ort_launcher:-}"
