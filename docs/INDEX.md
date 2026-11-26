@@ -265,6 +265,34 @@ owning page above.
 | Upstream submissions and issue drafts | [`upstream/hcsshim-lost-shutdown-notification-issue.md`](upstream/hcsshim-lost-shutdown-notification-issue.md), [`upstream/windows-containers-lsm-session-event-hang.md`](upstream/windows-containers-lsm-session-event-hang.md), [`../windows/upstream/README.md`](../windows/upstream/README.md) |
 | The libstdc++ `-nostdinc++` note | [`upstream-libstdcxx-c++23-nostdinc++.md`](upstream-libstdcxx-c++23-nostdinc++.md) |
 
+## Invariants by topic
+
+The one-line rules that used to sit in `AGENTS.md` live on these pages.
+
+| Section |
+|---|
+| [windows-build-invariants.md § Script, test and packaging invariants](windows-build-invariants.md#script-test-and-packaging-invariants) |
+| [shared-script-libraries.md § Companion files a copied helper needs](shared-script-libraries.md#companion-files-a-copied-helper-needs) |
+| [shared-script-libraries.md § Shell helper invariants](shared-script-libraries.md#shell-helper-invariants) |
+| [onnxruntime-single-source.md § Build, plugin and WebGPU invariants](onnxruntime-single-source.md#build-plugin-and-webgpu-invariants) |
+| [code-quality-tooling.md § Test harness and lint invariants](code-quality-tooling.md#test-harness-and-lint-invariants) |
+| [python-app-bundles.md § Packaging and licence invariants](python-app-bundles.md#packaging-and-licence-invariants) |
+| [linux-accelerator-images.md § AMD source-stack invariants](linux-accelerator-images.md#amd-source-stack-invariants) |
+| [image-acceptance.md § Acceptance invariants](image-acceptance.md#acceptance-invariants) |
+| [cross-build-verification.md § Compiler and SDK proof invariants](cross-build-verification.md#compiler-and-sdk-proof-invariants) |
+| [gpu-artifact-receipts.md § GPU workflow invariants](gpu-artifact-receipts.md#gpu-workflow-invariants) |
+| [local-proof-workflows.md § Cleanup and relocation invariants](local-proof-workflows.md#cleanup-and-relocation-invariants) |
+| [dependency-updates.md § Renovate driver invariants](dependency-updates.md#renovate-driver-invariants) |
+| [build-cache-tiers.md § Cache probe invariants](build-cache-tiers.md#cache-probe-invariants) |
+| [python-ci.md § uv and free-threaded invariants](python-ci.md#uv-and-free-threaded-invariants) |
+| [local-proof-workflows.md § Local launch and handoff invariants](local-proof-workflows.md#local-launch-and-handoff-invariants) |
+| [repository-family.md § Reuse invariants](repository-family.md#reuse-invariants) |
+| [third-party-licenses.md § Source-original notice invariants](third-party-licenses.md#source-original-notice-invariants) |
+| [windows-stevedore-and-docker.md § Delegated maintenance invariants](windows-stevedore-and-docker.md#delegated-maintenance-invariants) |
+| [branch-and-release-strategy.md § Release invariants](branch-and-release-strategy.md#release-invariants) |
+| [shared-script-libraries.md § Key shared utilities](shared-script-libraries.md#key-shared-utilities) |
+| [windows-host-setup.md § Host disk reclaim](windows-host-setup.md#host-disk-reclaim) |
+
 ## Where does a piece of knowledge belong? (from AGENTS.md)
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), changing only the heading, the

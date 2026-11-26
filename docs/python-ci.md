@@ -1046,3 +1046,14 @@ publishes it. Its registry tags stay until the conditions in
 [`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags)
 are met. Name `:latest`:
 [`rancher-desktop-linux-containers.md` § The image: always `:latest`](rancher-desktop-linux-containers.md#the-image-always-latest).
+
+## uv and free-threaded invariants
+
+Rules for uv installs and the free-threaded smoke pool. Each row is one rule.
+
+| Rule |
+|---|
+| Locked tool installs also require `uv-image-overlay.sh` beside `python_uv.sh`; copied code-quality libraries carry `quality/cmake-format/{pyproject.toml,uv.lock}` and retain the Python 3.15 lexer patch. |
+| Image-backed uv overlays validate the complete active lock and isolated install plan against image packages before installation; preserve pinned runtime provenance and reject non-venv targets. Overlay and locked-tool uv calls ignore inherited project and working-directory overrides so relative paths retain their caller meaning. |
+| Consumer pin checks parse pyproject TOML and ignore only uv's exclusion list; genuine dependency pins, overrides and malformed manifests retain their fatal verdicts. |
+| `uv_sync_project --only-group` excludes the project, default groups and extras; when the chain store is active, reject an unreadable lock or any ORT in it before syncing. |

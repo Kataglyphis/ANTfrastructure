@@ -2697,3 +2697,142 @@ bootstrap import. Removing that import must fail those positive checks; the dedi
 removal mutation proves the regression. A failing unmutated suite invalidates a
 mutation result rather than proving that a mutant was caught. These source controls
 do not establish a successful hosted workflow, image or consumer build.
+
+## Companion files a copied helper needs
+
+A helper copied into an image or a consumer needs the files it sources or imports beside it. Each row names a copied helper and its companions; a missing companion must fail, never fall back.
+
+| Rule |
+|---|
+| Copied `restore-consumer-archive.py` carries `preserve-consumer-sources.py`, `host_commands.py` and `source_ci/common.py`; restore exact original shallow metadata before checkout, never synthesize new boundaries to hide missing objects. Archive restoration proves neither source authenticity nor recursive dependencies. |
+| Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks. |
+| Copied lint drivers carry `lint-scope-init.sh` and `lint-root.sh`; source initialization in the driver shell so remaining positional arguments survive. |
+| Copied compiler/SDK qualifiers and OCI handoffs carry `proof_subject.py` and `proof_commands.py`; SDK profiles bind the actual invocation, complete source and compiler parent, both native shell modes and all compiler ancestor layers. Never retarget a compiler plan to represent an SDK. |
+| Copied live configure snapshots carry their cache reader/profile, native OCI layout/seed and command companions; require a live matching process, stable before/after source and copied bytes, bounded regular files, fresh output and no source/output overlap. |
+| Copied cache log readers/replayers/sealers carry `cache_capture_profile.py`; retain actual PID/start identity, existing regular-file and live inode checks, input hashes, bounded named units and explicit partial-timeout verdicts. |
+| Copied normal SDK/GPU launchers carry `normal_stage_launch.py`; GPU admission requires the exact qualified SDK, rehashed native blobs and compiler ancestry, complete source proof, fresh local alias, idle host and unchanged disk floor. |
+| Copied native OCI handoffs also carry `native_oci_layout.py` and `native_oci_seed.py`; parent-seeded context exports require these helpers beside the core layout, a fresh destination, immutable verified layer links, independent child metadata and both raw transport statuses. Hash and ancestry checks remain mandatory after sharing. New link receipts use schema 2 with device/inode, size, mode, owner and mtime checks; later links may advance ctime. Schema 1 retains its strict ctime policy. Default Media and Android handoffs carry `default_handoff_profile.py` and the SDK/Media launch companions; require each target's own receipt scope, exact parent and baked cross environment. |
+| Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion. |
+| Copied common and minimal bootstrap modules carry `sudo-policy.sh`; retain SDK delegation before importing the policy from its module owner. |
+| Copied core and dependency preambles carry `cross-active-fallback.sh`; source it at the original registration point to retain alias binding. |
+| Copied `stage-script-closure.py` carries `script_closure.py` and all selected/transitive profiles; bundle-aware copy-coverage probes require that same parser. The read-only declared-script reporter does not prove built images or ABI. |
+| Copied WASM proof modules carry the build-proof/runtime modules and webgpu-factory-probe companions; copied suites carry wasm_proof_fixture.py and its independent node fixture. |
+| Copied runtime smoke drivers carry `check-ort-runtime.sh`; the FT store runs the same Python gate in its installed FT environment. |
+| Copied `35-build-migraphx-plugin-ep.sh` and `37-build-tensorrt-plugin-ep.sh` carry `plugin-ep-exports.sh` and `plugin-ep-seeds.txt` beside them; the media verify stage reads the export probe from the mounted ORT build directory, so keep that directory mount on the GPU RUN. |
+| Copied MIGraphX build scripts carry both ownership patches and the core `apply-patch.sh` entry; a failed patch stops before the next patch or seeds. |
+| Copied `WindowsBuild.Common.psm1` and `Build-TorchApp.ps1` carry `WindowsSdistCompiler.Common.psm1` with its `WindowsTargetArch` and `WindowsScripts.Shared` siblings; its gate grades only what uv reports as built. |
+| Copied Python ORT registration helpers stay exact shared assets; cache successful registrations per owning binding and preserve explicit-root precedence, retryable failures and fresh device selection. Python plugin sessions attach devices through SessionOptions without a legacy constructor provider override. Native callers share one registry per live owning API/environment, preserve its lifetime and return raw C-API failures instead of aborting wrappers. |
+| Copied `antfrastructure.sh` carries `renovate-git-mode.sh` beside it; the hub driver imports the same canonical selector before handling a Windows-authored WSL checkout. |
+| Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order. |
+| Copied `app-packaging.sh` carries `app-packaging-license.sh` and `app-packaging-entrypoint.sh`; both it and `pe-icon-tools.sh` carry `log-bootstrap.sh` in the shared lib layout. Package the original project license and validate declared texts in built artifacts. The standalone entrypoint selector also imports the canonical logging bootstrap. |
+| Copied host tensor-pair drivers carry the CLI/environment helpers, both shared Python probes and the parity reader; preserve raw child status, isolated Python, both devices and every-run profile checks. |
+| Copied `stage-cargo-licenses.py` carries `cargo_license_tree.py`; live tree selection preserves the build's target and feature flags and records both tree and metadata scopes. |
+| Copied `WindowsPythonApp.Common.psm1` carries `WindowsIcon.Common.psm1` and `WindowsMsix.Common.psm1`; unforced imports and re-exports keep their icon and license APIs visible. |
+| Copied `copy-media-payloads.sh` carries `llvm-loader-path.sh`; native compiler and package publication share its source-first conf and raw write/cache failures. |
+| Copy `compiler-cache-utils.sh` beside `common.sh`, cache modules and standalone cache probes and `media-payloads.sh` beside packaging copy/validation scripts; preserve narrow mounts. |
+| Copy `elf-strip.sh` and `image-ref-args.sh` beside `build-helpers.sh`; `digest-pinning.sh` also requires `image-ref-args.sh`. |
+| Copied GCC/Vulkan modules carry fresh `path-helpers.sh`; copied Rust version utilities carry `load-versions-env.sh` beside the existing core companions. |
+| Copied ORT provenance and GStreamer ORT checks carry `path-helpers.sh` in their relative `01-core` layout. |
+| Copies of `python_uv.sh` and `webdav-download.sh` carry `python-probe.sh`; missing companions fail rather than restoring interpreter-selection copies. |
+| Copied isolated-worker Rust bindings carry their canonical C source/header; retain descriptor closure, parent-death guards, validated worker status and normal worker exec/teardown. Initial supervisor startup uses ordinary fork for libc state repair. |
+| Copied loaded-module Rust lookup stays an exact shared asset; retain byte paths, foreign-symbol ownership and the wrong-module refusal after relative loading and cwd changes. |
+| Copied Torch setup carries `package-image-wiring.sh`, `wheelhouse-manifest.sh` and `native-gcc-system-paths.sh` before its first execution. |
+| Copied `build-app-wheelhouse.sh` carries `torch-source-pins.sh` beside it. |
+| Copied `lib-runtime-wheels.sh` carries `01-core/wheelhouse-manifest.sh`. |
+| Copied isolated-helper-compile.sh carries lib/log-bootstrap.sh; SDK failure fixtures own their temporary download archives through the harness. |
+| Copied package staging retirement requires the closed producer, fresh absence/mount observations, exact preview and retained archive hashes; remove only its three declared copied trees and preserve home caches, compiler targets, sources and receipts. |
+| - Compiler-plan copies carry `compiler_plan_profile.py`, `compiler_unique_profile.py`, `proof_profiles.py` and `native_oci_layout.py`; retain original profiles and record reviewed deltas without rewriting the old reference. The explicit GNU_UNIQUE profile binds its exact source, compiler6 inputs and normal matched-hook count; copied profile suites carry their shared fixture module. |
+| Copied `ci_packaging.sh` carries `ci-compiler-cache.sh`; cache-enabled copies need the full core layout. |
+| Copied host proof tools carry `host_commands.py`; the watcher also carries `preflight-status.py`, and isolated preflight carries both scripts under `isolated-preflight/`. |
+| Copied `append-operational-memory.py` carries both `operational_memory` modules, `host_commands.py` and `source_ci/common.py`; preserve controller refusals, exact prefix checks and exclusive backups. |
+| Copied `run-in-ci-image.sh` carries the shared `lib/cli-value-options.sh` and logging companions; the mutation recipe contract lives in `mutation_parse.py` beside its runner. |
+| Proof-workflow test copies carry `proof_workflow_ft_tests.py` and `proof_workflow_cleanup_tests.py`; preserve their selected script roots and the owning EngineFixture lifecycle. |
+| Copied `verify_mutations.py` carries `mutation_workspace.py` beside its parse, push and shard companions, including consumer-hook fixtures; preserve normalized target paths and source-copy defaults. Hook fixtures isolate inherited per-command Git configuration. |
+| Copied QNN configure suites carry `fixtures/qnn-build-driver.sh`; keep the worker in Bash scope. |
+| Copied MIGraphX SDK/HIP checks carry `native-check-common.sh`, retaining caller-visible argument and compiler setup. |
+
+## Shell helper invariants
+
+Rules for the shared shell helpers and the callers that use them. Each row is one rule.
+
+| Rule |
+|---|
+| Compiler smoke callbacks stay unconditional; preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses. |
+| The hooks' host-red helper imports the canonical logging bootstrap; copied helpers retain it and the existing positive library-import controls. |
+| Optional Cargo release JSON paths are paired, distinct regular outputs cleared before wrapper setup; retain the whole workspace then explicit CLI, their original alias parse points, raw failures and one unfiltered invocation per stream. |
+| Validate the host binfmt owner's source API marker before sourcing its probe mode; an older installer ignores unknown arguments and could install. |
+| Invoke selected Meson providers and callbacks unconditionally; retain availability guards, order, partial flags and raw failures. |
+| Callback dispatch preserves caller-visible bindings and positional context; generic helper locals must not hide configuration used by supplied shell wrappers. |
+| Host compiler wrappers retain parent-shell publication and original local slots; optional media pinning retains caller-bound lookup and invocation. |
+| Validate cross-apt's first-line source API marker before its helper-only import; older full imports must not overwrite provided SDK updaters. |
+| Shared CLI consumers retain complete argument lists when nameref assignments can read positional parameters. |
+| Bound command callbacks retain their original parse phase and source scope; preserve caller-specific raw failure and advisory policies. |
+| Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls. |
+| Require child cleanup APIs before starting timers or watchers; advisory cleanup signals then reaps and retains caller PID guards, reset and command status. |
+| CMake consumers use `Get-CmakeBuildArgs` for target, configuration and parallel flags; keep its argument order and caller-specific build verdict. |
+| Fixture byte-preservation checks share `Assert-FileUnchanged`; retain caller bindings and propagate operation exceptions. |
+| Fixture cleanup uses `Remove-TestDir` with literal paths; bracketed diagnostic prefixes must leave no temporary roots. |
+| Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions. |
+| CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts. |
+| Shared mirror enumeration preserves source-file order and original shell-option behavior; artifact and image probes retain caller failure policies. |
+| Minimal toolchain bootstraps carry `elf-strip.sh` and `load-versions-env.sh`; keep the narrow GCC/LLVM mounts. |
+| New required toolchain imports validate their expected export and preserve selected-file failures; legacy file-only imports retain their caller policy. |
+| Standalone Android, GCC and Vulkan entries carry `bootstrap-import.sh` and `bootstrap.sh` beside them; Vulkan also carries `vulkan-install.sh`, and supplied download helpers retain precedence. |
+| Consumer checks running inside the family Linux image use `ci_image_python_require` from `python-probe.sh`; retain its image marker, pinned interpreter probe and caller-specific diagnostic. |
+| Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts. |
+| Rust plugin consumers carry the exact shared policy, preserve GetEpDevices failures and retain the owning environment during V2 calls without blocking its normal teardown. |
+| Native child waits under Dart must preserve external-reaper failures; an ECHILD or a successful failure-control probe never proves worker teardown or bridge acceptance. |
+| Cargo native helper staging uses the exact successful Cargo JSON artifact and build-script OUT_DIR; copy stage-cargo-native-helper.py with ort_census_probe.py and retain target checks and no-replace publication. |
+| Native transport controls execute while the bounded Dart child is live; preserve the canonical HIP worker/fake-runtime companions, normal sanitizer teardown, its real report and the expected leak-control exit. |
+| Native GCC profiles carry `native-gcc-system-paths.sh`; preserve flag expansion when the profile is sourced. |
+| `verify-cross-chain.sh` help carries `runtime-build-fns.sh`; ordinary forwarding must not load build helpers. |
+| Repository refresh shares best-effort fetches; callers retain checkout failure policy. Linux parser destination maps preserve raw values and consumed-argument counts. |
+| Object smokes share compile/cleanup lifecycle while retaining caller ELF policies; allocation or cleanup failure cannot pass. |
+| Host probing preserves target/build precedence and failed/empty probe behavior; shared runtime transports retain Python guards and caller sentinel verdicts. TVM codegen skips only a missing import; unexpected initialization errors fail the smoke. |
+| Flutter browser smokes record Playwright failures and let unexpected Python errors propagate, so an implementation bug cannot report a green run. |
+| Logging prefixes share severity formatting; preserve ANSI bytes, streams and NO_COLOR precedence. |
+| Standalone fallback registration keeps caller lookup policy; copied Abseil and payload entry points carry the logging bootstrap in its documented layout. |
+| Smoke ELF inspection carries its platform owner and preserves caller parser overrides without leaking platform initialization. |
+| ONNX web steps share lockfile retries and JS artifact verdicts; keep install failures fatal and check both source and copied artifacts. |
+| Agentic build, test and quality phases share execution; preserve fatal build/test results and advisory quality results. |
+| Runtime and cross orchestrators share common CLI dispatch; preserve consumed-argument counts and help code 255. |
+| Critical source-pattern checks share verdict handling; failed probes increment the aggregate and must reach the failing summary. |
+| Verified downloads must propagate fetch failures even under conditional calls; a matching stale archive does not excuse a failed fetch. |
+| Temporary process environments restore absent, empty and existing values after setup or callback failure; sanitizer overrides belong to the test child. |
+| Cross-bundle DLL closure uses the architecture graph; retain first-directory precedence, machine checks, indexed API sets and system descendants. |
+| ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts. |
+| Guard empty arguments before associative-array lookups; an empty positional CMake preset retains the caller-default behavior and its positional-array entry. |
+| Shell fixture environment values remain individually quoted arguments, including PATH and SDK directories with spaces; do not word-split a string of assignments. |
+| Keep QNN's frozen query receipts independent of directory enumeration while retaining raw tool status, argument boundaries and all 120 original cases. |
+| A knob's `${X:=...}` default goes at the top level above its first reader; `knob-order` follows call order and has no allow file. |
+| Parallel result collection must explicitly propagate a failed harvest, including when workers succeeded. Publish worker pins only after a successful, nonempty read; conditional callers disable `errexit` throughout the helper's body. |
+| Shared Git-hook diagnostics import `log-bootstrap.sh`; standalone library checks must publish the real logging API before any mutation can count. |
+
+## Key shared utilities
+
+The helper to use for each recurring job in the build scripts, instead of a local copy.
+
+| Job | Helper |
+|---|---|
+| Architecture resolution | `platform.sh` → `canonical_target_arch()`, `canonical_resolve_arch()`. The single source of truth; never ad-hoc `dpkg`/`uname -m`. |
+| Architecture list resolution | `artifact-common.sh` → `resolve_arch_list()`. Normalizes `TARGET_ARCHES` from the canonical name + aliases with fallback; use it instead of 4-level fallback chains. |
+| Dry-run guard | `build-helpers.sh` → `is_dry_run()`, `_bool_truthy()`, instead of `[ "${DRY_RUN:-0}" -eq 1 ]`. |
+| Module loading | `modules.sh` → `source_modules_framework()`, the bootstrap for sourcing 01-core. |
+| Media bootstrap | `03-media/core/common.sh` → `media_common_init <script_dir>`: the one entry that sources the 01-core module framework; every media build script sources it instead of copying a preamble block. (The old `media_build_preamble_init` alias is gone: zero callers, no definition.) |
+| Media file selection | `03-media/core/common.sh` → `_media_first_existing_file <caller-slot> <argc> <argv...> <candidates...>`; callers keep their own `source` command so dynamic bindings stay visible. |
+| CC validation | `validate-compilers.sh` → `_validate_cc_target()` (dumpmachine/ELF/cc1/link smoke). |
+| Cross-chain tags | `tag-naming.sh` → `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, `cross_stage_repo()` (nvidia's private stage package), the runtime tag functions. Never construct tags by hand. |
+| Stage graph | `stage-defs.sh` → `CROSS_STAGE_ORDER` (base→compiler→sdk→media→android→runtime), `RUNTIME_STAGE_ORDER` (base→package→wrapper). Pin init: `cross_stage_init_pins()`. Validation: `cross_stage_validate_graph()`. Cross→runtime handoff: `cross_stage_ensure_parent_available()`. |
+| Chain verification | `chain-verify.sh` → `verify_cross_chain_staleness()`, `describe_cross_chain()`. Informational: it prints digests and gates nothing. |
+| Stage ancestry (gating) | `ancestry.sh` → `ancestry_output_annotations()`, `ancestry_recorded_parent()`, `ancestry_assert_chain()`. Every pushed cross stage records the parent ref it was built FROM as the OCI manifest annotation `org.kataglyphis.parent-digest`; a run with `--from-stage` after `base` walks that chain and HARD-FAILS when a parent was re-pushed after the child that would be inherited. Read path: `manifest-annotation.py` (annotations live in the base64 `Raw` field of `manifest inspect --verbose`). Absent annotation = warn (predates the mechanism); present + mismatch = fail. Escape hatch: `--no-verify-ancestry` / `CROSS_VERIFY_ANCESTRY=0`. |
+| Cross-stage build | `cross-stage-build.sh` → `cross_stage_run()`, `cross_stage_build_and_push()`, `cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, `cross_stage_assemble_runtime_helper_args()`. |
+| Runtime flow init | `runtime-flow-common.sh` → `init_runtime_flow_defaults()` (loaded by `lib-orchestrator.sh` in `runtime_flow_preamble()`, not sourced directly). |
+| Retry logic | `logging.sh` → `retry <max> <sleep> <desc> <cmd...>`. |
+| Mirror args | `build-helpers.sh` → `append_mirror_build_args_from_env()`. |
+| Version forwarding | `version-forwarding.sh` → `append_version_build_args()` (auto-discovers from `versions.env`). |
+| CMake cache/linker | `cmake-cache-linker.sh` → `append_cmake_cache_linker_args <array_ref>`, sourced by `03-media/core/common.sh` automatically. |
+| Install deps preamble | `cross-apt.sh` → `install_deps_preamble [packages...]`. |
+| Media ENV reference | `03-media/runtime/media-env.sh` is the canonical definition of PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH/GI_TYPELIB_PATH; the `Dockerfile.media` and `Dockerfile.package` ENV blocks must stay in sync with it. |
+| Media artifact verification | `03-media/runtime/verify-media-artifacts.sh` checks that each media build stage produced output, called from `Dockerfile.media` RUN steps after every library build. Stages: `onnxruntime-cpu`, `onnxruntime-genai`, `onnxruntime-gpu`, `onnxruntime-ep-amdgpu`, `onnxruntime-ep-qnn`, `onnxruntime-ep-tensorrt`, `onnxruntime-pkgconfig`, `litert`, `litert-headers`, `opencv`, `opencv-core`, `ffmpeg`, `gstreamer`, `libcamera`, `armnn`, `app-wheels`, `media-inputs`, `sizes`. |
+| Runtime stage elements | the `Dockerfile.torch` final stage is canonical for the COPY of runtime scripts, WORKDIR, VOLUME, ENTRYPOINT, CMD, HEALTHCHECK, the kataglyphis user, OCI labels. |
+| Builder functions | `run_nerdctl_build()` is the canonical nerdctl build wrapper (`BUILDKIT_HOST` support); use it instead of an ad hoc `nerdctl build`. |

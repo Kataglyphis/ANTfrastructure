@@ -528,3 +528,42 @@ Measured in `:winarm64` on 2026-10-01 for OrchestrANT 0.0.29:
   older one; 26.08, the image's runtime since 2026-10-07, ships glibc 2.44 (`ldd --version` in
   it), so that blocker is gone. No flatpak of a bundle has been built yet.
 - **Size.** OrchestrANT's core dependencies pull in Cython and matplotlib at runtime.
+
+## Packaging and licence invariants
+
+Rules for the app bundles, DEBs, AppImages and the licence texts they ship. Each row is one rule.
+
+| Rule |
+|---|
+| Wheel unpack/pack transport keeps Python argument boundaries and raw status; packaging execution keeps best-effort and sudo failure policies separate. |
+| Native and Python app DEBs use gzip compression and root-owned payloads; retain both properties when changing their builders. |
+| Immutable Linux helpers use the shared byte-preserving launcher and AppImage patcher; retain exact private-payload protection, final staged hashes, safe unique paths and raw worker statuses. Finished consumer packages still require their own binary proofs. |
+| Linux TAR selection uses the shared bundle resolver and propagates its failure; keep explicit staged trees, default Flutter paths and the separate Android APK source policy. |
+| Python DEB discovery rejects a host library with multiple reported package owners; retain that refusal without assuming it proves architecture or loader selection. |
+| Shared bundle DEBs must store payload entries as uid 0 and gid 0 even when built by an unprivileged container user. |
+| Python app bundle copies carry `lib/app-packaging-license.sh` and `lib/log-bootstrap.sh`; validate the declared project license before resetting the bundle and stage its original text. |
+| Linux desktop packaging rejects missing or structurally invalid PNG icons; preserve exact icon bytes and test the packaged result. |
+| Flutter apps with an Android manifest validate its mipmap launcher reference and every standard-density PNG; the source check does not prove image identity or inspect an APK. |
+| The native ONNX finalizer stages the checked-out LICENSE and ThirdPartyNotices before deleting its source; consumers must carry those files with the corresponding native output. |
+| Cargo license collection retains original files and source provenance; absent or unreviewed sources fail rather than fabricating notices, and the dependency graph is not proof of linkage. |
+| Its `--forbid-package` and `--max-runtime-packages` gates fail before staging; the budget counts the live normal-edge tree, never the metadata graph, and both stay off by default. |
+| Linux directory, TAR and DEB byte checks reject ambiguous or nonregular selected members and failed dpkg transport. Native AppImage file readers share extraction and select the exact text or binary verifier; copied archive-check suites carry `package_binary_empty_tests.py`; copies retain `appimage-verification.sh`, `01-core/platform.sh` and both Python verifiers. |
+| Linux ORT license staging compares every selected native ELF with one wheel, directly or after target-compatible stripping; copied `stage-ort-wheel-licenses.py` carries `ort_census_probe.py`, and the shell companion carries both package verifiers. |
+| Explicit native original-byte staging validates every selected library and notice before writing; replace only unchanged regular files inside the bundle and retain per-file failure/cleanup verdicts. |
+| GPU AppImages must retain the wheel's unstripped ORT bytes and verify the finished artifact, including both notices; a staged-tree match alone is insufficient. |
+| Their opt-in shared patchelf wrapper also preserves libmigraphx-ep.so exactly; its image-byte proof must survive package generation. |
+| Finished-package ORT trees use `06-packaging/ort-package-proof.sh` for library and notice checks; keep failures explicit under conditional callers. |
+| Optional AMD provenance paths stay outside the exact license tree and bind the original image text; preserve old callers, refusal before overwrite and raw copy failures. |
+| Its AMD plugin staging/proof APIs also require `ort-runtime-bundle.sh`; preserve image-identical module bytes, full original license trees and in-tree-provider refusal. |
+| Linux GPU app bundles require the image's provider in the self-test's available list and a relocatable ELF scan; packaging retains that requirement, and a separate GPU-host test must require the active provider before distribution. |
+| Python DEB dependency discovery must prove isolated launcher and sitecustomize startup before omitting preloaded site-package libraries; executable `.pth` lines invalidate that proof. |
+| GPU DEB library-path and Python preload assumptions require generated wrappers for detected runnable ELFs; The BACKLOG item on versioned DEB host-library dependencies records the remaining limits of these assumptions. |
+| Python DEB ELF dynamic entries, strings and version-needs records must match the loader's file-backed segments, including split segments; reject ambiguous mappings and section-only mutations. |
+| Python DEB discovery must not treat a bundled dependency as resolved when its ELF class, byte order or machine differs from its importer; host scope and ABI-version limits remain open in the BACKLOG item on versioned DEB host-library dependencies. |
+| Python DEB discovery rejects an unproven earlier external search path before a bundled candidate; legacy RPATH precedes GPU launcher library paths, while RUNPATH follows them. |
+| Python DEB version-node minimums come from the host package's symbols file; a missing node or malformed line fails, and unversioned symbols remain open in the BACKLOG item on versioned DEB host-library dependencies. |
+| Python DEBs without bundled glibc require libc6 >= 2.36 for DT_RELR or its GLIBC_ABI_DT_RELR marker; reject unrecognized GLIBC_ABI markers rather than understate the host requirement. |
+| Bundle packagers share scoped facts, bundle copying, desktop/icon staging and artifact verdicts; invoke renderers unconditionally so Bash errexit remains active. |
+| Bundles with executable helpers set APP_PACKAGING_BINARY_NAME to their actual application; a declared missing, linked or nonexecutable entry refuses instead of selecting another file. |
+| Staging directories share literal-root setup; failed reset or allocation aborts before payload copy and proof. |
+| Consumer staging suites use the shared stage-directory fixture for AST wiring, stale-byte cleanup and failed allocation; pass their own reset command and callback. |

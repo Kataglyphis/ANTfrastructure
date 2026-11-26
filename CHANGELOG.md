@@ -19,6 +19,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — the hub AGENTS.md drops from 26,270 to 12,299 words (CON303)
+
+- The one-line invariants appended under the seven priorities, in Quick Reference and in the rule
+  sections move unchanged in substance to the page that owns each topic, one table row per rule, in
+  sections named "… invariants"; `docs/INDEX.md` § Invariants by topic lists them. The "Copied X
+  carries Y" rows sit together in `shared-script-libraries.md` § Companion files a copied helper needs.
+- GPU architecture coverage moves to `linux-accelerator-images.md`, the Code Organization list to
+  `shared-script-libraries.md` § Key shared utilities, the Windows disk-reclaim rules to
+  `windows-host-setup.md` § Host disk reclaim and the delegated-maintenance policy to
+  `windows-stevedore-and-docker.md`; `AGENTS.md` keeps a one-to-three-sentence rule and a link for each.
+- `AGENTS.md` loses its decision dates and ids (each has its `decisions.md` row), keeps one bold
+  phrase per section and splits long sentences at their clause breaks. Its `doc-prose` rows and the
+  receiving pages' rows fall.
+
 ## 2026-11-26 — the hub builds NSIS setups with the pinned makensis (CON302 step 3)
 
 - `WindowsNsis.Common.psm1`'s `Invoke-NsisPackage` builds a per-machine, zlib-compressed setup from

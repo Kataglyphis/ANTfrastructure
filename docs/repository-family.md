@@ -137,3 +137,15 @@ Jonas Heinle: [jonasheinle.de](https://jonasheinle.de),
 
 Report a security problem to that address or through the repository's GitHub security advisory
 form, never in a public issue.
+
+## Reuse invariants
+
+Rules for reusing hub code and measuring reuse across the family. Each row is one rule.
+
+| Rule |
+|---|
+| Keep scripts used repeatedly for development, verification or host maintenance in the owning repository; parameterize machine-specific values and document their use instead of regenerating the scripts for each task. Keep one-off evidence and scratch probes separate. |
+| For Bash and PowerShell, review `verify_hub_reuse.py --root <consumer> --hub <hub> --report-only` as well; an advisory CI report does not authorize another local copy. |
+| The weekly consumer inventory also measures cross-repository Bash/PowerShell overlap among active owned nonfork repos. Review its ignored `logs/reports/consumer-reuse.md` before adding a shared helper; overlap remains advisory, while missing checkouts or inventory coverage fail. |
+| The reusable report job fails for an owned nonfork consumer whose pinned Hub lacks that scanner; keep the direct submodule current so reuse stays measured. |
+| On Windows, its copied-bootstrap drift proof runs through PowerShell first. |

@@ -1096,3 +1096,14 @@ shipped with it: 7-Zip lists them as `Method = LZMA:23`. Their next releases rep
   time the image was built.  For exact commit SHAs, inspect the build logs.
 - Version numbers marked with <!-- generated:... --> are automatically kept
   in sync with `linux/scripts/01-core/versions.env` by `sync_versions.py`.
+
+## Source-original notice invariants
+
+Rules for the original licence and notice texts the image builds keep. Each row is one rule.
+
+| Rule |
+|---|
+| GCC builds retain archive-matched original `COPYING3` and `COPYING.RUNTIME` with their source URL and SHA512 before cleanup; staging failures abort. These selected texts do not prove complete native licence closure. |
+| GStreamer builds retain reviewed original monorepo and selected Rust notices before source cleanup; copied setup entries carry `stage-original-notices.py`, `original-notices.json` and `01-core/source_originals.py`. Keep exact release/commit/byte checks and fatal native/cross handoffs; selected texts do not prove binary linkage or complete licences. |
+| Image source-original transport validates every selected tree before fresh output allocation; copied callers carry its GCC policy, the canonical GStreamer producer/policy and shared original-file companion. Keep exact bytes and limited-scope receipts; transport does not prove binary linkage or finished-package acceptance. |
+| Finished image source-original checks retain the staged record and exact bytes in every selected format. Empty-source permissions name exact selected members; the source-original checker permits only recorded empty GStreamer patches. Share Flatpak import/checkout with the licence reader, retain native AppImage failure statuses and all required companions. |

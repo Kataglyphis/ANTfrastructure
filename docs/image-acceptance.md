@@ -325,3 +325,30 @@ run by hand; the push stands. Tests: `linux/scripts/tests/test-dispatch-consumer
 A promotion error stops before any consumer dispatch, including when the caller tests the function
 conditionally. The fixture proves this refusal and post-promotion warning policy with stubs; it
 does not prove live API permissions, consumer execution or which digest those workflows select.
+
+## Acceptance invariants
+
+Rules for consumer acceptance, promotion and the handoffs it checks. Each row is one rule.
+
+| Rule |
+|---|
+| Image publication also requires the digest-specific consumer receipt before a public tag moves; this page covers replay and its coverage limits. |
+| Dispatch consumer lanes only after promotion succeeds; a refused post-publish dispatch remains advisory and preserves the completed promotion. |
+| Successful consumers retain their versioned checkouts, recursive Git stores and logs; safe layer cleanup must not delete them. |
+| Working-source copies retain the selected base and exact staged index, including staged gitlinks; an independently checked-out child must not replace that index. Bind actual child trees separately, and keep committed-tree acceptance strict. |
+| Independent Git copies retain configured origin URLs and their order; local cloning must not replace repository identity. Origin metadata does not authenticate sources or qualify workflows. |
+| Independent source copies wait for the consumer log and recheck clean bytes and independent objects on reuse. Manual promotion also preserves the target's runtime platforms; an early shell-gate override cannot bypass acceptance. |
+| Native consumer CI pins the image, exact clean tooling and all recursive source snapshots; its plan changes only platform. Require a matching host and checked cleanup; job metadata never replaces the original receipt or proves physical GPU inference. Keep transported receipts byte-identical and map downloaded logs through their artifact-relative metadata paths. |
+| `--gates-only` exits before builds, candidate creation and promotion, including when combined with push flags; it provides no consumer acceptance receipt. |
+| Explicit local FINAL acceptance retains the complete canonical consumer plan, its own immutable manifest/config and successful producer/source/cleanup bindings before and after checks; its schema-2 receipt cannot promote a registry tag. Validate receipts before pruning checkouts. |
+| Keep lane-bound runtime identities and exact selected host-worker closures; image and export wheelhouses retain the same gates, and separately located owned wrappers match every selected companion byte. |
+| A missing Android stage label requires its exact unpublished Android driver, lane, transport and complete source proof; derive only a local view and preserve the original receipt bytes. |
+| Linux acceptance restores disposable rootful checkout ownership on every exit; failed container cleanup or ownership restoration cannot produce a passed receipt. |
+| Combined WebGPU media factory acceptance requires native/GIL/FT plus fresh Asyncify and JSPI replay at one exact ORT revision; partial receipts cannot stand for the combined result. |
+| Six-lane Media command preparation keeps SDK parents for default targets and GPU parents for accelerators; NVIDIA arm64 requires SBSA. Prepared commands do not qualify parent ancestry or authorize a launch. |
+| Default Media launches match the SDK target and recheck exact source and compiler ancestry before shared idle-host admission; retain the 300 GiB minimum and both required Wasm modes. |
+| NVIDIA amd64 and arm64/SBSA GPU, Media and Android handoffs require the same-target SDK, verified native OCI ancestry, baked CUDA/TensorRT environment and both Media Wasm modes. Carry `nvidia_handoff_profile.py` with the shared export worker and preserve the target suffix on the Android context. |
+| Local command seals preserve raw command/cache-capture status and owned cleanup identity; an existing exclusive cleanup must never run again, and marker matches do not confer artifact acceptance. |
+| Require a successful engine query to prove every consumer and ownership-helper container absent; retain both removal and query statuses and diagnostics, including already-auto-removed containers. |
+| Default runtime handoffs retain the exact Android/source receipt and 300-GiB admission. A local OCI wheel export selects the Android build-host platform; the wrapper keeps the target architecture. Local FINAL binds the same Android receipt and runtime worker closure. |
+| NVIDIA runtime and local FINAL bind the exact same-target stopped Android export, its Media receipt and its OCI index. Preserve the CUDA backend, SBSA selection, amd64 wheel export, target wrapper and 300-GiB admission. FINAL requires these flags as actual systemd environment arguments. |

@@ -2780,6 +2780,11 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       - Slim the hub `AGENTS.md` toward 6000 words. Its lines ~42-441 are one-liners appended under "Project
         priorities"; each moves to the page that owns it, and the "Copied X carries Y" lines become data for the
         copy-coverage gate.
+        First pass done 2026-11-26: 26,270 to 12,299 words; the one-liners are table rows on their owner
+        pages (`docs/INDEX.md` § Invariants by topic). Next: the Linux Build Rules, Validation, Container
+        Architecture, Quick Reference and Build Workflow bodies still restate their owner pages; the moved
+        rows still read as the old dense one-liners and want plain sentences; and the Companion files
+        table could become a data file that `verify_script_copy_coverage.py` reads (a larger change).
       - Split `code-quality-tooling.md`, `failure-modes.md`, `windows-builds.md` and `dependency-updates.md` into
         pages under about 800 lines.
       - Bring each consumer's `AGENTS.md` toward 3000 words, with a "Common tasks" block at the top, and seed its

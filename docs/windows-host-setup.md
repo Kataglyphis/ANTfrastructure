@@ -1281,6 +1281,50 @@ Afterwards the `.bak-<stamp>` husks are exactly what
 
 ---
 
+## Host disk reclaim
+
+HOST DISK RECLAIM IS ALLOW-LISTED AND DEFAULT-DRY —
+`windows/scripts/host/Clear-DiskSpace.ps1`, and NOTHING ad hoc (2026-08-21, the worst
+incident this repo has produced: a "let's free some space" command composed on the spot walked
+into the installed programs and the user profile and took the host with it). The rules, all
+permanent:
+- The reclaim script is the only sanctioned path. It resolves candidates from an ALLOWLIST,
+  reports by default, needs `-Apply`, age-gates every live-directory rule, and aborts the WHOLE
+  run if any candidate lands on a protected root: such a candidate means the resolution logic is
+  wrong and the rest of the plan is untrustworthy too.
+- A name is not a target. A candidate containing a junction or symlink is skipped: a reparse
+  point is where a name stops predicting what a recursive delete reaches.
+- The compile caches are NOT cleanup targets. sccache/ccache/cargo/uv read as "cache" and are
+  the most expensive bytes on the disk.
+- Daemon levers before filesystem levers, always. `buildctl prune --free-storage`,
+  `docker image prune`, the store-GC sequence in
+  [`windows-build-lanes.md` § Store GC](windows-build-lanes.md). Filesystem reclaim is a
+  last resort limited to dead `*.bak-<stamp>` husks.
+- Targeted Stevedore cleanup stays explicit and preview-first. `-StevedoreOnly` accepts reviewed
+  tags with full expected IDs and an optional regular-cache prune. Keep its daemon addresses explicit,
+  refuse active use, recheck each ID, and never fall through to the broader file or Docker cleanup.
+  The idle checks are point-in-time, not a lock; stop other users and builds before applying.
+- Delegated maintenance is host-specific until provisioned and accepted there. Never treat
+  ignored handoff scripts or another machine's task manifest as a portable installer. Verify
+  protected code, local identity, fixed rights and a fresh normal-user run before claiming it
+  works; measured capacity remains a separate build admission requirement. Scope and setup:
+  [delegated maintenance](windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts).
+- Protected roots are OFF LIMITS to the agent, permanently: `C:\Program Files`,
+  `C:\Program Files (x86)`, `C:\Windows`, `C:\ProgramData` outside the container stores, any
+  user profile under `C:\Users`, `AppData`, per-user tool directories (`.vscode`, `.ssh`,
+  `scoop`, `.claude`), drive roots, and every installed-package or driver store. Not with a
+  flag, not with a force switch, not "just this once". Space that only comes back by reaching in
+  there is a reinstall, not a cleanup, and it is the user's call, run by the user.
+- Uninstalling the user's software is never the agent's move. No package manager, MSI or
+  appx removals. Suggest, never do.
+- The gate is mechanical, not advisory. `.claude/hooks/guard-destructive-deletes.ps1` runs
+  as a `PreToolUse` hook, in a Python and a PowerShell implementation so it fires on a host with
+  no `pwsh`. It DENIES (a decision no prompt can override) any command touching a protected
+  root, and it scans file CONTENT on Write/Edit too, because the 2026-08-21 vector was a script
+  written for the user to paste, not a command the agent ran.
+  `windows/scripts/tests/Guard.DestructiveDeletes.Tests.ps1` is the incident in executable form.
+  Relaxing a guard regex is a reviewed repo change with a test, never a bypass in the moment.
+
 ## Appendix — host odds and ends
 
 Small host-level settings that are not part of the ordered bring-up above but

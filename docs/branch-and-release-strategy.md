@@ -312,3 +312,11 @@ A calling job looks the same in both:
 - **The release workflow does not move `main` itself.** `GITHUB_TOKEN` cannot be given
   the `workflows` permission, and GitHub refuses its pushes that bring in changes under
   `.github/workflows/`, which nearly every release has.
+
+## Release invariants
+
+Rules for publishing release assets. Each row is one rule.
+
+| Rule |
+|---|
+| Supplement an existing release only with `shared/python/attach_release_assets.py`: verify the tag's commit, reject name collisions and keep the original assets. |

@@ -331,6 +331,64 @@ Unchanged: `base`, `compiler` and `sdk` (shared), every rocm stage, which hold n
 - The tags published before the move (`cross-toolchain-nvidia-amd64`, `cross-media-nvidia-amd64`,
   `cross-android-nvidia-amd64`) were deleted from the public package with `ghcr-delete-tags.sh`.
 
+## GPU architecture coverage
+
+One source of truth: `CUDA_ARCHITECTURES` in `versions.env`. Everything else is a fallback
+default or an assertion that must move WITH it, so a trim cannot happen by accident. Changing the
+set is an owner decision, never a speed lever for a dev iteration.
+
+Today: `75;86;87;89;120`.
+
+| CC | Architecture | Hardware |
+| --- | --- | --- |
+| 75 | Turing | T4, RTX 2060-2080 |
+| 86 | Ampere GA10x | RTX 3060-3090, A10, A40 |
+| 87 | Ampere GA10B | Jetson AGX Orin |
+| 89 | Ada Lovelace | RTX 4060-4090, L40/L40S |
+| 120 | Blackwell | GeForce RTX 5050-5090, RTX PRO Blackwell |
+
+Not built, one token each: `80` Ampere GA100 (A100, A30) · `90` Hopper (H100, H200) · `100`
+B100/B200 · `103` B300/GB300 · `110` Jetson Thor · `121` GB10/DGX Spark. 80 and 90 were
+retired; their line stays commented in `versions.env`. 75 was added
+so the RTX 20xx cards run the NVIDIA packages.
+CUDA 13 floors at 75: Maxwell, Pascal and Volta left the toolkit, so nothing below it can
+come back while `CUDA_VERSION` is 13.x.
+
+To add or remove one, edit these together (a gate fails otherwise, by design):
+
+1. `linux/scripts/01-core/versions.env` — the value.
+2. `windows/scripts/tests/Pins.CanonicalValues.Tests.ps1` — the pinned assertion.
+3. `linux/scripts/tests/test-version-forwarding.sh` — forwards the literal twice.
+4. `docs/scripts/mutations.json` — the mutation's find/replace text.
+5. The `${CUDA_ARCHITECTURES:-…}` fallbacks (ORT, OpenCV) and
+   `windows/Dockerfile.media-builder`'s ARG default + the psm1 fallback:
+   `sync_versions.py --check` grades the Dockerfile, the rest are plain copies.
+
+Four facts decide WHICH number you need; they are not interchangeable:
+
+- A cubin runs on its own major only, at an equal-or-higher minor. 86 does not reach 87; 89
+  does not reach 120. Neighbours buy nothing.
+- ONNX Runtime narrows it further. It rewrites every entry to `sm_<cc>a-real` (arch-specific,
+  `-real` = cubin only), so in the ORT artefact `120` covers 12.0 and NOT 12.1 (GB10), and `100`
+  would cover B100/B200 but not B300 (10.3). Spell out the exact hardware you own.
+- There is no PTX to fall back on. ORT embeds none and OpenCV leaves `CUDA_ARCH_PTX` empty, so
+  a missing arch is a hard failure on the session's first node (`no kernel image is available`),
+  not a slow path. That is what retiring 80 costs an A100. Consumers run one kernel first, so the
+  card is named or `auto` takes the CPU:
+  [`linux-accelerator-images.md` § A card without a CUDA kernel](#a-card-without-a-cuda-kernel).
+- No letter suffixes (`90a`, `100f`): ORT appends the `a` itself, and OpenCV's dotted-form
+  conversion mangles a suffixed entry. Digits only, ascending for readability;
+  nothing depends on the order (the trailing-`90`→`90a` rewrite is gone: it silently did nothing
+  once the list stopped ending in 90).
+
+Cost: each entry is a full cubin per CUDA source file, so five arches compile every ONNX
+Runtime and OpenCV CUDA kernel five times, the biggest lever on GPU build time.
+`CUDA_ARCHITECTURES=120` alone cuts the CUDA compile to roughly a fifth for a local iteration.
+
+ROCm has the same question, unanswered. `amdrocm-core-dev10.0` pulls all 25 gfx targets
+(~19.6 GiB) because nothing selects. Per-gfx metapackages are the largest single size win there:
+[`linux-accelerator-images.md` § ROCm](linux-accelerator-images.md).
+
 ## The GPU runtime gate
 
 `check_gpu_runtime` (`linux/scripts/06-packaging/check-gpu-runtime.sh`) runs in the runtime smoke
@@ -2624,3 +2682,36 @@ ROCm amd64 and NVIDIA amd64/arm64, and new consumer acceptance remain open.
 The goal's WASM artifact proof must check both enabled WebGPU flavors; an optional
 flavor dropped by the generic build policy does not complete that proof.
 Existing published-image receipts do not prove this change.
+
+## AMD source-stack invariants
+
+Rules for the AMD source stack: MIGraphX, rocMLIR, CK and the ROCm paths. Each row is one rule.
+
+| Rule |
+|---|
+| The AMD GPU PATH retains the inherited GNU/source-LLVM order before ROCm compiler tools; source MIGraphX remains first. Native LLVM alternatives select the explicit source prefix; after Python setup, its executable tree wins PATH behind GNU. Incomplete tools, foreign selections, full-version mismatches and default shared-LLVM loader-cache losses fail. |
+| The normal AMD producer loads all seven recorded source entry libraries after shared ROCm path publication and ldconfig; preserve selected-byte checks, fatal dependency failures and ASAN exclusion. Selected loads do not prove complete ABI, licence closure or inference. |
+| rocMLIR library builds keep preparation bindings in the build shell, inspect every planned C/C++ cache/compiler/toolchain binding, use memory-capped jobs and install the generated package leaf; required archive/exports/headers and original notices precede success. Plans and payload presence do not prove linkage or binary licence closure. |
+| External rocMLIR consumers require exact package/API pins, the supplied archive and original headers, observable dialect/pipeline state, unchanged inputs and original notices; host fixture proofs do not establish vendor linkage or GPU acceptance. |
+| Full MIGraphX source builds retain preparation scope, fresh-prefix refusal, memory-capped jobs, raw failures and unchanged source inputs; installed manifests, native ELF identities and original notice hashes must pass before provenance is written. Copied stagers carry both notice policies and the shared ELF census reader in its relative packaging layout. |
+| Backend notice staging requires the selected Python pybind11 version, its unique original distribution notice and matching configured CMake package; preserve the original text and provenance version before any receipt is written. |
+| Linux MIGraphX Python builds require the exact selected interpreter and pybind11 pins, paired config prefix/suffix/headers and one matching installed extension ABI; retain both source patches in provenance. Plugin builds resolve HIP from ROCM_HOME independently of the MIGraphX source prefix and prefer the normal SDK core. |
+| Full MIGraphX source-stack copies carry source-stack.sh, source-archives.txt and all selected child closures; validate every archive pin before fetching, rehash cache hits and retain every required API/SDK/build failure. |
+| The normal AMD image builds the complete source stack after the retained apt SDK, pins pybind11 in the selected Python and consumes the declared selected-file bundle with both compiler caches and success/failure drains; source MIGraphX wins GPU and shipped runtime search paths. |
+| Actual MIGraphX parser and rocMLIR proof units require their original archives, the canonical disk probe and at least 180GiB in exact available bytes before freezing; retain ordinary offline entrypoints, exact bounded resource profiles and cleanup. Parser builds keep two jobs/6GiB/one hour; rocMLIR builds keep four jobs/12GiB/two hours. The launcher performs no reclaim or floor override. |
+| rocmlirTriton preparation carries `source-rocmlir.sh` and `rocmlir-source-notices.sha256`; preserve all vendored compiler trees, fat static/PIC targets, original notice bytes and configured cache facts. Source preparation does not prove binary licence closure. Proof workers carry `proof-cleanup.sh` and retain raw status and fatal ownership failures. |
+| MIGraphX CK host builds use the requirements-pinned codegen subdirectory, C++20, static/PIC output and original CK license; generic MLIR does not replace rocmlirTriton. |
+| CK host consumer probes select the exact installed package and library, compare original header bytes and retain child failures; metadata alone does not prove linkage or GPU inference. |
+| Native MIGraphX CMake plans share caller-array initialization and NUL argument recording; copied CK verification entries carry their CMake/C++ project and existing shared companions. |
+| Carry `ort_webgpu_delivery.py`, the canonical build-proof module and `python-app-deb-depends.py` with `python_app_deb_symbols.py` through media/runtime copies. |
+| MIGraphX licence copying uses its existing file-gap helper; keep empty-list behavior and missing-file failures visible. |
+| Explicit zero padding contributes to MaxPool on negative inputs; preserve that padding and a valid CPU baseline when testing compiler folds. A pass-disable or preload diagnostic is not a shipping compiler fix; compile original and patched passes successfully before accepting a numerical regression control. |
+| MIGraphX source preparation uses its requirements-pinned rocm-cmake API and absolute source-built LLVM paths; keep all selected GPU features and reject a configuration-only receipt as image acceptance. |
+| Linux MIGraphX source entries carry `cli-common.sh`, `entry-common.sh` and `source-common.sh`; the parser-dependency builder also carries `source-deps.sh`, retains the original Abseil, Protobuf and utf8_range notices and checks cache, compiler, static/PIC and offline facts before building. |
+| The MIGraphX SDK check carries both `sdk-closure` CMake files and requires CK host, rocMLIR and the selected development packages; ordinary MLIR metadata is not rocMLIR, vendor config variables cannot erase missing facts, and resolution is not ABI or inference acceptance. |
+| ROCm runtime paths keep source MIGraphX public and private lib directories before retained distro paths, follow a command-line ROCm symlink and exclude ASAN; discovery and ordering failures must precede any configuration replacement. |
+| MIGraphX install manifests coalesce exact repeated CMake rows only; retain alias, complete-tree, unique-library, native-ELF and original-notice refusals for public and private ROCm layouts. |
+| GPU and runtime ROCm configuration share `publish_rocm_ld_path` from `media-payloads.sh`; keep the required source build, publication and ldconfig calls unconditional and preserve their raw failures. |
+| Base, toolchain and required-platform entry points carry `module-bootstrap.sh` in copied and mounted closures; keep the per-file mounts narrow. |
+| - The HIP smoke requests raw device ELF with `--no-gpu-bundle-output`; copied GPU launchers carry `gpu_source_profile.py`. An explicit alternate source requires the exact reviewed HIP, backend-install or runtime-load repair and its own complete preflight while preserving the original qualified SDK identity. Tool and documentation descendants do not inherit that production proof. |
+| Native source LLVM retains AMDGPU beside the configured CPU backends. Reuse checks query the installed targets; the MIGraphX stack must compile an offline HIP device object before fetching heavy dependencies. This does not prove GPU inference. |
