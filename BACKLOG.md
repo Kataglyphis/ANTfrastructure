@@ -2811,7 +2811,8 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
          of the tag Renovate wrote) and `LIBVPX_MESON_COMMIT` (its wrap's branch head and archive SHA256, once per
          GStreamer version). Open: the ORT and GenAI commits are held and their upstream answers 404 (CON280);
          Dawn comes from ORT's `deps.txt` on the same upstream.
-      2. `source-pins.txt`'s ORT and GenAI rows: read them from `versions.env`, or teach a manager the file.
+      2. Done 2026-11-26: `source-pins.txt`'s ORT and GenAI rows take tag and commit from `versions.env`
+         through `sync_versions.py` (`source_pins.py`); `--check` fails a row that differs or is missing.
       3. The report tier and plain MANUAL pins with a feed move to the safe tier, each with its oracle.
       4. Owner-decided pins (majors, WiX, CUDA architectures, Windows base) get an approval option inside the
          same call instead of a hand edit; they never move silently.

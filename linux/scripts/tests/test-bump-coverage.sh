@@ -15,7 +15,7 @@ t_assert_contains "${_real}" "with ONNXRUNTIME_VERSION (renovate), held" "a held
 for _moved in LLVM_COMMIT TVM_COMMIT LIBVPX_MESON_COMMIT; do
   t_assert_eq "0" "$(printf '%s\n' "${_real}" | grep -c -e "${_moved} .*(renovate)" || true)" "${_moved}, which the sweep moves in the same call, is no drift"
 done
-t_assert_contains "${_real}" "source-pins.txt: onnxruntime v" "a version kept outside the pin files is listed"
+t_assert_eq "0" "$(printf '%s\n' "${_real}" | grep -c -e 'OUTSIDE THE PIN FILES' || true)" "source-pins.txt follows versions.env through sync_versions.py, so nothing is listed outside"
 t_assert_eq "0" "$(printf '%s\n' "${_real}" | grep -c -e 'OPENCV_COMMIT .*(renovate)' || true)" "an empty commit pin follows its tag and is no drift"
 
 t_case "a new commit or asset pin no longer hides behind the non-version filter"

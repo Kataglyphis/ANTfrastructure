@@ -660,8 +660,10 @@ builds therefore fetch every ORT-family source through
   `60-build-genai.sh` points `FETCHCONTENT_SOURCE_DIR_ONNXRUNTIME_EXTENSIONS` at it.
 - **Why not `versions.env`.** `Dockerfile.base` mounts `versions.env`, so a pin there re-keys
   the whole chain. The pins stay beside the Media scripts until the next full rebuild moves
-  them (owner decision 2026-11-23); `test-ort-source-fetch.sh` holds each tag to its
-  `versions.env` pin.
+  them (owner decision 2026-11-23). The ORT and GenAI rows are derived: `sync_versions.py
+  --write` copies their tag and commit from `versions.env` (`ONNXRUNTIME_VERSION`,
+  `ONNXRUNTIME_WINDOWS_SOURCE_COMMIT` and the GenAI pair), and `--check` fails on a row that
+  differs. A held commit therefore holds the Linux row too.
 
 The 2026-11-23 pins were taken from Software Heritage's 2026-11-14 snapshot, before the
 outage: ORT `v1.31.1` = `6af1a932…`, GenAI `v0.19.0` = `d01b2441…`, and the extensions commit

@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — source-pins.txt's ORT and GenAI rows follow versions.env in the same Renovate call (CON305 step 2)
+
+- `sync_versions.py --write` copies the tag and commit of the `onnxruntime` and `onnxruntime-genai` rows in
+  `source-pins.txt` from `versions.env` (`docs/scripts/source_pins.py`), keeping their fallbacks; `--check` fails a
+  row that differs, is missing or repeats. `renovate-local.sh` already runs `--write` after its sweep, so the rows move
+  in the same call and a held commit holds them too. `bump_coverage.py` no longer lists versions outside the pin files.
+  The licence subprocess is one `website_licenses(mode)` that keeps the generator's raw status. Four new mutations.
+
 ## 2026-11-26 — the native ORT plugin header reads the environment without `_wgetenv`
 
 - `shared/native/ort_plugin_eps.hpp`'s `environment_path` reads a variable on Windows with `GetEnvironmentVariableW`:

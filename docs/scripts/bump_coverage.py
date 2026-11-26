@@ -46,14 +46,6 @@ STANDALONE: dict[str, str] = {
     "ORT_QNN_EP_VERSION": "Qualcomm's fork tag, coupled to QAIRT and the chain ORT",
 }
 
-# Version pins kept outside the two pin files: path -> {row name: the pin-file key its version must equal}.
-OUTSIDE_PIN_FILES: dict[str, dict[str, str]] = {
-    "linux/scripts/03-media/build/onnxruntime/build/lib/source-pins.txt": {
-        "onnxruntime": "ONNXRUNTIME_VERSION",
-        "onnxruntime-genai": "ONNXRUNTIME_GENAI_VERSION",
-    },
-}
-
 ONE_CALL = ("renovate", "bump", "bump extra")
 
 
@@ -144,18 +136,6 @@ def drift(env: dict[str, str], classes: dict[str, tuple[str, str]]) -> list[tupl
     return out
 
 
-def outside_rows(env: dict[str, str]) -> list[tuple[str, str, str, str]]:
-    """Rows of OUTSIDE_PIN_FILES: (file, row, its version, the pin-file key's value)."""
-    out = []
-    for rel, rows in OUTSIDE_PIN_FILES.items():
-        path = bv.REPO_ROOT / rel
-        for line in path.read_text(encoding="utf-8").splitlines():
-            fields = line.split("|")
-            if len(fields) >= 2 and fields[0] in rows:
-                out.append((rel, fields[0], fields[1], env.get(rows[fields[0]], "")))
-    return out
-
-
 def _print_report(env: dict[str, str], classes: dict[str, tuple[str, str]], brief: bool) -> None:
     counts = Counter(c for c, _ in classes.values())
     one = sum(counts[c] for c in ONE_CALL)
@@ -167,12 +147,6 @@ def _print_report(env: dict[str, str], classes: dict[str, tuple[str, str]], brie
         holds = bv.read_holds()
         for key, owner, cls in risky:
             print(f"  {key:44} with {owner} ({cls}){', held' if key in holds else ''}")
-    rows = outside_rows(env)
-    if rows:
-        print(f"\nOUTSIDE THE PIN FILES ({len(rows)}): no updater reads them")
-        for rel, name, version, pin in rows:
-            note = "" if version == pin else f"  (pin is {pin})"
-            print(f"  {rel}: {name} {version}{note}")
     hand = sorted(k for k, (c, _) in classes.items()
                   if c in ("hand", "report", "report extra") and not re.search(r"SHA(256|512)$|_URL$", k))
     print(f"\nVERSIONS NOT IN ONE CALL ({len(hand)}; their checksums and URLs move with them):")

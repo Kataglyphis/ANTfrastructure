@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
 
 from consumer_pins import check_consumer_pins
+from source_pins import check_source_pins, write_source_pins
 
 START_MARKER = "<!-- generated:version-snapshot:start -->"
 END_MARKER = "<!-- generated:version-snapshot:end -->"
@@ -735,6 +737,19 @@ def determine_mode(args: argparse.Namespace) -> str:
     return "check" if args.check or not args.write else "write"
 
 
+def website_licenses(mode: str) -> int:
+    """Check or regenerate the website license files; the generator's raw status reaches the exit code."""
+    script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"
+    lic = subprocess.run([sys.executable, str(script), f"--{mode}"], capture_output=True, text=True, check=False)
+    if lic.returncode:
+        print(f"ERROR: generate-website-licenses.py --{mode} failed:", file=sys.stderr)
+        print(lic.stderr, file=sys.stderr)
+        return lic.returncode
+    for line in lic.stdout.strip().splitlines():
+        print(line)
+    return 0
+
+
 def main() -> int:
     args = parse_args()
     try:
@@ -758,20 +773,15 @@ def main() -> int:
         result |= check_deps_table(versions)
         result |= check_dockerfile_args(versions)
         result |= check_script_defaults(versions)
+        result |= check_source_pins(REPO_ROOT, versions)
         result |= check_doc_literals(versions)
         result |= check_consumer_pins(versions, args.consumer_root, REPO_ROOT)
-        # Also check website license files.
-        import subprocess
-        lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"
-        lic_result = subprocess.run([sys.executable, str(lic_script), "--check"], capture_output=True, text=True, check=False)
-        result |= lic_result.returncode
-        if lic_result.returncode:
-            print(lic_result.stderr, file=sys.stderr)
-        return result
+        return result | website_licenses("check")
 
     # Dockerfile ARGs first: the snapshot reads its versions back out of the Dockerfiles.
     result = write_dockerfile_args(versions)
     result |= write_script_defaults(versions)
+    result |= write_source_pins(REPO_ROOT, versions)
     result |= write_snapshot(render_snapshot())
     # A malformed marker must fail --write too, since the updater silently skips it.
     result |= validate_inline_marker_tokens()
@@ -779,19 +789,7 @@ def main() -> int:
     result |= write_deps_table(versions)
     # --write cannot repair consumer copies, so check them: a contradicting consumer must not exit 0.
     result |= check_consumer_pins(versions, args.consumer_root, REPO_ROOT)
-    # Auto-regenerate website license files so they never go stale.
-    import subprocess
-    lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"
-    lic_result = subprocess.run([sys.executable, str(lic_script), "--write"], capture_output=True, text=True, check=False)
-    if lic_result.returncode:
-        print("ERROR: generate-website-licenses.py --write failed:", file=sys.stderr)
-        print(lic_result.stderr, file=sys.stderr)
-        # --write must not exit 0 when the license files could not be written.
-        result |= 1
-    else:
-        for line in lic_result.stdout.strip().splitlines():
-            print(line)
-    return result
+    return result | website_licenses("write")
 
 
 if __name__ == "__main__":

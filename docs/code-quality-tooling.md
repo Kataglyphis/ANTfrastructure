@@ -1298,7 +1298,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **8272 entries** over **1005 distinct test commands**; both digits are
+manifest holds **8276 entries** over **1005 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -4547,14 +4547,14 @@ run the gate where it is supposed to run.** Two of these probes had never
 executed anywhere, and no suite written against them would have said so.
 
 **`version-snapshot` got the one-fixture-per-sub-check suite its reason demanded.**
-`sync_versions.py --check` is a fan-out: `result |=` over eight sub-checks plus a
+`sync_versions.py --check` is a fan-out: `result |=` over nine sub-checks plus a
 subprocess into `generate-website-licenses.py`, whose targets span `README.md`
 markers, the deps table, doc literals, Dockerfile ARG defaults,
 `windows/scripts/**/Build-*FromSource.ps1` and — the eighth, added 2026-09-09 — a
 CONSUMER repository's own `pyproject.toml` / `.pre-commit-config.yaml`. Because
 the verdict is an OR, a suite that reddens ONE sub-check would un-freeze the slug
 while seven stayed unproven — the hollow-proof shape this list exists to prevent.
-`test-version-snapshot.sh` reddens all eight independently, plus the
+`test-version-snapshot.sh` reddens each one independently, plus the
 subprocess — the sixth only since its KNOWN GAP (below) was closed on 2026-09-17.
 
 ### Consumer pins and uv exclusions

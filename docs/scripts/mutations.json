@@ -6890,8 +6890,8 @@
  {
   "id": "version-snapshot.licence-subprocess-ored",
   "target": "docs/scripts/sync_versions.py",
-  "find": "        result |= lic_result.returncode",
-  "replace": "        result |= 0",
+  "find": "        return lic.returncode",
+  "replace": "        return 0",
   "test": "bash linux/scripts/tests/test-version-snapshot.sh",
   "why": "generate-website-licenses.py is a separate program whose verdict decides this slug too"
  },
@@ -66262,5 +66262,37 @@
   "replace": "    if false; then",
   "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
   "why": "a GIL nanobind twin would reach packaging and fail there with no input files, or ship a module that re-enables the GIL"
+ },
+ {
+  "id": "version-snapshot.source-pins-ored",
+  "target": "docs/scripts/sync_versions.py",
+  "find": "        result |= check_source_pins(REPO_ROOT, versions)",
+  "replace": "        result |= 0",
+  "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+  "why": "the ORT and GenAI rows of source-pins.txt repeat versions.env, and only this sub-check holds them to it"
+ },
+ {
+  "id": "version-snapshot.source-pins-written",
+  "target": "docs/scripts/sync_versions.py",
+  "find": "    result |= write_source_pins(REPO_ROOT, versions)",
+  "replace": "    result |= 0",
+  "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+  "why": "the Renovate run's sync_versions.py --write is what moves the row when the pin moves"
+ },
+ {
+  "id": "version-snapshot.source-pins-commit",
+  "target": "docs/scripts/source_pins.py",
+  "find": "        want = [fields[0], versions[tag_key], versions[commit_key], *fields[3:]]",
+  "replace": "        want = [fields[0], versions[tag_key], fields[2], *fields[3:]]",
+  "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+  "why": "the commit is the source's identity, so a row that checks only the tag can fetch other bytes"
+ },
+ {
+  "id": "version-snapshot.source-pins-missing-row",
+  "target": "docs/scripts/source_pins.py",
+  "find": "if seen.get(n, 0) != 1]",
+  "replace": "if seen.get(n, 0) > 1]",
+  "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+  "why": "a deleted row compares nothing and must not read as a match"
  }
 ]

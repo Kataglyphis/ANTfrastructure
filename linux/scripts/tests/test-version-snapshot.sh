@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sync_versions.py --check ORs eight sub-checks, so each gets its own fixture; see docs/code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons
+# sync_versions.py --check ORs nine sub-checks, so each gets its own fixture; see docs/code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=linux/scripts/tests/test-workspace-fixture.sh
@@ -88,6 +88,7 @@ for _line in "Generated version snapshot is up to date." \
              "Dependency table is up to date." \
              "Dockerfile ARG defaults match versions.env." \
              "Windows build-script -DefaultValue pins match versions.env." \
+             "ORT source pins match versions.env." \
              "Doc version literals match versions.env pins." \
              "Consumer pins match versions.env:"; do
   t_assert_contains "${_ok_out}" "${_line}" "a sub-check that prints nothing green cannot be reddened on purpose"
@@ -137,6 +138,14 @@ _red "Windows build-script -DefaultValue pins are stale:" \
 t_assert_contains "$(cat "${REPO}/windows/scripts/build/Build-TvmFromSource.ps1")" \
   "-DefaultValue 'v0.27.0'" \
   "the commit override must leave the TAG fallback alone, not rewrite it to the hash"
+
+t_case "check_source_pins — a source-pins.txt commit drifting from versions.env"
+_PINS=linux/scripts/03-media/build/onnxruntime/build/lib/source-pins.txt
+_red "ORT source pins differ from versions.env:" \
+  "${_PINS}" 's/^onnxruntime-genai|\([^|]*\)|[0-9a-f]*|/onnxruntime-genai|\1|0000000000000000000000000000000000000000|/'
+
+t_case "check_source_pins — a missing row fails rather than passing over nothing"
+_red "has 0 rows named onnxruntime, not one" "${_PINS}" '/^onnxruntime|/d'
 
 t_case "7/8 check_doc_literals — a /opt/gcc-<version> literal in prose"
 _red "stale gcc literal /opt/gcc-0.0.0" \
@@ -300,6 +309,12 @@ t_assert_contains "${_w_again}" "Dockerfile ARG defaults already match versions.
   "a second --write must find nothing to do"
 t_assert_eq "${_w_mtime}" "$(stat -c %.Y "${_w}/linux/Dockerfile.base")" \
   "a file nothing changed in must not be rewritten -- nanosecond mtime, because two runs land in the same second"
+
+t_case "--write projects the versions.env tag and commit into source-pins.txt and keeps the fallbacks"
+_s="$(_farm "${_PINS}")"
+sed -i -e 's/^onnxruntime|v[^|]*|[0-9a-f]*|/onnxruntime|v0.0.0|0000000000000000000000000000000000000000|/' "${_s}/${_PINS}"
+t_assert_contains "$(python3 "${_s}/docs/scripts/sync_versions.py" --write 2>&1)" "Synced ORT source pins: onnxruntime:" "the stale row is named"
+t_assert_eq "$(cat "${REPO}/${_PINS}")" "$(cat "${_s}/${_PINS}")" "the repaired file equals the committed one, fallbacks and comment included"
 
 t_case "9/9 the licence subprocess is ORed in, not merely run"
 # The generator is a separate program; its verdict decides the slug too.
