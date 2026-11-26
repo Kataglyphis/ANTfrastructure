@@ -116,6 +116,28 @@ async function chromePage(chrome, profile) {
   return page;
 }
 
+// The DevTools socket's calls and answers, apart from launch so a test can drive it with a fake socket.
+function cdpClient(ws, onEvent = null) {
+  let id = 0;
+  const pending = new Map();
+  const loaded = [];
+  const thrown = [];
+  ws.onmessage = (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } else if (m.method === 'Page.loadEventFired') loaded.push(m);
+    else if (m.method === 'Runtime.exceptionThrown') thrown.push(m.params.exceptionDetails);
+    if (m.method && onEvent) onEvent(m);
+  };
+  // A Chrome that stops answering must fail the check, not hang it; a page known to block its main thread longer passes its own bound.
+  const send = (method, params = {}, timeoutMs = 30000) => new Promise((resolve, reject) => {
+    const i = ++id;
+    const timer = setTimeout(() => { pending.delete(i); reject(new Error(`${method} got no answer from Chrome in ${timeoutMs / 1000} s`)); }, timeoutMs);
+    pending.set(i, (m) => { clearTimeout(timer); resolve(m); });
+    ws.send(JSON.stringify({ id: i, method, params }));
+  });
+  return { send, loaded, thrown };
+}
+
 // launch(chrome, gpuFlags, onEvent): webgpu-canvas-readback.js passes SwiftShader's WebGPU flags, check-live-site.js an event sink.
 async function launch(chrome, gpuFlags = ['--disable-gpu'], onEvent = null) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-sidebars-'));
@@ -139,23 +161,7 @@ async function launch(chrome, gpuFlags = ['--disable-gpu'], onEvent = null) {
     const page = await chromePage(chrome, profile);
     ws = new WebSocket(page.webSocketDebuggerUrl);
     await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
-    let id = 0;
-    const pending = new Map();
-    const loaded = [];
-    const thrown = [];
-    ws.onmessage = (ev) => {
-      const m = JSON.parse(ev.data);
-      if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } else if (m.method === 'Page.loadEventFired') loaded.push(m);
-      else if (m.method === 'Runtime.exceptionThrown') thrown.push(m.params.exceptionDetails);
-      if (m.method && onEvent) onEvent(m);
-    };
-    // A Chrome that stops answering must fail the check, not hang the preflight: bound every call.
-    const send = (method, params = {}) => new Promise((resolve, reject) => {
-      const i = ++id;
-      const timer = setTimeout(() => { pending.delete(i); reject(new Error(`${method} got no answer from Chrome in 30 s`)); }, 30000);
-      pending.set(i, (m) => { clearTimeout(timer); resolve(m); });
-      ws.send(JSON.stringify({ id: i, method, params }));
-    });
+    const { send, loaded, thrown } = cdpClient(ws, onEvent);
     await send('Page.enable');
     await send('Runtime.enable');
     const product = (await send('Browser.getVersion')).result.product;
@@ -377,4 +383,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => fail(e.stack || String(e)));
-else module.exports = { findChrome, launch, serve, sleep, closeChrome, closeBrowsers };
+else module.exports = { findChrome, launch, serve, sleep, closeChrome, closeBrowsers, cdpClient };

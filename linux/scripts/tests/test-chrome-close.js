@@ -8,7 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
-const { closeChrome, closeBrowsers } = require('../check-docs-sidebars.js');
+const { closeChrome, closeBrowsers, cdpClient } = require('../check-docs-sidebars.js');
 
 const directory = () => fs.mkdtempSync(path.join(os.tmpdir(), 'chrome-close-test-'));
 const socket = () => ({ close() {} });
@@ -175,3 +175,29 @@ for (const phase of ['send', 'websocket', 'endpoint', 'page', 'cleanup']) {
     assert.equal(fakeProcess.listenerCount('SIGTERM'), 0);
   });
 }
+
+// A socket that records each call and answers only what the test asks it to.
+function fakeSocket() {
+  return { sent: [], send(data) { this.sent.push(JSON.parse(data)); }, answer(id) { this.onmessage({ data: JSON.stringify({ id, result: {} }) }); } };
+}
+
+test('a call without an answer fails at the 30 s default', { timeout: 2000 }, async () => {
+  const ws = fakeSocket();
+  const realTimeout = global.setTimeout;
+  const bounds = [];
+  global.setTimeout = (fn, ms) => { bounds.push(ms); return realTimeout(fn, 1); };
+  try {
+    await assert.rejects(cdpClient(ws).send('Runtime.evaluate'), /Runtime\.evaluate got no answer from Chrome in 30 s/);
+  } finally { global.setTimeout = realTimeout; }
+  assert.deepEqual(bounds, [30000]);
+});
+
+test("a caller's own bound replaces the default and names itself", { timeout: 2000 }, async () => {
+  const ws = fakeSocket();
+  const client = cdpClient(ws);
+  const slow = client.send('Runtime.evaluate', {}, 60);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  ws.answer(ws.sent[0].id);
+  assert.deepEqual((await slow).result, {});
+  await assert.rejects(client.send('Page.navigate', {}, 20), /Page\.navigate got no answer from Chrome in 0\.02 s/);
+});

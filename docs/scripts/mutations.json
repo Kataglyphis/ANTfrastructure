@@ -66222,5 +66222,21 @@
   "replace": "    if False:",
   "test": "bash linux/scripts/tests/test-bump-versions.sh",
   "why": "A wrap that names another repository must refuse, since the Windows build fetches the fixed meson-ports URL."
+ },
+ {
+  "id": "docs-site.cdp-caller-bound",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "}, timeoutMs);",
+  "replace": "}, 30000);",
+  "test": "bash linux/scripts/tests/test-chrome-close.sh",
+  "why": "a page that holds its main thread through one WebGPU frame on SwiftShader needs the bound its caller names; the fixed 30 s failed OxidANT's browser lane"
+ },
+ {
+  "id": "docs-site.cdp-default-bound",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "params = {}, timeoutMs = 30000)",
+  "replace": "params = {}, timeoutMs = 300000)",
+  "test": "bash linux/scripts/tests/test-chrome-close.sh",
+  "why": "a Chrome that stops answering must still fail a caller that names no bound within 30 s"
  }
 ]

@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — a DevTools call takes its caller's bound
+
+- `check-docs-sidebars.js`'s `send(method, params, timeoutMs)` keeps 30 s as the default and takes a longer bound from
+  a caller whose page holds its main thread: OxidANT's browser lane failed a path-traced step on a slow runner with
+  "Runtime.evaluate got no answer from Chrome in 30 s", at one of its unpolled calls, on develop and on a branch alike.
+  The socket's call pairing is `cdpClient`, apart from `launch`, so `test-chrome-close.js` drives it with a fake
+  socket; two cases, two mutations.
+
 ## 2026-11-26 — LIBVPX_MESON_COMMIT moves with GStreamer in the same Renovate call (CON305 step 1)
 
 - `spec_libvpx_meson_commit` joins the safe tier. When `GSTREAMER_VERSION` moves, it reads that release's

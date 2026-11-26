@@ -206,7 +206,8 @@ to prove exit-before-removal, bounded retry policy, timeout, fatal errors and pe
 cleanup. The browser/CDP behavior remains covered by the fixture sites below.
 Real Chrome launches terminate their detached process group before reaping the main
 child; standalone child fixtures keep direct termination as their default. Signal
-handlers retain best-effort emergency cleanup, and DevTools calls fail after 30 seconds.
+handlers retain best-effort emergency cleanup. DevTools calls fail after 30 s.
+A slower page's caller passes `send(method, params, timeoutMs)`.
 If endpoint/page discovery, the WebSocket or initial DevTools calls fail before return, the launcher
 cleans its group, profile and signal hooks itself. Cleanup failures retain the startup
 error as well and remain fatal; fake-CDP cases cover this otherwise unowned launch path.
@@ -247,7 +248,7 @@ node linux/scripts/webgpu-canvas-readback.js <URL | page.html> [--min-colours N]
   --use-angle=swiftshader --use-webgpu-adapter=swiftshader`): the image has no GPU. A consumer
   driving its own page takes them from `require('webgpu-canvas-readback.js').WEBGPU_FLAGS`
   (frozen) for `check-docs-sidebars.js`'s `launch(chrome, WEBGPU_FLAGS)`, with `install` for
-  the read-back.
+  the read-back. A traced frame can hold the page past 30 s.
 - An init script (`Page.addScriptToEvaluateOnNewDocument`) adds `COPY_SRC` to the canvas's
   `configure()` usage and keeps the texture `getCurrentTexture()` hands out. After `--wait-ms`
   (3000) it copies the next frame out after that frame's last `submit()`
