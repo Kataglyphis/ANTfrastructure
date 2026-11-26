@@ -53,4 +53,17 @@ _ota="$(t_fn_src "${SUBJECT}" _opencv_target_adjustments)" || exit 1
 t_assert_contains "${_ota}" "_ota_riscv64_freetype _ota_cmake_opts"
 t_assert_contains "${_ota}" "_ota_riscv64_png _ota_cmake_opts"
 
+t_case "deps: riscv64 names libtiff6 beside libtiff-dev, which apt 3's solver refuses alone after a security update"
+DEPS="${TESTS_DIR}/../03-media/build/opencv/install-deps.sh"
+_deps_run() { bash -c '
+    set -u
+    is_cross() { return 0; }
+    _arch="$1"; cross_target_arch() { printf "%s" "${_arch}"; }
+    '"$(sed -n '/^target_packages=(/,/^fi$/p' "${DEPS}")"'
+    printf "%s\n" "${target_packages[@]}"' _ "$1" 2>/dev/null; }
+_pk="$(_deps_run riscv64)"
+t_assert_contains "${_pk}" "libtiff6"
+t_assert_eq "libtiff6" "$(printf '%s\n' "${_pk}" | grep -m1 -e '^libtiff')" "the runtime library is named, ahead of its -dev"
+t_assert_eq "0" "$(_deps_run arm64 | grep -cx -e 'libtiff6' || true)" "arm64 keeps its list"
+
 t_summary
