@@ -192,14 +192,23 @@ def issue_beyond_100(w: World) -> None:
     w.runs = [w.green(12, "2026-10-20T11:00:00Z", ["build"]), w.run(11, "failure", "2026-10-20T10:00:00Z")]
 
 
-def _flaky_jobs(w: World, failures: int) -> None:
+def _flaky_jobs(w: World, failures: int, failure: int | str = 502) -> None:
     red_today(w)
     key = f"{R}/Fam/actions/runs/12/jobs?filter=latest&per_page=100&page=1"
-    w.answers[key] = {"http_errors": [502] * failures, "answer": w.answers[key]}
+    w.answers[key] = {"http_errors": [failure] * failures, "answer": w.answers[key]}
 
 
 def jobs_5xx_recovers(w: World) -> None:
     _flaky_jobs(w, 4)
+
+
+def jobs_disconnect_recovers(w: World) -> None:
+    """The connection drops before any answer four times, as GitHub's did once in a real run."""
+    _flaky_jobs(w, 4, "disconnect")
+
+
+def jobs_disconnect_never(w: World) -> None:
+    _flaky_jobs(w, 5, "disconnect")
 
 
 def jobs_5xx_never(w: World) -> None:
@@ -217,7 +226,7 @@ SCENARIOS: dict[str, Callable[[World], None]] = {fn.__name__.replace("_", "-"): 
     red_opens, green_quiet, ignored_events, umbrella_masked, open_closes, other_lane_green, older_rerun,
     startup_failure, closed_floor, old_red_newest, workflow_deleted, workflow_disabled, missing_from_page,
     stale_page, job_retired, one_green_only, caller_skipped, job_skipped, still_red, issue_beyond_100,
-    jobs_5xx_recovers, jobs_5xx_never)}
+    jobs_5xx_recovers, jobs_5xx_never, jobs_disconnect_recovers, jobs_disconnect_never)}
 
 
 def main() -> int:

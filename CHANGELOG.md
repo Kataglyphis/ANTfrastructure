@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — the develop-red watch retries a dropped connection
+
+- One watch run failed and opened develop-red #402 on itself because GitHub closed a connection before any answer
+  (`http.client.RemoteDisconnected`). urlopen leaves that unwrapped, so neither the 5xx retry nor the per-repository
+  catch saw it. A GET now retries any transport failure (`TRANSIENT`) on the same delays, a write still never, and a
+  repository that keeps dropping is named and the others settle.
+- Two replay scenarios simulate the drop; three recipes, and `develop-red.repos-isolated` re-anchored.
+
 ## 2026-11-26 — an AMD AppImage's ORT core matches its wheel after the image's strip
 
 - `verify-ort-appimage-payload.sh` asked every variant for exact, unstripped wheel bytes, but the image strips its CPU

@@ -138,7 +138,8 @@ gh issue list -R Kataglyphis/ANTfrastructure -l develop-red   # empty: every dev
   workflow is deleted or disabled (`/actions/workflows/{id}`) closes with that reason, and such a
   workflow opens no issue. The issue list is read page by page.
 - An API GET that answers 5xx is tried four more times (5, 10, 20, 40 s), so a burst of bad
-  gateways does not turn the watch itself red. A write is never repeated: it may have landed. A
+  gateways does not turn the watch itself red. So is one whose connection drops or times out.
+  `urlopen` leaves a connection closed before any answer raw (`RemoteDisconnected`). A write is never repeated: it may have landed. A
   repository whose answers never come is named on stderr, the other repositories still settle,
   and the run exits 1.
 - `develop-red-selftest.yml` concludes as its `outcome` input says: dispatch it with `failure` and

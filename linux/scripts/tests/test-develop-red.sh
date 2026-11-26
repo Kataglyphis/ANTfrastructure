@@ -125,16 +125,28 @@ t_assert_contains "${out}" '`build`: last failed in [run 13]'
 t_case "an issue beyond the first 100 is still found"
 t_assert_contains "$(_watch issue-beyond-100)" "POST /repos/Kataglyphis/ANTfrastructure/issues/5/comments"
 
-t_case "a jobs page answering 5xx four times then 200 settles normally"
-t_assert_contains "$(_watch jobs-5xx-recovers)" "opened: develop is red: Fam · Lane"
+# _unanswered <scenario>: asserts the run exits 1, then sets out; never call it in $(...), whose subshell drops a failed assertion.
+_unanswered() {
+  _replayed="$(_replay "$1")"
+  t_assert_rc 1 "${PY}" "${SCRIPT}" --replay "${_replayed}" --now "${NOW}"
+  out="$("${PY}" "${SCRIPT}" --replay "${_replayed}" --now "${NOW}" 2>&1)"
+}
+
+for _failure in 5xx disconnect; do
+  t_case "a jobs page failing four times with ${_failure} then answering settles normally"
+  t_assert_contains "$(_watch "jobs-${_failure}-recovers")" "opened: develop is red: Fam · Lane"
+done
 
 t_case "a jobs page that never recovers fails the run, naming it, after the other repositories settled"
-_never="$(_replay jobs-5xx-never)"
-out="$("${PY}" "${SCRIPT}" --replay "${_never}" --now "${NOW}" 2>&1)"
+_unanswered jobs-5xx-never
 t_assert_contains "${out}" "opened: develop is red: Second · Lane"
 t_assert_contains "${out}" "failed: Fam: HTTP Error 502"
 t_assert_contains "${out}" "FAILED: the API never answered for Fam"
-t_assert_rc 1 "${PY}" "${SCRIPT}" --replay "${_never}" --now "${NOW}"
+
+t_case "a connection that keeps dropping before any answer is retried, then named, like a 5xx"
+_unanswered jobs-disconnect-never
+t_assert_contains "${out}" "after RemoteDisconnected"
+t_assert_contains "${out}" "failed: Fam: Remote end closed connection without response"
 
 # _flaky <code> <method> <failures>: a Client call against an API that fails <failures> times; prints the outcome and the attempts.
 _flaky() {

@@ -112,10 +112,10 @@ docs/geniex-local-ai-setup.md | avg-sentence | 20.1
 docs/geniex-local-ai-setup.md | long-share | 18.4
 docs/geniex-local-ai-setup.md | ids-per-k | 2.4
 docs/geniex-local-ai-setup.md | bold-per-k | 22.0
-docs/github-cli-pipeline-monitoring.md | avg-sentence | 17.8
-docs/github-cli-pipeline-monitoring.md | long-share | 12.6
+docs/github-cli-pipeline-monitoring.md | avg-sentence | 17.6
+docs/github-cli-pipeline-monitoring.md | long-share | 12.4
 docs/github-cli-pipeline-monitoring.md | ids-per-k | 2.6
-docs/github-cli-pipeline-monitoring.md | bold-per-k | 5.8
+docs/github-cli-pipeline-monitoring.md | bold-per-k | 5.7
 docs/gpu-artifact-receipts.md | avg-sentence | 18.0
 docs/gpu-artifact-receipts.md | long-share | 9.0
 docs/gpu-artifact-receipts.md | ids-per-k | 1.0

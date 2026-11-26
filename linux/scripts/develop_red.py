@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import http.client
 import json
 import os
 import sys
@@ -35,6 +36,8 @@ ISO = "%Y-%m-%dT%H:%M:%SZ"
 API = "https://api.github.com"
 # A GET is safe to repeat; four delays (75 s) outlast a GitHub 5xx burst and fit the 10-minute job.
 RETRY_DELAYS = (5, 10, 20, 40)
+# urlopen leaves a connection dropped mid-response raw (RemoteDisconnected), so the URLError family alone misses it.
+TRANSIENT = (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError)
 ISSUE_PAGE = 100
 ACTIVE = "active"
 
@@ -48,13 +51,16 @@ class Client:
         self.sleep: Callable[[float], None] = time.sleep if replay is None else (lambda _s: None)
 
     def _replayed(self, path: str) -> Any:
-        """A replay answer, or the next of its recorded 5xx codes: {"http_errors": [502, ...], "answer": ...}."""
+        """A replay answer, or its next recorded failure, a 5xx code or "disconnect": {"http_errors": [502, ...], "answer": ...}."""
         if self.replay is None or path not in self.replay:
             raise SystemExit(f"replay has no answer for GET {path}")
         answer = self.replay[path]
         if isinstance(answer, dict) and "http_errors" in answer:
             if answer["http_errors"]:
-                raise urllib.error.HTTPError(API + path, answer["http_errors"].pop(0), "replayed", Message(), None)
+                failure = answer["http_errors"].pop(0)
+                if failure == "disconnect":
+                    raise http.client.RemoteDisconnected("Remote end closed connection without response")
+                raise urllib.error.HTTPError(API + path, failure, "replayed", Message(), None)
             return answer["answer"]
         return answer
 
@@ -81,6 +87,12 @@ class Client:
                 if method != "GET" or error.code < 500 or delay is None:
                     raise
                 print(f"retrying GET {path} after HTTP {error.code}", file=sys.stderr)
+                self.sleep(delay)
+            except TRANSIENT as error:
+                # A write is never repeated: the first attempt may have landed before the connection dropped.
+                if method != "GET" or delay is None:
+                    raise
+                print(f"retrying GET {path} after {type(error).__name__}", file=sys.stderr)
                 self.sleep(delay)
         raise AssertionError("unreachable")
 
@@ -373,7 +385,7 @@ def main(argv: list[str] | None = None) -> int:
     for repo in repos:
         try:
             watched += settle_repo(client, repo, issues, now)
-        except (urllib.error.URLError, TimeoutError) as error:
+        except TRANSIENT as error:
             # One repository the API cannot answer must not leave the others unwatched.
             failed.append(repo)
             print(f"failed: {repo}: {error}", file=sys.stderr)

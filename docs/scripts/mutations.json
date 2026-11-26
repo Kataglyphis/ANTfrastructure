@@ -17262,8 +17262,8 @@
  {
   "id": "develop-red.repos-isolated",
   "target": "linux/scripts/develop_red.py",
-  "find": "        except (urllib.error.URLError, TimeoutError) as error:\n",
-  "replace": "        except TimeoutError as error:\n",
+  "find": "        except TRANSIENT as error:\n            # One repository",
+  "replace": "        except TimeoutError as error:\n            # One repository",
   "test": "bash linux/scripts/tests/test-develop-red.sh",
   "why": "one repository the API cannot answer left every later repository of the family unwatched"
  },
@@ -17274,6 +17274,30 @@
   "replace": "    return 0\n",
   "test": "bash linux/scripts/tests/test-develop-red.sh",
   "why": "a watch that could not read a repository must go red, or that repository's reds go unreported in a green run"
+ },
+ {
+  "id": "develop-red.transport-retried",
+  "target": "linux/scripts/develop_red.py",
+  "find": "                if method != \"GET\" or delay is None:\n                    raise\n                print(f\"retrying GET {path} after {type(error).__name__}\", file=sys.stderr)",
+  "replace": "                if True:\n                    raise\n                print(f\"retrying GET {path} after {type(error).__name__}\", file=sys.stderr)",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "A connection that drops before any answer is retried like a 5xx, not turned into a red watch."
+ },
+ {
+  "id": "develop-red.transport-family",
+  "target": "linux/scripts/develop_red.py",
+  "find": "TRANSIENT = (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError)",
+  "replace": "TRANSIENT = (urllib.error.URLError, TimeoutError)",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "RemoteDisconnected, which urlopen leaves unwrapped, counts as a transport failure."
+ },
+ {
+  "id": "develop-red.transport-isolated",
+  "target": "linux/scripts/develop_red.py",
+  "find": "        except TRANSIENT as error:\n            # One repository",
+  "replace": "        except (urllib.error.URLError, TimeoutError) as error:\n            # One repository",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "A repository whose connection keeps dropping is named and the others still settle, rather than a traceback."
  },
  {
   "id": "doc-links.link-roots-follow-root",
