@@ -19,6 +19,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — the runtime lane's zstd conversion no longer breaks the wrapper it pushes
+
+- The first runtime lane since CON99 built and smoked the amd64 wrapper, then its push failed with
+  `content digest sha256:0883bfe0…: not found`. `nerdctl image convert` with the source tag as its target loses the
+  source manifest when no other image holds it; a wrapper built from an OCI layout is such an image. A small image built
+  the same way reproduced it, and converting to a second tag did not.
+- `_runtime_zstd_convert` converts to `<tag>-zstd`, retags and removes the staging tag. `test-runtime-push.sh`'s stub
+  fails an in-place convert, and `runtime-push.zstd-converts-to-a-second-tag` and `runtime-push.failed-retag-stops`
+  hold it.
+
 ## 2026-11-26 — Intel's GPU user space is asked for on amd64 only
 
 - The first runtime lane since CON258 stopped in its input preflight on arm64 and riscv64:

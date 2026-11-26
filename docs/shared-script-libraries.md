@@ -455,7 +455,7 @@ shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), and edited since only to keep it current. The RULES stayed there; this is the reference behind them.
 
 `artifact-common.sh` sources 01-core modules in dependency order:
-1. `common.sh` 2. `tag-naming.sh` 3. `stage-defs.sh` 4. `digest-pinning.sh` 5. `chain-verify.sh` 6. `ancestry.sh` 7. `build-helpers.sh` 8. `cross-stage-build.sh` 9. `context-management.sh` 10. `version-forwarding.sh` 11. `cli-parsers.sh` 12. `runtime-build-fns.sh` 13. `compiler-resolution.sh` 14. `parallel-loop.sh` 15. `path-helpers.sh`. `abseil-headers.sh` is
+1. `common.sh` 2. `tag-naming.sh` 3. `stage-defs.sh` 4. `digest-pinning.sh` 5. `chain-verify.sh` 6. `ancestry.sh` 7. `build-helpers.sh` 8. `cross-stage-build.sh` 9. `context-management.sh` 10. `version-forwarding.sh` 11. `cli-parsers.sh` 12. `runtime-push.sh` 13. `runtime-build-fns.sh` 14. `compiler-resolution.sh` 15. `parallel-loop.sh` 16. `path-helpers.sh`. `abseil-headers.sh` is
 deliberately NOT in this loop (backlog A3, 2026-08-12): it has no host-side
 caller, and its in-image consumers load it via `source_module`.
 

@@ -3757,6 +3757,14 @@ install copied `_runtime.cpython-315-<triple>.so`. It is the same CMake 4.4.5 ca
 kept the GIL pass's cached `NB_SUFFIX`. `_iree_free_threaded_rebuild` drops it, passes `SKBUILD_SOABI` and fails its
 rebuild when `build.ninja` builds no `nanobind-static-*-ft` library.
 
+### `content digest sha256:…: not found` when the runtime lane pushes a wrapper
+
+The wrapper built and passed its smoke, and the push fails in 2 s right after `nerdctl image convert --zstd --oci`.
+nerdctl 2.4's in-place convert, with the source tag as the target, loses the source manifest when no other image
+holds its content. The wrapper is built from an OCI layout, so nothing does, and the tag is left on a missing blob.
+`_runtime_zstd_convert` converts to `<tag>-zstd`, tags that back and removes it. Rebuild the wrapper; the broken
+local tag cannot be pushed.
+
 ### `torch owns no compiled module, so its wheel is no binary build` on the riscv64 torch twin
 
 The media stage's store check then says the twin is missing, and the twin pass logs `torch wheel lacks torch/_C*.so`.
