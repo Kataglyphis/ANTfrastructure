@@ -222,7 +222,7 @@ _sdp_run() {
   (
     apt_package_exists() { return 1; }
     append_optional_available_packages() { :; }
-    append_available_packages() { :; }
+    append_available_packages() { local -n _aap="$1"; shift; _aap+=("$@"); }
     gtk4_dev_packages() { :; }
     dpkg() { printf '%s\n' "${FAKE_ARCH}"; }
     eval "${_sdp}"
@@ -234,7 +234,9 @@ _sdp_run() {
 t_assert_contains "$(FAKE_ARCH=amd64 _sdp_run)" "gcc-mingw-w64-x86-64"
 for _a in arm64 riscv64; do
   t_assert_eq "0" "$(FAKE_ARCH="${_a}" _sdp_run | grep -c mingw || true)" "${_a} carries no mingw"
+  t_assert_eq "0" "$(FAKE_ARCH="${_a}" _sdp_run | grep -c -e '^intel-' || true)" "${_a}: ports' apt-cache shows intel-media-va-driver, apt has no candidate"
 done
+t_assert_contains "$(FAKE_ARCH=amd64 _sdp_run)" "intel-media-va-driver" "amd64 keeps Intel's GPU user space"
 
 t_case "JAVA_HOME is anchored to a symlink, so a JDK bump does not silently break the ENV"
 t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks

@@ -141,8 +141,10 @@ select_dev_packages() {
     # What consumer lanes installed per run: lavapipe, perf (26.04's linux-perf), libprofiler, jq, Xvfb; ripgrep for searches.
     append_available_packages _sdp_out mesa-vulkan-drivers linux-perf \
         libgoogle-perftools-dev jq xvfb ripgrep
-    # Intel's GPU user space, free builds: VA driver, Quick Sync runtime, OpenCL ICD; the packages exist on amd64 only.
-    append_available_packages _sdp_out intel-media-va-driver libmfx-gen1.2 intel-opencl-icd
+    # Intel's free GPU user space; amd64 only by arch, since ports' apt-cache shows intel-media-va-driver with no candidate.
+    if [ "$(dpkg --print-architecture)" = amd64 ]; then
+        append_available_packages _sdp_out intel-media-va-driver libmfx-gen1.2 intel-opencl-icd
+    fi
 
     # Never libgstreamer*-dev: ours is source-built, the distro one purged.
 
