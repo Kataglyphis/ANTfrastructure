@@ -1627,7 +1627,8 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       plugin-only image). Run 43303579930 stopped at the wheel proof (`expected one wheel matching every native
       library; found 0`): the image strips the CPU core, so `stage-ort-wheel-licenses.py --require-unstripped`
       holds for the NVIDIA prefix only; OxidANT 6c1e85d asks for exact bytes on NVIDIA alone. If
-      `verify-ort-appimage-payload.sh` asks for exact bytes too, an AMD AppImage fails there next (not yet seen).
+      `verify-ort-appimage-payload.sh` asks for exact bytes too, an AMD AppImage fails there next (seen 2026-11-26 in
+      AccelerANTgine's AMD candidate; fixed the same day: `ort_wheel_proof_args` compares AMD after the image's strip).
       Run 43314831939 then built and tested and stopped at the bundle census: `UNRESOLVED /lib/libmigraphx-ep.so --
       no libonnxruntime.so.1 on its ld.so search path`. The image's module has no run path, and
       `ort_assert_plugin_module` forbids a package to patch one in. Owner, 2026-11-12: the census takes the

@@ -8,6 +8,11 @@ t_skip_unless 'C compiler' command -v cc
 t_skip_unless 'strip' command -v strip
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+# An arm64 host also runs the AMD leg, as an x64 host: a uname shim on PATH is the only thing that changes.
+if [ -n "${ORT_PAYLOAD_TEST_AS_X64:-}" ]; then
+  mkdir "$work/shim" && printf '#!/bin/sh\necho x86_64\n' > "$work/shim/uname" && chmod +x "$work/shim/uname"
+  PATH="$work/shim:$PATH"
+fi
 case "$(uname -m)" in
   x86_64|amd64) variant=amd; engine=libmigraphx-ep.so ;;
   aarch64|arm64) variant=nvidia; engine=libonnxruntime_providers_cuda.so ;;
@@ -55,6 +60,14 @@ if [ "$variant" = amd ]; then
   t_assert_contains "$(check)" 'PASS: finished AppImage ORT payload and notices match one GPU wheel (migraphx)'
   t_assert_contains "$(ORT_AMDGPU_EP_ROOT="$work/nowhere" check 2>&1)" "is not the image's" 'a plugin module no image copy vouches for fails'
 fi
+t_case 'the wheel proof is exact for NVIDIA and after the image strip for AMD, on any host'
+t_assert_eq '--require-unstripped --strip strip' "$(STRIP='' source "${_T_SCRIPTS}/06-packaging/ort-package-proof.sh" && ort_wheel_proof_args cuda | paste -sd' ')"
+t_assert_eq '--strip strip' "$(STRIP=llvm-strip source "${_T_SCRIPTS}/06-packaging/ort-package-proof.sh" && ort_wheel_proof_args migraphx | paste -sd' ')"
+t_case 'a stripped core passes on AMD, whose image strips its CPU core, and fails on NVIDIA'
+cp "$work/fixture/usr/lib/engine/libonnxruntime.so.1" "$work/core"
+strip --strip-all "$work/fixture/usr/lib/engine/libonnxruntime.so.1"
+if [ "$variant" = amd ]; then t_assert_ok check; else t_assert_fails check; fi
+cp "$work/core" "$work/fixture/usr/lib/engine/libonnxruntime.so.1"
 t_case 'a changed or stripped provider fails even when stripping the wheel would match it'
 cp "$work/fixture/usr/lib/engine/${engine}" "$work/provider"
 strip --strip-all "$work/fixture/usr/lib/engine/${engine}"
@@ -114,4 +127,8 @@ t_assert_fails check
 rm "$work/fixture/opt/other/$sdk"
 ln -s ../missing "$work/fixture/opt/other/$sdk"
 t_assert_fails check
+if [ "$variant" = nvidia ] && [ -z "${ORT_PAYLOAD_TEST_AS_X64:-}" ]; then
+  t_case 'the AMD leg passes on this arm64 host too, run as x64'
+  t_assert_ok env ORT_PAYLOAD_TEST_AS_X64=1 bash "${BASH_SOURCE[0]}"
+fi
 t_summary

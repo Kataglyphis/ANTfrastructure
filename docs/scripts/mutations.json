@@ -66854,5 +66854,21 @@
   "replace": "dist = pool",
   "test": "bash linux/scripts/tests/test-free-threaded-probe-deps.sh",
   "why": "uv leaves its sdist extraction under --out-dir, and the pool check then refuses the riscv64 pool"
+ },
+ {
+  "id": "packaging.ort-appimage-amd-strip-fallback",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "    migraphx) printf '%s\\n' --strip strip ;;\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-appimage-payload.sh",
+  "why": "the AMD image strips its CPU core, so an exact check rejects every AMD AppImage"
+ },
+ {
+  "id": "packaging.ort-appimage-nvidia-exact",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "    *) printf '%s\\n' --require-unstripped --strip \"${STRIP:-strip}\" ;;\n",
+  "replace": "    *) printf '%s\\n' --strip \"${STRIP:-strip}\" ;;\n",
+  "test": "bash linux/scripts/tests/test-ort-appimage-payload.sh",
+  "why": "NVIDIA's GPU prefix ships unstripped, so a stripped or changed NVIDIA file must not pass by stripping the wheel"
  }
 ]

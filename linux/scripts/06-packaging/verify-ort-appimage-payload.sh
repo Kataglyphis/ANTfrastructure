@@ -43,9 +43,9 @@ appimage_create_work
   # The plugin is no wheel's: the collector's libonnxruntime* glob leaves it out, and the image's module is its proof.
   [ "$kind" != migraphx ] || ort_assert_plugin_module "${lib}/${ORT_AMDGPU_EP_MODULE}"
   mkdir proven
-  python3 "${script_dir}/stage-ort-wheel-licenses.py" --require-unstripped \
-    --wheel-dir "${ORT_CHAIN_WHEEL_DIR:-/opt/onnxruntime-wheels}" --destination proven \
-    --strip "${STRIP:-strip}" "${libraries[@]}"
+  mapfile -t proof < <(ort_wheel_proof_args "$kind")
+  python3 "${script_dir}/stage-ort-wheel-licenses.py" "${proof[@]}" \
+    --wheel-dir "${ORT_CHAIN_WHEEL_DIR:-/opt/onnxruntime-wheels}" --destination proven "${libraries[@]}"
   ort_package_verify_notices "$root" "${root}/${notice_dir}" proven/licenses/onnxruntime
   printf 'PASS: finished AppImage ORT payload and notices match one GPU wheel (%s)\n' "$kind"
 )

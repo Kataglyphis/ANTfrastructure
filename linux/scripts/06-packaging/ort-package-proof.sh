@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Keeps a finished package's ORT libraries and notices inside its root; it does not compare libraries with a wheel.
+# Keeps a finished package's ORT libraries and notices inside its root and names the wheel proof's mode; it compares no library itself.
 
 _ort_package_inside() {
   local resolved
@@ -151,4 +151,12 @@ ort_package_require_program() {
     return 1
   fi
   _ort_package_inside "$1" "$2" 'Packaged program escapes package'
+}
+
+# ort_wheel_proof_args KIND: stage-ort-wheel-licenses.py's proof options; the AMD image strips its CPU core with its own strip, NVIDIA's prefix ships unstripped.
+ort_wheel_proof_args() {
+  case "$1" in
+    migraphx) printf '%s\n' --strip strip ;;
+    *) printf '%s\n' --require-unstripped --strip "${STRIP:-strip}" ;;
+  esac
 }

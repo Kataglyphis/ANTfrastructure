@@ -19,6 +19,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — an AMD AppImage's ORT core matches its wheel after the image's strip
+
+- `verify-ort-appimage-payload.sh` asked every variant for exact, unstripped wheel bytes, but the image strips its CPU
+  core (`30-build-native.sh`), which AMD packages carry; no wheel could match, so AccelerANTgine's AMD candidate
+  failed with `expected one wheel matching every native library; found 0` (BACKLOG CON item (i) foresaw it). AMD now
+  compares after GNU `strip --strip-all`; NVIDIA keeps the exact check. `test-ort-appimage-payload.sh` holds both.
+
 ## 2026-11-26 — Python app packages carry FFmpeg's GPL texts and source offer (CON227 step 2)
 
 - `WindowsSourceOffer.Common.psm1`: `Copy-NativeSourceOffer` copies the texts and the offer of every image FFmpeg DLL

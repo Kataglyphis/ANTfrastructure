@@ -405,8 +405,9 @@ store or `STRIP` for the target architecture's strip tool. Already staged texts
 must still match exactly on repeated runs.
 
 `linux/scripts/06-packaging/verify-ort-appimage-payload.sh` extracts the finished
-native GPU AppImage's ONNX Runtime files and original texts, then requires an
-exact, unstripped match to one wheel. It checks the selected NVIDIA or AMD
+native GPU AppImage's ONNX Runtime files and original texts, then matches them to
+one wheel. NVIDIA's files must match exactly and unstripped. On AMD the image strips its CPU
+core, so the core must match the wheel's after `strip --strip-all`. It checks the selected NVIDIA or AMD
 provider, rejects unsupported architectures and scans the whole payload for host
 GPU SDK libraries. Its path and alias rules live in
 `linux/scripts/06-packaging/ort-package-proof.sh`, which consumers source to check
