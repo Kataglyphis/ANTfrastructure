@@ -66846,5 +66846,13 @@
   "replace": "run \"${nerdctl}\" tag \"${staged}\" \"${tag}\" || true",
   "test": "bash linux/scripts/tests/test-runtime-push.sh",
   "why": "a failed retag leaves the gzip image under the wrapper tag, which would then be pushed as if converted"
+ },
+ {
+  "id": "probe.ft-deps-build-outside-pool",
+  "target": "linux/scripts/06-packaging/free-threaded-probe-deps.py",
+  "find": "dist = pool.with_name(f\"{pool.name}-dist\")",
+  "replace": "dist = pool",
+  "test": "bash linux/scripts/tests/test-free-threaded-probe-deps.sh",
+  "why": "uv leaves its sdist extraction under --out-dir, and the pool check then refuses the riscv64 pool"
  }
 ]

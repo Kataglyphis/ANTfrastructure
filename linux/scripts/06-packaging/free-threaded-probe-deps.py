@@ -124,8 +124,13 @@ def populate(args: argparse.Namespace, pool: Path, arch: str, python_tag: str) -
     if digest(archive) != row["sha256"]:
         raise ValueError("downloaded probe source differs before build")
     if not archive.name.endswith(".whl"):
+        # uv extracts the sdist under its --out-dir and leaves that tree behind, which the pool check refuses.
+        dist = pool.with_name(f"{pool.name}-dist")
         subprocess.run(["uv", "build", "--wheel", "--no-python-downloads", "--python", sys.executable,
-                        "--out-dir", str(pool), str(archive)], check=True)
+                        "--out-dir", str(dist), str(archive)], check=True)
+        for built in dist.glob("*.whl"):
+            built.rename(pool / built.name)
+        shutil.rmtree(dist)
     wheels = list(pool.glob("*.whl"))
     if len(wheels) != 1:
         raise ValueError("probe dependency build must produce exactly one wheel")

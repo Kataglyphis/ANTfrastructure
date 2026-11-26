@@ -989,7 +989,8 @@ in `/opt/ft-probe-deps`; it does not change `/opt/wheels-free-threaded` or its e
 running target FT interpreter with the GIL off. Copy all three files together.
 
 AMD64 and ARM64 retain their exact official wheels. RISC-V retains the verified original sdist
-and builds its wheel on the target interpreter, including under QEMU. The dedicated per-arch
+and builds its wheel on the target interpreter, including under QEMU. uv leaves its sdist tree in its
+output directory. So it builds beside the pool, and only the wheel moves in. The dedicated per-arch
 BuildKit cache retains the wheel and receipt; every reuse rechecks input/output hashes and runs
 a normal NumPy import in a fresh offline venv with the GIL checked before and after. Source builds
 use the shared compiler-cache launcher, report its statistics to stderr and drain the shared S3

@@ -228,13 +228,19 @@ class ProbeDependencyTests(unittest.TestCase):
             if command[0] == "bash":
                 (pool / row["filename"]).write_bytes(b"source fixture")
             else:
-                shutil.copyfile(self.wheel, pool / self.wheel.name)
+                # uv leaves its sdist extraction under --out-dir, as uv 0.13.7 did on riscv64.
+                out = Path(command[command.index("--out-dir") + 1])
+                (out / ".tmpfixture/numpy-2.5.4").mkdir(parents=True)
+                shutil.copyfile(self.wheel, out / self.wheel.name)
         with patch.object(g, "artifact", return_value=row), patch.object(g.subprocess, "run", side_effect=child) as run:
             g.populate(self.args, pool, "riscv64", "cp315")
         download, compile_wheel = [call.args[0] for call in run.call_args_list]
         self.assertIn("download_verified_cached", download[2])
         self.assertEqual(compile_wheel[:7], ["uv", "build", "--wheel", "--no-python-downloads", "--python", sys.executable, "--out-dir"])
         self.assertEqual(compile_wheel[-1], str(pool / row["filename"]))
+        self.assertEqual({p.name for p in pool.iterdir()}, {row["filename"], self.wheel.name, "receipt.json"},
+                         "the pool holds only the source, the wheel and the receipt")
+        self.assertFalse(pool.with_name(f"{pool.name}-dist").exists())
 
     def test_failed_verified_download_preserves_status_without_receipt(self) -> None:
         pool = self.root / "failed pool"

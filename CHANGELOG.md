@@ -44,6 +44,13 @@
   stage keeps its cache key. Not in an image yet: the owner holds the Windows rebuild.
 - `SourceOffer.Build.Tests.ps1` and six recipes; nine FFmpeg-RUN mount recipes re-anchored on the two new mounts.
 
+## 2026-11-26 — the riscv64 NumPy probe wheel builds outside its pool
+
+- The riscv64 wrapper failed `FT-PROBE-DEPS FAIL: probe dependency pool has unexpected entries` after `uv build`
+  succeeded: uv 0.13.7 leaves its sdist extraction (`.tmp*/numpy-2.5.4`) under `--out-dir`, which was the pool.
+- `populate` builds into `<pool>-dist`, moves the wheel in and removes the rest. The test's uv stub leaves the same
+  tree behind; `probe.ft-deps-build-outside-pool` holds it. Only the wrapper's probe-deps RUN re-keys.
+
 ## 2026-11-26 — the runtime lane's zstd conversion no longer breaks the wrapper it pushes
 
 - The first runtime lane since CON99 built and smoked the amd64 wrapper, then its push failed with
