@@ -391,7 +391,10 @@ _iree_free_threaded_rebuild() {
     local -a py_args=("-DPython_EXECUTABLE=$1" "-DPython3_EXECUTABLE=$1")
     if [ -n "${FT_TARGET_INCLUDE:-}" ]; then
         # The GIL configure cached the target GIL headers for both FindPython spellings; the twin moves both and drops their results.
-        py_args+=("-U" "_Python*" "-U" "Python_NumPy*" "-U" "Python3_NumPy*"
+        local ft_soabi="${FT_TARGET_EXT_SUFFIX#.}"; ft_soabi="${ft_soabi%.so}"
+        # CMake 4.4.5's cross FindPython empties Python_SOABI, so nanobind kept its cached GIL NB_SUFFIX; it reads SKBUILD_SOABI first.
+        py_args+=("-U" "_Python*" "-U" "Python_NumPy*" "-U" "Python3_NumPy*" "-U" "NB_SUFFIX*"
+                  "-DSKBUILD_SOABI=${ft_soabi}"
                   "-DPython_INCLUDE_DIR=${FT_TARGET_INCLUDE}" "-DPython3_INCLUDE_DIR=${FT_TARGET_INCLUDE}" "-DPYTHON_INCLUDE_DIR=${FT_TARGET_INCLUDE}" "-DPython3_INCLUDE_DIRS=${FT_TARGET_INCLUDE}"
                   "-DPython_LIBRARY=${FT_TARGET_LIBRARY}" "-DPython3_LIBRARY=${FT_TARGET_LIBRARY}" "-DPYTHON_LIBRARY=${FT_TARGET_LIBRARY}")
         eval "$(ft_target_env)"
@@ -401,6 +404,11 @@ _iree_free_threaded_rebuild() {
        || ! cmake --build "${target_build}" -- -j"${MAX_JOBS}" > "${target_build}.ft.log" 2>&1; then
         warn "IREE free-threaded rebuild failed"
         tail -n 80 "${target_build}.ft-cfg.log" "${target_build}.ft.log" 2>/dev/null
+        return 1
+    fi
+    # nb_ft.cpp alone proves nothing: the abi3 library compiles it too.
+    if ! grep -Eq -e 'nanobind-static(-[a-z0-9]+)*-ft[/.]' "${target_build}/build.ninja"; then
+        warn "IREE twin: build.ninja builds no nanobind-static-*-ft library, so nanobind configured without free-threading"
         return 1
     fi
 }
