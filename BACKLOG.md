@@ -2643,7 +2643,7 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       image's IWYU is built on an older clang and reads no unit that declares or imports a module, so the owner chose
       a report on the plain units: `code_quality_find_iwyu_files` and `code_quality_run_iwyu` (hub 486827f8), red only
       for a unit it could not read, and `myproject_ENABLE_IWYU` is OFF. AccelerANTgine's static lane runs it (0126297:
-      7 units read, none refused, 6 with suggestions); left: BeschleunigerBallett wires it at its next hub pin. (b)
+      7 units read, none refused, 6 with suggestions), and BeschleunigerBallett's (f0ebbcab). (b)
       Done 2026-11-21 in BeschleunigerBallett (9dedc393): cppcheck's default is OFF, as the image has no binary and a
       skipped check misleads (D10). (c) Warnings in three steps (D11). Step 1 in source 2026-11-23:
       BeschleunigerBallett adds spdlog and nlohmann_json as SYSTEM subdirectories (a9333e7e), against the 124 and 12
@@ -2656,7 +2656,14 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       under clang-cl (23d91739, f93294de, 4eac5a56; every lane green, x64, arm64, riscv64, Windows x64 and arm64):
       CMake compiles an imported module's BMI with the importer's flags, so GCC's two TU-local warnings in nlohmann's
       module and clang's -Wnullability-extension in Abseil stay warnings, and Abseil is SYSTEM outside clang-cl, which
-      misparses its function_ref.h so. Left: BeschleunigerBallett's census lanes and product targets. (d) Done
+      misparses its function_ref.h so. BeschleunigerBallett followed 2026-11-26 (eacea92d, bd012d72): its own warnings
+      fixed (36 GCC, 11-13 clang, clang-cl's getenv), `COMPILE_WARNING_AS_ERROR` on its two product targets, and a
+      census lane per Linux build and arch, every one at zero. Left, the hub's: the census reads no clang-cl
+      `file(line,col):` line, so no consumer's Windows lanes hold one; it counts a path through `..` as written
+      (`Src/GraphicsEngineVulkan/../shared/...`); it should strip colour codes, which ninja drops off a TTY but a
+      direct clang run keeps, so such a log matches no line; and `cmake/README.md` could name
+      `COMPILE_WARNING_AS_ERROR` per product target as the family's way (AccelerANTgine spells `$<IF:...,/WX,-Werror>`).
+      (d) Done
       2026-11-21: the pattern-limits doc holds the row for exception-free filesystem calls, which AccelerANTgine and
       BeschleunigerBallett bind; the first version read `current_path(ec)` as throwing and missed the iterator
       declaration, corrected the same day.
