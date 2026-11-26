@@ -19,6 +19,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — the native ORT plugin header reads the environment without `_wgetenv`
+
+- `shared/native/ort_plugin_eps.hpp`'s `environment_path` reads a variable on Windows with `GetEnvironmentVariableW`:
+  clang-cl marks `_wgetenv` deprecated, and AccelerANTgine's `-Werror` Windows lanes failed on it
+  (`-Wdeprecated-declarations`), so no NSIS setup was built there. The Linux path is unchanged.
+
 ## 2026-11-26 — a DevTools call takes its caller's bound
 
 - `check-docs-sidebars.js`'s `send(method, params, timeoutMs)` keeps 30 s as the default and takes a longer bound from

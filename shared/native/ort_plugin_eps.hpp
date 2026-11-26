@@ -45,13 +45,20 @@ namespace detail {
     inline auto environment_path(std::string_view name) -> std::filesystem::path
     {
 #ifdef _WIN32
+        // clang-cl -Werror rejects the deprecated _wgetenv; the Win32 call reads the same block.
         const std::wstring variable(name.begin(), name.end());
-        const auto *value = ::_wgetenv(variable.c_str());
+        const DWORD size = ::GetEnvironmentVariableW(variable.c_str(), nullptr, 0);
+        if (size == 0) { return {}; }
+        std::wstring value(size, L'\0');
+        const DWORD written = ::GetEnvironmentVariableW(variable.c_str(), value.data(), size);
+        if (written == 0 || written >= size) { return {}; }
+        value.resize(written);
+        return std::filesystem::path{ value };
 #else
         const std::string variable(name);
         const auto *value = std::getenv(variable.c_str());
-#endif
         return value == nullptr ? std::filesystem::path{} : std::filesystem::path{ value };
+#endif
     }
 
     inline auto canonical_module(const std::filesystem::path &candidate, bool advertised, std::string &error)
