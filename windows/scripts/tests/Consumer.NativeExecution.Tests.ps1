@@ -28,7 +28,9 @@ function Assert-NativeBuildTransport {
     $failure = ''
     try { Invoke-MutBuildExternal -Context $context -File $State.Tool -Parameters @{} } catch { $failure = $_.Exception.Message }
     Assert-Match 'exit code 7' $failure
-    foreach ($pattern in @('first\n\n', 'native-error', 'ARG1=\[\] ARG2=\[\]')) { Assert-Match $pattern $failure 'failure evidence retains both streams and blank lines' }
+    Assert-Match '(?m)^native-error$' $failure 'failure evidence retains stderr'
+    # stderr has its own pipe, so its line may land anywhere between the stdout lines.
+    Assert-Match 'first\n\nARG1=\[\] ARG2=\[\]' ($failure -replace '(?m)^native-error\n', '') 'failure evidence retains stdout order and blank lines'
     Assert-Equal 37 $global:LASTEXITCODE
 }
 
