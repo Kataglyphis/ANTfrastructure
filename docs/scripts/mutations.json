@@ -66104,6 +66104,54 @@
   "why": "Only an ORT core soname may stand in for the core; a provider name would let a bundle without its core pass."
  },
  {
+  "id": "packaging.nsis-read-as-nsis",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "*([\"-tNsis\"] if nsis else [])",
+  "replace": "*([] if nsis else [])",
+  "test": "python3 linux/scripts/tests/test_package_nsis_setup.py",
+  "why": "A setup is listed as NSIS, never by whatever format 7-Zip guesses."
+ },
+ {
+  "id": "packaging.nsis-internals-excluded",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "if not name.startswith(\"$\")]",
+  "replace": "if True]",
+  "test": "python3 linux/scripts/tests/test_package_nsis_setup.py",
+  "why": "An installer-internal $PLUGINSDIR entry can never satisfy a package rule."
+ },
+ {
+  "id": "packaging.nsis-case-duplicates",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "if count > 1)",
+  "replace": "if count > 2)",
+  "test": "python3 linux/scripts/tests/test_package_nsis_setup.py",
+  "why": "A setup that writes one path twice, in any case, is refused."
+ },
+ {
+  "id": "packaging.nsis-extraction-exact",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "if found != {name for _, name in selected}:",
+  "replace": "if not found:",
+  "test": "python3 linux/scripts/tests/test_package_nsis_setup.py",
+  "why": "An extraction with a missing or an extra file fails."
+ },
+ {
+  "id": "packaging.nsis-license-branch",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "elif path.suffix.lower() == \".exe\":\n        yield from nsis_entries(path, rules)",
+  "replace": "elif path.suffix.lower() == \".exe-off\":\n        yield from nsis_entries(path, rules)",
+  "test": "python3 linux/scripts/tests/test_package_nsis_setup.py",
+  "why": "The license verifier reads a -setup.exe as an NSIS setup."
+ },
+ {
+  "id": "packaging.nsis-binary-branch",
+  "target": "linux/scripts/verify_package_binary.py",
+  "find": "elif args.package.suffix.lower() == \".exe\":",
+  "replace": "elif args.package.suffix.lower() == \".exe-off\":",
+  "test": "python3 linux/scripts/tests/test_package_nsis_setup.py",
+  "why": "The binary verifier reads a -setup.exe as an NSIS setup."
+ },
+ {
   "id": "stage-graph.nvidia-sbsa-default-on",
   "target": "linux/scripts/01-core/stage-defs.sh",
   "find": "[ \"${CROSS_NVIDIA_SBSA:-1}\" = \"1\" ]",
@@ -66550,6 +66598,78 @@
   "replace": "",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
   "why": "the uninstaller is written inside the setup, so an unsigned one is extracted and run unsigned at uninstall"
+ },
+ {
+  "id": "windows-lane.nsis-header-aligned",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "$offset += 512",
+  "replace": "$offset += 4",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.PackageGates.Tests.ps1",
+  "why": "Only a 512-byte-aligned first header makes a file an NSIS setup."
+ },
+ {
+  "id": "windows-lane.nsis-listing-internals",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "Where-Object { -not $_.StartsWith('$') })",
+  "replace": "Where-Object { $true })",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.PackageGates.Tests.ps1",
+  "why": "The setup listing leaves installer-internal entries out."
+ },
+ {
+  "id": "windows-lane.nsis-listing-duplicates",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "if ($repeated) { throw",
+  "replace": "if ($false) { throw",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.PackageGates.Tests.ps1",
+  "why": "The setup listing refuses one path in two cases."
+ },
+ {
+  "id": "windows-lane.nsis-listing-exit",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "if ($LASTEXITCODE) { throw \"7-Zip cannot read",
+  "replace": "if ($false) { throw \"7-Zip cannot read",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.PackageGates.Tests.ps1",
+  "why": "A failed 7-Zip listing stops the gate instead of returning an empty setup."
+ },
+ {
+  "id": "windows-lane.nsis-msvc-branch",
+  "target": "windows/scripts/modules/WindowsMsvcRuntimeNotice.Common.psm1",
+  "find": "    if ([IO.Path]::GetExtension($Path) -ieq '.exe') { return @(Get-NsisSetupFileNames -Path $Path) }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.PackageGates.Tests.ps1",
+  "why": "The MSVC notice gate reads an NSIS setup's files."
+ },
+ {
+  "id": "windows-lane.nsis-ort-provider-branch",
+  "target": "windows/scripts/modules/WindowsPackageBinary.Common.psm1",
+  "find": "$extension -in @('.zip', '.msix', '.exe')",
+  "replace": "$extension -in @('.zip', '.msix')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.PackageGates.Tests.ps1",
+  "why": "ORT provider enumeration reads an NSIS setup."
+ },
+ {
+  "id": "windows-lane.nsis-ort-family-branch",
+  "target": "windows/scripts/modules/WindowsPackageBinary.Common.psm1",
+  "find": "GetExtension($resolved) -in @('.zip', '.msix', '.exe')",
+  "replace": "GetExtension($resolved) -in @('.zip', '.msix')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.PackageGates.Tests.ps1",
+  "why": "The ORT family gate reads an NSIS setup."
+ },
+ {
+  "id": "windows-lane.nsis-bundle-setup",
+  "target": "windows/scripts/modules/WindowsCrossBundle.Common.psm1",
+  "find": " -or ($_.Extension -eq '.exe' -and (Test-NsisSetup $_.FullName))",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.PackageGates.Tests.ps1",
+  "why": "New-PortableBundle checks and ships an NSIS setup of any name."
+ },
+ {
+  "id": "windows-lane.nsis-bundle-no-double",
+  "target": "windows/scripts/modules/WindowsCrossBundle.Common.psm1",
+  "find": "$_ -notin $cpack.FullName -and ",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.PackageGates.Tests.ps1",
+  "why": "A setup found by its header is not listed a second time by the same-stem rule."
  },
  {
   "id": "wheels.torch-ft-drops-find-abi",

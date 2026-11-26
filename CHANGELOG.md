@@ -19,6 +19,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — the package gates read an NSIS setup (CON302 step 4)
+
+- `verify_package_license.py` and `verify_package_binary.py` read a `-setup.exe` with `7z -tNsis`, by `$INSTDIR`-relative
+  path. `$PLUGINSDIR` and other `$` entries never match, a path held twice in any case fails, and only the selected files
+  are extracted, which must come back exactly. On a Windows host both read the hub's real test setups.
+- `Get-NsisSetupFileNames` and `Test-NsisSetup` (`WindowsMsiLicense.Common`) give the MSVC notice gate and both ORT
+  censuses an NSIS branch. `New-PortableBundle` finds a setup by its first header, checks it and ships it once, whatever
+  its name; before, a setup shipped unchecked and only beside a same-stem MSI or ZIP.
+- The arm64 device job fails when the uninstaller leaves any file but `Uninstall.exe`, and names each one.
+- `test_package_nsis_setup.py`, `Nsis.PackageGates.Tests.ps1` and fifteen new recipes.
+
 ## 2026-11-26 — the riscv64 torch twin builds torch_python again
 
 - The riscv64 media stage failed its final store check: the `cp315t` torch wheel had no `_C`. scikit-build-core 1.1.2

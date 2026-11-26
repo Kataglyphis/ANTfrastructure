@@ -4,9 +4,9 @@
 """Check declared license texts in a package; does not discover its dependency obligations.
 
 Each --require is an archive path glob and a source text, separated by '='.
-Supported inputs are directories, ZIP/MSIX/APK/wheels, tar, Debian, MSI, AppImage and Flatpak.
+Supported inputs are directories, ZIP/MSIX/APK/wheels, tar, Debian, MSI, NSIS setups (.exe), AppImage and Flatpak.
 Gzip-compressed entries such as Flutter NOTICES.Z are checked after decompression.
-MSI and AppImage require 7-Zip; multiple-cabinet MSI rules use cabinet::file-id,
+MSI, NSIS and AppImage require 7-Zip; NSIS paths are relative to $INSTDIR. Multiple-cabinet MSI rules use cabinet::file-id,
 resolved from the MSI File and Media tables. Cabinets are staged temporarily.
 Flatpak requires flatpak and ostree and is imported into a disposable local repository.
 """
@@ -24,6 +24,7 @@ import tarfile
 import tempfile
 import zipfile
 import zlib
+from collections import Counter
 from collections.abc import Callable, Generator, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -119,10 +120,10 @@ def deb_entries(path: Path, rules: list[tuple[str, bytes]]) -> list[tuple[str, b
     return result
 
 
-def sevenzip_member_records(path: Path, *, compound: bool = False) -> list[tuple[str, int | None]]:
+def sevenzip_member_records(path: Path, *, compound: bool = False, nsis: bool = False) -> list[tuple[str, int | None]]:
     """Read archive metadata before selecting exact members."""
     listing = subprocess.run(
-        ["7z", "l", "-slt", *(["-tCompound"] if compound else []), "--", str(path)],
+        ["7z", "l", "-slt", *(["-tCompound"] if compound else []), *(["-tNsis"] if nsis else []), "--", str(path)],
         check=True, capture_output=True, text=True
     ).stdout
     _, separator, members = listing.partition("----------")
@@ -239,6 +240,36 @@ def msi_entries(path: Path, rules: list[tuple[str, bytes]]) -> Iterator[tuple[st
             yield from msi_cabinet_entries(path, cabinet, Path(temporary) / f"{index}.cab", checks)
 
 
+def nsis_selected_names(path: Path, select: Callable[[str], bool]) -> list[tuple[str, str]]:
+    """Return (raw, normalized) installed files of an NSIS setup; a `$` entry such as $PLUGINSDIR is installer-internal."""
+    installed = [(raw, safe_name(raw)) for raw, _ in sevenzip_member_records(path, nsis=True)]
+    installed = [(raw, name) for raw, name in installed if not name.startswith("$")]
+    # Windows installs case variants onto one file, so a later one would replace a checked one.
+    repeated = sorted(name for name, count in Counter(name.casefold() for _, name in installed).items() if count > 1)
+    if repeated:
+        raise ValueError(f"duplicate NSIS setup member: {', '.join(repeated)}")
+    return [(raw, name) for raw, name in installed if select(name)]
+
+
+@contextmanager
+def nsis_extracted(path: Path, selected: list[tuple[str, str]]) -> Generator[Path]:
+    """Extract only the selected files and require exactly them, so a skipped or extra member cannot pass."""
+    with tempfile.TemporaryDirectory(prefix="package-nsis-") as temporary:
+        root = Path(temporary)
+        if selected:
+            subprocess.run(["7z", "x", "-tNsis", "-y", "-spd", f"-o{root}", "--", str(path), *(raw for raw, _ in selected)],
+                           check=True, capture_output=True)
+        found = {entry.relative_to(root).as_posix() for entry in root.rglob("*") if not entry.is_dir()}
+        if found != {name for _, name in selected}:
+            raise ValueError("NSIS setup extraction returned unexpected members")
+        yield root
+
+
+def nsis_entries(path: Path, rules: list[tuple[str, bytes]]) -> Iterator[tuple[str, bytes]]:
+    with nsis_extracted(path, nsis_selected_names(path, lambda name: wanted(name, rules))) as root:
+        yield from directory_entries(root, rules)
+
+
 @contextmanager
 def flatpak_checkout(path: Path) -> Generator[Path]:
     """Share one private import without treating import as installation or provenance."""
@@ -265,6 +296,8 @@ def package_entries(path: Path, rules: list[tuple[str, bytes]]) -> Iterator[tupl
         yield from directory_entries(path, rules)
     elif path.suffix.lower() == ".deb":
         yield from deb_entries(path, rules)
+    elif path.suffix.lower() == ".exe":
+        yield from nsis_entries(path, rules)
     elif zipfile.is_zipfile(path):
         yield from zip_entries(path, rules)
     elif path.suffix.lower() == ".flatpak":

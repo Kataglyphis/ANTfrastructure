@@ -57,6 +57,7 @@ function Get-PackageMemberName {
         # The File table stores short|long names.
         return @(Get-MsiInstalledFileNames -Path $Path | ForEach-Object { ($_ -split '\|')[-1] })
     }
+    if ([IO.Path]::GetExtension($Path) -ieq '.exe') { return @(Get-NsisSetupFileNames -Path $Path) }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $Path).ProviderPath)
     try { return @($zip.Entries | Where-Object { $_.Name } | ForEach-Object { [Uri]::UnescapeDataString($_.FullName) }) }
@@ -66,7 +67,7 @@ function Get-PackageMemberName {
 function Assert-PackageMsvcRuntimeNotice {
     <#
     .SYNOPSIS
-        Fails a finished ZIP, MSIX or MSI that carries an MSVC runtime DLL without licenses/msvc-runtime/Redist.txt equal to -RedistText.
+        Fails a finished ZIP, MSIX, MSI or NSIS setup that carries an MSVC runtime DLL without licenses/msvc-runtime/Redist.txt equal to -RedistText.
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path, [string]$RedistText = '', [string]$PythonPath = 'python')

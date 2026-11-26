@@ -240,7 +240,10 @@ and Debian packages (`dpkg-deb`); MSI and AppImage require `7z`. Flatpak package
 are read using `flatpak` and `ostree` in a disposable local repository, without
 installation. On a matching Linux architecture, `linux/scripts/06-packaging/verify-native-appimage-license.sh`
 can instead extract the declared license from an AppImage without `7z` or FUSE;
-it rejects a foreign architecture. MSI paths are cabinet file identifiers, not installed paths;
+it rejects a foreign architecture. An NSIS setup (`.exe`) is read with `7z -tNsis`. Its paths are
+relative to `$INSTDIR`. `$PLUGINSDIR` and other `$` entries never match. A path held twice, in any
+case, fails. Only the selected files are extracted, and exactly those must come back.
+MSI paths are cabinet file identifiers, not installed paths;
 for multiple embedded cabinets the Python verifier requires `cabinet.cab::file-id`.
 Repeated rules extract all selected files in each cabinet together into temporary
 storage. Selected members must be unique, safe MSI file identifiers no larger
@@ -289,7 +292,7 @@ space and requires 7-Zip. This proves equality with the supplied source only; it
 neither proves that source's wheel provenance nor discovers additional files.
 The standalone `linux/scripts/verify_package_binary.py` accepts repeated exact
 `--require MEMBER=SOURCE` rules for extracted directories, TAR, DEB, ZIP, MSIX,
-wheels and MSI. MSI rules use `cabinet.cab::file-id`; the selected files must be
+wheels, MSI and NSIS setups (installed paths, read as above). MSI rules use `cabinet.cab::file-id`; the selected files must be
 regular and match streaming SHA256 and size. Duplicate, case-conflicting and
 ambiguous selected paths fail. TAR permits one conventional leading `./`, but
 not duplicate aliases. DEB reads the real dpkg payload stream and requires the
@@ -1059,13 +1062,14 @@ instead of shipping it avoids that question.
   files when `InstallRequiredSystemLibraries` or `KATAGLYPHIS_PACKAGE_DLL_DIR` brings the runtime,
   and appends the notice to the WiX licence page.
 - **`New-PortableBundle`** stages them for a runtime the DLL closure added, and checks every CPack
-  MSI and ZIP before copying it out.
+  MSI, ZIP and NSIS setup before copying it out.
 - **Python apps**: `New-PythonAppBundle.ps1` stages them after the VC++ runtime closure;
   `New-PythonAppPackage.ps1` checks the ZIP, MSI and MSIX.
 - **The gate** (`Assert-PackageMsvcRuntimeNotice`, `WindowsMsvcRuntimeNotice.Common.psm1`) fails a
   finished package that carries the runtime without a `Redist.txt` byte-equal to the staged one. It
-  reads the package's members, so it does not depend on the staging step having run. It does not
-  judge the terms, and it does not cover NSIS `.exe` installers.
+  reads the package's members, so it does not depend on the staging step having run.
+  `Get-NsisSetupFileNames` lists an NSIS setup's members. The gate does not judge the terms. It does
+  not check a setup's licence page either.
 
 ### The NSIS setup's compressor
 

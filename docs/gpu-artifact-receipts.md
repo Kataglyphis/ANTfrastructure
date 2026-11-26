@@ -117,9 +117,9 @@ hardware receipts are still required before staging.
 
 For Windows GPU artifacts, `Assert-PackageOrtFamily` in
 `WindowsPackageBinary.Common` requires exactly the named ORT-family DLLs in a
-declared bundle or ZIP, MSI or MSIX directory. Unexpected, duplicate, nested or
+declared bundle or ZIP, MSI, MSIX or NSIS setup directory. Unexpected, duplicate, nested or
 linked ORT-family files fail, including files outside that directory. MSI checks
-the installed file table and root-relative paths. This census does not verify
+the installed file table and root-relative paths; an NSIS setup its `$INSTDIR`-relative listing. This census does not verify
 the files' bytes: use `Assert-PackageBinary` against wheel-proven inputs and
 verify their notices separately.
 

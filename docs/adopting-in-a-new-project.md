@@ -565,9 +565,14 @@ runs, so a misspelt optional key cannot drop the MSI guard.
 `-Verify Trusted` runs `signtool verify /pa`, which needs a trusted root; `-Verify Signer`
 compares the signer's thumbprint, for test certificates.
 
+The package gates read a finished setup like any other format. Pass the `.exe` and paths
+relative to `$INSTDIR` (`bin/app.exe`). 7-Zip must be on `PATH`. This covers the licence,
+binary, MSVC notice and ORT gates:
+[`third-party-licenses.md` § Checking delivered package licences](third-party-licenses.md#checking-delivered-package-licences).
+
 `Nsis.Common.Tests.ps1` checks argv, the file list, the signer check and the template's source
-with fakes. It runs neither makensis, signtool nor a setup; the package gates are CON302's
-next step.
+with fakes. `Nsis.PackageGates.Tests.ps1` checks the gates over a fake 7-Zip listing. Neither
+runs makensis, signtool or a setup.
 
 The consumer stages what a package carries, with two hub helpers. A product's DLL closure comes
 from `Copy-PeImportClosure` (`WindowsCrossBundle.Common`,

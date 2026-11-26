@@ -10,8 +10,7 @@ Describe 'New-PortableBundle package-check callbacks' {
     It 'returns one bundle for chatty checks and propagates rejection before copying packages' {
         Invoke-InTestDir { param($dir)
             $dist = Join-Path $dir 'dist'
-            New-OrtTestPe -Path (Join-Path $dir 'app/app.exe') -Import KERNEL32.dll -Machine 0xAA64
-            $fixture = New-CrossBundlePackageFixture -Dir $dir -SearchDirectory @($dir) -Chatty
+            $fixture = New-CrossBundlePackageFixture -Dir $dir -WithArm64App -Chatty
             $options = $fixture.Options
             $result = @(New-PortableBundle @options)
             Assert-Equal 1 $result.Count 'package-check success lines do not join the returned bundle object'

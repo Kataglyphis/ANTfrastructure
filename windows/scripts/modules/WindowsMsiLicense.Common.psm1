@@ -75,6 +75,51 @@ function Get-MsiInstalledFileNames {
     }
 }
 
+function Test-NsisSetup {
+    <#
+    .SYNOPSIS
+        True when Path carries NSIS's first header at a 512-byte boundary, where the NSIS stub itself looks for it.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+    $signature = [byte[]](@(0xEF, 0xBE, 0xAD, 0xDE) + [Text.Encoding]::ASCII.GetBytes('NullsoftInst'))
+    $stream = [IO.File]::OpenRead((Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath)
+    try {
+        $buffer = [byte[]]::new(1MB)
+        while (($read = $stream.ReadAtLeast($buffer, $buffer.Length, $false)) -gt 0) {
+            for ($offset = 0; $offset + 20 -le $read; $offset += 512) {
+                if ($buffer[$offset + 4] -eq 0xEF -and
+                    [Linq.Enumerable]::SequenceEqual([byte[]]$buffer[($offset + 4)..($offset + 19)], $signature)) { return $true }
+            }
+        }
+    } finally { $stream.Dispose() }
+    return $false
+}
+
+# NSIS_SETUP_LISTING_API=1
+function Get-NsisSetupFileNames {
+    <#
+    .SYNOPSIS
+        Returns an NSIS setup's installed files, '/'-separated and relative to $INSTDIR; installer-internal `$` entries are left out.
+    .PARAMETER Lister
+        Returns 7-Zip's technical listing as { param($Path) }; the default runs 7z l -slt -tNsis.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path,
+        [scriptblock]$Lister = { param($p) & 7z l -slt -tNsis -- $p; if ($LASTEXITCODE) { throw "7-Zip cannot read the NSIS setup $p (exit $LASTEXITCODE)" } })
+    $listing = @(& $Lister (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath) -join "`n"
+    $sections = $listing -split '(?m)^-{10}\r?$', 2
+    if ($sections.Count -lt 2) { throw "7-Zip returned no member list for $Path" }
+    $names = @([regex]::Matches($sections[1], '(?m)^Path = (.+?)\r?$') | ForEach-Object { $_.Groups[1].Value.Replace('\', '/') } |
+            Where-Object { -not $_.StartsWith('$') })
+    $unsafe = @($names | Where-Object { $_.StartsWith('/') -or '..' -in $_.Split('/') })
+    if ($unsafe) { throw "unsafe NSIS setup member: $($unsafe[0])" }
+    # Windows installs case variants onto one file, so a later one would replace a checked one; Group-Object ignores case.
+    $repeated = @($names | Group-Object | Where-Object Count -gt 1)
+    if ($repeated) { throw "duplicate NSIS setup member: $($repeated[0].Name)" }
+    return $names
+}
+
 function Assert-MsiLicenseFileId {
     param([Parameter(Mandatory)][string]$Id)
     if ($Id -notmatch '^[A-Za-z_][A-Za-z0-9_.]*$') { throw "invalid MSI file identifier: $Id" }
@@ -408,4 +453,4 @@ function Assert-MsiPackageLicenses {
     Invoke-PackageLicenseBatch -Path $Path -Pattern $FileName -LicensePath $LicensePath -PythonPath $PythonPath -VerifierPath $VerifierPath -MsiFileNames
 }
 
-Export-ModuleMember -Function Resolve-MsiLicenseFileId, Get-MsiLicenseFileId, Get-MsiInstalledFileNames, Resolve-MsiInstalledFileId, Get-MsiInstalledFileId, Resolve-MsiDirectoryFileNames, Get-MsiDirectoryFileNames, Resolve-MsiCabinetPattern, Get-MsiCabinetPattern, Get-WixSourceFileId, Assert-PackageLicense, Assert-MsiPackageLicense, Assert-PackageLicenses, Assert-MsiPackageLicenses, Invoke-PackageVerifier
+Export-ModuleMember -Function Resolve-MsiLicenseFileId, Get-MsiLicenseFileId, Get-MsiInstalledFileNames, Test-NsisSetup, Get-NsisSetupFileNames, Resolve-MsiInstalledFileId, Get-MsiInstalledFileId, Resolve-MsiDirectoryFileNames, Get-MsiDirectoryFileNames, Resolve-MsiCabinetPattern, Get-MsiCabinetPattern, Get-WixSourceFileId, Assert-PackageLicense, Assert-MsiPackageLicense, Assert-PackageLicenses, Assert-MsiPackageLicenses, Invoke-PackageVerifier

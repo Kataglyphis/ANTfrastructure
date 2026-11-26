@@ -444,8 +444,9 @@ jobs:
             # _?= keeps the uninstaller in place, so -Wait waits for it.
             $u = Start-Process -FilePath (Join-Path $dir 'Uninstall.exe') -ArgumentList '/S', "_?=$dir" -Wait -PassThru
             if ($u.ExitCode) { throw "the uninstaller of $($setup.Name) exited $($u.ExitCode)" }
-            $left = @(Get-ChildItem -Path $dir -Recurse -File -Include '*.dll' -ErrorAction SilentlyContinue)
-            if ($left.Count) { throw "the uninstaller of $($setup.Name) left $($left.Count) DLL(s) behind" }
+            # _?= keeps the uninstaller itself, so it is the one file that may remain.
+            $left = @(Get-ChildItem -LiteralPath $dir -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object FullName -ne (Join-Path $dir 'Uninstall.exe'))
+            if ($left.Count) { throw "the uninstaller of $($setup.Name) left $($left.Count) file(s) behind:`n$($left.FullName -join "`n")" }
           }
 
       # A cross lane's cp3XYt wheel and its kit (New-CrossFreeThreadedWheel.ps1); a product without one says so and passes.

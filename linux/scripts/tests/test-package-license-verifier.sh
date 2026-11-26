@@ -79,6 +79,9 @@ if command -v 7z >/dev/null 2>&1; then
   t_assert_fails python3 "$SCRIPT" "$work/fixture.appimage" --require "absent=$work/LICENSE"
 fi
 
+t_case 'an NSIS setup is read as NSIS, by installed path, and rejects internals, case aliases and a wrong extraction'
+t_assert_ok python3 "$TESTS_DIR/test_package_nsis_setup.py"
+
 t_case 'MSI media mappings select the right embedded cabinet and reject ambiguity'
 t_assert_ok python3 "$TESTS_DIR/test_package_license_msi_batch.py"
 cp "$TESTS_DIR/package-msi-7z-fixture.sh" "$work/tools/7z"

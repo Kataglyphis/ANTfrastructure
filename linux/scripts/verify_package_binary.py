@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""Compare exact binary members in directories, TAR, DEB, ZIP/MSIX/wheels or MSI to source files.
+"""Compare exact binary members in directories, TAR, DEB, ZIP/MSIX/wheels, MSI or NSIS setups to source files.
 
 Rules are exact MEMBER=SOURCE pairs, not globs. MSI members use the embedded
 cabinet and File-table identifier returned by Get-MsiCabinetPattern. The check
@@ -34,6 +34,8 @@ safe_name = _shared["safe_name"]
 sevenzip_member_names = _shared["sevenzip_member_names"]
 msi_cabinet_checks = _shared["msi_cabinet_checks"]
 checked_deb_payload = _shared["checked_deb_payload"]
+nsis_selected_names = _shared["nsis_selected_names"]
+nsis_extracted = _shared["nsis_extracted"]
 PACKAGE_BINARY_EMPTY_API = 1
 
 
@@ -238,6 +240,13 @@ def check_msi(path: Path, rules: dict[str, tuple[str, int]]) -> None:
                 require_binary(hash_cabinet_member(cab, member), rules[rule], rule)
 
 
+def check_nsis(path: Path, rules: dict[str, tuple[str, int]]) -> None:
+    names = {name.casefold() for name in rules}
+    selected = nsis_selected_names(path, lambda name: name.casefold() in names)
+    with nsis_extracted(path, selected) as root:
+        check_directory(root, rules)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("package", type=Path)
@@ -261,6 +270,8 @@ def main() -> int:
             check_directory(args.package, rules)
         elif msi:
             check_msi(args.package, rules)
+        elif args.package.suffix.lower() == ".exe":
+            check_nsis(args.package, rules)
         elif args.package.suffix.lower() in (".zip", ".msix", ".whl"):
             check_zip(args.package, rules)
         elif args.package.suffix.lower() == ".deb":
@@ -273,7 +284,7 @@ def main() -> int:
                 check_tar(stream, rules)
         else:
             raise ValueError(
-                "package must be a directory, TAR, DEB, ZIP, MSIX, wheel or MSI"
+                "package must be a directory, TAR, DEB, ZIP, MSIX, wheel, MSI or NSIS setup"
             )
     except (
         OSError,

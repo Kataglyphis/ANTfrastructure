@@ -548,7 +548,8 @@ is the same file an x64 lane uses with `target-arch: amd64`:
      (`/S /D=<dir>`), emulated. Every `.exe` and `.dll` it laid down must be ARM64 (ARM64EC and
      ARM64X count). Then `installed-run-command` runs in the install directory, if set
      (AccelerANTgine: `./bin/AccelerANTgine.exe`), and the uninstaller runs in place (`_?=`).
-     It must leave no DLL behind. A product without a setup `.exe` says so and passes.
+     It must leave no file behind but `Uninstall.exe`, which `_?=` keeps; the error lists each one.
+     A product without a setup `.exe` says so and passes.
 6. With a `test-artifact-dir` and a `test-command` (CON43, 2026-10-01), the build also stages
    test binaries. They get the same arch gate as the product, because Windows on Arm runs x64
    code transparently and an amd64 test would pass there by emulation. They are uploaded as
@@ -650,14 +651,15 @@ checked 2026-10-19), so all three look in the same order:
 
 **A CMake product's portable bundle** comes from `New-PortableBundle` (`WindowsCrossBundle.Common`):
 `cmake --install` of the build dir into `dist\windows-<arch>\bundle`, the closure of its `bin`
-added in that order, and the build dir's `.msi`, `.zip` and the NSIS `.exe` named like one of them
-copied to `packages`. With `-RequireCompleteInstall` a DLL the closure has to add throws, because
+added in that order, and the build dir's `.msi`, `.zip`, NSIS setups and an `.exe` named like one of
+them copied to `packages`. An NSIS setup is found by its first header at a 512-byte boundary
+(`Test-NsisSetup`), so a test `.exe` is never shipped and a setup of any name is. With `-RequireCompleteInstall` a DLL the closure has to add throws, because
 the installers pack the install tree and would all lack it; AccelerANTgine wants that, and
 BeschleunigerBallett does not set it yet. `-Runner` takes the build's logged cmake call.
 
 `New-PortableBundle -ForbidBuildTimeFiles` refuses an install tree that ships headers, CMake or pkg-config packages or import and static libraries (`Assert-InstallTreeLayout`, with `-AllowBuildTimeFile` for an SDK's own); a bundle once carried 52 gtest and gmock files (CON299). `linux/scripts/06-packaging/check-install-tree.sh <root> [--allow <path>]` applies the same rule to a Linux package tree.
 
-`-PackageCheck` validates every finished MSI and ZIP before it is copied. Both callbacks
+`-PackageCheck` validates every finished MSI, ZIP and NSIS setup before it is copied. Both callbacks
 write their success output to the host log; the function returns exactly one object with
 `Bundle`, `Packages`, `Added` and `Installers`. Checker exceptions still fail the bundle.
 `CrossBundle.PackageCheck.Tests.ps1` checks chatty callbacks and rejected packages through

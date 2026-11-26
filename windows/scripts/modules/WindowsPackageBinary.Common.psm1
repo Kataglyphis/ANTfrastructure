@@ -21,17 +21,33 @@ function Assert-PackageBinary {
 }
 
 function Get-ArchiveOrtProviderName {
-    param([IO.Compression.ZipArchiveEntry]$Entry, [AllowEmptyString()][string]$Directory)
-    $raw = $Entry.FullName
-    $parts = @($raw.Replace('\', '/') -split '/' | Where-Object { $_ -and $_ -ne '.' })
+    param([string]$Raw, [bool]$IsLink, [AllowEmptyString()][string]$Directory)
+    $parts = @($Raw.Replace('\', '/') -split '/' | Where-Object { $_ -and $_ -ne '.' })
     if ($parts.Count -eq 0 -or $parts[-1] -in @('.', '..') -or $parts[-1] -inotmatch '^onnxruntime_providers_') { return }
-    if ($parts -contains '..') { throw "unsafe provider archive path: $raw" }
+    if ($parts -contains '..') { throw "unsafe provider archive path: $Raw" }
     $parent = if ($parts.Count -gt 1) { $parts[0..($parts.Count - 2)] -join '/' } else { '' }
     $expected = (Join-PackagePath -Directory $Directory -Leaf $parts[-1])
-    if ($raw -ceq $expected -and (($Entry.ExternalAttributes -shr 16) -band 0xF000) -ne 0xA000) { return $parts[-1] }
+    if ($Raw -ceq $expected -and -not $IsLink) { return $parts[-1] }
     if ([StringComparer]::OrdinalIgnoreCase.Equals($parent, $Directory)) {
-        throw "aliased or non-file provider archive member: $raw"
+        throw "aliased or non-file provider archive member: $Raw"
     }
+}
+
+function Test-ZipEntryLink {
+    param([IO.Compression.ZipArchiveEntry]$Entry)
+    return (($Entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000
+}
+
+# An NSIS setup stores no links, so each installed path is a regular file.
+function Get-PackageMemberRecords {
+    param([string]$Path)
+    if ([IO.Path]::GetExtension($Path) -ieq '.exe') {
+        foreach ($name in @(Get-NsisSetupFileNames -Path $Path)) { [pscustomobject]@{ Name = $name; IsLink = $false } }
+        return
+    }
+    $archive = [IO.Compression.ZipFile]::OpenRead($Path)
+    try { foreach ($entry in $archive.Entries) { [pscustomobject]@{ Name = $entry.FullName; IsLink = (Test-ZipEntryLink $entry) } } }
+    finally { $archive.Dispose() }
 }
 
 function Join-PackagePath {
@@ -41,9 +57,7 @@ function Join-PackagePath {
 
 function Get-ArchiveOrtProviderNames {
     param([string]$Path, [AllowEmptyString()][string]$Directory)
-    $archive = [IO.Compression.ZipFile]::OpenRead($Path)
-    try { foreach ($entry in $archive.Entries) { Get-ArchiveOrtProviderName -Entry $entry -Directory $Directory } }
-    finally { $archive.Dispose() }
+    foreach ($record in @(Get-PackageMemberRecords -Path $Path)) { Get-ArchiveOrtProviderName -Raw $record.Name -IsLink $record.IsLink -Directory $Directory }
 }
 
 function New-OrtNameSet {
@@ -84,9 +98,9 @@ function Get-PackageOrtProviderNames {
     $names = if ($extension -ieq '.msi') {
         if (-not $RootDirectoryId) { throw 'MSI provider enumeration requires a root directory identifier' }
         @(Get-MsiDirectoryFileNames -Path $resolved -Directory $Directory -RootDirectoryId $RootDirectoryId -RootDirectoryName $RootDirectoryName)
-    } elseif ($extension -in @('.zip', '.msix')) {
+    } elseif ($extension -in @('.zip', '.msix', '.exe')) {
         @(Get-ArchiveOrtProviderNames -Path $resolved -Directory $Directory)
-    } else { throw 'provider enumeration requires ZIP, MSIX or MSI' }
+    } else { throw 'provider enumeration requires ZIP, MSIX, MSI or an NSIS setup' }
     return @(Get-ValidatedOrtProviderNames -Names $names)
 }
 
@@ -145,18 +159,15 @@ function Assert-MsiOrtFamily {
 
 function Assert-ArchiveOrtFamily {
     param([string]$Path, [string]$Directory, $Allowed, $Seen)
-    $archive = [IO.Compression.ZipFile]::OpenRead($Path)
-    try {
-        foreach ($entry in $archive.Entries) {
-            $leaf = @($entry.FullName -split '[/\\]')[-1]
-            if (-not $leaf -or -not (Test-PackageOrtFamilyName $leaf)) { continue }
-            $expected = (Join-PackagePath -Directory $Directory -Leaf $leaf)
-            if ($entry.FullName -cne $expected -or (($entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) {
-                throw "unexpected, nested or linked ORT family archive file: $($entry.FullName)"
-            }
-            Add-PackageOrtFamilyName -Name $leaf -Allowed $Allowed -Seen $Seen -Context 'ORT family archive'
+    foreach ($record in @(Get-PackageMemberRecords -Path $Path)) {
+        $leaf = @($record.Name -split '[/\\]')[-1]
+        if (-not $leaf -or -not (Test-PackageOrtFamilyName $leaf)) { continue }
+        $expected = (Join-PackagePath -Directory $Directory -Leaf $leaf)
+        if ($record.Name -cne $expected -or $record.IsLink) {
+            throw "unexpected, nested or linked ORT family archive file: $($record.Name)"
         }
-    } finally { $archive.Dispose() }
+        Add-PackageOrtFamilyName -Name $leaf -Allowed $Allowed -Seen $Seen -Context 'ORT family archive'
+    }
 }
 
 function Assert-PackageOrtFamily {
@@ -174,9 +185,9 @@ function Assert-PackageOrtFamily {
         Assert-DirectoryOrtFamily -Path $resolved -Directory $Directory -Allowed $allowed -Seen $seen
     } elseif ([IO.Path]::GetExtension($resolved) -ieq '.msi') {
         Assert-MsiOrtFamily -Path $resolved -Directory $Directory -Allowed $allowed -Seen $seen -RootDirectoryId $RootDirectoryId -RootDirectoryName $RootDirectoryName
-    } elseif ([IO.Path]::GetExtension($resolved) -in @('.zip', '.msix')) {
+    } elseif ([IO.Path]::GetExtension($resolved) -in @('.zip', '.msix', '.exe')) {
         Assert-ArchiveOrtFamily -Path $resolved -Directory $Directory -Allowed $allowed -Seen $seen
-    } else { throw 'ORT family verification requires a bundle, ZIP, MSIX or MSI' }
+    } else { throw 'ORT family verification requires a bundle, ZIP, MSIX, MSI or an NSIS setup' }
     if ($seen.Count -ne $allowed.Count) { throw 'package is missing a required ORT family file' }
 }
 

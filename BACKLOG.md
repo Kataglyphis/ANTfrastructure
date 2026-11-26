@@ -2750,6 +2750,14 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
          use a fake 7z; the real one runs in the Windows lane. The device install job has no checkout, so a module
          call there needs the module in the artifact or a sparse hub checkout; consumers on old pins keep the
          inline block. After an uninstall only `Uninstall.exe` may remain.
+         **In source 2026-11-26:** both Python verifiers read a `-setup.exe` through `7z -tNsis` (installed paths,
+         `$` entries excluded, case duplicates refused, an exact extraction); `Get-NsisSetupFileNames` and
+         `Test-NsisSetup` in `WindowsMsiLicense.Common` feed the MSVC notice gate and both ORT censuses;
+         `New-PortableBundle` checks and ships a setup found by its header, of any name; the device job fails on
+         any file but `Uninstall.exe` after the uninstall. `test_package_nsis_setup.py`, `Nsis.PackageGates.Tests.ps1`
+         and fifteen recipes; the verifiers read the hub's real test setups on a Windows host. The device job stays
+         inline and has no test of its own; its first run on AccelerANTgine's or BeschleunigerBallett's arm64
+         lane is its proof.
       5. `Invoke-AuthenticodeSign`: the signtool part of `Invoke-MsixSign`, format-neutral, with `-Require` so a
          failed signature stops the build, plus a small script for makensis's `!finalize` and `!uninstfinalize`.
          **In source 2026-11-26:** `Invoke-AuthenticodeSign` and `Assert-AuthenticodeSigner` in `WindowsMsix.Signing`

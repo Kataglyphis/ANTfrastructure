@@ -5,7 +5,7 @@
 
 Set-StrictMode -Version Latest
 
-foreach ($sibling in 'WindowsTargetArch.Common', 'WindowsMsvcRuntimeNotice.Common') {
+foreach ($sibling in 'WindowsTargetArch.Common', 'WindowsMsvcRuntimeNotice.Common', 'WindowsMsiLicense.Common') {
     Import-Module (Join-Path $PSScriptRoot "$sibling.psm1") -DisableNameChecking -ErrorAction Stop
 }
 
@@ -149,11 +149,11 @@ function Assert-InstallTreeLayout {
 .SYNOPSIS
     <DistDir>\bundle, the -BuildDir install tree plus the DLLs its binaries import, and <DistDir>\packages, the build's installers.
 .DESCRIPTION
-    The bundle runs on a clean machine. The installers are the build dir's .msi and .zip, and the .exe NSIS names like one of them;
-    its other .exe files are tests. With -RequireCompleteInstall a DLL the closure has to add throws: the installers pack the
+    The bundle runs on a clean machine. The installers are the build dir's .msi, .zip and NSIS setups (found by their NSIS header),
+    plus an .exe named like one of them; its other .exe files are tests. With -RequireCompleteInstall a DLL the closure has to add throws: the installers pack the
     install tree, so every one of them would lack it.
 .PARAMETER PackageCheck
-    Checks one finished .msi or .zip as { param($Path, $RedistText) }; the default is Assert-PackageMsvcRuntimeNotice.
+    Checks one finished .msi, .zip or NSIS setup as { param($Path, $RedistText) }; the default is Assert-PackageMsvcRuntimeNotice.
 .PARAMETER ForbidBuildTimeFiles
     Refuses an install tree with headers, CMake or pkg-config packages or libraries in it (Assert-InstallTreeLayout); AllowBuildTimeFile excepts paths.
 .PARAMETER Runner
@@ -199,11 +199,11 @@ function New-PortableBundle {
     if (-not (Test-Path -LiteralPath $redist -PathType Leaf)) { $redist = Copy-MsvcRuntimeNotice -Root $bundle }
 
     $null = New-Item -ItemType Directory -Force -Path $packages
-    $cpack = @(Get-ChildItem -LiteralPath $BuildDir -File | Where-Object { $_.Extension -in '.msi', '.zip' })
+    $cpack = @(Get-ChildItem -LiteralPath $BuildDir -File | Where-Object { $_.Extension -in '.msi', '.zip' -or ($_.Extension -eq '.exe' -and (Test-NsisSetup $_.FullName)) })
     # A check's own output (a verifier's stdout) must not join this function's result.
     foreach ($installer in $cpack) { & $PackageCheck $installer.FullName $redist | Out-Host }
     $installers = $cpack + @($cpack | ForEach-Object { Join-Path $BuildDir "$($_.BaseName).exe" } | Select-Object -Unique |
-            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Get-Item)
+            Where-Object { $_ -notin $cpack.FullName -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Get-Item)
     $installers | Copy-Item -Destination $packages
     return [pscustomobject]@{ Bundle = $bundle; Packages = $packages; Added = $added; Installers = @($installers | ForEach-Object Name) }
 }

@@ -50,8 +50,9 @@ function New-CrossBundleInstallFixture {
 }
 
 function New-CrossBundlePackageFixture {
-    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string[]]$SearchDirectory,
-        [string[]]$InstallerName = @('app.msi', 'app.zip'), [switch]$Chatty)
+    param([Parameter(Mandatory)][string]$Dir, [string[]]$SearchDirectory = @($Dir),
+        [string[]]$InstallerName = @('app.msi', 'app.zip'), [switch]$Chatty, [switch]$WithArm64App)
+    if ($WithArm64App) { New-OrtTestPe -Path (Join-Path $Dir 'app/app.exe') -Import KERNEL32.dll -Machine 0xAA64 }
     $build = Join-Path $Dir 'build'
     $null = New-Item -ItemType Directory -Force -Path $build
     foreach ($name in $InstallerName) { $null = New-Item -ItemType File -Force -Path (Join-Path $build $name) }
