@@ -138,6 +138,9 @@ if ($chainOpenCv) {
     if ($cross) { $cv2Args['HostPython'] = $hostPython; $cv2Args['Source'] = Join-Path $TargetPython 'Lib\site-packages\cv2' }
     $cv2Copied = @(Install-PythonAppChainOpenCv @cv2Args)
     Write-Host "  cv2\bin: $($cv2Copied.Count) DLL(s)"
+    # cv2\bin carries the image's GPL FFmpeg, which ships only with its texts and source offer.
+    $offer = @(Copy-PythonAppFfmpegOffer -Bundle $bundle)
+    Write-Host "  FFmpeg source offer: $($offer.Count) file(s) under licenses"
 }
 
 Write-Host '== launchers'

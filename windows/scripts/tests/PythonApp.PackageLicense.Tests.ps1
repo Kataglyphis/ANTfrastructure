@@ -22,7 +22,12 @@ Describe 'Python application package license checks' {
             Assert-True ($body.IndexOf($case.Ort) -lt $body.IndexOf('if (-not $test)')) "$($case.Function) checks ORT even with SkipTest"
             $msvc = "Assert-PackageMsvcRuntimeNotice -Path $($case.Artifact) -RedistText `$msvcRedist"
             Assert-True ($body.Contains($msvc) -and $body.IndexOf($msvc) -lt $body.IndexOf('if (-not $test)')) "$($case.Function) checks the MSVC runtime notice even with SkipTest"
+            $offer = "Assert-PackageSourceOffer -Path $($case.Artifact) -Offer `$ffmpegOffer"
+            Assert-True ($body.Contains($offer) -and $body.IndexOf($offer) -lt $body.IndexOf('if (-not $test)')) "$($case.Function) checks FFmpeg's source offer even with SkipTest"
         }
+        $bundleText = [IO.File]::ReadAllText([IO.Path]::Combine((Get-RepoRoot), 'windows', 'scripts', 'python', 'New-PythonAppBundle.ps1'))
+        $copyAt = $bundleText.IndexOf('Copy-PythonAppFfmpegOffer -Bundle $bundle')
+        Assert-True ($copyAt -gt $bundleText.IndexOf('Install-PythonAppChainOpenCv @cv2Args')) 'the bundle copies the offer after cv2\bin holds FFmpeg'
         $msi = (Get-ScriptFunctionDefinition -ScriptPath $path -FunctionName 'Invoke-MsiAppPackage').ToString()
         Assert-True ($msi.Contains("Get-WixSourceFileId -WixPath `$wxs -SourcePath (Join-Path `$Bundle 'LICENSE')")) 'MSI maps this bundle license dynamically'
         $archive = (Get-ScriptFunctionDefinition -ScriptPath $path -FunctionName 'Assert-PythonAppArchiveLicenses').ToString()

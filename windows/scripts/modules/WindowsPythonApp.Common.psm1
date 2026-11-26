@@ -8,7 +8,7 @@ Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -ErrorAction Stop
 
 # Unforced imports bind each required companion into this owner without unloading the caller's copy.
-foreach ($sibling in 'WindowsPythonWheel.Common', 'WindowsOrtPayload.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common', 'WindowsMsvcRuntimeNotice.Common', 'WindowsIcon.Common', 'WindowsMsix.Common') {
+foreach ($sibling in 'WindowsPythonWheel.Common', 'WindowsOrtPayload.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common', 'WindowsMsvcRuntimeNotice.Common', 'WindowsIcon.Common', 'WindowsMsix.Common', 'WindowsSourceOffer.Common') {
     Import-Module (Join-Path $PSScriptRoot "$sibling.psm1") -DisableNameChecking -ErrorAction Stop
 }
 
@@ -491,6 +491,30 @@ function Copy-ChainOpenCvPackage {
     return $result
 }
 
+function Get-PythonAppFfmpegOffer {
+    <#
+    .SYNOPSIS
+        Copy-NativeSourceOffer and Assert-PackageSourceOffer arguments for the image's GPL FFmpeg that -Bundle's cv2\bin carries.
+    #>
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param([Parameter(Mandatory)][string]$Bundle)
+    $root = if ($env:FFMPEG_ROOT) { $env:FFMPEG_ROOT } else { 'C:\runtime\ffmpeg' }
+    return @{ Root = $root; Owner = 'ffmpeg'; Bundle = $Bundle; Indicator = 'avcodec-*.dll' }
+}
+
+function Copy-PythonAppFfmpegOffer {
+    <#
+    .SYNOPSIS
+        Copies FFmpeg's licence texts and source offer from the image into -Bundle; returns the bundle-relative targets.
+    #>
+    [CmdletBinding()]
+    [OutputType([string[]])]
+    param([Parameter(Mandatory)][string]$Bundle)
+    $offer = Get-PythonAppFfmpegOffer -Bundle $Bundle
+    return [string[]]@(Copy-NativeSourceOffer @offer)
+}
+
 function Install-PythonAppChainOpenCv {
     <#
     .SYNOPSIS
@@ -818,6 +842,6 @@ $(($apps -join "`n").TrimEnd())
     return Save-PythonAppManifest -Destination $Destination -Text $manifest
 }
 
-Export-ModuleMember -Function Get-PythonAppWheelFile, Initialize-PythonAppDirectory, New-PythonAppWorkDirectory, Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, New-PythonAppCrossRuntime, Get-PythonAbiTag, Select-PythonAppWheel, Install-PythonAppPackage, Install-PythonCrossSite, Install-PythonAppCrossPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
+Export-ModuleMember -Function Get-PythonAppWheelFile, Initialize-PythonAppDirectory, New-PythonAppWorkDirectory, Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, New-PythonAppCrossRuntime, Get-PythonAbiTag, Select-PythonAppWheel, Install-PythonAppPackage, Install-PythonCrossSite, Install-PythonAppCrossPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppFfmpegOffer, Copy-PythonAppFfmpegOffer, Get-PythonAppEntryPoint,
     New-PythonAppLauncher, Copy-PythonAppRuntimeClosure, Invoke-PythonAppSelfTest, ConvertTo-PythonAppIcon, New-WindowsIconResource, Resolve-PackageLicense, Copy-PackageLicense, New-PythonAppWxs, Get-PythonAppBundleInputPath,
     New-PythonAppAppxManifest, Copy-MsvcRuntimeNotice, Assert-PackageMsvcRuntimeNotice

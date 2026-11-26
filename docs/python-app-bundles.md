@@ -118,6 +118,9 @@ Both run in the family image, from a built app wheel (`--wheel-dir`, default `di
 6. **Native closure.**
    - Windows: the VC++ runtime goes beside `python.exe`, with its notice under
      `licenses/msvc-runtime/` ([`third-party-licenses.md` § The MSVC runtime notice](third-party-licenses.md#the-msvc-runtime-notice)).
+   - Windows: the image's GPL FFmpeg in `cv2\bin` brings its texts under `licenses/{ffmpeg,x264,x265,dav1d}/`.
+     Its source offer goes to `licenses/ffmpeg-source/`. Every package is checked for both
+     ([`consumer-image-contract.md` § The FFmpeg source offer](consumer-image-contract.md#the-ffmpeg-source-offer)).
    - Linux: `python-app-closure.sh` copies every missing shared library into `runtime/lib` and
      gives each user an `$ORIGIN` RUNPATH.
    - Linux: `bundle-loader.sh --beside` puts the image's loader and glibc in front of the

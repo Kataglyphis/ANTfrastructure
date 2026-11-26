@@ -3,29 +3,7 @@
 # SPDX-License-Identifier: MIT
 # NOT covered: a real FFmpeg build; fake source trees, archives and a DLL stand in for its outputs.
 Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsSourceOffer.Build.psm1') -Force -DisableNameChecking
-
-# A prefix with one binary, two components (each a licence text and an archive) and one build script.
-function New-SourceOfferFixture {
-    param([Parameter(Mandatory)][string]$Dir)
-    # Relative path -> content; every file the offer reads, under -Dir.
-    $layout = [ordered]@{ 'prefix/bin/avcodec-63.dll' = 'MZ avcodec'; 'Build-Demo.ps1' = '# build' }
-    foreach ($name in 'ffmpeg', 'x264') {
-        $layout["$name-src/COPYING.GPLv3"] = "$name GPLv3 text"
-        $layout["$name-src/README"] = 'not a licence'
-        $layout["$name-download.tar.gz"] = "$name source bytes"
-    }
-    foreach ($rel in $layout.Keys) {
-        $file = [IO.Path]::Combine($Dir, $rel)
-        [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($file))
-        [IO.File]::WriteAllText($file, $layout[$rel])
-    }
-    $parts = @('ffmpeg', 'x264' | ForEach-Object {
-            @{ Name = $_; Version = '1.0'; Url = "https://example.invalid/$_.tar.gz"; Archive = [IO.Path]::Combine($Dir, "$_-download.tar.gz")
-                ArchiveName = "$_-1.0.tar.gz"; NoticeDir = [IO.Path]::Combine($Dir, "$_-src") }
-        })
-    return @{ Root = [IO.Path]::Combine($Dir, 'prefix'); Owner = 'ffmpeg'; File = @('bin\avcodec-63.dll'); Component = $parts
-        BuildFile = @([IO.Path]::Combine($Dir, 'Build-Demo.ps1')) }
-}
+Import-Module (Join-Path $PSScriptRoot 'WindowsSourceOffer.Fixture.psm1') -Force -DisableNameChecking
 
 Describe 'Publish-NativeSourceOffer: texts, sources and a manifest beside the binaries' {
     It 'ships every component''s licence and archive, names them in the offer, and the finding catches each change' {

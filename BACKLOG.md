@@ -2894,6 +2894,11 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       `SOURCE-OFFER.txt`) and `provenance\ffmpeg.json`; the smoke gate checks it with `Get-NativeSourceOfferFinding`.
       The BtbN fallback writes none, so the gate refuses that image. Found on the way: the FFmpeg tarball is a GitHub
       tag archive with no pinned SHA-256 (`download_verified_file`'s rule), now recorded in the offer but still unpinned.
+      **Step 2 in source 2026-11-26:** `WindowsSourceOffer.Common.psm1` (`Copy-NativeSourceOffer`,
+      `Assert-PackageSourceOffer`); `New-PythonAppBundle.ps1` copies the offer after cv2's closure through
+      `Copy-PythonAppFfmpegOffer`, and `New-PythonAppPackage.ps1` checks the ZIP, MSI and MSIX against the image's bytes.
+      An image without the manifest warns and passes, so OrchestrANT stays green until the rebuild; the smoke gate keeps
+      a newer image from losing it. Not run: an MSI or MSIX build and a real image. Left: step 3, the release archives.
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
   Later measurement, 2026-11-15: the complete `d9f129af` CUDA repeat has 6,304
   primary hits, including 605 NVCC hits, zero misses/cache errors/compiler failures

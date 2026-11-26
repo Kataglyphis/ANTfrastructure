@@ -1068,9 +1068,15 @@ BSD dav1d) statically. Its build ships what a package needs to carry it (owner d
 
 x264 is a clone, so its archive is `git archive` of the pinned commit. `Publish-NativeSourceOffer`
 (`WindowsSourceOffer.Build.psm1`) writes it; `Get-NativeSourceOfferFinding` checks it, and the smoke gate runs that
-check. The prebuilt BtbN fallback (`FFMPEG_ALLOW_PREBUILT=1`) writes no offer, so the gate refuses that image. A
-package that carries the DLLs must carry the texts and the offer, and its release the archives. Whether GPL parts may
-sit beside the MSVC runtime is still open.
+check. The prebuilt BtbN fallback (`FFMPEG_ALLOW_PREBUILT=1`) writes no offer, so the gate refuses that image.
+Whether GPL parts may sit beside the MSVC runtime is still open.
+
+A package that carries the DLLs carries the texts and the offer, and its release the archives.
+`Copy-NativeSourceOffer` (`WindowsSourceOffer.Common.psm1`) copies, for each owner DLL a bundle holds, every notice of
+its manifest entry. Licence texts keep `licenses\<component>\`; the two offer files go to `licenses\<owner>-source\`.
+`Assert-PackageSourceOffer` then compares each one in the finished ZIP, MSIX or MSI with the image's bytes. An image
+that predates the offer has no manifest: both print a warning and pass, so a consumer is not red before the rebuild.
+The smoke gate makes every newer image carry the manifest, so the warning cannot hide a lost offer.
 
 ## The CUDA plugin EP
 

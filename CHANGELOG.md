@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — Python app packages carry FFmpeg's GPL texts and source offer (CON227 step 2)
+
+- `WindowsSourceOffer.Common.psm1`: `Copy-NativeSourceOffer` copies the texts and the offer of every image FFmpeg DLL
+  a bundle holds; `Assert-PackageSourceOffer` compares them in the finished package with the image's bytes.
+- `New-PythonAppBundle.ps1` copies them after cv2's closure, and `New-PythonAppPackage.ps1` checks the ZIP, MSI and
+  MSIX. An image that predates the offer warns and passes, so a consumer stays green until the Windows rebuild.
+- `SourceOffer.Common.Tests.ps1`, a shared offer fixture, the packager's structure test and ten recipes.
+
 ## 2026-11-26 — the ORT profile suite imports its fixture under python -I
 
 - `test_verify_ort_profile.py` puts its own directory on `sys.path` before importing `ort_profile_fixture`:

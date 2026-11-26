@@ -66720,6 +66720,86 @@
   "why": "A missing sources.json is a finding, not a pass."
  },
  {
+  "id": "windows-lane.source-offer-package-predates",
+  "target": "windows/scripts/modules/WindowsSourceOffer.Common.psm1",
+  "find": "if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { return $null }",
+  "replace": "if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { return [ordered]@{} }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceOffer.Common.Tests.ps1",
+  "why": "An image without the offer is named in a warning, not passed silently."
+ },
+ {
+  "id": "windows-lane.source-offer-package-warning",
+  "target": "windows/scripts/modules/WindowsSourceOffer.Common.psm1",
+  "find": "Write-Warning \"the bundle carries",
+  "replace": "Write-Verbose \"the bundle carries",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceOffer.Common.Tests.ps1",
+  "why": "The predates case reaches the build log as a warning."
+ },
+ {
+  "id": "windows-lane.source-offer-package-bundle-lacks",
+  "target": "windows/scripts/modules/WindowsSourceOffer.Common.psm1",
+  "find": "if ($absent.Count) { throw",
+  "replace": "if ($false) { throw",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceOffer.Common.Tests.ps1",
+  "why": "A bundle that carries FFmpeg without a copied text fails by name."
+ },
+ {
+  "id": "windows-lane.source-offer-package-copy-proven",
+  "target": "windows/scripts/modules/WindowsSourceOffer.Common.psm1",
+  "find": "    Assert-NativeProvenanceManifest -Path (Join-Path $Root \"provenance\\$Owner.json\") -Root $Root\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceOffer.Common.Tests.ps1",
+  "why": "Image texts that no longer match their manifest are never copied into a bundle."
+ },
+ {
+  "id": "windows-lane.source-offer-package-verified",
+  "target": "windows/scripts/modules/WindowsSourceOffer.Common.psm1",
+  "find": "    Assert-PackageLicenses -Path $Path -Pattern $members -LicensePath @($plan.Values) -PythonPath $PythonPath",
+  "replace": "    $null = $PythonPath",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceOffer.Common.Tests.ps1",
+  "why": "The package's texts are compared with the image's bytes."
+ },
+ {
+  "id": "windows-lane.source-offer-package-targets",
+  "target": "windows/scripts/modules/WindowsSourceOffer.Common.psm1",
+  "find": "if ($parts[0] -ieq 'licenses') { return ($parts -join '\\') }",
+  "replace": "if ($false) { return ($parts -join '\\') }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceOffer.Common.Tests.ps1",
+  "why": "Licence texts keep their licenses\\<component> path in the bundle."
+ },
+ {
+  "id": "windows-lane.source-offer-zip-gated",
+  "target": "windows/scripts/python/New-PythonAppPackage.ps1",
+  "find": "    Assert-PackageSourceOffer -Path $zip -Offer $ffmpegOffer -ArchivePrefix $stem\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PythonApp.PackageLicense.Tests.ps1",
+  "why": "The ZIP package is checked for FFmpeg's source offer."
+ },
+ {
+  "id": "windows-lane.source-offer-msi-gated",
+  "target": "windows/scripts/python/New-PythonAppPackage.ps1",
+  "find": "    Assert-PackageSourceOffer -Path $msi -Offer $ffmpegOffer -Format msi -WixPath $wxs\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PythonApp.PackageLicense.Tests.ps1",
+  "why": "The MSI package is checked for FFmpeg's source offer."
+ },
+ {
+  "id": "windows-lane.source-offer-msix-gated",
+  "target": "windows/scripts/python/New-PythonAppPackage.ps1",
+  "find": "    Assert-PackageSourceOffer -Path $msix -Offer $ffmpegOffer\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PythonApp.PackageLicense.Tests.ps1",
+  "why": "The MSIX package is checked for FFmpeg's source offer."
+ },
+ {
+  "id": "windows-lane.source-offer-bundle-copies",
+  "target": "windows/scripts/python/New-PythonAppBundle.ps1",
+  "find": "    $offer = @(Copy-PythonAppFfmpegOffer -Bundle $bundle)",
+  "replace": "    $offer = @()",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PythonApp.PackageLicense.Tests.ps1",
+  "why": "The bundle copies FFmpeg's texts and offer once cv2\\bin holds it."
+ },
+ {
   "id": "wheels.torch-ft-drops-find-abi",
   "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
   "find": "        \"-U\" \"Python_FIND_ABI\" \"-U\" \"Python3_FIND_ABI\"\n",

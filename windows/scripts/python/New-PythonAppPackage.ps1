@@ -22,7 +22,7 @@ Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsMsix.Common.psm1') -Fo
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsMsix.Signing.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsTargetArch.Common.psm1') -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsPythonApp.Common.psm1') -Force -DisableNameChecking
-foreach ($sibling in 'WindowsMsiLicense.Common', 'WindowsOrtLicense.Common') {
+foreach ($sibling in 'WindowsMsiLicense.Common', 'WindowsOrtLicense.Common', 'WindowsSourceOffer.Common') {
     Import-Module (Join-Path $PSScriptRoot "..\modules\$sibling.psm1") -DisableNameChecking -ErrorAction Stop
 }
 
@@ -32,6 +32,8 @@ $Bundle = (Resolve-Path -LiteralPath (Resolve-PythonAppPath $RepoRoot $Bundle)).
 $ortLicenses = Resolve-PythonOrtLicenses -Bundle $Bundle -WheelDir $OrtWheelDir
 $msvcRedist = Join-Path $Bundle 'licenses\msvc-runtime\Redist.txt'
 $msvcRedist = if (Test-Path -LiteralPath $msvcRedist -PathType Leaf) { $msvcRedist } else { '' }
+# The image's GPL FFmpeg in cv2\bin: every package checks its texts and offer against the image's bytes.
+$ffmpegOffer = Get-PythonAppFfmpegOffer -Bundle $Bundle
 $manifest = Get-Content -LiteralPath (Join-Path $Bundle 'bundle.json') -Raw | ConvertFrom-Json -AsHashtable
 # The wheel name's second field is its version: orchestrant-0.0.28-py3-none-any.whl.
 $version = ($manifest['wheel'] -split '-')[1]
@@ -93,6 +95,7 @@ function Invoke-ZipPackage {
     Assert-PackageLicense -Path $zip -Pattern "$stem/LICENSE" -LicensePath $licensePath
     Assert-PythonAppArchiveLicenses -Path $zip -ArchivePrefix $stem
     Assert-PackageMsvcRuntimeNotice -Path $zip -RedistText $msvcRedist
+    Assert-PackageSourceOffer -Path $zip -Offer $ffmpegOffer -ArchivePrefix $stem
     Write-Created $zip
     if (-not $test) { return }
     $unpacked = New-EmptyWorkDir 'zip-test'
@@ -118,6 +121,7 @@ function Invoke-MsiAppPackage {
     Assert-PackageLicense -Path $msi -Pattern $licenseId -LicensePath $licensePath
     if ($ortLicenses) { Assert-OrtWheelLicensesInPackage -Path $msi -LicenseDirectory $ortLicenses -Format msi -WixPath $wxs }
     Assert-PackageMsvcRuntimeNotice -Path $msi -RedistText $msvcRedist
+    Assert-PackageSourceOffer -Path $msi -Offer $ffmpegOffer -Format msi -WixPath $wxs
     Write-Created $msi
     if (-not $test) { return }
     if (-not $throwaway) {
@@ -177,6 +181,7 @@ function Invoke-MsixAppPackage {
     Assert-PackageLicense -Path $msix -Pattern 'LICENSE' -LicensePath $licensePath
     Assert-PythonAppArchiveLicenses -Path $msix
     Assert-PackageMsvcRuntimeNotice -Path $msix -RedistText $msvcRedist
+    Assert-PackageSourceOffer -Path $msix -Offer $ffmpegOffer
     Write-Created $msix ", signed by a test certificate for $publisher ($(Split-Path $cer -Leaf))"
     if (-not $test) { return }
     $unpacked = New-EmptyWorkDir 'msix-test'
