@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — Windows binaries carry the CFG bit (CON290 done)
+
+- BeschleunigerBallett's hub pin `5514538c` contains `d3661575`, which links `/NXCOMPAT /DYNAMICBASE /guard:cf` and
+  `/CETCOMPAT` off ARM64. `llvm-readobj` on `GraphicsEngine.exe` (sha256 `340b1bfd…`) from its Windows x64 build
+  run 45749219579 (head `7f2a3413`) reads `GUARD_CF`, `DYNAMIC_BASE`, `NX_COMPAT`, `HIGH_ENTROPY_VA`, the
+  `CF_INSTRUMENTED` guard flag with 6102 guarded functions and `EX_CET_COMPAT`. CET enforcement at launch on
+  CET-capable hardware stays unmeasured.
+
 ## 2026-11-26 — source-pins.txt's ORT and GenAI rows follow versions.env in the same Renovate call (CON305 step 2)
 
 - `sync_versions.py --write` copies the tag and commit of the `onnxruntime` and `onnxruntime-genai` rows in

@@ -2600,14 +2600,6 @@ The owner's decisions of 2026-11-21 on the comparison of BeschleunigerBallett's 
 OmniAccelerANT's (D1 to D12, all as recommended). Pieces two or more repos call land here first; each consumer then
 moves its pin. The consumer steps are in the three repos' BACKLOGs.
 
-- [ ] **CON290 — Windows binaries get the CFG bit** [S, ★★★]. `cmake/Hardening.cmake:16-29` compiles with CFG but never
-      passes `/guard:cf` (or `/DYNAMICBASE`) to the linker: none of the 13 lld-link lines of BeschleunigerBallett job
-      136406090876 carries it, so its shipped binaries lack the bit. Add both to the MSVC link options, extend
-      `test-cmake-windows-arch.sh:24`, add a mutation recipe, and read GUARD_CF with `llvm-readobj` from BB's
-      `GraphicsEngine.exe` in a `[ci windows]` run. D8: hardening in the Windows clang-cl presets, not in Linux Debug;
-      CET only after a launch smoke on CET-capable hardware. **In source since 2026-11-21:** `Hardening.cmake` links
-      `/NXCOMPAT /DYNAMICBASE /guard:cf` (and `/CETCOMPAT` off ARM64), `test-cmake-windows-arch.sh` and the recipe
-      `cmake-arch.cfg-bit-linked` hold it. Left: a consumer pin, and GUARD_CF read from a `[ci windows]` binary.
 - [ ] **CON291 — `ctest-run.sh --fail-on-log-pattern REGEX`** [S, ★★]. The twin of `--fail-on-skipped`: it scans only
       this run's `LastTest*.log`, names each test whose output matches and keeps ctest's exit code; proven with a real
       ctest. BeschleunigerBallett moves its SYNC-HAZARD scan onto it (and may add `VUID-`, 0 in green job
@@ -2848,6 +2840,14 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
       Left separately, before a release: the installer's licence wording for the end-user terms.
+      **Read 2026-11-26** from the latest x64 release payloads (byte scan of every `.dll`/`.exe`/`.pyd`):
+      AccelerANTgine v0.0.3, OxidANT v2.3.4, OmniAccelerANT and ObservANT v2.2.1 and BeschleunigerBallett v1.6.0 ship
+      no GPL binary. OrchestrANT v0.0.32 ships the image's FFmpeg n9.0.2 in `runtime/Lib/site-packages/cv2/bin`
+      (`avcodec-63` … `swscale-10`, `av_license()` = `GPL version 3 or later`; configured `--enable-gpl
+      --enable-version3 --enable-libx264 --enable-libx265`, x264 linked into `avcodec`) beside `msvcp140.dll` and
+      `vcruntime140.dll` in `runtime/`, and carries no FFmpeg, x264 or x265 licence text or source offer. The two
+      other GPL texts it carries are bundled notices (Pillow's FreeType FTL/GPL choice, NumPy's GCC runtime
+      exception). The FFmpeg flags come from the hub's Windows build, so `:winamd64` consumers inherit them.
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
   Later measurement, 2026-11-15: the complete `d9f129af` CUDA repeat has 6,304
   primary hits, including 605 NVCC hits, zero misses/cache errors/compiler failures
