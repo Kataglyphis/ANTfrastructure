@@ -282,14 +282,15 @@ _twin_args() (
   done
   eval "$(t_fn_src "${SCRIPTS}/01-core/common.sh" shell_quote_args)"
   eval "$(t_fn_src "${SCRIPTS}/01-core/cmake-cache-linker.sh" append_cmake_compiler_cache_pin)"
-  warn() { :; }; log() { :; }; resolve_cross_gcc_tool() { return 1; }; cross_target_qemu_runner() { return 1; }
+  log() { :; }; resolve_cross_gcc_tool() { return 1; }; cross_target_qemu_runner() { return 1; }
   compiler_cache_launcher_env() { :; }; compiler_cache_launcher() { echo ccache; }
   cross_target_python_include_dir() { echo /gil/include/python3.14; }
   cross_target_python_arch_include_dir() { echo /gil/include/riscv64-linux-gnu/python3.14; }
   cross_target_python_library() { echo /gil/lib/libpython3.14.so; }
   ft_twin_start() { return 0; }; ft_target_env() { :; }
-  _torch_run_setup_py() { printf '%s\n' "${cmake_args_string}"; return 1; }
-  BUILD_PYTHON=/gil/bin/python3; APP_WHEELHOUSE_BUILD_ROOT="${_work}/awh"; src_dir="${_work}/awh/pytorch"
+  _torch_run_setup_py() { printf '%s\n' "${cmake_args_string}"; [ -n "${TWIN_CACHE:-}" ] || return 1; mkdir -p "${src_dir}/build"; printf '%s\n' "${TWIN_CACHE}" > "${src_dir}/build/CMakeCache.txt"; }
+  warn() { printf 'WARN %s\n' "$*"; }; _torch_ensure_c_extension() { :; }; retag_directory_wheels() { :; }; ft_twin_store_built() { echo STORED; }
+  BUILD_PYTHON=/gil/bin/python3; APP_WHEELHOUSE_BUILD_ROOT="${_work}/awh"; src_dir="${_work}/awh/pytorch"; wheel_platform=linux_riscv64; APP_WHEELHOUSE_FT_DIR="${_work}/awh-ft"
   FT_TARGET_INCLUDE=/ft/include/python3.14t; FT_TARGET_LIBRARY=/ft/lib/libpython3.14t.so
   # The GIL pass's string, as build_torch_wheel leaves it in the twin's dynamic scope.
   cmake_args=(); append_common_cross_cmake_args cmake_args; cmake_args+=("-DBLAS=OpenBLAS")
@@ -303,7 +304,15 @@ for _k in PYTHON_INCLUDE_DIR Python_INCLUDE_DIR Python3_INCLUDE_DIR; do
   t_assert_contains "${_out}" "-D${_k}=/ft/include/python3.14t"
 done
 t_assert_contains "${_out}" "-U _Python\\* -U Python_NumPy\\* -U Python3_NumPy\\*" "FindPython's cached GIL results are dropped"
+t_assert_contains "${_out}" "-U Python_FIND_ABI -U Python3_FIND_ABI" "scikit-build-core's free-threaded FIND_ABI is dropped, else CMake's cross FindPython finds no Development.Module"
 t_assert_contains "${_out}" "-DBLAS=OpenBLAS -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCCACHE_BINARY=ccache" "the GIL pass's other arguments are kept"
+
+t_case "torch twin: a configure that turned BUILD_PYTHON off fails the twin before it is stored"
+_out="$(TWIN_CACHE='BUILD_PYTHON:BOOL=OFF' _twin_args)"; _rc=$?
+t_assert_eq 1 "${_rc}" "torch only warns, so the gate is the CMake cache"
+t_assert_contains "${_out}" "WARN torch: the free-threaded configure turned BUILD_PYTHON off"
+t_assert_eq 0 "$(grep -c -e STORED <<<"${_out}")" "nothing is stored"
+t_assert_contains "$(TWIN_CACHE='BUILD_PYTHON:BOOL=ON' _twin_args)" "STORED" "BUILD_PYTHON on: the twin is stored"
 
 t_case "ft_twin_start: 0 with a venv for a twin, 1 for a package without one, 2 for an error"
 _start() { PATH="${_work}/bin:${PATH}" PYTHON_FT_PREFIX="${_work}/gilpy" bash -c 'source "$1"; shift; ft_twin_start "$@"' _ "${LIB}" "$@"; }

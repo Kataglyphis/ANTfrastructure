@@ -3757,6 +3757,14 @@ install copied `_runtime.cpython-315-<triple>.so`. It is the same CMake 4.4.5 ca
 kept the GIL pass's cached `NB_SUFFIX`. `_iree_free_threaded_rebuild` drops it, passes `SKBUILD_SOABI` and fails its
 rebuild when `build.ninja` builds no `nanobind-static-*-ft` library.
 
+### `torch owns no compiled module, so its wheel is no binary build` on the riscv64 torch twin
+
+The media stage's store check then says the twin is missing, and the twin pass logs `torch wheel lacks torch/_C*.so`.
+scikit-build-core sets `Python_FIND_ABI=ANY;ANY;ANY;ON` for a `3.Xt` interpreter. CMake 4.4.5's cross FindPython
+fails with any set `FIND_ABI`. torch then reports `missing components: Development.Module NumPy` and turns
+`BUILD_PYTHON` off, so the wheel has no `_C`. The twin unsets both `FIND_ABI` values and fails without
+`BUILD_PYTHON:BOOL=ON` in the CMake cache.
+
 ### riscv64 OpenCV: `jpeglib.h: fatal error: jconfig.h: No such file or directory` in `3rdparty/libtiff`
 
 OpenCV reports `Could NOT find TIFF` and builds its bundled libtiff, which reads the host's `jpeglib.h`. The
