@@ -246,6 +246,8 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=C:\bkmnt\free-threaded-twins.txt `
     --mount=type=bind,source=windows/scripts/build/Build-FfmpegCodecs.ps1,target=C:\bkmnt\Build-FfmpegCodecs.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNativeProvenance.Common.psm1,target=C:\bkmnt\ortmods\WindowsNativeProvenance.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceOffer.Build.psm1,target=C:\bkmnt\ortmods\WindowsSourceOffer.Build.psm1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsPythonWheel.Common.psm1,target=C:\bkmnt\modules\WindowsPythonWheel.Common.psm1 `

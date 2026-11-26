@@ -261,17 +261,20 @@ function Get-FfmpegSourceTree {
     param([string]$FfmpegVersion, [string]$SourceDir, [string]$tarballPath)
     Switch-BuildPhase '1. download + extract'
     Write-Host "Downloading FFmpeg $FfmpegVersion..."
+    $url = "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/$FfmpegVersion.tar.gz"
     if ($FfmpegVersion -in @('main', 'master', 'develop')) {
+        $url = "https://github.com/FFmpeg/FFmpeg/archive/refs/heads/$FfmpegVersion.tar.gz"
         try {
-            Invoke-DownloadWithRetry -Url "https://github.com/FFmpeg/FFmpeg/archive/refs/heads/$FfmpegVersion.tar.gz" -DestinationPath $tarballPath -Description "FFmpeg $FfmpegVersion tarball"
+            Invoke-DownloadWithRetry -Url $url -DestinationPath $tarballPath -Description "FFmpeg $FfmpegVersion tarball"
         } catch {
             # FFmpeg GitHub mirror uses 'master' as default branch; fall back if branch not found
             Write-Warning "FFmpeg branch '$FfmpegVersion' not found, trying 'master'..."
-            Invoke-DownloadWithRetry -Url 'https://github.com/FFmpeg/FFmpeg/archive/refs/heads/master.tar.gz' -DestinationPath $tarballPath -Description 'FFmpeg master tarball'
+            $url = 'https://github.com/FFmpeg/FFmpeg/archive/refs/heads/master.tar.gz'
+            Invoke-DownloadWithRetry -Url $url -DestinationPath $tarballPath -Description 'FFmpeg master tarball'
             $FfmpegVersion = 'master'
         }
     } else {
-        Invoke-DownloadWithRetry -Url "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/$FfmpegVersion.tar.gz" -DestinationPath $tarballPath -Description "FFmpeg $FfmpegVersion tarball"
+        Invoke-DownloadWithRetry -Url $url -DestinationPath $tarballPath -Description "FFmpeg $FfmpegVersion tarball"
     }
     Write-Host "Extracting tarball..."
     $srcDir = Expand-SourceTarball -Archive $tarballPath -Destination $SourceDir
@@ -279,7 +282,7 @@ function Get-FfmpegSourceTree {
 
     # Without a repo, Invoke-SourcePatch's probe writes stderr, which PS 5.1 under EAP=Stop makes terminating.
     Initialize-ExtractedGitRepo -Path $srcDir
-    return @{ SourceDir = $srcDir; Version = $FfmpegVersion }
+    return @{ SourceDir = $srcDir; Version = $FfmpegVersion; Url = $url }
 }
 
 function Set-FfmpegVersionFiles {
@@ -789,6 +792,24 @@ function Install-FfmpegImportLibs {
     }
 }
 
+# The GPL texts and exact sources of FFmpeg and its static codecs beside the binaries; see docs/consumer-image-contract.md § The FFmpeg source offer
+function Publish-FfmpegSourceOffer {
+    param([string]$prefix, [string]$ffmpegDir, $source, [string]$tarballPath, $ffCodecs)
+    if ($env:FFMPEG_SOURCE_BUILD -eq '0') {
+        Write-Warning 'FFmpeg source offer: none for the prebuilt fallback, whose sources are not this build''s; the smoke gate refuses the image'
+        return
+    }
+    $offerModule = Resolve-SourceBuildLeafModule -AssetRoot $scriptAssetRoot -Name 'WindowsSourceOffer.Build.psm1'
+    Import-Module $offerModule -DisableNameChecking
+    $ffmpeg = @{ Name = 'ffmpeg'; Version = $source.Version; Url = $source.Url
+        Archive = $tarballPath; ArchiveName = "ffmpeg-$($source.Version).tar.gz"; NoticeDir = $source.SourceDir }
+    $binaries = @(Get-ChildItem -LiteralPath $ffmpegDir -File | Where-Object Extension -in '.dll', '.exe' | ForEach-Object { "bin\$($_.Name)" })
+    $build = @((Join-Path $PSScriptRoot 'Build-FfmpegFromSource.ps1'), (Join-Path $PSScriptRoot 'Build-FfmpegCodecs.ps1')) +
+        @(Get-ChildItem -LiteralPath (Join-Path $scriptAssetRoot 'patches\ffmpeg') -File -Filter '*.patch' | ForEach-Object FullName)
+    $manifest = Publish-NativeSourceOffer -Root $prefix -Owner 'ffmpeg' -File $binaries -Component (@($ffmpeg) + @($ffCodecs.Components)) -BuildFile $build
+    Write-Host "FFmpeg source offer: $($binaries.Count) binaries, $(1 + @($ffCodecs.Components).Count) source archive(s) -> $manifest"
+}
+
 function Invoke-FfmpegPyavWheel {
     param([string]$prefix, [bool]$ffCross, [string]$SourceDir)
     # PyAV from sdist against this FFmpeg: PyPI's wheel bundles an avdevice that imports AVICAP32.dll, absent from Server Core.
@@ -943,6 +964,8 @@ Install-FfmpegImportLibs -ffmpegDir $ffmpegDir -prefix $prefix -srcDir $srcDir -
 # G2: the tree (compat\onnx is the chain's headers), config.mak and config.log hold the chain ORT only; a pass stamps it for G1.
 Assert-ChainOrtOnly -Consumer 'ffmpeg' -OrtRoot $onnxRuntimeDir -TreeRoot $SourceDir -Shim (Join-Path $srcDir 'compat\onnx') `
     -Record (Join-Path $srcDir 'ffbuild\config.mak') -Log (Join-Path $srcDir 'ffbuild\config.log')
+
+Publish-FfmpegSourceOffer -prefix $prefix -ffmpegDir $ffmpegDir -source $source -tarballPath $tarballPath -ffCodecs $ffCodecs
 
 Remove-SourceBuildTree -Path $SourceDir
 

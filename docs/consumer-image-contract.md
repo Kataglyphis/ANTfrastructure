@@ -1032,6 +1032,7 @@ Windows images carry manifests that tie shipped DLLs to their source and origina
 | `C:\runtime\share\native-provenance\gstreamer.json` | `C:\runtime` | Every DLL meson installed for GStreamer, OpenSSL, and the gst-plugins-rs contract plugins |
 | `%ONNX_ROOT%\provenance\directml.json` | `%ONNX_ROOT%` | `bin\DirectML.dll`, compared with the pinned nuget |
 | `C:\runtime\cuda-runtime\provenance.json` | `C:\runtime\cuda-runtime` | The flattened CUDA and cuDNN DLLs, on nvidia images |
+| `%FFMPEG_ROOT%\provenance\ffmpeg.json` | `%FFMPEG_ROOT%` | FFmpeg's DLLs and tools, with the GPL texts and the source offer below |
 
 Each entry has `file`, `sha256`, `source` (`name`, `version`, `url`, and a hash or revision when known) and `notices`
 (`path`, `sha256`). Paths are relative to the root. Check one with `Assert-NativeProvenanceManifest` from
@@ -1053,6 +1054,23 @@ GStreamer inference pipelines use `onnxinference`, `tfliteinference` and the ten
 `onnxinference` refuses a model without a `<model>.modelinfo` file beside it (`Failed to load modelinfo`). Each section names one
 tensor, with `type`, `dims` and `dir` matching the model. GStreamer's `modelinfo-helper` in gst-devtools writes one.
 Windows images before this fix failed every session with a garbled path, whatever the model.
+
+### The FFmpeg source offer
+
+The Windows FFmpeg is GPLv3: it is configured with `--enable-gpl --enable-version3` and links x264 and x265 (and the
+BSD dav1d) statically. Its build ships what a package needs to carry it (owner decision):
+
+- `%FFMPEG_ROOT%\licenses\{ffmpeg,x264,x265,dav1d}\`: the licence texts from the top of each exact source tree.
+- `%FFMPEG_ROOT%\share\sources\ffmpeg\`: the exact archive each was built from, `build\` with the two build
+  scripts and the FFmpeg patches, `sources.json` (name, version, revision, URL, file, SHA-256) and
+  `SOURCE-OFFER.txt`, the same list for a reader.
+- `ffmpeg.json`: every `bin` DLL and tool, with all of the above as its notices.
+
+x264 is a clone, so its archive is `git archive` of the pinned commit. `Publish-NativeSourceOffer`
+(`WindowsSourceOffer.Build.psm1`) writes it; `Get-NativeSourceOfferFinding` checks it, and the smoke gate runs that
+check. The prebuilt BtbN fallback (`FFMPEG_ALLOW_PREBUILT=1`) writes no offer, so the gate refuses that image. A
+package that carries the DLLs must carry the texts and the offer, and its release the archives. Whether GPL parts may
+sit beside the MSVC runtime is still open.
 
 ## The CUDA plugin EP
 

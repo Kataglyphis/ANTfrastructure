@@ -17,7 +17,7 @@ $ErrorActionPreference = 'Stop'
 # arm64 first needs GStreamer's meson cross file and aarch64 asm shim reproduced here.
 if (Test-WindowsCrossTarget -Arch $TargetArch) {
     Write-Host "FFmpeg codecs: none on the $(Get-WindowsTargetArch -Arch $TargetArch) cross lane yet (dav1d/x264/x265 are amd64-only; GStreamer's own dav1d/x264 plugins still ship there)"
-    return [pscustomobject]@{ ConfigureFlags = @(); PkgConfigDir = $null; ConfigSymbols = @() }
+    return [pscustomobject]@{ ConfigureFlags = @(); PkgConfigDir = $null; ConfigSymbols = @(); Components = @() }
 }
 
 # dav1d and x264 pin the sources GStreamer's wraps build, so the image carries one version of each.
@@ -102,11 +102,17 @@ function Get-CodecTarball([string]$Name, [string]$Url, [string]$Sha256) {
     return Expand-SourceTarball -Archive $archive -Destination (Join-Path $WorkDir ($Name -replace '\s.*$', ''))
 }
 
+# What FFmpeg's source offer ships for one codec: its exact archive and the tree whose licence texts it carries.
+function New-CodecComponent([string]$Name, [string]$Version, [string]$Url, [string]$Archive, [string]$NoticeDir, [string]$Revision = '') {
+    return @{ Name = $Name; Version = $Version; Revision = $Revision; Url = $Url; Archive = $Archive
+        ArchiveName = [IO.Path]::GetFileName($Archive); NoticeDir = $NoticeDir }
+}
+
 Initialize-CodecMeson
 
 # ── dav1d: AV1 decode (x86 asm through nasm) ─────────────────────────────────
-$dav1dSrc = Get-CodecTarball -Name "dav1d $dav1dVersion" -Sha256 $dav1dSha256 `
-    -Url "https://download.videolan.org/pub/videolan/dav1d/$dav1dVersion/dav1d-$dav1dVersion.tar.xz"
+$dav1dUrl = "https://download.videolan.org/pub/videolan/dav1d/$dav1dVersion/dav1d-$dav1dVersion.tar.xz"
+$dav1dSrc = Get-CodecTarball -Name "dav1d $dav1dVersion" -Sha256 $dav1dSha256 -Url $dav1dUrl
 Invoke-CodecMeson -Name 'dav1d' -SourceDir $dav1dSrc -Options @('-Denable_tools=false', '-Denable_tests=false', '-Denable_asm=true')
 Copy-CodecStaticLib -From 'libdav1d.a' -PcName 'dav1d.pc'
 
@@ -115,12 +121,16 @@ $x264Src = Join-Path $WorkDir 'x264'
 Invoke-GitClone -RepoUrl 'https://gitlab.freedesktop.org/gstreamer/meson-ports/x264.git' -Branch $x264Branch -SourceDir $x264Src -Depth 1 | Out-Null
 $x264Head = (& git -C $x264Src rev-parse HEAD).Trim()
 if ($x264Head -ne $x264Commit) { throw "x264 meson port branch $x264Branch is at $x264Head, not the pinned $x264Commit -- re-derive X264_MESON_COMMIT from GStreamer's subprojects/x264.wrap" }
+# A clone has no release archive, so the offer ships git's archive of the pinned commit.
+$x264Archive = Join-Path $WorkDir "x264-$x264Commit.tar.gz"
+& git -C $x264Src archive --format=tar.gz "--prefix=x264-$x264Commit/" -o $x264Archive $x264Commit
+if ($LASTEXITCODE -ne 0) { throw "git archive of x264 $x264Commit failed ($LASTEXITCODE)" }
 Invoke-CodecMeson -Name 'x264' -SourceDir $x264Src -Options @('-Dcli=false')
 Copy-CodecStaticLib -From 'libx264.a' -PcName 'x264.pc'
 
 # ── x265: HEVC encode (CMake; x86 asm through nasm) ───────────────────────────
-$x265Root = Get-CodecTarball -Name "x265 $x265Version" -Sha256 $x265Sha256 `
-    -Url "https://bitbucket.org/multicoreware/x265_git/downloads/x265_$x265Version.tar.gz"
+$x265Url = "https://bitbucket.org/multicoreware/x265_git/downloads/x265_$x265Version.tar.gz"
+$x265Root = Get-CodecTarball -Name "x265 $x265Version" -Sha256 $x265Sha256 -Url $x265Url
 # CMake 4 refuses a policy set OLD. 4.1 set CMP0025/CMP0054 OLD and was patched here; 4.2 dropped both lines.
 $x265Cml = Join-Path $x265Root 'source\CMakeLists.txt'
 $x265Old = @(Select-String -LiteralPath $x265Cml -Pattern 'cmake_policy\s*\(\s*SET\s+CMP\d+\s+OLD\s*\)' | ForEach-Object { $_.Line.Trim() })
@@ -147,4 +157,8 @@ return [pscustomobject]@{
     ConfigureFlags = @('--enable-libdav1d', '--enable-libx264', '--enable-libx265')
     PkgConfigDir   = $pkgConfigDir
     ConfigSymbols  = @('CONFIG_LIBDAV1D', 'CONFIG_LIBX264', 'CONFIG_LIBX265')
+    Components     = @(
+        (New-CodecComponent -Name 'dav1d' -Version $dav1dVersion -Url $dav1dUrl -Archive (Join-Path $WorkDir ([IO.Path]::GetFileName($dav1dUrl))) -NoticeDir $dav1dSrc),
+        (New-CodecComponent -Name 'x264' -Version $x264Branch -Revision $x264Commit -Url 'https://gitlab.freedesktop.org/gstreamer/meson-ports/x264.git' -Archive $x264Archive -NoticeDir $x264Src),
+        (New-CodecComponent -Name 'x265' -Version $x265Version -Url $x265Url -Archive (Join-Path $WorkDir ([IO.Path]::GetFileName($x265Url))) -NoticeDir $x265Root))
 }

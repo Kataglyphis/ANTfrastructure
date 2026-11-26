@@ -1068,6 +1068,10 @@ function Invoke-SmokeNativeProvenance {
         Assert-Test -Name 'every DLL the GStreamer plugins import has provenance' -Finding @(Get-NativeClosureGap -ManifestPath $manifest -Directory 'C:\runtime\bin' -Importer $plugins -GetImport { param($path) Get-PeImportNames -Path $path -IncludeDelayLoad }) `
             -FailMessage 'a plugin imports a DLL from C:\runtime\bin that the manifest does not list; a consumer notice gate would reject it'
     }
+    Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsSourceOffer.Build.psm1') -Force -DisableNameChecking
+    $ffmpegDlls = @(Get-ChildItem -LiteralPath (Join-Path $env:FFMPEG_ROOT 'bin') -Filter 'avcodec-*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object { "bin\$($_.Name)" })
+    Assert-Test -Name 'FFmpeg carries its GPL texts and its exact sources' -Finding @(Get-NativeSourceOfferFinding -Root $env:FFMPEG_ROOT -Owner 'ffmpeg' -RequiredFile $ffmpegDlls) `
+        -FailMessage 'an FFmpeg binary, licence text or offered source archive is missing or changed; a package could not ship FFmpeg under its GPL'
     $onnxRoot = $env:ONNX_ROOT
     Assert-Test -Name 'DirectML.dll matches its nuget provenance and license' -Finding @(Get-NativeProvenanceFinding -Path (Join-Path $onnxRoot 'provenance\directml.json') -Root $onnxRoot -RequiredFile 'bin\DirectML.dll') `
         -FailMessage 'DirectML.dll, its license texts or its manifest changed after the ORT stage'

@@ -19,6 +19,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — the Windows FFmpeg ships its GPL texts and exact sources (CON227 step 1)
+
+- `Publish-NativeSourceOffer` (`WindowsSourceOffer.Build.psm1`) writes, beside FFmpeg's binaries, the licence texts of
+  FFmpeg, x264, x265 and dav1d from their exact trees, the archives they were built from with the build scripts and
+  patches, `sources.json`, `SOURCE-OFFER.txt` and `provenance\ffmpeg.json`. x264 is a clone, so its archive is
+  `git archive` of the pinned commit. The smoke gate checks the offer; the BtbN fallback writes none and fails it.
+- The new leaf module is mounted only in the FFmpeg RUN; `WindowsNativeProvenance.Common` is unchanged, so the ONNX
+  stage keeps its cache key. Not in an image yet: the owner holds the Windows rebuild.
+- `SourceOffer.Build.Tests.ps1` and six recipes; nine FFmpeg-RUN mount recipes re-anchored on the two new mounts.
+
 ## 2026-11-26 — the package gates read an NSIS setup (CON302 step 4)
 
 - `verify_package_license.py` and `verify_package_binary.py` read a `-setup.exe` with `7z -tNsis`, by `$INSTDIR`-relative

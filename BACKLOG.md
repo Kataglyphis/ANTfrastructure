@@ -2880,6 +2880,20 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       **Owner decision 2026-11-26:** keep the GPL build. Every package that carries the image's FFmpeg ships the GPLv3
       texts of FFmpeg, x264 and x265 and a source offer for the exact revisions. Whether GPL parts may sit beside the
       MSVC runtime still needs someone who can judge it; until then the question stays open here.
+      **Owner decisions 2026-11-26 (how):** the texts come from the image, copied from the exact source trees into
+      `C:\runtime\licenses\{ffmpeg,x264,x265}`, and the packager carries them; a package gate refuses `avcodec-*.dll`
+      without them, armed for a consumer when its hub pin and the image both carry the change. The source offer is the
+      exact source archives attached to every release that ships the image's FFmpeg, named with their sha256 in the
+      package, not a written offer and not upstream links.
+      Steps: 1. the image ships texts and sources; 2. the Python app bundle carries them beside `cv2\bin`'s FFmpeg
+      DLLs, and a package gate refuses `avcodec-*.dll` without them; 3. `release-publish` attaches the archives.
+      **Step 1 in source 2026-11-26, not in an image (the owner holds the Windows rebuild):**
+      `Publish-NativeSourceOffer` (`WindowsSourceOffer.Build.psm1`, a leaf only the FFmpeg RUN mounts, so the ONNX RUN
+      keeps its key) writes `%FFMPEG_ROOT%\licenses\{ffmpeg,x264,x265,dav1d}`, `share\sources\ffmpeg\` (the exact
+      archives, x264 as `git archive` of the pinned commit, the build scripts and patches, `sources.json`,
+      `SOURCE-OFFER.txt`) and `provenance\ffmpeg.json`; the smoke gate checks it with `Get-NativeSourceOfferFinding`.
+      The BtbN fallback writes none, so the gate refuses that image. Found on the way: the FFmpeg tarball is a GitHub
+      tag archive with no pinned SHA-256 (`download_verified_file`'s rule), now recorded in the offer but still unpinned.
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
   Later measurement, 2026-11-15: the complete `d9f129af` CUDA repeat has 6,304
   primary hits, including 605 NVCC hits, zero misses/cache errors/compiler failures
