@@ -51,6 +51,11 @@ for a in "$@"; do
 done
 if [ "${mode}" = configure ] && [ -n "${build_dir}" ]; then
   mkdir -p "${build_dir}/runtime" "${build_dir}/compiler"
+  # Like nanobind: the abi3 library compiles nb_ft.cpp too, and only a free-threaded SOABI or interpreter adds the -ft library.
+  printf 'build b/nanobind-static-abi3.dir/nb_ft.cpp.o: CXX_COMPILER\n' > "${build_dir}/build.ninja"
+  if [ -z "${STUB_NB_GIL:-}" ] && printf '%s' "$*" | grep -qE -e 'SKBUILD_SOABI=cpython-[0-9]+t-|ft-venv'; then
+    printf 'build b/nanobind-static-ft.dir/nb_ft.cpp.o: CXX_COMPILER\n' >> "${build_dir}/build.ninja"
+  fi
 fi
 if [ "${want_install}" = 1 ] && [ -n "${STUB_HOST_INSTALL:-}" ]; then
   mkdir -p "${STUB_HOST_INSTALL}/bin"
@@ -361,17 +366,31 @@ t_case "a failed lane does not abort the caller"
 _run
 t_assert_eq "0" "${RC}" "the run after a failure must still succeed"
 
+# The cross twin's rebuild over a stub cmake.
+_ft_rebuild() {
+  ( export PATH="${TMP}/bin:${PATH}" STUB_CMAKE_LOG="${_ftlog}"
+    src_dir="${TMP}/src" target_build="${TMP}/ftb" MAX_JOBS=2 \
+    FT_TARGET_INCLUDE=/x/ft/include/python3.14t FT_TARGET_LIBRARY=/x/ft/lib/libpython3.14t.so \
+    FT_TARGET_EXT_SUFFIX=.cpython-314t-aarch64-linux-gnu.so \
+    _iree_free_threaded_rebuild /venv/bin/python )
+}
+
 t_case "cross twin: the 3.14t reconfigure moves both FindPython spellings and drops their cached results"
 ft_target_env() { :; }
 _ftlog="${TMP}/ft-cmake.log"; : > "${_ftlog}"
-( export PATH="${TMP}/bin:${PATH}" STUB_CMAKE_LOG="${_ftlog}"
-  src_dir="${TMP}/src" target_build="${TMP}/ftb" MAX_JOBS=2 \
-  FT_TARGET_INCLUDE=/x/ft/include/python3.14t FT_TARGET_LIBRARY=/x/ft/lib/libpython3.14t.so \
-  _iree_free_threaded_rebuild /venv/bin/python ) >/dev/null 2>&1
+_ft_rebuild >/dev/null 2>&1
 _cfg="$(head -1 "${_ftlog}")"
 t_assert_contains "${_cfg}" "-U _Python* -U Python_NumPy* -U Python3_NumPy*" "a GIL configure's cached FindPython results must go"
+t_assert_contains "${_cfg}" "-U NB_SUFFIX*" "nanobind's cached GIL suffix must go, or the twin links _runtime.cpython-314-*.so"
+t_assert_contains "${_cfg}" "-DSKBUILD_SOABI=cpython-314t-aarch64-linux-gnu" "CMake 4.4.5's cross FindPython empties Python_SOABI; nanobind reads SKBUILD_SOABI first"
 t_assert_contains "${_cfg}" "-DPython_INCLUDE_DIR=/x/ft/include/python3.14t" "find_package(Python) reads Python_*, not Python3_*"
 t_assert_contains "${_cfg}" "-DPython_LIBRARY=/x/ft/lib/libpython3.14t.so"
 t_assert_contains "${_cfg}" "-DPython3_INCLUDE_DIR=/x/ft/include/python3.14t"
+
+t_case "cross twin: a configure without a nanobind-static-*-ft library fails the rebuild"
+_ftrc=0
+STUB_NB_GIL=1 _ft_rebuild > "${TMP}/ft-gil.log" 2>&1 || _ftrc=$?
+t_assert_eq "1" "${_ftrc}" "a GIL nanobind must not reach packaging"
+t_assert_contains "$(cat "${TMP}/ft-gil.log")" "builds no nanobind-static-*-ft library"
 
 t_summary

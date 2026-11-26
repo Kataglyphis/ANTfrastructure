@@ -25,6 +25,14 @@
   clang-cl marks `_wgetenv` deprecated, and AccelerANTgine's `-Werror` Windows lanes failed on it
   (`-Wdeprecated-declarations`), so no NSIS setup was built there. The Linux path is unchanged.
 
+## 2026-11-26 — the Linux IREE cross twin configures nanobind free-threaded
+
+- Default chain `linux-publish-default-20261125` failed media on arm64 and riscv64: the `iree-base-runtime` twin
+  linked `_runtime.cpython-315t-*.so` with no inputs, because its rebuild had produced the GIL-named module. CMake
+  4.4.5's cross FindPython empties `Python_SOABI`, so nanobind kept the GIL pass's cached `NB_SUFFIX`; the Windows lane
+  hit the same on 2026-11-08. `_iree_free_threaded_rebuild` now drops `NB_SUFFIX*`, passes `SKBUILD_SOABI` and fails
+  when `build.ninja` builds no `nanobind-static-*-ft` library. Three `wheels.iree-twin-*` mutations hold it.
+
 ## 2026-11-26 — a DevTools call takes its caller's bound
 
 - `check-docs-sidebars.js`'s `send(method, params, timeoutMs)` keeps 30 s as the default and takes a longer bound from

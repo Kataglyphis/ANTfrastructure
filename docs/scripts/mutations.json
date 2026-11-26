@@ -66238,5 +66238,29 @@
   "replace": "params = {}, timeoutMs = 300000)",
   "test": "bash linux/scripts/tests/test-chrome-close.sh",
   "why": "a Chrome that stops answering must still fail a caller that names no bound within 30 s"
+ },
+ {
+  "id": "wheels.iree-twin-drops-nb-suffix",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": " \"-U\" \"NB_SUFFIX*\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
+  "why": "a cross twin keeps nanobind's cached GIL suffix and setup.py links an extension with no inputs"
+ },
+ {
+  "id": "wheels.iree-twin-sets-skbuild-soabi",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "                  \"-DSKBUILD_SOABI=${ft_soabi}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
+  "why": "CMake 4.4.5's cross FindPython empties Python_SOABI, so nanobind configures the twin without free-threading"
+ },
+ {
+  "id": "wheels.iree-twin-requires-ft-nanobind",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "    if ! grep -Eq -e 'nanobind-static(-[a-z0-9]+)*-ft[/.]' \"${target_build}/build.ninja\"; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
+  "why": "a GIL nanobind twin would reach packaging and fail there with no input files, or ship a module that re-enables the GIL"
  }
 ]

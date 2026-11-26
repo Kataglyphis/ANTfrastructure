@@ -3750,6 +3750,13 @@ lane and sets `Python_SOABI` empty, which also hides a `-DPython_SOABI` cache va
 its configure without a `nanobind-static-*-ft` library
 ([windows-builds.md](windows-builds.md#the-free-threaded-wheels) has the measurements).
 
+### `Failed building wheel for iree-base-runtime`: `gcc: fatal error: no input files` on a Linux cross twin
+
+The arm64 or riscv64 app wheelhouse links `_runtime.cpython-315t-<triple>.so` with no inputs, after the CMake
+install copied `_runtime.cpython-315-<triple>.so`. It is the same CMake 4.4.5 cause as the ARM64 entry above: nanobind
+kept the GIL pass's cached `NB_SUFFIX`. `_iree_free_threaded_rebuild` drops it, passes `SKBUILD_SOABI` and fails its
+rebuild when `build.ninja` builds no `nanobind-static-*-ft` library.
+
 ### `onnxinference` exits `0xC0000005` on an ARM64 device
 
 `Program "gst-launch-1.0.exe" ended with non-zero exit code: -1073741819`, 0.1 s into the bundle
