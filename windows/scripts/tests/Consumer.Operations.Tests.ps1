@@ -28,6 +28,19 @@ function Assert-CmakeRuntimeEnvironment {
     }
 }
 
+function Assert-CmakeBuildOutputLog {
+    param($State)
+    Invoke-InTestDir { param($dir)
+        foreach ($mode in @('success', 'nonzero', 'throw')) {
+            $State.Throw = $mode -eq 'throw'; $State.Code = if ($mode -eq 'nonzero') { 9 } else { 0 }
+            $log = Join-Path $dir 'logs' $mode 'build.log'
+            $invoke = { Invoke-MutCmakeBuildCommand -Context ([pscustomobject]@{}) -BuildArgs @('--build', 'fixture build') -OutputLogPath $log }.GetNewClosure()
+            if ($mode -eq 'success') { $null = & $invoke } else { Assert-Throws $invoke -MessagePattern 'CMake build failed' }
+            Assert-Equal 'build output| ' ((Get-Content -LiteralPath $log) -join '|') "the build output log holds what the $mode build printed"
+        }
+    }.GetNewClosure()
+}
+
 function Assert-EnvironmentCaseExecution {
     $seen = [Collections.Generic.List[object]]::new()
     Invoke-WithEnv @{ ANT_EXECUTION_CASE = 'outside' } {
@@ -155,6 +168,9 @@ Describe 'Shared consumer operation policies' {
         @{ Name = 'scopes CMake runtime paths across success, failed exits and exceptions and detects bypassed restoration'
             Arguments = @{ ModuleArguments = (New-TestCmakeExecutionModuleArguments); Body = { param($state) Assert-CmakeRuntimeEnvironment $state }
                 Find = 'Invoke-WithProcessEnvironment -Environment @{ PATH = $runtimePath }'; Replace = 'Invoke-WithProcessEnvironment -Environment @{}'; Expected = 'operation restores the environment value|CMake runtime PATH' } }
+        @{ Name = 'writes the build output log across success, failed exits and exceptions and detects a dropped capture'
+            Arguments = @{ ModuleArguments = (New-TestCmakeExecutionModuleArguments); Body = { param($state) Assert-CmakeBuildOutputLog $state }
+                Find = 'Write-BuildCommandOutput -Context $Context -Capture $capture'; Replace = 'Write-BuildCommandOutput -Context $Context'; Expected = 'the build output log holds' } }
         @{ Name = 'runs every requested environment state, cleans failed cases and detects truncated matrices'
             Arguments = @{ ScriptPath = 'windows/scripts/tests/WindowsConsumer.ExecutionFixtures.psm1'; FunctionName = @('Invoke-TestEnvironmentCases'); Body = { Assert-EnvironmentCaseExecution }
                 Find = 'foreach ($sample in $Value)'; Replace = 'foreach ($sample in @($Value[0]))'; Expected = 'environment case iteration' } }

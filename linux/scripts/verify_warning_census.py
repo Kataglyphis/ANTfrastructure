@@ -9,17 +9,30 @@ docs/code-quality-tooling.md#the-warning-census
 from __future__ import annotations
 
 import argparse
+import posixpath
 import re
 import sys
 from pathlib import Path
 
+_TAIL = r" warning: (?P<text>.*?)\s*(?:\[(?P<tag>[^\]]+)\])?\s*$"
 # GCC and clang: path:line:col: warning: text [-Wflag], after any CI timestamp or ninja prefix.
-WARNING = re.compile(r"(?P<path>[^\s:][^:\s]*):(?P<line>\d+):(?:\d+:)? warning: (?P<text>.*?)\s*(?:\[(?P<tag>[^\]]+)\])?\s*$")
+WARNING = re.compile(r"(?P<path>(?:[A-Za-z]:)?[^\s:][^:\s]*):(?P<line>\d+):(?:\d+:)?" + _TAIL)
+# clang-cl: path(line,col): warning: text [-Wflag]; a drive-letter path may hold spaces (C:\Program Files\...).
+WARNING_CL = re.compile(r"(?P<path>[A-Za-z]:[\\/][^:(]*?|[^\s:(][^\s:(]*)\((?P<line>\d+)(?:,\d+)?\) ?:" + _TAIL)
+# Clang colours its diagnostics when it runs on a terminal, which splits a warning line with escape codes.
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 # A compile command or its ninja/make progress line: proof the log compiled something.
-COMPILED = re.compile(r"Building (?:C|CXX) object|\[\d+/\d+\] Building|(?:^|\s)(?:c\+\+|g\+\+|clang\+\+|gcc|clang)\S* .*-c ")
+COMPILED = re.compile(
+    r"Building (?:C|CXX) object|\[\d+/\d+\] Building|(?:^|\s)(?:c\+\+|g\+\+|clang\+\+|gcc|clang)\S* .*-c "
+    r"|[\s\\/]clang-cl(?:\.exe)? .*\s[-/]c(?:\s|$)"
+)
 # Code this repository does not own: vendored trees, fetched dependencies, the toolchain's headers.
 FOREIGN = re.compile(r"(^|/)(third_party|_deps|external|vendor)/|^/(usr|opt)/")
-WORKSPACE = re.compile(r"^(?:/workspace|/__w/[^/]+/[^/]+|/home/runner/work/[^/]+/[^/]+)/")
+# The checkout in a container or on a runner: Linux's, then the family's Windows container mounts and a Windows runner's.
+WORKSPACE = re.compile(
+    r"^(?:/workspace|/__w/[^/]+/[^/]+|/home/runner/work/[^/]+/[^/]+|[A-Za-z]:/ws(?:-mnt)?|[A-Za-z]:/a/[^/]+/[^/]+)/"
+)
+ABSOLUTE = re.compile(r"^(?:/|[A-Za-z]:/)")
 UNNAMED = "-W(unnamed)"
 
 
@@ -29,9 +42,12 @@ class CensusError(ValueError):
 
 def own_path(raw: str) -> str | None:
     """The repository-relative path of a warning in its own code, or None for foreign code."""
-    path = WORKSPACE.sub("", raw.replace("\\", "/"))
+    path = raw.replace("\\", "/")
+    # One header reached as Src/a/../b/x.h and Src/b/x.h is one warning, and a/../third_party/ is foreign.
+    path = posixpath.normpath(path)
+    path = WORKSPACE.sub("", path)
     path = path.removeprefix("./")
-    if FOREIGN.search(path) or path.startswith("/"):
+    if FOREIGN.search(path) or ABSOLUTE.match(path):
         return None
     return path
 
@@ -41,9 +57,10 @@ def count_warnings(logs: list[Path]) -> tuple[dict[str, int], int]:
     seen: set[tuple[str, str, str]] = set()
     compiled = 0
     for log in logs:
-        for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
+        for raw in log.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = ANSI.sub("", raw)
             compiled += bool(COMPILED.search(line))
-            match = WARNING.search(line)
+            match = WARNING.search(line) or WARNING_CL.search(line)
             tag = match.group("tag") if match else None
             # A clang-tidy or analyzer finding names its check, not a -W flag; it is not the compiler's warning.
             path = own_path(match.group("path")) if match and (tag is None or tag.startswith("-W")) else None

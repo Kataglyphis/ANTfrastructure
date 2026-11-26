@@ -53,6 +53,34 @@ out="$("${_PY}" "${GATE}" --lane gcc --census "${w}/new.census" "${w}/empty.log"
 t_assert_eq 1 "$?" "an empty build must not pass as zero warnings"
 t_assert_contains "${out}" "compiled nothing"
 
+# A verbose clang-cl log: ./ and ../ spellings, vendored and MSVC headers, and a clang-tidy finding.
+cat > "${w}/clang-cl.log" <<'LOG'
+2026-11-26T04:40:35.0000000Z [9/846] C:\Users\ContainerAdministrator\.cargo\bin\sccache.exe C:\llvm\bin\clang-cl.exe -TP /W4 /FoSrc\app.cpp.obj -c -- C:\ws\Src\app.cpp
+2026-11-26T04:40:35.1000000Z C:\ws\Src\scene\Mesh.ixx(82,5): warning: missing field 'offset' initializer [-Wmissing-field-initializers]
+2026-11-26T04:40:35.2000000Z C:\ws\Src\app\..\scene\./Mesh.ixx(82,5): warning: missing field 'offset' initializer [-Wmissing-field-initializers]
+2026-11-26T04:40:35.3000000Z C:\ws\Src\app\..\..\third_party\FUZZTEST\./common/remote_file.h(66,54): warning: pointer is missing a nullability type specifier [-Wnullability-completeness]
+2026-11-26T04:40:35.4000000Z C:\Program Files\Microsoft Visual Studio\2022\VC\Tools\MSVC\14.51\include\xutility(1209,11): warning: 'fopen' is deprecated [-Wdeprecated-declarations]
+2026-11-26T04:40:35.5000000Z C:\ws\Src\app.cpp:35:13: warning: use a trailing return type for this function [modernize-use-trailing-return-type]
+2026-11-26T04:40:35.6000000Z C:\ws\Src\app.cpp(7,9): warning: 'GLM_FORCE_RADIANS' macro redefined [-Wmacro-redefined]
+LOG
+
+t_case "clang-cl: path(line,col) lines count, ./ and ../ normalise to one warning, a drive-letter path outside the checkout is foreign"
+out="$("${_PY}" "${GATE}" --lane win --census "${w}/win.census" --write "${w}/clang-cl.log" 2>&1)"
+t_assert_contains "${out}" "2 own warning(s) over 2 flag(s), 1 compile line(s)"
+t_assert_eq "win | -Wmacro-redefined | 1
+win | -Wmissing-field-initializers | 1" "$(cat "${w}/win.census")" "the Windows rows name the repository-relative headers once"
+
+t_case "clang's colour codes do not hide a warning, and a GNU path through ../ is normalised"
+{
+  printf '[1/1] Building CXX object Src/CMakeFiles/a.dir/a.cpp.o\n'
+  printf '\033[1m/workspace/Src/b.cpp:4:1: \033[0m\033[0;1;35mwarning: \033[0m\033[1munused variable [-Wunused-variable]\033[0m\n'
+  printf '/workspace/Src/sub/../a.cpp:3:7: warning: unused variable [-Wunused-variable]\n'
+  printf '/workspace/Src/a.cpp:3:7: warning: unused variable [-Wunused-variable]\n'
+} > "${w}/colour.log"
+out="$("${_PY}" "${GATE}" --lane colour --census "${w}/colour.census" --write "${w}/colour.log" 2>&1)"
+t_assert_contains "${out}" "2 own warning(s) over 1 flag(s), 1 compile line(s)"
+t_assert_eq "colour | -Wunused-variable | 2" "$(cat "${w}/colour.census")" "the coloured line counts, the ../ spelling does not count twice"
+
 t_case "a malformed census row is refused"
 printf 'gcc | -Wshadow\n' > "${w}/bad.census"
 t_assert_contains "$(census gcc "${w}/bad.census")" "expected '<lane> | <flag> | <count>'"

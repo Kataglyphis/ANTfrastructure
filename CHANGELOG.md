@@ -19,6 +19,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — the warning census reads clang-cl, and a Windows build writes its own log (CON295 (c))
+
+- `verify_warning_census.py` reads clang-cl's `path(line,col): warning: ... [-Wflag]` and a verbose ninja's
+  `clang-cl.exe ... -c` lines, strips the colour codes a clang on a terminal prints, and normalises `.` and `..`, so
+  `Src/a/../b/x.h` and `Src/b/x.h` are one warning and `Src/../third_party/` is foreign. `C:/ws/`, `C:/ws-mnt/` and a
+  Windows runner's checkout are workspace prefixes; any other drive-letter path is foreign. On BeschleunigerBallett's
+  Windows x64 logs it reads the 11 own warnings Phase 20 counted by hand (job 139485513493) and 0 after its fixes
+  (job 139672697599, 1415 compile lines). File format and lane semantics are unchanged; two suite cases, six new
+  mutations, two refreshed.
+- `Invoke-CmakeConfigureAndBuild -BuildOutputLog <file>` also writes the build step's output there, failed build or
+  not, so a Windows lane can hand the census one build. One Pester check with its mutation.
+- `cmake/README.md` § Warnings as errors: per target names `COMPILE_WARNING_AS_ERROR` on a project's own targets as
+  the family's way, after SYSTEM includes and a census at zero.
+
 ## 2026-11-26 — a DevTools call takes its caller's bound
 
 - `check-docs-sidebars.js`'s `send(method, params, timeoutMs)` keeps 30 s as the default and takes a longer bound from

@@ -4327,14 +4327,21 @@ python3 "$(antfrastructure_path linux/scripts/verify_warning_census.py)" --lane 
 
 `--write` rewrites that lane's rows from the logs and keeps the other lanes' rows; commit the file with the fix.
 
+A Windows lane hands it one build's output, which `Invoke-CmakeConfigureAndBuild -BuildOutputLog <file>`
+(`WindowsCMake.Common`) writes beside the combined build log, failed build or not. BeschleunigerBallett's
+`Build-Windows.ps1 -WarningCensus` runs it per clang-cl configuration (lanes `windows-x64-clangcl-debug` ...).
+
 It holds a lane's compiler warnings at a committed count per flag, the step between SYSTEM includes and warnings
-as errors. It reads GCC and clang `path:line:col: warning: ... [-Wflag]` lines and counts each `path:line:flag`
-once, since a header's warning repeats in every unit that includes it. Only the repository's own code counts.
-A container's `/workspace/` prefix and a GitHub runner's checkout prefix are stripped first. Then `third_party/`,
-`_deps/`, `external/` and `vendor/` paths are foreign, and so is any path still absolute, such as a header under
-`/usr/` or `/opt/`. A warning with no flag (GCC's "X
-redefined") counts under `-W(unnamed)`. A clang-tidy or analyzer finding names its check instead of a `-W` flag,
-so it does not count.
+as errors. It reads GCC and clang `path:line:col: warning: ... [-Wflag]` lines and clang-cl's
+`path(line,col): warning: ... [-Wflag]`, from a ninja log or a verbose one, after stripping the colour codes a
+clang on a terminal prints. It counts each `path:line:flag` once, since a header's warning repeats in every unit
+that includes it, after normalising `.` and `..` in the path. Only the repository's own code counts. A
+container's `/workspace/` prefix, a GitHub runner's checkout prefix and the family's Windows container mounts
+(`C:/ws/`, `C:/ws-mnt/`) are stripped first. Then `third_party/`, `_deps/`, `external/` and `vendor/` paths are
+foreign, and so is any path still absolute, such as a header under `/usr/`, `/opt/` or `C:/Program Files/`. A
+warning with no flag (GCC's "X redefined") counts under `-W(unnamed)`. A clang-tidy or analyzer finding names its
+check instead of a `-W` flag, so it does not count. MSVC's own `cl` (`warning C4xxx:`) is not read: no lane
+builds with it.
 
 The census file holds `<lane> | <flag> | <count>` rows, one lane per CI job that compiles. A flag above its row
 fails the lane. So does a flag below its row until the row is lowered in the same commit, so a fixed warning

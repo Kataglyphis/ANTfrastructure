@@ -12,8 +12,8 @@ README.md | avg-sentence | 14.1
 README.md | long-share | 0.0
 README.md | ids-per-k | 0.0
 README.md | bold-per-k | 0.0
-cmake/README.md | avg-sentence | 18.8
-cmake/README.md | long-share | 13.0
+cmake/README.md | avg-sentence | 17.5
+cmake/README.md | long-share | 10.9
 cmake/README.md | ids-per-k | 3.0
 cmake/README.md | bold-per-k | 6.0
 docs/INDEX.md | avg-sentence | 15.4
@@ -65,7 +65,7 @@ docs/ci-build-triggers.md | long-share | 7.4
 docs/ci-build-triggers.md | ids-per-k | 5.0
 docs/ci-build-triggers.md | bold-per-k | 3.0
 docs/code-quality-tooling.md | avg-sentence | 22.1
-docs/code-quality-tooling.md | long-share | 20.4
+docs/code-quality-tooling.md | long-share | 20.3
 docs/code-quality-tooling.md | ids-per-k | 3.1
 docs/code-quality-tooling.md | bold-per-k | 6.6
 docs/consumer-image-contract.md | avg-sentence | 20.0
