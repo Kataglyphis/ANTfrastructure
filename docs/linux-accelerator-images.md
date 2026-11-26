@@ -2151,6 +2151,10 @@ vendors' cards, and a tag names one variant only. Intel's Vulkan driver already 
   smoke's `check_intel_gpu_userspace` grades presence only: the three driver files and FFmpeg's
   `h264_qsv` encoder. An amd64 image built before the change fails it; the drivers come back with a
   runtime-lane re-run, the encoder needs the media stage rebuilt.
+- **amd64 only, by arch.** `select_dev_packages` asks for the three packages only when
+  `dpkg --print-architecture` is `amd64`. On arm64 and riscv64, `apt-cache show` finds
+  `intel-media-va-driver` but apt has no installation candidate, and the runtime preflight refused
+  the plan.
 - **The free driver, on purpose.** The multiverse `intel-media-va-driver-non-free` is the same
   driver built with Intel's non-free media kernels. What the free build cannot encode on a given
   GPU is read from `vainfo` on the device (CON257).

@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — Intel's GPU user space is asked for on amd64 only
+
+- The first runtime lane since CON258 stopped in its input preflight on arm64 and riscv64:
+  `Package 'intel-media-va-driver' has no installation candidate`. The existence check uses
+  `apt-cache show`, which finds the name on the ports mirror, so `append_available_packages` kept it.
+- `select_dev_packages` now asks for the three Intel packages only on amd64, like mingw.
+  `intel-gpu.amd64-only` holds the guard; `intel-gpu.packages` follows the new indentation.
+
 ## 2026-11-26 — the package gates read an NSIS setup (CON302 step 4)
 
 - `verify_package_license.py` and `verify_package_binary.py` read a `-setup.exe` with `7z -tNsis`, by `$INSTDIR`-relative

@@ -40923,8 +40923,8 @@
  {
   "id": "intel-gpu.packages",
   "target": "linux/scripts/06-packaging/setup-package-image.sh",
-  "find": "    append_available_packages _sdp_out intel-media-va-driver libmfx-gen1.2 intel-opencl-icd\n",
-  "replace": "",
+  "find": "        append_available_packages _sdp_out intel-media-va-driver libmfx-gen1.2 intel-opencl-icd\n",
+  "replace": "        :\n",
   "test": "bash linux/scripts/tests/test-intel-gpu-userspace.sh",
   "why": "the amd64 package stage installs Intel's free GPU user space"
  },
@@ -66686,5 +66686,13 @@
   "replace": "    if false; then",
   "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
   "why": "torch only warns when it turns BUILD_PYTHON off, so a twin without _C would be stored and fail only at the media stage's final store check"
+ },
+ {
+  "id": "intel-gpu.amd64-only",
+  "target": "linux/scripts/06-packaging/setup-package-image.sh",
+  "find": "    if [ \"$(dpkg --print-architecture)\" = amd64 ]; then\n        append_available_packages _sdp_out intel-media-va-driver",
+  "replace": "    if true; then\n        append_available_packages _sdp_out intel-media-va-driver",
+  "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+  "why": "ports' apt-cache shows intel-media-va-driver with no installation candidate, so the arm64 and riscv64 runtime preflight refuses the plan"
  }
 ]
