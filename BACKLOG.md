@@ -2658,11 +2658,14 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       module and clang's -Wnullability-extension in Abseil stay warnings, and Abseil is SYSTEM outside clang-cl, which
       misparses its function_ref.h so. BeschleunigerBallett followed 2026-11-26 (eacea92d, bd012d72): its own warnings
       fixed (36 GCC, 11-13 clang, clang-cl's getenv), `COMPILE_WARNING_AS_ERROR` on its two product targets, and a
-      census lane per Linux build and arch, every one at zero. Left, the hub's: the census reads no clang-cl
-      `file(line,col):` line, so no consumer's Windows lanes hold one; it counts a path through `..` as written
-      (`Src/GraphicsEngineVulkan/../shared/...`); it should strip colour codes, which ninja drops off a TTY but a
-      direct clang run keeps, so such a log matches no line; and `cmake/README.md` could name
-      `COMPILE_WARNING_AS_ERROR` per product target as the family's way (AccelerANTgine spells `$<IF:...,/WX,-Werror>`).
+      census lane per Linux build and arch, every one at zero. The hub's follow-ups closed 2026-11-26 (989e5d49): the
+      census reads clang-cl's `file(line,col):` and a verbose ninja's clang-cl lines, strips colour codes and
+      normalises `.` and `..`; `Invoke-CmakeConfigureAndBuild -BuildOutputLog` hands a Windows lane one build's log;
+      `cmake/README.md` names `COMPILE_WARNING_AS_ERROR` on a project's own targets as the family's way. On
+      BeschleunigerBallett's Windows x64 logs the census reads the 11 own warnings counted by hand and 0 after the
+      fixes. BeschleunigerBallett then built its suites and fuzz targets with the project's warnings as errors and
+      gave both Windows lanes a census (35ce4e64, 63f4987d, aa81ce5f; green on Linux x64, arm64 and riscv64 with
+      clang 22, Windows x64 and arm64). Left: MSVC `cl`'s `warning C4xxx:` is not read, as no lane builds with it.
       (d) Done
       2026-11-21: the pattern-limits doc holds the row for exception-free filesystem calls, which AccelerANTgine and
       BeschleunigerBallett bind; the first version read `current_path(ec)` as throwing and missed the iterator
