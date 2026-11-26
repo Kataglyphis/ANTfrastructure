@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — riscv64 OpenCV names libtiff6 beside libtiff-dev
+
+- Chain `linux-publish-default-20261126b` failed media-riscv64 in OpenCV's bundled libtiff (`jconfig.h` not found):
+  after today's libtiff `4.7.0-3ubuntu5.1` security update, apt 3.2.1's solver refused `libtiff-dev:riscv64` alone,
+  so the best-effort deps install skipped it and OpenCV fell back. Reproduced in the riscv64 SDK image: named with
+  `libtiff6`, or under `--solver internal`, it resolves. `opencv/install-deps.sh` names `libtiff6` for riscv64 only,
+  so only the OpenCV branch re-keys; `lib.opencv-riscv64-names-libtiff6` holds it.
+
 ## 2026-11-26 — the hub AGENTS.md drops from 26,270 to 12,299 words (CON303)
 
 - The one-line invariants appended under the seven priorities, in Quick Reference and in the rule

@@ -40,6 +40,8 @@ if is_cross; then
         # The ports glib dev stack broke real builds, but its stated empty-prefix cause did not reproduce; reproduce before re-enabling.
         echo "Skipping GStreamer dev packages for riscv64: ports' glib-2.0.pc poisons cross pkg-config (RV1-GST-PC)"
         echo "Installing riscv64 target OpenCV codec/video deps on a best-effort basis because Ubuntu Ports currently has broken dependency sets for some packages (for example FFmpeg/libpng)."
+        # apt 3's solver refuses libtiff-dev:riscv64 alone when its libtiff6 must also move the amd64 copy; named together it resolves.
+        target_packages=(libtiff6 "${target_packages[@]}")
     elif [ "${cross_arch}" = "arm64" ]; then
         echo "Arm64 target OpenCV deps: adding GStreamer dev packages but using best-effort install"
         echo "(multiarch harfbuzz/libgraphite2 dependency chain is broken on this Ubuntu release)"

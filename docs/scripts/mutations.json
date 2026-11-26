@@ -66438,5 +66438,13 @@
   "replace": "  true ||",
   "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
   "why": "an abbreviated pin would let a fallback repository answer with a different object"
+ },
+ {
+  "id": "lib.opencv-riscv64-names-libtiff6",
+  "target": "linux/scripts/03-media/build/opencv/install-deps.sh",
+  "find": "        target_packages=(libtiff6 \"${target_packages[@]}\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-opencv-riscv64-seams.sh",
+  "why": "riscv64 OpenCV falls back to its bundled libtiff, which cannot find the target jconfig.h"
  }
 ]
