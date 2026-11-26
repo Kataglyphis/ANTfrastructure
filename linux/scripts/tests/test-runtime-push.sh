@@ -3,18 +3,22 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
-RBF="${TESTS_DIR}/../01-core/runtime-build-fns.sh"
+RBF="${TESTS_DIR}/../01-core/runtime-push.sh"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 
 _FNS="$(t_fn_src "${RBF}" _runtime_push_attempt)" || exit 1
+_FNS+=$'\n'"$(t_fn_src "${RBF}" _runtime_zstd_convert)" || exit 1
 _FNS+=$'\n'"$(t_fn_src "${RBF}" runtime_push_tag)" || exit 1
 
-# The stub records its argv and prints what $PUSH_OUT holds; $PUSH_RC is its exit code, $CONVERT_RC the conversion's.
+# The stub records its argv and prints what $PUSH_OUT holds; $PUSH_RC is its exit code, $CONVERT_RC the conversion's, $TAG_RC the retag's.
 cat > "${WORK}/nerdctl" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${ARGV_LOG}"
-[ "$1 $2" = "image convert" ] && exit "${CONVERT_RC:-0}"
+# nerdctl 2.4's in-place convert loses the manifest it reads, so a convert onto its own source fails here as it does there.
+[ "$1 $2" = "image convert" ] && { [ "$5" != "$6" ] || exit 9; exit "${CONVERT_RC:-0}"; }
+[ "$1" = tag ] && exit "${TAG_RC:-0}"
+[ "$1" = rmi ] && exit 0
 [ -z "${PUSH_OUT:-}" ] || printf '%s\n' "${PUSH_OUT}"
 exit "${PUSH_RC:-0}"
 EOF
@@ -28,7 +32,7 @@ _push() {
       runtime_push_tag ghcr.io/x/y:latest-amd64' _ "${_FNS}" 2>&1
 }
 
-convert='image convert --zstd --oci ghcr.io/x/y:latest-amd64 ghcr.io/x/y:latest-amd64'
+convert='image convert --zstd --oci ghcr.io/x/y:latest-amd64 ghcr.io/x/y:latest-amd64-zstd'$'\n''tag ghcr.io/x/y:latest-amd64-zstd ghcr.io/x/y:latest-amd64'$'\n''rmi ghcr.io/x/y:latest-amd64-zstd'
 
 t_case "the push runs with --quiet by default, and with its progress on RUNTIME_PUSH_PROGRESS=1"
 out="$(_push)"
@@ -42,8 +46,13 @@ CROSS_LAYER_COMPRESSION=gzip _push >/dev/null
 t_assert_eq "push ghcr.io/x/y:latest-amd64 --quiet" "$(cat "${WORK}/argv")" "gzip argv"
 t_case "a failed conversion pushes nothing and fails"
 rc=0; CONVERT_RC=1 _push >/dev/null || rc=$?
-t_assert_eq "${convert}" "$(cat "${WORK}/argv")" "no push after a failed conversion"
+t_assert_eq "image convert --zstd --oci ghcr.io/x/y:latest-amd64 ghcr.io/x/y:latest-amd64-zstd" "$(cat "${WORK}/argv")" "no retag and no push after a failed conversion"
 t_assert_eq 1 "${rc}" "the conversion's failure is the push's"
+
+t_case "a failed retag pushes nothing and fails"
+rc=0; TAG_RC=1 _push >/dev/null || rc=$?
+t_assert_eq 0 "$(grep -c -e '^push ' "${WORK}/argv")" "no push after a failed retag"
+t_assert_eq 1 "${rc}"
 
 t_case "a failed quiet push still shows its error and its rc"
 out="$(PUSH_RC=1 PUSH_OUT='level=fatal msg="use of closed network connection"' _push)"

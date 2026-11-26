@@ -60657,17 +60657,17 @@
  },
  {
   "id": "runtime-push.zstd-before-push",
-  "target": "linux/scripts/01-core/runtime-build-fns.sh",
-  "find": "[ \"${CROSS_LAYER_COMPRESSION:-zstd}\" != zstd ] || run \"${NERDCTL_BIN:-nerdctl}\" image convert",
-  "replace": "true || run \"${NERDCTL_BIN:-nerdctl}\" image convert",
+  "target": "linux/scripts/01-core/runtime-push.sh",
+  "find": "[ \"${CROSS_LAYER_COMPRESSION:-zstd}\" != zstd ] || _runtime_zstd_convert \"${tag}\"",
+  "replace": "true || _runtime_zstd_convert \"${tag}\"",
   "test": "bash linux/scripts/tests/test-runtime-push.sh",
   "why": "the published runtime layers leave as zstd, as the owner decided for CON99"
  },
  {
   "id": "runtime-push.failed-conversion-stops",
-  "target": "linux/scripts/01-core/runtime-build-fns.sh",
-  "find": "image convert --zstd --oci \"${tag}\" \"${tag}\" || return 1",
-  "replace": "image convert --zstd --oci \"${tag}\" \"${tag}\" || true",
+  "target": "linux/scripts/01-core/runtime-push.sh",
+  "find": "image convert --zstd --oci \"${tag}\" \"${staged}\" || return 1",
+  "replace": "image convert --zstd --oci \"${tag}\" \"${staged}\" || true",
   "test": "bash linux/scripts/tests/test-runtime-push.sh",
   "why": "a conversion that failed must not push the image as built under a name that promises zstd"
  },
@@ -66750,5 +66750,21 @@
   "replace": "    if true; then\n        append_available_packages _sdp_out intel-media-va-driver",
   "test": "bash linux/scripts/tests/test-setup-package-image.sh",
   "why": "ports' apt-cache shows intel-media-va-driver with no installation candidate, so the arm64 and riscv64 runtime preflight refuses the plan"
+ },
+ {
+  "id": "runtime-push.zstd-converts-to-a-second-tag",
+  "target": "linux/scripts/01-core/runtime-push.sh",
+  "find": "local tag=\"$1\" staged=\"$1-zstd\"",
+  "replace": "local tag=\"$1\" staged=\"$1\"",
+  "test": "bash linux/scripts/tests/test-runtime-push.sh",
+  "why": "nerdctl 2.4's in-place convert loses the source manifest when no other image holds its content, and the wrapper's push then fails with content digest not found"
+ },
+ {
+  "id": "runtime-push.failed-retag-stops",
+  "target": "linux/scripts/01-core/runtime-push.sh",
+  "find": "run \"${nerdctl}\" tag \"${staged}\" \"${tag}\" || return 1",
+  "replace": "run \"${nerdctl}\" tag \"${staged}\" \"${tag}\" || true",
+  "test": "bash linux/scripts/tests/test-runtime-push.sh",
+  "why": "a failed retag leaves the gzip image under the wrapper tag, which would then be pushed as if converted"
  }
 ]

@@ -1017,17 +1017,20 @@ Offline is a `SKIP`, never a pass.
 
 ### Runtime image push retries
 
-`01-core/runtime-build-fns.sh` retries a runtime image push, because a ~8 GiB
+`01-core/runtime-push.sh` retries a runtime image push, because a ~8 GiB
 wrapper upload can reset mid-transfer. Only the upload repeats:
 `PUSH_MAX_ATTEMPTS` (default 4) and `PUSH_RETRY_BASE_SECS` (default 15 s).
 
-Before the first attempt, `nerdctl image convert --zstd --oci <tag> <tag>`
-turns the tag's remaining gzip layers into zstd, as the cross stages push
+Before the first attempt, `nerdctl image convert --zstd --oci <tag> <tag>-zstd`,
+a retag and the removal of `<tag>-zstd` turn the tag's remaining gzip layers into zstd, as the cross stages push
 theirs (`CROSS_LAYER_COMPRESSION`, default `zstd`; `gzip` pushes the layers as
 built). The owner chose this on 2026-11-21 from CON99's probe: fresh runners
 pulled the zstd image in a median 290 s against 387 s. The conversion leaves
 zstd layers alone, so a restart converts to the same manifest digest and the
 already-pushed check below still holds. A failed conversion pushes nothing.
+The second tag is load-bearing: nerdctl 2.4's in-place convert loses the source
+manifest of a wrapper built from an OCI layout
+([failure-modes.md](failure-modes.md#content-digest-sha256-not-found-when-the-runtime-lane-pushes-a-wrapper)).
 
 A **permanent** failure is not retried. An unpushable `not found` — the build
 never created the tag — once burned all four attempts and buried the real cause

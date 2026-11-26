@@ -43,7 +43,8 @@ F
   } | _write "${d}/linux/scripts/01-core/cross-stage-build.sh"
   install -D -m 0644 "${TESTS_DIR}/../01-core/compiler-cache.sh" "${d}/linux/scripts/01-core/compiler-cache.sh"
   install -D -m 0644 "${TESTS_DIR}/../01-core/compiler-cache-utils.sh" "${d}/linux/scripts/01-core/compiler-cache-utils.sh"
-  _write "${d}/linux/scripts/01-core/runtime-build-fns.sh" <<'F'
+  : | _write "${d}/linux/scripts/01-core/runtime-build-fns.sh"
+  _write "${d}/linux/scripts/01-core/runtime-push.sh" <<'F'
 runtime_push_tag() {
   _runtime_push_attempt "$1"
 }
@@ -307,7 +308,7 @@ fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry
 fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/Dockerfile.base	s|source=linux/scripts/01-core,target=|source=linux/scripts,target=|	re-introduced a whole-tree scripts bind mount
 fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/Dockerfile.torch	1i RUN bash /opt/scripts/06-packaging/smoke-vulkan.sh	no full Vulkan SDK here
 fix8 — push retry, the transient classifier itself, and per-run stage logs	linux/scripts/01-core/cross-stage-build.sh	s|PUSH_MAX_ATTEMPTS|PUSH_ATTEMPTS|g	lost the transient push-retry
-fix8 — push retry, the transient classifier itself, and per-run stage logs	linux/scripts/01-core/runtime-build-fns.sh	s|# retry policy lives in runtime_push_tag.*|# reports the push rc|	has a bare (unretried) image push
+fix8 — push retry, the transient classifier itself, and per-run stage logs	linux/scripts/01-core/runtime-push.sh	s|# retry policy lives in runtime_push_tag.*|# reports the push rc|	has a bare (unretried) image push
 fix8 — push retry, the transient classifier itself, and per-run stage logs	linux/scripts/build-runtime-manifest.sh	s|^retry |run |	manifest push is not retried
 fix8 — push retry, the transient classifier itself, and per-run stage logs	linux/scripts/01-core/cross-stage-build.sh	s|^_cross_stage_push_error_is_transient() {|_renamed_classifier() {|	could not extract _cross_stage_push_error_is_transient
 fix8 — push retry, the transient classifier itself, and per-run stage logs	linux/scripts/01-core/cross-stage-build.sh	s|'use of closed network connection.*|'NEVER_MATCHES_ANYTHING'|	no longer flags network drops as transient

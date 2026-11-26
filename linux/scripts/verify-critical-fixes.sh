@@ -227,6 +227,7 @@ fix8_push_retry_2026_07() {
   echo "--- Fix 8: transient push retry + per-run stage logs (2026-07) ---"
   local csb="${REPO_ROOT}/linux/scripts/01-core/cross-stage-build.sh"
   local rbf="${REPO_ROOT}/linux/scripts/01-core/runtime-build-fns.sh"
+  local rps="${REPO_ROOT}/linux/scripts/01-core/runtime-push.sh"
   local brm="${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh"
 
   # Stage build+push retries transient failures.
@@ -239,11 +240,11 @@ fix8_push_retry_2026_07() {
   _bare_pushes="$(awk '
     /run .*push "\$\{tag\}"/ { if (prev !~ /retry/) c++ }
     { prev=$0 }
-    END { print c+0 }' "${rbf}")"
-  if grep -q '^runtime_push_tag()' "${rbf}" && [ "${_bare_pushes}" = "0" ]; then
-    pass "runtime-build-fns.sh pushes via runtime_push_tag (A1)"
+    END { print c+0 }' "${rbf}" "${rps}")"
+  if grep -q '^runtime_push_tag()' "${rps}" && [ "${_bare_pushes}" = "0" ]; then
+    pass "runtime-push.sh pushes via runtime_push_tag (A1)"
   else
-    fail "runtime-build-fns.sh has a bare (unretried) image push (A1 regression)"
+    fail "runtime-build-fns.sh or runtime-push.sh has a bare (unretried) image push (A1 regression)"
   fi
 
   # The multi-arch manifest push is retried too.

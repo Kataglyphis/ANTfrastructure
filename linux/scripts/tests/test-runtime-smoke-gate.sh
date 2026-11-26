@@ -9,7 +9,7 @@ source "${TESTS_DIR}/test-harness.sh"
 log()  { :; }
 warn() { :; }
 
-# retry/run used by runtime_push_tag (defined in the file); stub before sourcing.
+# retry/run used by the file; stub before sourcing.
 retry() { shift 2; "$@"; }
 run()   { "$@"; }
 
