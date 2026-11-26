@@ -132,8 +132,11 @@ Describe 'BuildKit module closure' {
     It 'no chain stage bind-mounts the WHOLE modules directory' {
         # Dockerfile.probe is exempt: PROBE_NONCE busts its layer anyway. See docs/windows-build-invariants.md § A whole-directory modules mount puts EVERY module in the cache key
         $offenders = @()
-        foreach ($df in (Get-ChildItem -Path $script:repoRoot -Filter 'Dockerfile*' -File -Recurse |
-                         Where-Object { $_.FullName -like '*\windows\*' -and $_.Name -ne 'Dockerfile.probe' })) {
+        # Tracked files only: an ignored logs/ tree can hold folders this user cannot read.
+        $tracked = @(git -C $script:repoRoot ls-files -- 'windows/*Dockerfile*')
+        if ($LASTEXITCODE -ne 0 -or $tracked.Count -eq 0) { throw "git ls-files found no tracked Windows Dockerfile (exit $LASTEXITCODE)" }
+        foreach ($df in ($tracked | ForEach-Object { Get-Item -LiteralPath (Join-Path $script:repoRoot $_) } |
+                         Where-Object { $_.Name -like 'Dockerfile*' -and $_.Name -ne 'Dockerfile.probe' })) {
             foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($df.FullName),
                             '(?im)^\s*.*--mount=type=bind,source=windows/scripts/modules,')) {
                 $offenders += "$($df.Name): $($m.Value.Trim())"

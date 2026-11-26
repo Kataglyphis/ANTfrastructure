@@ -66294,5 +66294,93 @@
   "replace": "if seen.get(n, 0) > 1]",
   "test": "bash linux/scripts/tests/test-version-snapshot.sh",
   "why": "a deleted row compares nothing and must not read as a match"
+ },
+ {
+  "id": "windows-lane.nsis-makensis-pin-only",
+  "target": "windows/scripts/modules/WindowsNsis.Common.psm1",
+  "find": "  if ($reported -ne \"v$ExpectedVersion\") {",
+  "replace": "  if ($false) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "GitHub runners carry their own NSIS, so a setup built with any makensis but the pin is a different, unverified build"
+ },
+ {
+  "id": "windows-lane.nsis-payload-path-limit",
+  "target": "windows/scripts/modules/WindowsNsis.Common.psm1",
+  "find": "  if ($longest.FullName.Length -gt $Limit) {",
+  "replace": "  if ($false) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "makensis 3.13 is not long-path aware, so a payload path at MAX_PATH fails deep in the build without naming the file"
+ },
+ {
+  "id": "windows-lane.nsis-runtime-dollar-doubled",
+  "target": "windows/scripts/modules/WindowsNsis.Common.psm1",
+  "find": "function ConvertTo-NsisString { param([string]$Text) return $Text.Replace('$', '$$') }",
+  "replace": "function ConvertTo-NsisString { param([string]$Text) return $Text }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "an undoubled $ in an installed path is an NSIS variable, so the uninstaller would delete another file or none"
+ },
+ {
+  "id": "windows-lane.nsis-define-name-case",
+  "target": "windows/scripts/modules/WindowsNsis.Common.psm1",
+  "find": "    if ($name -cnotmatch '^KG_[A-Z0-9_]+$') {",
+  "replace": "    if ($name -notmatch '^KG_[A-Z0-9_]+$') {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "NSIS defines are case-sensitive, so a lower-case name passes the module and is never read by the script"
+ },
+ {
+  "id": "windows-lane.nsis-deepest-dir-first",
+  "target": "windows/scripts/modules/WindowsNsis.Common.psm1",
+  "find": "  $depthFirst = $dirs | Sort-Object { ($_ -split '\\\\').Count }, { $_ } -Descending",
+  "replace": "  $depthFirst = $dirs | Sort-Object { ($_ -split '\\\\').Count }, { $_ }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "RMDir removes only an empty directory, so a parent removed before its child stays behind after uninstall"
+ },
+ {
+  "id": "windows-lane.nsis-no-recursive-uninstall",
+  "target": "windows/scripts/nsis/setup.nsi",
+  "find": "  !insertmacro KG_UNINSTALL_FILES",
+  "replace": "  RMDir /r \"$INSTDIR\"",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "a recursive delete of a user-chosen install directory can remove files the setup never installed"
+ },
+ {
+  "id": "windows-lane.nsis-zlib-only",
+  "target": "windows/scripts/nsis/setup.nsi",
+  "find": "SetCompressor /FINAL zlib",
+  "replace": "SetCompressor /SOLID lzma",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "the LZMA stub ships CPL-1.0 code, which needs a source-availability notice the setups do not carry"
+ },
+ {
+  "id": "windows-lane.nsis-refusal-nonzero",
+  "target": "windows/scripts/nsis/kataglyphis-common.nsh",
+  "find": "  SetErrorLevel 2\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "a silent install that refuses the wrong architecture or a present MSI must exit nonzero, or the caller reads success"
+ },
+ {
+  "id": "windows-lane.nsis-inputs-before-makensis",
+  "target": "windows/scripts/modules/WindowsMsix.Common.psm1",
+  "find": "    if (-not (Test-Path -LiteralPath $Inputs[$name] -PathType Leaf)) { throw \"$Kind input not found, ${name}: $($Inputs[$name])\" }",
+  "replace": "    if (-not (Test-Path -LiteralPath $Inputs[$name] -PathType Leaf)) { continue }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "a setup without its main exe still compiles and installs a shortcut that points at nothing"
+ },
+ {
+  "id": "windows-lane.nsis-setup-unknown-key",
+  "target": "windows/scripts/modules/WindowsNsis.Common.psm1",
+  "find": "    if (-not ($script:NsisSetupKeys.Contains($key) -or $script:NsisSetupOptional.ContainsKey($key))) { throw \"Unknown NSIS setup key: $key\" }",
+  "replace": "    if (-not ($script:NsisSetupKeys.Contains($key) -or $script:NsisSetupOptional.ContainsKey($key))) { continue }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "a misspelt optional key such as MsiUpgradecode would silently drop the MSI guard from the setup"
+ },
+ {
+  "id": "windows-lane.nsis-setup-missing-key",
+  "target": "windows/scripts/modules/WindowsNsis.Common.psm1",
+  "find": "  if ($missing) { throw \"NSIS setup lacks $($missing -join ', ')\" }",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "a setup without its other-architecture name refuses on the wrong machine without telling the user which setup to run"
  }
 ]

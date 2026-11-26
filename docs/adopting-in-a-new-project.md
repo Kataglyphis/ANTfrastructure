@@ -525,6 +525,37 @@ driven by the `WindowsMsix.Common`, `WindowsMsix.Signing` and `WindowsWebDav.Com
   `LicenseRtf`, `ProductName` and `Manufacturer` as preprocessor variables. With `-PayloadFiles`
   it also writes a fragment for `<ComponentGroupRef Id='PayloadFiles'/>`, one component per file.
   OxidANT is the first caller; a CMake repo builds its MSI through CPack's WiX generator instead.
+- **An NSIS setup** goes through `Invoke-NsisPackage` (`WindowsNsis.Common`), see
+  [NSIS setups](#nsis-setups). A CMake repo stays on CPack's NSIS generator.
+
+### NSIS setups
+
+`Invoke-NsisPackage` builds `<stem>-setup.exe` from the hub's `windows/scripts/nsis/setup.nsi`
+and `kataglyphis-common.nsh`. The consumer passes one `-Setup` table: `ProductName`,
+`Publisher`, `Version`, `Arch` (`x64` or `arm64`), `PayloadDir`, `MainExe`, `LicenseFile`, a
+stable `UninstallKey`, `OtherArchSetup`, `OutFile` and `WorkDir`. `MsiUpgradeCode`, `IconFile`
+and `ShortcutArguments` are optional. A missing, malformed or unknown key fails before makensis
+runs, so a misspelt optional key cannot drop the MSI guard.
+
+- Only the pinned makensis. `Resolve-MakensisExe` takes `-MakensisPath`, then `NSISDIR`,
+  then `PATH`, and fails unless `makensis /VERSION` equals `v$NSIS_VERSION`. GitHub runners
+  carry their own NSIS, so a host build installs the pin with `Install-Nsis.ps1` first.
+- A short build root. makensis 3.13 is not long-path aware. `Assert-NsisPayloadPath`
+  fails when a payload path reaches 260 characters and names it.
+- Per machine, zlib. The setup asks for admin, installs under `$PROGRAMFILES64` and puts
+  the shortcut in the all-users Start menu (`SetShellVarContext all` in both init functions).
+  The LZMA stub carries CPL-1.0 code, so the template compresses with zlib.
+- One uninstall key, no version. An upgrade finds the old install under the key, runs its
+  uninstaller in place and installs into the same folder.
+- Refusals exit 2. The x64 setup stops on ARM64 and names the arm64 setup; the arm64 one
+  stops off ARM64. With `MsiUpgradeCode`, a present MSI of the same product stops it too. A
+  silent run shows no dialog and exits 2.
+- The uninstaller removes only what it installed. `New-NsisFileList` writes one `Delete`
+  per payload file and one `RMDir` per folder, deepest first; nothing deletes recursively.
+- `ShortcutArguments` starts the main exe with arguments (OxidANT's `gui`).
+
+`Nsis.Common.Tests.ps1` checks argv, the file list and the template's source with fakes. It
+does not run makensis or a setup; signing and the package gates are CON302's later steps.
 
 The consumer stages what a package carries, with two hub helpers. A product's DLL closure comes
 from `Copy-PeImportClosure` (`WindowsCrossBundle.Common`,

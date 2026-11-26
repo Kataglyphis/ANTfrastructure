@@ -14,7 +14,7 @@ function Invoke-PackagerTool {
 }
 '@
     Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsMsix.Common.psm1' `
-      -FunctionName Invoke-MsiPackage, Get-WixVariableArguments -Prelude $prelude -FixtureState $state -Body { param($fixture)
+      -FunctionName Invoke-MsiPackage, Get-WixVariableArguments, Assert-PackagerInput -Prelude $prelude -FixtureState $state -Body { param($fixture)
         $base = @{ Context = [pscustomobject]@{}; WxsFile = 'p.wxs'; LicenseFile = 'LICENSE.rtf'; ProductName = 'App';
           Manufacturer = 'Owner'; ExeSource = 'app.exe'; Version = '1.2.3'; OutFile = 'app.msi'; Arch = 'x64' }
         Invoke-MutMsiPackage @base -WixVariables @{ IconSource = 'path with space/logo.ico' } | Out-Null

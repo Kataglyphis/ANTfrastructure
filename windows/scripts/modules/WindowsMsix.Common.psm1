@@ -189,6 +189,24 @@ function Get-PackageVersion {
   return ($parts[0..($Components - 1)] -join '.')
 }
 
+# A relative file name has no parent to create.
+function New-PackagerParentDirectory {
+  param([Parameter(Mandatory)] [string]$Path)
+  $parent = Split-Path -Parent $Path
+  if ($parent) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+}
+
+function Assert-PackagerInput {
+  <#
+    .SYNOPSIS
+      Fail on the first missing input file, named by its role, before a packager runs.
+  #>
+  param([Parameter(Mandatory)] [string]$Kind, [Parameter(Mandatory)] [System.Collections.IDictionary]$Inputs)
+  foreach ($name in $Inputs.Keys) {
+    if (-not (Test-Path -LiteralPath $Inputs[$name] -PathType Leaf)) { throw "$Kind input not found, ${name}: $($Inputs[$name])" }
+  }
+}
+
 # Runs one packager into a cleared -OutputPath; makeappx and wix can both exit 0 and write nothing.
 function Invoke-PackagerTool {
   param(
@@ -199,8 +217,7 @@ function Invoke-PackagerTool {
     [scriptblock]$InvokerScriptBlock
   )
 
-  $outDir = Split-Path -Parent $OutputPath
-  if ($outDir) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
+  New-PackagerParentDirectory -Path $OutputPath
   if (Test-Path -LiteralPath $OutputPath) { Remove-Item -LiteralPath $OutputPath -Force }
   if ($InvokerScriptBlock) {
     & $InvokerScriptBlock $File $Parameters | Out-Null
@@ -456,8 +473,7 @@ function New-WixPayloadFragment {
     $sub = if ($dir) { " Subdirectory='$([System.Security.SecurityElement]::Escape($dir))'" } else { '' }
     "      <Component Id='payload$i' Bitness='$bitness'$sub><File Id='payloadFile$i' Source='$src' KeyPath='yes'/></Component>"
   }
-  $parent = Split-Path -Parent $Path
-  if ($parent) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+  New-PackagerParentDirectory -Path $Path
   @(
     "<Wix xmlns='http://wixtoolset.org/schemas/v4/wxs'><Fragment>"
     "    <ComponentGroup Id='PayloadFiles' Directory='APPLICATIONFOLDER'>"
@@ -512,10 +528,7 @@ function Invoke-MsiPackage {
     [scriptblock]$InvokerScriptBlock
   )
 
-  $inputs = [ordered]@{ 'the .wxs' = $WxsFile; 'the license' = $LicenseFile; 'the exe' = $ExeSource }
-  foreach ($name in $inputs.Keys) {
-    if (-not (Test-Path -LiteralPath $inputs[$name] -PathType Leaf)) { throw "MSI input not found, ${name}: $($inputs[$name])" }
-  }
+  Assert-PackagerInput -Kind 'MSI' -Inputs ([ordered]@{ 'the .wxs' = $WxsFile; 'the license' = $LicenseFile; 'the exe' = $ExeSource })
   if ($PayloadFiles.Count -gt 0 -and [string]::IsNullOrWhiteSpace($FragmentPath)) {
     throw '-PayloadFiles needs -FragmentPath: where to write the generated component fragment.'
   }
@@ -545,4 +558,4 @@ function ConvertTo-XmlSafeText { param($Text) return ConvertTo-XmlEscapedText -V
 
 function New-TransparentImage { param($Path,$Width,$Height) return New-TransparentPng -Path $Path -Width $Width -Height $Height }
 
-Export-ModuleMember -Function Resolve-WindowsSdkToolPath, Expand-XmlTemplateTokens, New-TransparentPng, Get-WindowsSdkToolPath, ConvertTo-XmlSafeText, New-TransparentImage, Get-PackageVersion, Invoke-MsixPackage, Resolve-WixExe, New-WixPayloadFragment, Invoke-MsiPackage, Resolve-PackageLicense, Copy-PackageLicense, Write-MsixStageAssets, Read-MsixLogo
+Export-ModuleMember -Function Resolve-WindowsSdkToolPath, Expand-XmlTemplateTokens, New-TransparentPng, Get-WindowsSdkToolPath, ConvertTo-XmlSafeText, New-TransparentImage, Get-PackageVersion, Invoke-MsixPackage, Resolve-WixExe, New-WixPayloadFragment, Invoke-MsiPackage, Resolve-PackageLicense, Copy-PackageLicense, Write-MsixStageAssets, Read-MsixLogo, Invoke-PackagerTool, Assert-PackagerInput, New-PackagerParentDirectory

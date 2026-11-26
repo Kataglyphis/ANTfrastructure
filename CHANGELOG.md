@@ -19,6 +19,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — the hub builds NSIS setups with the pinned makensis (CON302 step 3)
+
+- `WindowsNsis.Common.psm1`'s `Invoke-NsisPackage` builds a per-machine, zlib-compressed setup from
+  `windows/scripts/nsis/setup.nsi` and `kataglyphis-common.nsh`: a stable uninstall key that an upgrade finds, the
+  architecture check that names the other setup, the MSI guard and refusals that exit 2 when silent.
+  `Resolve-MakensisExe` refuses any makensis but `NSIS_VERSION`, `Assert-NsisPayloadPath` fails a path at MAX_PATH,
+  and `New-NsisFileList` lets the uninstaller delete only what the setup installed. `WindowsMsix.Common` exports
+  `Invoke-PackagerTool` and shares `Assert-PackagerInput` and `New-PackagerParentDirectory` with the MSI path; two
+  code-dupes budgets fell by one. Both architectures' setups compile with makensis 3.13; none was run.
+  `Nsis.Common.Tests.ps1` (9 cases) and eleven `windows-lane.nsis-*` recipes hold it.
+- `BuildKit.ModuleClosure.Tests.ps1` reads only tracked Windows Dockerfiles: its scan of the whole checkout failed on
+  an unreadable folder under the ignored `logs/`.
+
 ## 2026-11-26 — Windows binaries carry the CFG bit (CON290 done)
 
 - BeschleunigerBallett's hub pin `5514538c` contains `d3661575`, which links `/NXCOMPAT /DYNAMICBASE /guard:cf` and

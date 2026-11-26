@@ -2736,6 +2736,12 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
          key, the upgrade, the MSI guard and the architecture check. Pester tests go through an invoker seam, and
          `Invoke-PackagerTool` must be exported. `Resolve-MakensisExe` fails on any version but the pin, since
          GitHub runners carry their own NSIS.
+         **In source 2026-11-26:** `WindowsNsis.Common.psm1` (`Resolve-MakensisExe`, `Assert-NsisPayloadPath`,
+         `New-NsisFileList`, `Invoke-NsisPackage`), `windows/scripts/nsis/setup.nsi` and `kataglyphis-common.nsh`,
+         `Invoke-PackagerTool` exported, `Nsis.Common.Tests.ps1` (9 cases, host-portable) and eleven `windows-lane.nsis-*`
+         recipes, plus the shared `Assert-PackagerInput` and `New-PackagerParentDirectory` in `WindowsMsix.Common`. The uninstaller deletes only the files it listed. Both architectures' setups compile with the pinned
+         makensis 3.13 on a Windows host; no setup was run, since a per-machine install changes the host.
+         Left: a silent install, upgrade, refusal and uninstall run in a Windows container, and the OxidANT pilot.
       4. The gates' NSIS branches: package licence, binary equality, MSVC notice, ORT licences and
          `New-PortableBundle`, which copies an `.exe` today only beside a same-stem `.msi` or `.zip`. Linux tests
          use a fake 7z; the real one runs in the Windows lane. The device install job has no checkout, so a module
