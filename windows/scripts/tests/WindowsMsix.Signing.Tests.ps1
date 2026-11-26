@@ -16,28 +16,26 @@ Describe 'WindowsMsix.Signing' {
       -LogDir (Join-Path $script:workspace 'logs')
     $script:msixOut = Join-Path $script:workspace 'out.msix'
 
-    function Invoke-MsixSigningFixture {
+    # Runs -Call with a recording invoker; returns the recorded signtool argument lists and the call's result.
+    function Invoke-SigningFixture {
+      param([Parameter(Mandatory)][scriptblock]$Call)
       $calls = [System.Collections.Generic.List[object]]::new()
       $invoker = { param($Context, $File, $Parameters) $calls.Add($Parameters); return 0 }.GetNewClosure()
-      Invoke-MsixSign -Context $script:ctx -WorkspacePath $script:workspace `
-        -MsixOutPath $script:msixOut -InvokerScriptBlock $invoker
-      return , $calls
+      $result = & $Call $invoker
+      return [pscustomobject]@{ Result = $result; Calls = $calls }
+    }
+    function Invoke-MsixSigningFixture {
+      $run = Invoke-SigningFixture { param($invoker)
+        Invoke-MsixSign -Context $script:ctx -WorkspacePath $script:workspace -MsixOutPath $script:msixOut -InvokerScriptBlock $invoker }
+      return , $run.Calls
     }
     function Assert-MsixPfx {
       param([Parameter(Mandatory)][string]$PfxPath, [securestring]$Password,
         [Parameter(Mandatory)][string]$Thumbprint)
       Test-Path $PfxPath | Should -BeTrue
-      $private = if ($Password) {
-        [Security.Cryptography.X509Certificates.X509Certificate2]::new($PfxPath, $Password,
-          [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
-      } else {
-        [Security.Cryptography.X509Certificates.X509Certificate2]::new($PfxPath, '',
-          [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
-      }
-      try {
-        $private.Thumbprint | Should -Be $Thumbprint
-        $private.HasPrivateKey | Should -BeTrue
-      } finally { $private.Dispose() }
+      $read = Read-PfxCertificate -PfxPath $PfxPath -SigningPassword $Password
+      $read.Thumbprint | Should -Be $Thumbprint
+      $read.HasPrivateKey | Should -BeTrue
     }
   }
 
@@ -122,6 +120,69 @@ Describe 'WindowsMsix.Signing' {
       $calls[1][0] | Should -Be 'verify'
       Should -Invoke Import-PfxCertificate -ModuleName WindowsMsix.Signing -Times 1 -Exactly
     }
+    }
+  }
+
+  Context 'Invoke-AuthenticodeSign' {
+    BeforeAll {
+      Import-Module (Join-Path $PSScriptRoot 'WindowsAuthenticode.Fixture.psm1') -Force -DisableNameChecking
+      $script:signedFile = Join-Path $script:workspace 'setup.exe'
+      Set-Content -LiteralPath $script:signedFile -Value 'payload'
+      $script:realPfx = Join-Path $script:workspace 'real-signing.pfx.bin'
+      $script:realThumb = New-TestSigningCertificate -Subject 'CN=ANTfrastructure Authenticode Test' -PfxPath $script:realPfx
+      function Invoke-AuthenticodeFixture {
+        param([hashtable]$Extra = @{})
+        # A closure sees its own script scope, so the suite's values are copied in as locals.
+        $context = $script:ctx
+        $file = $script:signedFile
+        return Invoke-SigningFixture { param($invoker)
+          Invoke-AuthenticodeSign -Context $context -Path $file -InvokerScriptBlock $invoker @Extra }.GetNewClosure()
+      }
+    }
+
+    It 'warns and returns false without a .pfx, and -Require makes that an error' {
+      $run = Invoke-AuthenticodeFixture -Extra @{ PfxPath = '' }
+      $run.Result | Should -BeFalse
+      $run.Calls.Count | Should -Be 0
+      { Invoke-AuthenticodeFixture -Extra @{ PfxPath = ''; Require = $true } } | Should -Throw '*Cannot sign*no signing .pfx*'
+      Mock -ModuleName WindowsMsix.Signing -CommandName Resolve-WindowsSdkToolPath { return $null }
+      { Invoke-AuthenticodeFixture -Extra @{ PfxPath = $script:realPfx; Require = $true } } | Should -Throw '*signtool.exe not found*'
+    }
+
+    It 'passes the password only to signtool and redacts it in the build log' {
+      Mock -ModuleName WindowsMsix.Signing -CommandName Invoke-BuildExternal {}
+      $null = Invoke-WithEnv @{ KG_TEST_PFX_PASSWORD = 'pw-sentinel' } {
+        Invoke-AuthenticodeSign -Context $script:ctx -Path $script:signedFile -PfxPath $script:realPfx -SecretEnvironmentName 'KG_TEST_PFX_PASSWORD'
+      }
+      Should -Invoke Invoke-BuildExternal -ModuleName WindowsMsix.Signing -Times 1 -Exactly -ParameterFilter {
+        $Parameters[0] -eq 'sign' -and $Parameters -contains 'pw-sentinel' -and $RedactParameterValues -contains 'pw-sentinel'
+      }
+    }
+
+    It 'leaves out the timestamp when the URL is empty and runs the hook between sign and verify' {
+      $order = [System.Collections.Generic.List[string]]::new()
+      $hook = { param($pfx, [securestring]$securePassword) $order.Add('hook') }.GetNewClosure()
+      $run = Invoke-AuthenticodeFixture -Extra @{ PfxPath = $script:realPfx; TimestampUrl = ''; BeforeVerify = $hook }
+      $run.Result | Should -BeTrue
+      $run.Calls[0] | Should -Not -Contain '/tr'
+      $run.Calls[1][0] | Should -Be 'verify'
+      $order | Should -Be @('hook')
+    }
+
+    It 'checks the signer instead of running signtool verify under -Verify Signer' {
+      $run = Invoke-AuthenticodeFixture -Extra @{ PfxPath = $script:realPfx; Verify = 'Signer'; SignatureReader = (New-FakeAuthenticode $script:realThumb) }
+      $run.Result | Should -BeTrue
+      $run.Calls.Count | Should -Be 1
+    }
+
+    # The mutation shards run the same refusals through the harness in Nsis.Common.Tests.ps1.
+    It 'refuses a <Name> under -Verify Signer' -ForEach @(
+      @{ Name = 'foreign signer'; Own = $false; Status = 'Valid'; Expected = '*not the signing certificate*' }
+      @{ Name = 'broken hash'; Own = $true; Status = 'HashMismatch'; Expected = '*is HashMismatch*' }
+    ) {
+      $signer = if ($Own) { (Read-PfxCertificate -PfxPath $script:realPfx).Thumbprint } else { 'F' * 40 }
+      { Invoke-AuthenticodeFixture -Extra @{ PfxPath = $script:realPfx; Verify = 'Signer'; SignatureReader = (New-FakeAuthenticode $signer $Status) } } |
+        Should -Throw $Expected
     }
   }
 

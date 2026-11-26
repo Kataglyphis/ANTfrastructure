@@ -2749,6 +2749,13 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
          inline block. After an uninstall only `Uninstall.exe` may remain.
       5. `Invoke-AuthenticodeSign`: the signtool part of `Invoke-MsixSign`, format-neutral, with `-Require` so a
          failed signature stops the build, plus a small script for makensis's `!finalize` and `!uninstfinalize`.
+         **In source 2026-11-26:** `Invoke-AuthenticodeSign` and `Assert-AuthenticodeSigner` in `WindowsMsix.Signing`
+         (`Invoke-MsixSign` delegates to it), `windows/scripts/nsis/Invoke-NsisSign.ps1` behind `!finalize` and
+         `!uninstfinalize` with `= 0`, and the `SignPfx` setup key, which also checks the signer of the written setup.
+         The password stays in `MSIX_PFX_PASSWORD`/`MSIX_CERT_PASSWORD`; signtool's `/p` is now redacted in the build
+         log, which printed it in plain text before. On a Windows host a real makensis 3.13 build test-signed and
+         timestamped setup and uninstaller, and a wrong password stopped makensis with no setup written. Left: the
+         OxidANT pilot with a per-build test certificate.
       6. `CPackCommon.cmake`: a version-free uninstall key (old versioned entries stay once; the release notes say
          so), `NSIS_DEFAULT ON|OFF` beside `WIX_DEFAULT`, the combined licence page, and a short file name or a path
          length check. CPack signs through `CPACK_NSIS_EXECUTABLE_PRE_ARGUMENTS`; a hub `NSIS.template.in` is needed
@@ -2859,6 +2866,9 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       `vcruntime140.dll` in `runtime/`, and carries no FFmpeg, x264 or x265 licence text or source offer. The two
       other GPL texts it carries are bundled notices (Pillow's FreeType FTL/GPL choice, NumPy's GCC runtime
       exception). The FFmpeg flags come from the hub's Windows build, so `:winamd64` consumers inherit them.
+      **Owner decision 2026-11-26:** keep the GPL build. Every package that carries the image's FFmpeg ships the GPLv3
+      texts of FFmpeg, x264 and x265 and a source offer for the exact revisions. Whether GPL parts may sit beside the
+      MSVC runtime still needs someone who can judge it; until then the question stays open here.
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
   Later measurement, 2026-11-15: the complete `d9f129af` CUDA repeat has 6,304
   primary hits, including 605 NVCC hits, zero misses/cache errors/compiler failures

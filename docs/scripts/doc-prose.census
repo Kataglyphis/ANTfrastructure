@@ -21,9 +21,9 @@ docs/INDEX.md | long-share | 11.5
 docs/INDEX.md | ids-per-k | 8.0
 docs/INDEX.md | bold-per-k | 15.0
 docs/adopting-in-a-new-project.md | avg-sentence | 18.6
-docs/adopting-in-a-new-project.md | long-share | 12.8
+docs/adopting-in-a-new-project.md | long-share | 12.6
 docs/adopting-in-a-new-project.md | ids-per-k | 3.4
-docs/adopting-in-a-new-project.md | bold-per-k | 11.0
+docs/adopting-in-a-new-project.md | bold-per-k | 10.8
 docs/agentic-loop-build-matrix.md | avg-sentence | 19.7
 docs/agentic-loop-build-matrix.md | long-share | 14.3
 docs/agentic-loop-build-matrix.md | ids-per-k | 0.0

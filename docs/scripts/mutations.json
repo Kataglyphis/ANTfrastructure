@@ -66438,5 +66438,61 @@
   "replace": "  true ||",
   "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
   "why": "an abbreviated pin would let a fallback repository answer with a different object"
+ },
+ {
+  "id": "windows-lane.authenticode-signer-thumbprint",
+  "target": "windows/scripts/modules/WindowsMsix.Signing.psm1",
+  "find": "  if (-not $signer -or $signer.Thumbprint -ne $expected) {",
+  "replace": "  if (-not $signer) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "any signature passes a check that never compares the signer, so a setup signed by someone else would ship"
+ },
+ {
+  "id": "windows-lane.authenticode-status-allowlist",
+  "target": "windows/scripts/modules/WindowsMsix.Signing.psm1",
+  "find": "  if ([string]$signature.Status -notin @('Valid', 'UnknownError', 'NotTrusted')) {",
+  "replace": "  if ([string]$signature.Status -notin @('Valid', 'UnknownError', 'NotTrusted', 'HashMismatch')) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "a file changed after signing keeps its signer but breaks the hash; only an untrusted test root may pass"
+ },
+ {
+  "id": "windows-lane.authenticode-require-refuses",
+  "target": "windows/scripts/modules/WindowsMsix.Signing.psm1",
+  "find": "    if ($Require) { throw \"Cannot sign ${Path}: $missing\" }",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "the !finalize signer runs with -Require, so a missing .pfx must stop makensis instead of shipping unsigned"
+ },
+ {
+  "id": "windows-lane.nsis-signer-checked-after-build",
+  "target": "windows/scripts/modules/WindowsNsis.Common.psm1",
+  "find": "    Assert-AuthenticodeSigner @signerArgs",
+  "replace": "    $null = $signerArgs",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "the file makensis wrote is what ships, so its signer is checked after the build, not only inside !finalize"
+ },
+ {
+  "id": "windows-lane.nsis-sign-pfx-define",
+  "target": "windows/scripts/modules/WindowsNsis.Common.psm1",
+  "find": "    $defines.KG_SIGN_PFX = (Resolve-Path -LiteralPath $Setup.SignPfx).Path\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "without the define the template skips both finalize steps and the setup leaves makensis unsigned"
+ },
+ {
+  "id": "windows-lane.nsis-finalize-fails-build",
+  "target": "windows/scripts/nsis/setup.nsi",
+  "find": "  !finalize '\"${KG_SIGN_PWSH}\" -NoProfile -NonInteractive -File \"${__FILEDIR__}\\Invoke-NsisSign.ps1\" -Path \"%1\" -PfxPath \"${KG_SIGN_PFX}\" -LogDir \"${KG_SIGN_LOGDIR}\"' = 0",
+  "replace": "  !finalize '\"${KG_SIGN_PWSH}\" -NoProfile -NonInteractive -File \"${__FILEDIR__}\\Invoke-NsisSign.ps1\" -Path \"%1\" -PfxPath \"${KG_SIGN_PFX}\" -LogDir \"${KG_SIGN_LOGDIR}\"'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "without = 0 makensis ignores the signing script's exit code and writes an unsigned setup"
+ },
+ {
+  "id": "windows-lane.nsis-uninstaller-signed",
+  "target": "windows/scripts/nsis/setup.nsi",
+  "find": "  !uninstfinalize '\"${KG_SIGN_PWSH}\" -NoProfile -NonInteractive -File \"${__FILEDIR__}\\Invoke-NsisSign.ps1\" -Path \"%1\" -PfxPath \"${KG_SIGN_PFX}\" -LogDir \"${KG_SIGN_LOGDIR}\"' = 0\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.Common.Tests.ps1",
+  "why": "the uninstaller is written inside the setup, so an unsigned one is extracted and run unsigned at uninstall"
  }
 ]

@@ -2,7 +2,7 @@
 Set-StrictMode -Version Latest
 
 # No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
-foreach ($sibling in 'WindowsScripts.Shared', 'WindowsMsix.Common') {
+foreach ($sibling in 'WindowsScripts.Shared', 'WindowsMsix.Common', 'WindowsMsix.Signing') {
   $siblingPath = Join-Path $PSScriptRoot "$sibling.psm1"
   if (-not (Test-Path -LiteralPath $siblingPath -PathType Leaf)) { throw "WindowsNsis.Common needs $sibling.psm1 beside it: $siblingPath" }
   if (-not (Get-Module -Name $sibling)) { Import-Module $siblingPath -ErrorAction Stop }
@@ -125,7 +125,7 @@ $script:NsisSetupKeys = [ordered]@{
   LicenseFile = '\S'; UninstallKey = '^[A-Za-z0-9][A-Za-z0-9._-]*$'; OtherArchSetup = '\S'; OutFile = '\S'; WorkDir = '\S'
 }
 $script:NsisSetupOptional = @{
-  MsiUpgradeCode = '^\{[0-9A-Fa-f]{8}-([0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}\}$'; IconFile = '\S'; ShortcutArguments = '\S'
+  MsiUpgradeCode = '^\{[0-9A-Fa-f]{8}-([0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}\}$'; IconFile = '\S'; ShortcutArguments = '\S'; SignPfx = '\S'
 }
 
 function Assert-NsisSetup {
@@ -144,6 +144,7 @@ function Assert-NsisSetup {
   if (-not (Test-Path -LiteralPath $Setup.PayloadDir -PathType Container)) { throw "NSIS payload directory not found: $($Setup.PayloadDir)" }
   $inputs = [ordered]@{ 'the setup script' = $ScriptPath; 'the license' = $Setup.LicenseFile; 'the main exe' = (Join-Path $Setup.PayloadDir $Setup.MainExe) }
   if ($Setup.Contains('IconFile')) { $inputs['the icon'] = $Setup.IconFile }
+  if ($Setup.Contains('SignPfx')) { $inputs['the signing .pfx'] = $Setup.SignPfx }
   Assert-PackagerInput -Kind 'NSIS' -Inputs $inputs
 }
 
@@ -154,7 +155,8 @@ function Invoke-NsisPackage {
     .PARAMETER Setup
       ProductName, Publisher, Version, Arch (x64|arm64), PayloadDir, MainExe, LicenseFile, UninstallKey (stable,
       no version), OtherArchSetup (named when this setup refuses), OutFile and WorkDir; optional MsiUpgradeCode
-      (the setup stops when that MSI is installed), IconFile and ShortcutArguments.
+      (the setup stops when that MSI is installed), IconFile, ShortcutArguments and SignPfx (signs the setup and
+      its uninstaller; the password comes from MSIX_PFX_PASSWORD or MSIX_CERT_PASSWORD).
   #>
   param(
     [Parameter(Mandatory)] [pscustomobject]$Context,
@@ -163,6 +165,7 @@ function Invoke-NsisPackage {
     [string]$MakensisPath = '',
     [string]$ExpectedVersion = $env:NSIS_VERSION,
     [scriptblock]$VersionProbe,
+    [scriptblock]$SignatureReader,
     # Test seam, as in Invoke-MsiPackage: real builds need makensis.
     [scriptblock]$InvokerScriptBlock
   )
@@ -183,9 +186,20 @@ function Invoke-NsisPackage {
   if ($Setup.Contains('MsiUpgradeCode')) { $defines.KG_MSI_UPGRADE_CODE = $Setup.MsiUpgradeCode }
   if ($Setup.Contains('IconFile')) { $defines.KG_ICON = (Resolve-Path -LiteralPath $Setup.IconFile).Path }
   if ($Setup.Contains('ShortcutArguments')) { $defines.KG_SHORTCUT_ARGS = $Setup.ShortcutArguments }
+  if ($Setup.Contains('SignPfx')) {
+    $defines.KG_SIGN_PFX = (Resolve-Path -LiteralPath $Setup.SignPfx).Path
+    $defines.KG_SIGN_PWSH = (Get-Process -Id $PID).Path
+    $defines.KG_SIGN_LOGDIR = [System.IO.Path]::GetFullPath((Join-Path $Setup.WorkDir 'sign-logs'))
+  }
 
   $nsisArgs = @('/V3', '/INPUTCHARSET', 'UTF8') + @(Get-NsisDefineArguments -Defines $defines) + @((Resolve-Path -LiteralPath $ScriptPath).Path)
   Invoke-PackagerTool -Context $Context -File $makensis -Parameters $nsisArgs -OutputPath $defines.KG_OUTFILE -InvokerScriptBlock $InvokerScriptBlock
+  # makensis already stopped on a failed !finalize; this proves the file that left it carries the signature.
+  if ($Setup.Contains('SignPfx')) {
+    $signerArgs = @{ Path = $defines.KG_OUTFILE; PfxPath = $defines.KG_SIGN_PFX }
+    if ($SignatureReader) { $signerArgs.SignatureReader = $SignatureReader }
+    Assert-AuthenticodeSigner @signerArgs
+  }
   return $defines.KG_OUTFILE
 }
 

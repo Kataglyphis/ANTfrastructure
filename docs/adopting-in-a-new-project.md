@@ -553,9 +553,21 @@ runs, so a misspelt optional key cannot drop the MSI guard.
 - The uninstaller removes only what it installed. `New-NsisFileList` writes one `Delete`
   per payload file and one `RMDir` per folder, deepest first; nothing deletes recursively.
 - `ShortcutArguments` starts the main exe with arguments (OxidANT's `gui`).
+- `SignPfx` signs the setup and its uninstaller. makensis runs `Invoke-NsisSign.ps1` through
+  `!finalize` and `!uninstfinalize`, and a nonzero exit stops the build. The password comes
+  from `MSIX_PFX_PASSWORD` or `MSIX_CERT_PASSWORD` in the environment, never from the command
+  line, and the build log shows it as `<redacted>`. After the build, `Assert-AuthenticodeSigner`
+  checks that the written setup carries the certificate's signature; a test certificate's
+  untrusted root passes, a foreign signer or a broken hash does not.
 
-`Nsis.Common.Tests.ps1` checks argv, the file list and the template's source with fakes. It
-does not run makensis or a setup; signing and the package gates are CON302's later steps.
+`Invoke-AuthenticodeSign` (`WindowsMsix.Signing`) is the signtool step for any format. Without
+`-Require`, a missing signtool or `.pfx` warns and skips; with it, both stop the build.
+`-Verify Trusted` runs `signtool verify /pa`, which needs a trusted root; `-Verify Signer`
+compares the signer's thumbprint, for test certificates.
+
+`Nsis.Common.Tests.ps1` checks argv, the file list, the signer check and the template's source
+with fakes. It runs neither makensis, signtool nor a setup; the package gates are CON302's
+next step.
 
 The consumer stages what a package carries, with two hub helpers. A product's DLL closure comes
 from `Copy-PeImportClosure` (`WindowsCrossBundle.Common`,

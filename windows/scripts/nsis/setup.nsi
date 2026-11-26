@@ -25,6 +25,12 @@ RequestExecutionLevel admin
 
 Name "${KG_PRODUCT_NAME}"
 OutFile "${KG_OUTFILE}"
+
+; The PFX password stays in the environment the signing script inherits, never on this command line.
+!ifdef KG_SIGN_PFX
+  !finalize '"${KG_SIGN_PWSH}" -NoProfile -NonInteractive -File "${__FILEDIR__}\Invoke-NsisSign.ps1" -Path "%1" -PfxPath "${KG_SIGN_PFX}" -LogDir "${KG_SIGN_LOGDIR}"' = 0
+  !uninstfinalize '"${KG_SIGN_PWSH}" -NoProfile -NonInteractive -File "${__FILEDIR__}\Invoke-NsisSign.ps1" -Path "%1" -PfxPath "${KG_SIGN_PFX}" -LogDir "${KG_SIGN_LOGDIR}"' = 0
+!endif
 InstallDir "$PROGRAMFILES64\${KG_PRODUCT_NAME}"
 VIProductVersion "${KG_VERSION}"
 VIAddVersionKey "ProductName" "${KG_PRODUCT_NAME}"

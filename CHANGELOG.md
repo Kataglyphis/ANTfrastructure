@@ -19,6 +19,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — NSIS setups and their uninstallers are test-signed (CON302 step 5)
+
+- `WindowsMsix.Signing` gains `Invoke-AuthenticodeSign`, the format-neutral signtool step that `Invoke-MsixSign` now
+  calls, and `Assert-AuthenticodeSigner`, which accepts a test certificate's untrusted root but not a foreign signer or a
+  broken hash. `-Require` turns a missing signtool or `.pfx` into an error. signtool's `/p` password is redacted in the
+  build log; it was printed in plain text before.
+- `Invoke-NsisPackage`'s `SignPfx` key signs through `windows/scripts/nsis/Invoke-NsisSign.ps1` behind `!finalize` and
+  `!uninstfinalize` with `= 0`, and checks the signer of the written setup. The password stays in the environment.
+  On a Windows host a makensis 3.13 build test-signed and timestamped both files, and a wrong password stopped makensis
+  with no setup written. Seven new `windows-lane.*` recipes; the CON227 owner decision is recorded in BACKLOG.
+
 ## 2026-11-26 — the hub AGENTS.md drops from 26,270 to 12,299 words (CON303)
 
 - The one-line invariants appended under the seven priorities, in Quick Reference and in the rule
