@@ -62378,16 +62378,16 @@
  {
   "id": "lib.warning-census-foreign-code",
   "target": "linux/scripts/verify_warning_census.py",
-  "find": "    if FOREIGN.search(path) or path.startswith(\"/\"):",
-  "replace": "    if path.startswith(\"/\"):",
+  "find": "    if FOREIGN.search(path) or ABSOLUTE.match(path):",
+  "replace": "    if ABSOLUTE.match(path):",
   "test": "bash linux/scripts/tests/test-warning-census.sh",
   "why": "a vendored library's header warnings would count as the repository's own and bury its real count"
  },
  {
   "id": "lib.warning-census-workspace-relative",
   "target": "linux/scripts/verify_warning_census.py",
-  "find": "    path = WORKSPACE.sub(\"\", raw.replace(\"\\\\\", \"/\"))",
-  "replace": "    path = raw.replace(\"\\\\\", \"/\")",
+  "find": "    path = WORKSPACE.sub(\"\", path)",
+  "replace": "    path = path",
   "test": "bash linux/scripts/tests/test-warning-census.sh",
   "why": "a container build logs /workspace paths; without the strip every own warning reads as foreign and the count is 0"
  },
@@ -62414,6 +62414,54 @@
   "replace": "        if False:",
   "test": "bash linux/scripts/tests/test-warning-census.sh",
   "why": "an incremental build that compiled nothing would pass as zero warnings and lower nothing"
+ },
+ {
+  "id": "lib.warning-census-clang-cl-lines",
+  "target": "linux/scripts/verify_warning_census.py",
+  "find": "match = WARNING.search(line) or WARNING_CL.search(line)",
+  "replace": "match = WARNING.search(line)",
+  "test": "bash linux/scripts/tests/test-warning-census.sh",
+  "why": "clang-cl prints path(line,col):, so every Windows lane would read zero warnings and hold nothing"
+ },
+ {
+  "id": "lib.warning-census-clang-cl-compile-line",
+  "target": "linux/scripts/verify_warning_census.py",
+  "find": "    r\"|[\\s\\\\/]clang-cl(?:\\.exe)? .*\\s[-/]c(?:\\s|$)\"",
+  "replace": "    r\"\"",
+  "test": "bash linux/scripts/tests/test-warning-census.sh",
+  "why": "a verbose Windows build logs each clang-cl command, not ninja's Building line, so its log would compile nothing"
+ },
+ {
+  "id": "lib.warning-census-normalises-paths",
+  "target": "linux/scripts/verify_warning_census.py",
+  "find": "    path = posixpath.normpath(path)",
+  "replace": "    path = path",
+  "test": "bash linux/scripts/tests/test-warning-census.sh",
+  "why": "one header reached through ../ and directly would count twice, and a fixed one would leave its twin's row"
+ },
+ {
+  "id": "lib.warning-census-strips-colour",
+  "target": "linux/scripts/verify_warning_census.py",
+  "find": "            line = ANSI.sub(\"\", raw)",
+  "replace": "            line = raw",
+  "test": "bash linux/scripts/tests/test-warning-census.sh",
+  "why": "a clang run on a terminal splits each warning with escape codes, and the census would read none of them"
+ },
+ {
+  "id": "lib.warning-census-drive-letter-is-foreign",
+  "target": "linux/scripts/verify_warning_census.py",
+  "find": "ABSOLUTE = re.compile(r\"^(?:/|[A-Za-z]:/)\")",
+  "replace": "ABSOLUTE = re.compile(r\"^/\")",
+  "test": "bash linux/scripts/tests/test-warning-census.sh",
+  "why": "an MSVC STL or Windows SDK header under C:/Program Files would count as the repository's own"
+ },
+ {
+  "id": "lib.warning-census-windows-workspace",
+  "target": "linux/scripts/verify_warning_census.py",
+  "find": "|[A-Za-z]:/ws(?:-mnt)?|",
+  "replace": "|",
+  "test": "bash linux/scripts/tests/test-warning-census.sh",
+  "why": "the family's Windows containers build in C:/ws, so without the strip every own warning there reads as foreign"
  },
  {
   "id": "rocm-stack.windows-migraphx-pad-required",

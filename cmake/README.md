@@ -92,6 +92,18 @@ in every consumer for no behavioural gain.
   follow. Why there is no `/MD` UBSan runtime, and which ASan runtime links:
   [`../docs/windows-clang-cl-sanitizers.md`](../docs/windows-clang-cl-sanitizers.md).
 
+## Warnings as errors: per target
+
+- The family sets `COMPILE_WARNING_AS_ERROR` on its own targets: `-Werror`, or `/WX` under clang-cl.
+  It does not use `myproject_WARNINGS_AS_ERRORS`. That option puts `-Werror` into `myproject_warnings`' interface,
+  so it reaches every target that links it.
+- Foreign trees come first: `add_subdirectory(<dir> SYSTEM)` or `FetchContent_Declare(... SYSTEM)`. Their headers
+  then warn nowhere. Abseil stays non-SYSTEM under clang-cl, which misparses its `function_ref.h` as a system header.
+- A target gets the property once its own warnings are at zero. Until then the census holds them:
+  `linux/scripts/verify_warning_census.py`
+  ([`code-quality-tooling.md` § The warning census](../docs/code-quality-tooling.md#the-warning-census)).
+- `cmake --compile-no-warning-as-error` lifts the property for one configure.
+
 ## What does NOT belong here
 
 Anything encoding one project's *policy* rather than a reusable *mechanism*:

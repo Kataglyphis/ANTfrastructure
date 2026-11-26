@@ -319,7 +319,7 @@ function Write-CmakeBuildDiagnostics {
 }
 
 function Invoke-CmakeBuildCommand {
-  param($Context, [string[]]$BuildArgs, [string[]]$SanitizerRuntimeDirs)
+  param($Context, [string[]]$BuildArgs, [string[]]$SanitizerRuntimeDirs, [string]$OutputLogPath = '')
   $buildStartTime = Get-Date
   Write-BuildLog -Context $Context -Message "DEBUG: Build started at $($buildStartTime.ToString('HH:mm:ss'))"
 
@@ -330,9 +330,12 @@ function Invoke-CmakeBuildCommand {
   $global:LASTEXITCODE = 0
   $runtimePath = if ($SanitizerRuntimeDirs.Count -gt 0) { (($SanitizerRuntimeDirs -join ';') + ';' + $env:PATH) } else { $env:PATH }
   $buildResult = @{ ExitCode = 1 }
+  # Assigned, not returned from an if: a pipeline would unroll the empty list to $null.
+  $capture = $null
+  if ($OutputLogPath) { $capture = [Collections.Generic.List[string]]::new() }
   Invoke-WithProcessEnvironment -Environment @{ PATH = $runtimePath } -ScriptBlock {
     try {
-      & cmake @buildArgs 2>&1 | Write-BuildCommandOutput -Context $Context
+      & cmake @buildArgs 2>&1 | Write-BuildCommandOutput -Context $Context -Capture $capture
       $buildResult.ExitCode = $global:LASTEXITCODE
     } catch {
       Write-BuildLog -Context $Context -Message "ERROR: Build exception: $_"
@@ -340,6 +343,11 @@ function Invoke-CmakeBuildCommand {
     }
   }
   $buildExitCode = $buildResult.ExitCode
+  # This build's lines alone, failed or not, for a reader of one build such as verify_warning_census.py.
+  if ($OutputLogPath) {
+    $null = New-Item -ItemType Directory -Force -Path (Split-Path -Parent $OutputLogPath)
+    Set-Content -LiteralPath $OutputLogPath -Value $capture -Encoding utf8
+  }
 
   $buildEndTime = Get-Date
   $buildDuration = $buildEndTime - $buildStartTime
@@ -407,7 +415,9 @@ function Invoke-CmakeConfigureAndBuild {
     [string]$CleanLabel = '',
     [int]$ParallelJobs = 0,
     [switch]$VerboseOutput,
-    [switch]$DisableSccache
+    [switch]$DisableSccache,
+    # Also writes the build step's output here (verify_warning_census.py reads one build per lane).
+    [string]$BuildOutputLog = ''
   )
 
   $cpuCount = Write-CmakeHostFacts -Context $Context -BuildPath $BuildPath -Preset $Preset -Configuration $Configuration -ParallelJobs $ParallelJobs -VerboseOutput:$VerboseOutput -DisableSccache:$DisableSccache
@@ -433,7 +443,7 @@ function Invoke-CmakeConfigureAndBuild {
 
   $sanitizer = Initialize-CmakeSanitizers -Context $Context -BuildPath $BuildPath -Configuration $Configuration
 
-  Invoke-CmakeBuildCommand -Context $Context -BuildArgs $buildArgs -SanitizerRuntimeDirs $sanitizer.Dirs
+  Invoke-CmakeBuildCommand -Context $Context -BuildArgs $buildArgs -SanitizerRuntimeDirs $sanitizer.Dirs -OutputLogPath $BuildOutputLog
 
   Copy-CmakePostBuildSanitizers -Context $Context -BuildPath $BuildPath -Configuration $Configuration -SanitizerRuntimeDlls $sanitizer.Dlls
 
