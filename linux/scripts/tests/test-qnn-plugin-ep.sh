@@ -112,6 +112,68 @@ t_assert_contains "$(cat "${EP}")" 'build.py" "${args[@]}" --update' "configure 
 t_assert_contains "$(cat "${EP}")" 'build.py" "${args[@]}" --build' "then build, after the headers are in place"
 t_assert_contains "$(qnnep_ort_home "${_T}/nochain" "${_T}/home2" 1.29.0 2>&1)" "no libonnxruntime.so.N.N.N under"
 
+t_case "ort_core is the pinned release commit from microsoft/onnxruntime or a fallback, with the fork's VERSION_NUMBER"
+_core_repo() {
+  git init -q "$1" || return 1
+  printf '%s\n' "$2" > "$1/VERSION_NUMBER"
+  t_git_commit "$1"
+}
+_core_repo "${_T}/mirror-ok" 1.29.0; _core_repo "${_T}/mirror-old" 1.28.0
+_ok_sha="$(git -C "${_T}/mirror-ok" rev-parse HEAD)"; _old_sha="$(git -C "${_T}/mirror-old" rev-parse HEAD)"
+# The upstream URL is unreachable in a fixture; every other URL is a local mirror.
+_core_fetch() (
+  _ort_source_by_commit() { case "$1" in https://*) printf 'fetch %s\n' "$1" >> "${_T}/core-fetches"; return 1 ;; esac; _ort_core_by_commit "$@"; }
+  local _core_fallbacks="$1"
+  ort_source_pin() { printf 'v1.31.1|%s|%s\n' "${_ok_sha}" "${_core_fallbacks}"; }
+  ORT_QNN_EP_CORE_COMMIT="$2" qnnep_ort_core_source "${_T}/fork" "${_T}/core-src"
+)
+eval "$(declare -f _ort_source_by_commit | sed '1s/_ort_source_by_commit/_ort_core_by_commit/')"
+: > "${_T}/core-fetches"
+_out="$(_core_fetch "file://${_T}/missing file://${_T}/mirror-ok" "${_ok_sha}" 2>&1)"; _rc=$?
+t_assert_eq 0 "${_rc}" "${_out}"
+t_assert_eq "${_ok_sha}" "$(git -C "${_T}/core-src" rev-parse HEAD)"
+t_assert_eq "fetch https://github.com/microsoft/onnxruntime.git" "$(cat "${_T}/core-fetches")" "upstream first"
+t_assert_contains "${_out}" "ort_core ${_ok_sha} verified from file://${_T}/mirror-ok"
+_out="$(_core_fetch "file://${_T}/mirror-old" "${_old_sha}" 2>&1)"; _rc=$?
+t_assert_eq 1 "${_rc}"
+t_assert_contains "${_out}" "says VERSION_NUMBER 1.28.0, not the fork's 1.29.0"
+_out="$(_core_fetch "file://${_T}/missing" "${_ok_sha}" 2>&1)"; _rc=$?
+t_assert_eq 1 "${_rc}"
+t_assert_contains "${_out}" "is unavailable from 2 repositories"
+t_assert_fails test -e "${_T}/core-src"
+t_assert_contains "$(_core_fetch "file://${_T}/mirror-ok" "${_ok_sha:0:12}" 2>&1)" "is not a full commit"
+
+t_case "the verified ort_core becomes a local refs/tags archive in the fork's deps.txt, so FetchContent still applies the fork's patches"
+_fork_copy() {
+  rm -rf "${_T}/afork"; mkdir -p "${_T}/afork/cmake/external"
+  printf '#c\nort_core;https://github.com/microsoft/onnxruntime/archive/refs/tags/v1.29.0.zip;%s\nother;x;y\n' "${1:-3b960c0169279d7cf42ebc84b09884445d19fe19}" > "${_T}/afork/cmake/deps.txt"
+  printf 'FetchContent_Declare(\n  ort_core\n  URL ${DEP_URL_ort_core}\n  URL_HASH SHA1=${DEP_SHA1_ort_core}\n)\n' > "${_T}/afork/cmake/external/onnxruntime_external_deps.cmake"
+}
+_fork_copy
+t_assert_ok qnnep_ort_core_archive "${_T}/afork" "${_T}/mirror-ok" "${_T}/arch"
+_zip="${_T}/arch/refs/tags/v1.29.0.zip"
+t_assert_eq "ort_core;${_zip};$(sha256sum "${_zip}" | cut -c1-64)" "$(grep '^ort_core' "${_T}/afork/cmake/deps.txt")" "the row names the local archive and its SHA256"
+t_assert_contains "$(cat "${_T}/afork/cmake/deps.txt")" "other;x;y" "the other pins stay upstream's"
+t_assert_contains "$(cat "${_T}/afork/cmake/external/onnxruntime_external_deps.cmake")" 'URL_HASH SHA256=${DEP_SHA1_ort_core}'
+t_assert_eq "${_ok_sha}" "$(unzip -z "${_zip}" | tail -n 1)" "the archive is the verified commit"
+t_assert_ok unzip -l "${_zip}" onnxruntime-1.29.0/VERSION_NUMBER
+_fork_copy 3b960c01
+t_assert_contains "$(qnnep_ort_core_archive "${_T}/afork" "${_T}/mirror-ok" "${_T}/arch" 2>&1)" "refusing the archive substitution"
+t_assert_contains "$(cat "${_T}/afork/cmake/deps.txt")" "microsoft/onnxruntime" "a refused substitution leaves the fork untouched"
+
+t_case "qnnep_sources hands configure a fork whose ort_core row is already the local archive"
+_fork_copy
+_out="$( (
+  resolve_qnn_sdk() { printf '/qairt'; }
+  plugin_ep_source() { printf '%s' "${_T}/afork"; }
+  qnnep_ort_core_source() { git clone -q "${_T}/mirror-ok" "$2"; }
+  qnnep_ort_home() { printf '%s' "$2"; }
+  QNNEP_WORK_DIR="${_T}/swork" qnnep_sources
+  grep '^ort_core' "${_T}/afork/cmake/deps.txt"
+) 2>&1)"
+t_assert_contains "${_out}" "ort_core;${_T}/swork/ort-core-archive/refs/tags/v1.29.0.zip;"
+t_assert_fails test -e "${_T}/swork/ort-core-git"
+
 t_case "copies of the chain library in the build dir pass the core check; any other libonnxruntime there fails it (the first arm64 proof chain tripped on the fork's own copies)"
 mkdir -p "${_T}/bd/Release"; cp "${_T}/chain/lib/libonnxruntime.so.1.31.1" "${_T}/bd/Release/libonnxruntime.so.1.29.0"; cp "${_T}/chain/lib/libonnxruntime.so.1.31.1" "${_T}/bd/Release/libonnxruntime.so"
 t_assert_ok qnnep_assert_no_foreign_core "${_T}/bd" "${_T}/chain"

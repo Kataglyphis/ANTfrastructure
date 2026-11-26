@@ -54,6 +54,16 @@
   `CF_INSTRUMENTED` guard flag with 6102 guarded functions and `EX_CET_COMPAT`. CET enforcement at launch on
   CET-capable hardware stays unmeasured.
 
+## 2026-11-26 — the Linux QNN plugin's ort_core comes from the verified commit
+
+- Chain `linux-publish-default-20261126` failed media-arm64: the QNN plugin's configure downloads
+  `microsoft/onnxruntime/archive/refs/tags/v1.29.0.zip`, which GitHub has served as 404 since 2026-11-17. A
+  previous run had it cached. `36-build-qnn-plugin-ep.sh` now fetches `ORT_QNN_EP_CORE_COMMIT` from Microsoft or
+  the `onnxruntime` pin's fallbacks, checks `VERSION_NUMBER`, archives it as a local `refs/tags/v1.29.0.zip` and
+  substitutes the fork's `ort_core` row and `URL_HASH` (SHA256), as the Windows lane does. The fork's six `ort_core`
+  patches still apply; a live run fetched `2e2543fb` from `ROCm/onnxruntime` and dry-ran all six. Seven
+  `onnx-ep-qnn.ort-core-*` mutations hold it.
+
 ## 2026-11-26 — source-pins.txt's ORT and GenAI rows follow versions.env in the same Renovate call (CON305 step 2)
 
 - `sync_versions.py --write` copies the tag and commit of the `onnxruntime` and `onnxruntime-genai` rows in
