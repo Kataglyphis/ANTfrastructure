@@ -3,3 +3,5 @@
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 python3 "$root/shared/python/tests/test_verify_ort_profile.py"
+# Isolated mode, as consumers run it: the sibling fixture must still import.
+python3 -I "$root/shared/python/tests/test_verify_ort_profile.py"

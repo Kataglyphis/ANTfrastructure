@@ -9,7 +9,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ort_profile_fixture import profile_node, profile_runs
+# Consumers run this file with python -I, which leaves the script's own directory off sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ort_profile_fixture import profile_node, profile_runs  # noqa: E402
 
 SCRIPT = Path(__file__).resolve().parents[1] / "verify_ort_profile.py"
 

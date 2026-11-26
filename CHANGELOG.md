@@ -19,6 +19,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — the ORT profile suite imports its fixture under python -I
+
+- `test_verify_ort_profile.py` puts its own directory on `sys.path` before importing `ort_profile_fixture`:
+  AccelerANTgine's GPU candidates run it with `python3 -I`, which leaves that directory off, so its 0.0.4 release run
+  failed with `ModuleNotFoundError` before any GPU package was built. `test-verify-ort-profile.sh` now also runs it
+  with `-I`; one mutation holds it.
+
 ## 2026-11-26 — the Windows FFmpeg ships its GPL texts and exact sources (CON227 step 1)
 
 - `Publish-NativeSourceOffer` (`WindowsSourceOffer.Build.psm1`) writes, beside FFmpeg's binaries, the licence texts of

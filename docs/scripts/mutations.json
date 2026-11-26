@@ -66734,5 +66734,13 @@
   "replace": "    if false; then",
   "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
   "why": "torch only warns when it turns BUILD_PYTHON off, so a twin without _C would be stored and fail only at the media stage's final store check"
+ },
+ {
+  "id": "lib.ort-profile-test-isolated-import",
+  "target": "shared/python/tests/test_verify_ort_profile.py",
+  "find": "sys.path.insert(0, str(Path(__file__).resolve().parent))\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-verify-ort-profile.sh",
+  "why": "consumers run the suite with python -I, so its sibling fixture must import without the script directory on sys.path"
  }
 ]
