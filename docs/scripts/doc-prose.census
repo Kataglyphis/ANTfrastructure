@@ -64,8 +64,8 @@ docs/ci-build-triggers.md | avg-sentence | 18.9
 docs/ci-build-triggers.md | long-share | 7.4
 docs/ci-build-triggers.md | ids-per-k | 5.0
 docs/ci-build-triggers.md | bold-per-k | 3.0
-docs/code-quality-tooling.md | avg-sentence | 21.3
-docs/code-quality-tooling.md | long-share | 18.7
+docs/code-quality-tooling.md | avg-sentence | 21.2
+docs/code-quality-tooling.md | long-share | 18.6
 docs/code-quality-tooling.md | ids-per-k | 2.9
 docs/code-quality-tooling.md | bold-per-k | 6.3
 docs/consumer-image-contract.md | avg-sentence | 19.8

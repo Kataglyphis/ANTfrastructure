@@ -194,7 +194,7 @@ mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
   'linux/scripts/quality_report.py' 'linux/scripts/quality_report_artifacts.py' \
   'linux/scripts/quality_report_compare.py' 'linux/scripts/quality_report_github.py' \
   'linux/scripts/quality_report_model.py' 'linux/scripts/quality_report_text.py' \
-  'linux/scripts/quality_report_tree.py' 'docs/scripts/code_dupes_extra.py')
+  'linux/scripts/quality_report_tree.py' 'docs/scripts/code_dupes_extra.py' 'docs/scripts/code_dupes_ps.py')
 mapfile -d '' -t archive_proof_files < <(git ls-files -z -- 'linux/scripts/restore-consumer-archive.py')
 quality_files+=("${archive_proof_files[@]}")
 parameter_return_files+=("${archive_proof_files[@]}")
@@ -211,7 +211,7 @@ windows_environment_checked_files=('windows/scripts/build/litert-wheel-smoke.py'
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#parameter_return_files[@]}" -eq 152 ] || { echo "Expected 152 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 153 ] || { echo "Expected 153 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
 jetson_dockerfile="${ROOT}/linux/Dockerfile.torch"
 [ -f "${jetson_dockerfile}" ] || { echo "Torch Dockerfile is missing for the Jetson type gate" >&2; exit 2; }
 grep -Fq 'source=linux/jetson-webcam/app.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro' "${jetson_dockerfile}" || {

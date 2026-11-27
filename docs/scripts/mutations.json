@@ -7641,6 +7641,70 @@
   "why": "$env:X is one variable; left as $V : X a copy that renamed it stops matching, which is exactly the type-2 clone this gate exists for"
  },
  {
+  "id": "code-dupes.ps-param-block-idiom",
+  "target": "docs/scripts/verify_code_dupes.py",
+  "find": "    marked = mark_spans(text, ps_param_spans(structure))",
+  "replace": "    marked = text",
+  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+  "why": "a param block is the language's parameter list; counted, two functions that only take the same inputs read as a copy that nothing short of retyping the parameters can shrink"
+ },
+ {
+  "id": "code-dupes.ps-param-pairs-skip-idiom",
+  "target": "docs/scripts/verify_code_dupes.py",
+  "find": "        counted = _pair_holders(shingle, holders, param_only)",
+  "replace": "        counted = holders",
+  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+  "why": "the census keeps the param-block holders on purpose, so the pair count must drop them itself or the block still counts"
+ },
+ {
+  "id": "code-dupes.ps-param-stays-in-census",
+  "target": "docs/scripts/verify_code_dupes.py",
+  "find": "                owners[sh].add(unit)\n                if j == 0:",
+  "replace": "                if j not in touching:\n                    owners[sh].add(unit)\n                if j == 0:",
+  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+  "why": "out of the census, parameter shapes stop pushing the same shapes elsewhere past MAX_OWNERS, so pairs nobody touched grow and fail"
+ },
+ {
+  "id": "code-dupes.ps-param-literal-parens",
+  "target": "docs/scripts/code_dupes_ps.py",
+  "find": "PS_LITERAL_BRACKETS = \"{}()\"",
+  "replace": "PS_LITERAL_BRACKETS = \"{}\"",
+  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+  "why": "a ')' default or a '(' in a comment then ends the block early or never, and the rest of the parameter list counts as code again"
+ },
+ {
+  "id": "code-dupes.ps-param-keyword-only",
+  "target": "docs/scripts/code_dupes_ps.py",
+  "find": "PS_PARAM = re.compile(r\"(?<![\\w$.:-])param\\s*\\(\", re.IGNORECASE)",
+  "replace": "PS_PARAM = re.compile(r\"param\\s*\\(\", re.IGNORECASE)",
+  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+  "why": "$builder.Param( and -Param ( are a method call and an argument; read as blocks, real code drops out of the count"
+ },
+ {
+  "id": "code-dupes.ps-param-marks-every-line",
+  "target": "docs/scripts/code_dupes_ps.py",
+  "find": "        out += [text[last:start], \"\\n\".join(_mark_line(p) for p in text[start:end].split(\"\\n\"))]",
+  "replace": "        out += [text[last:start], f\" {PARAM_OPEN} {text[start:end]} {PARAM_CLOSE} \"]",
+  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+  "why": "a blank line splits a script-level block across loose chunks; a chunk that starts mid-block holds no open mark and counts its parameters as code"
+ },
+ {
+  "id": "code-dupes.ps-param-reach-in",
+  "target": "docs/scripts/code_dupes_ps.py",
+  "find": "                touching.update(range(max(0, len(kept) - width + 1), len(kept) + 1))",
+  "replace": "                touching.update(range(len(kept), len(kept) + 1))",
+  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+  "why": "a shingle that starts before the block and ends inside it is still parameter text; counted, a twin block lengthens the shared run before it"
+ },
+ {
+  "id": "code-dupes.ps-param-mark-ends-with-line",
+  "target": "docs/scripts/code_dupes_ps.py",
+  "find": "    for line in lines:\n        # Marks pair up within a line, so one a string folded away cannot leak past it.\n        inside = False",
+  "replace": "    inside = False\n    for line in lines:",
+  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+  "why": "a close mark folded into a string the gate misreads would leave every later line of the unit inside the block, dropping real code from the count"
+ },
+ {
   "id": "lint-gates.shell-list-is-git-not-a-glob",
   "target": "linux/scripts/run-lint-gates.sh",
   "find": "  done < <(git -C \"${_LINT_GATES_ROOT}\" ls-files -z -- \"${spec}\")",

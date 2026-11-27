@@ -37,8 +37,15 @@ REPO_ROOT = HUB_ROOT
 ALLOW_FILE = Path(__file__).with_name("code-dupes.allow")
 ALLOW_FMT = "a | b | budget | reason"
 
-sys.path.insert(0, str(HUB_ROOT / "linux" / "scripts"))
+sys.path[:0] = [str(Path(__file__).resolve().parent), str(HUB_ROOT / "linux" / "scripts")]
 import gate_scope
+from code_dupes_ps import (
+    mark_spans,
+    mask_ps_brackets_in_literals,
+    ps_param_spans,
+    strip_param_marks,
+    unmark,
+)
 from quality_allow import iter_rows
 from verify_code_size import code_lines
 
@@ -93,7 +100,7 @@ def canonicalise(line: str) -> str:
 
 
 def normalise_lines(text: str) -> list[str]:
-    """Per-line normalised form, for measuring CONTIGUOUS runs."""
+    """Per-line normalised form, folding away what a copy-paste typically renames; the shingles and CONTIGUOUS runs read it."""
     out = []
     for raw in text.split("\n"):
         line = raw.strip()
@@ -122,11 +129,6 @@ def longest_common_run(a: list[str], b: list[str]) -> int:
                 best = max(best, cur[j])
         prev = cur
     return best
-
-
-def normalise(text: str) -> list[str]:
-    """Fold away the things a copy-paste typically renames."""
-    return [tok for line in normalise_lines(text) for tok in line.split()]
 
 
 def _brace_units(lines: list[str], header: re.Pattern,
@@ -172,87 +174,14 @@ def shell_units(path: Path) -> list[tuple[int, str]]:
     return _brace_units(lines, SHELL_FUNC, code_lines(lines))
 
 
-def _mask_ps_here_char(text: str, chars: list[str], i: int, marker: str | None) -> tuple[int, str, str | None]:
-    if marker is None:
-        raise ValueError("PowerShell here-string state has no delimiter")
-    if i == 0 or text[i - 1] == "\n":
-        end = text.find("\n", i)
-        end = len(text) if end < 0 else end
-        start = i + (len(text[i:end]) - len(text[i:end].lstrip(" \t")))
-        if text.startswith(marker, start):
-            return start + 2, "code", None
-    if text[i] in "{}":
-        chars[i] = " "
-    return i + 1, "here", marker
-
-
-def _mask_ps_comment_char(char: str, chars: list[str], i: int) -> tuple[int, str]:
-    if char in "\r\n":
-        return i + 1, "code"
-    if char in "{}":
-        chars[i] = " "
-    return i + 1, "comment"
-
-
-def _mask_ps_quote_char(text: str, chars: list[str], i: int, marker: str | None) -> tuple[int, str, str | None]:
-    if marker is None:
-        raise ValueError("PowerShell quote state has no delimiter")
-    char = text[i]
-    if char in "{}":
-        chars[i] = " "
-    if marker == "'" and char == "'" and i + 1 < len(text) and text[i + 1] == "'":
-        return i + 2, "quote", marker
-    if marker == '"' and char == "`":
-        if i + 1 < len(text) and text[i + 1] in "{}":
-            chars[i + 1] = " "
-        return i + 2, "quote", marker
-    if char == marker:
-        return i + 1, "code", None
-    return i + 1, "quote", marker
-
-
-def _mask_ps_code_char(text: str, chars: list[str], i: int) -> tuple[int, str, str | None]:
-    char = text[i]
-    if char == "`" and i + 1 < len(text):
-        if text[i + 1] in "{}":
-            chars[i + 1] = " "
-        return i + 2, "code", None
-    if char == "#":
-        return i + 1, "comment", None
-    if char == "@" and i + 1 < len(text) and text[i + 1] in "'\"":
-        end = text.find("\n", i)
-        end = len(text) if end < 0 else end
-        if not text[i + 2:end].strip(" \t\r"):
-            return i + 2, "here", text[i + 1] + "@"
-    if char in "'\"":
-        return i + 1, "quote", char
-    return i + 1, "code", None
-
-
-def _mask_ps_braces_in_literals(text: str) -> str:
-    chars = list(text)
-    state, marker, i = "code", None, 0
-    while i < len(text):
-        if state == "here":
-            i, state, marker = _mask_ps_here_char(text, chars, i, marker)
-            continue
-        if state == "comment":
-            i, state = _mask_ps_comment_char(text[i], chars, i)
-            continue
-        if state == "quote":
-            i, state, marker = _mask_ps_quote_char(text, chars, i, marker)
-            continue
-        i, state, marker = _mask_ps_code_char(text, chars, i)
-    return "".join(chars)
-
-
 def ps_units(path: Path) -> list[tuple[int, str]]:
     """PowerShell functions and filters; block comments are blanked with their newlines, so line numbers hold."""
     text = PS_BLOCK_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"),
                                 path.read_text(encoding="utf-8", errors="replace"))
-    lines = text.split("\n")
-    structure = _mask_ps_braces_in_literals(text).split("\n")
-    return _brace_units(lines, PS_FUNC, structure)
+    structure = mask_ps_brackets_in_literals(text)
+    # Functions that take the same inputs declare the same parameters: docs/code-quality-tooling.md#powershell-param-blocks-are-idiom
+    marked = mark_spans(text, ps_param_spans(structure))
+    return _brace_units(marked.split("\n"), PS_FUNC, structure.split("\n"))
 
 
 def docker_units(path: Path) -> list[tuple[int, str]]:
@@ -365,13 +294,23 @@ def _selected_shingles(tokens: list[str], allowed: set[Shingle] | None,
     return selected
 
 
+def _record_param_only(param_only: Owners, unit: Unit, shingles: list[tuple[int, Shingle]],
+                       touching: set[int]) -> None:
+    """Note the unit under each shingle it holds only where the shingle reaches a param block."""
+    in_code = {sh for j, sh in shingles if j not in touching}
+    for j, sh in shingles:
+        if j in touching and sh not in in_code:
+            param_only.setdefault(sh, set()).add(unit)
+
+
 def index_units(files: list[tuple[Path, str]], *, root: Path | None = None,
                 functions_only: bool = False,
                 only_shingles: set[Shingle] | None = None,
-                readers: dict[str, Callable[[Path], list[tuple[int, str]]]] | None = None) -> tuple[
+                readers: dict[str, Callable[[Path], list[tuple[int, str]]]] | None = None,
+                param_only: Owners | None = None) -> tuple[
     Owners, set[Shingle], Texts, UnitLines, dict[str, str],
 ]:
-    """Index script units; optional root and shingle filters serve cross-repo callers."""
+    """Index script units; optional root and shingle filters serve cross-repo callers, param_only fills with param-block holders."""
     scan_root = root if root is not None else REPO_ROOT
     owners: dict[Shingle, set[Unit]] = defaultdict(set)
     heads: set[Shingle] = set()
@@ -386,22 +325,46 @@ def index_units(files: list[tuple[Path, str]], *, root: Path | None = None,
             if functions_only and not _function_unit(kind, body):
                 continue
             folded = fold(body) if fold else body
-            toks = normalise(folded)
+            toks, touching = strip_param_marks(normalise_lines(folded), SHINGLE)
             if len(toks) < MIN_TOKENS:
                 continue
             shingles = _selected_shingles(toks, only_shingles)
             if not shingles:
                 continue
-            texts[(rel, line_no)] = " ".join(body.split())
-            unit_lines[(rel, line_no)] = normalise_lines(folded)
+            unit = (rel, line_no)
+            texts[unit] = " ".join(unmark(body).split())
+            unit_lines[unit] = normalise_lines(unmark(folded))
             for j, sh in shingles:
-                owners[sh].add((rel, line_no))
+                owners[sh].add(unit)
                 if j == 0:
                     heads.add(sh)
+            if param_only is not None and touching:
+                _record_param_only(param_only, unit, shingles, touching)
     return owners, heads, texts, unit_lines, kind_of
 
 
-def collect_shared(owners: Owners, heads: set[Shingle], kind_of: dict[str, str]) -> tuple[
+def _pair_holders(shingle: Shingle, holders: set[Unit], param_only: Owners | None) -> set[Unit]:
+    """The holders a pair count may use: never one that holds the shingle only inside a param block."""
+    return holders - param_only[shingle] if param_only and shingle in param_only else holders
+
+
+def _add_family(families: dict[frozenset[str], list], heads: set[Shingle], shingle: Shingle,
+                holders: set[Unit]) -> None:
+    """Count the shingle toward the family of the files holding it, anchored on a unit's first shingle when one is."""
+    held_by = frozenset(h[0] for h in holders)
+    if len(held_by) <= 2:
+        return
+    entry = families.get(held_by)
+    if entry is None:
+        families[held_by] = [1, shingle, sorted(holders)]
+        return
+    entry[0] += 1
+    if shingle in heads and entry[1] not in heads:
+        entry[1], entry[2] = shingle, sorted(holders)
+
+
+def collect_shared(owners: Owners, heads: set[Shingle], kind_of: dict[str, str],
+                   param_only: Owners | None = None) -> tuple[
     Counter[UnitPair], Counter[frozenset[str]], dict[frozenset[str], list], int,
 ]:
     """(shared, spread, families, suppressed); a family is keyed by the block's owner set, never by file adjacency."""
@@ -415,21 +378,14 @@ def collect_shared(owners: Owners, heads: set[Shingle], kind_of: dict[str, str])
             suppressed += 1
             spread[frozenset(h[0] for h in holders)] += 1
             continue
-        if len(holders) > 1:
+        counted = _pair_holders(shingle, holders, param_only)
+        if len(counted) > 1:
             # Same-file pairs count too, except in Dockerfiles, which have nothing to extract a repeat into.
-            for a, b in itertools.combinations(sorted(holders), 2):
+            for a, b in itertools.combinations(sorted(counted), 2):
                 if a[0] == b[0] and kind_of.get(a[0]) == "docker":
                     continue
                 shared[(a, b)] += 1
-            held_by = frozenset(h[0] for h in holders)
-            if len(held_by) > 2:
-                entry = families.get(held_by)
-                if entry is None:
-                    families[held_by] = [1, shingle, sorted(holders)]
-                else:
-                    entry[0] += 1
-                    if shingle in heads and entry[1] not in heads:
-                        entry[1], entry[2] = shingle, sorted(holders)
+            _add_family(families, heads, shingle, counted)
     return shared, spread, families, suppressed
 
 
@@ -519,11 +475,11 @@ def _print_findings(
 
 def _dispatch_mode(
     args: argparse.Namespace, owners: Owners, texts: Texts, unit_lines: UnitLines,
-    per_file: PerFile, allow: Allow,
+    per_file: PerFile, allow: Allow, param_only: Owners,
 ) -> int | None:
     """Modes that answer instead of judging, kept out of main() for its complexity budget; None means judge."""
     if args.explain:
-        return _explain_pair(args.explain, owners, texts, unit_lines)
+        return _explain_pair(args.explain, owners, texts, unit_lines, param_only)
     if args.baseline:
         return _write_baseline(per_file, allow)
     return None
@@ -547,30 +503,32 @@ def _explain_targets(paths: list[str], texts: Texts) -> tuple[str, str] | None:
 
 
 def _explain_counts(
-    owners: Owners, a_file: str, b_file: str,
+    owners: Owners, a_file: str, b_file: str, param_only: Owners,
 ) -> tuple[Counter[UnitPair], Counter[UnitPair]]:
     """Shared shingles per unit pair, split into counted and dropped-as-idiom."""
     counted: Counter[UnitPair] = Counter()
     idiom: Counter[UnitPair] = Counter()
-    for holders in owners.values():
+    for shingle, holders in owners.items():
         left = sorted(h for h in holders if h[0] == a_file)
         right = sorted(h for h in holders if h[0] == b_file)
         if not left or not right:
             continue
+        pairable = set() if len(holders) > MAX_OWNERS else _pair_holders(shingle, holders, param_only)
         for x in left:
             for y in right:
                 if a_file != b_file or x < y:
-                    (idiom if len(holders) > MAX_OWNERS else counted)[(x, y)] += 1
+                    (counted if {x, y} <= pairable else idiom)[(x, y)] += 1
     return counted, idiom
 
-def _explain_pair(paths: list[str], owners: Owners, texts: Texts, unit_lines: UnitLines) -> int:
+def _explain_pair(paths: list[str], owners: Owners, texts: Texts, unit_lines: UnitLines,
+                  param_only: Owners) -> int:
     """What a pair shares unit by unit, including the shingles the idiom cutoff drops from the count."""
     pair = _explain_targets(paths, texts)
     if pair is None:
         return 2
     a_file, b_file = pair
 
-    counted, idiom = _explain_counts(owners, a_file, b_file)
+    counted, idiom = _explain_counts(owners, a_file, b_file, param_only)
 
     if not counted and not idiom:
         print(f"{a_file} <-> {b_file}: nothing shared")
@@ -578,7 +536,8 @@ def _explain_pair(paths: list[str], owners: Owners, texts: Texts, unit_lines: Un
 
     label = a_file if a_file == b_file else f"{a_file} <-> {b_file}"
     print(f"{label}")
-    print(f"  MAX_OWNERS={MAX_OWNERS}; a shingle held by more units is dropped as idiom")
+    print(f"  MAX_OWNERS={MAX_OWNERS}; a shingle held by more units, or held only inside a"
+          " PowerShell param block, is dropped as idiom")
     print()
     for (x, y), n in sorted(counted.items(), key=lambda kv: -kv[1]):
         hidden = idiom.get((x, y), 0)
@@ -593,7 +552,7 @@ def _explain_pair(paths: list[str], owners: Owners, texts: Texts, unit_lines: Un
         total = sum(only_idiom.values())
         print()
         print(f"  {total} further shingle(s) across {len(only_idiom)} unit pair(s) are"
-              f" held by more than {MAX_OWNERS} units and never counted.")
+              " idiom and never counted.")
     return 0
 
 def _write_baseline(per_file: PerFile, allow: Allow) -> int:
@@ -754,15 +713,16 @@ def main() -> int:
     if not files:
         return _extras(args, _empty_scope_verdict(args), files, {}, {}, [], [], {}, 0)
 
-    owners, heads, texts, unit_lines, kind_of = index_units(files)
+    param_only: Owners = {}
+    owners, heads, texts, unit_lines, kind_of = index_units(files, param_only=param_only)
 
-    shared, spread, families, suppressed = collect_shared(owners, heads, kind_of)
+    shared, spread, families, suppressed = collect_shared(owners, heads, kind_of, param_only)
     measured, per_file = _collapse_to_files(shared, args.threshold)
 
     allow = {k: v for k, v in load_allow().items()
              if all(file_kind(Path(f).name) in kinds for f in k)}
 
-    dispatched = _dispatch_mode(args, owners, texts, unit_lines, per_file, allow)
+    dispatched = _dispatch_mode(args, owners, texts, unit_lines, per_file, allow, param_only)
     if dispatched is not None:
         return dispatched
 
@@ -786,7 +746,8 @@ def main() -> int:
         print(f"code duplication gate OK: {len(texts)} units in {len(files)} files, "
               f"no block over {args.threshold} shared {SHINGLE}-token shingles "
               f"({len(allow)} allowlisted pair(s); {suppressed} shingle(s) suppressed "
-              f"as idiom at >{MAX_OWNERS} owners).")
+              f"as idiom at >{MAX_OWNERS} owners; {len(param_only)} kept out of pairs inside "
+              f"PowerShell param blocks).")
         verdict = 0
     return _extras(args, verdict, files, texts, per_file, findings, allowed, allow, suppressed)
 

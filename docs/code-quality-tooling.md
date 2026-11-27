@@ -1378,7 +1378,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **8405 entries** over **1020 distinct test commands**; both digits are
+manifest holds **8413 entries** over **1020 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -3719,6 +3719,22 @@ quoted strings, comments and here-doc bodies cannot absorb later functions.
 The shingle stream still uses the original source text. The regression suite
 covers a quoted `${` opener that previously merged every later function into one unit.
 
+#### PowerShell param blocks are idiom
+
+Functions that take the same inputs declare the same parameters (owner decision).
+So a shingle that reaches into a `param(...)` block never counts toward a pair.
+That holds at script, function and script-block level, attributes, types and
+defaults included. The body after the block is compared as before.
+
+The block stays in the idiom census. Dropping it from the census would push
+common body shapes under `MAX_OWNERS`, and unrelated pairs would grow. Kept
+there, it can only lower a pair's count. The gate finds each block on the whole
+file before it cuts units, because a blank line splits a script-level block
+across loose chunks. `--explain` lists the dropped shingles as idiom.
+
+Not covered: an inline list such as `function Get-X([string]$Name)`, and the
+`[CmdletBinding()]` attribute before a block. Both still count.
+
 ### Consumer-to-hub Bash and PowerShell reuse
 
 `python3 docs/scripts/verify_hub_reuse.py --root <consumer> --hub <hub>
@@ -3975,7 +3991,7 @@ and the gate is the authority for it, not this page.
 `linux/scripts/tests/test-env-knobs.sh` each copy their gate into
 a throwaway tree — the gates derive their root from their own path — and parse
 the measured overlap rather than hardcoding it, so the fixtures cannot rot.
-23 entries (`code-dupes.*`) and 30 (`env-knobs.*`) in
+31 entries (`code-dupes.*`) and 30 (`env-knobs.*`) in
 `docs/scripts/mutations.json` neuter one guarantee each and are proven to make
 those suites fail: the shrink and stale detections and their
 exit codes, the pre-threshold count, the stale wording, the duplicate-row exit,

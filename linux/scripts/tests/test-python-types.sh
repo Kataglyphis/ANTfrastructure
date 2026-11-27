@@ -42,9 +42,9 @@ _set_sibling_client() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (158 files)"
+  t_assert_contains "$1" "ty quality gate: clean (159 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
-  t_assert_contains "$1" "Linux Python report: clean (158 files)"
+  t_assert_contains "$1" "Linux Python report: clean (159 files)"
   t_assert_contains "$1" "Windows Python report: clean (2 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -132,6 +132,7 @@ _set_answer "${ROOT}/linux/scripts/quality_report_model.py" 42
 _set_answer "${ROOT}/linux/scripts/quality_report_text.py" 42
 _set_answer "${ROOT}/linux/scripts/quality_report_tree.py" 42
 _set_answer "${ROOT}/docs/scripts/code_dupes_extra.py" 42
+_set_answer "${ROOT}/docs/scripts/code_dupes_ps.py" 42
 _set_answer "${ROOT}/linux/scripts/tests/meson_bound_provider_tests.py" 42
 _set_answer "${ROOT}/linux/scripts/05-frameworks/flutter/flutter-trace-summary.py" 42
 _set_answer "${ROOT}/linux/scripts/tests/wheelhouse_manifest_tests.py" 42
@@ -233,9 +234,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-  t_assert_contains "${out}" "Ruff signature annotation gate: clean (165 files)"
-  t_assert_contains "${out}" "Ruff private return gate: clean (165 files)"
-  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (152 files)"
+  t_assert_contains "${out}" "Ruff signature annotation gate: clean (166 files)"
+  t_assert_contains "${out}" "Ruff private return gate: clean (166 files)"
+  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (153 files)"
 
 for sibling in "${sibling_clients[@]}"; do
   _set_answer "${ROOT}/${sibling%%:*}" 42

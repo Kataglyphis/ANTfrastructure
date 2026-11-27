@@ -82,7 +82,7 @@ _ps_verdict() { _fixture "${A} | ${B} | ${N} | ${WHY}"; _ps_pair "$@"; _verdict;
 _fixture() {
   fix="$(mktemp -d)"
   mkdir -p "${fix}/docs/scripts" "${fix}/linux/scripts"
-  cp "${GATE}" "${fix}/docs/scripts/"
+  cp "${GATE}" "${GATE%/*}/code_dupes_ps.py" "${fix}/docs/scripts/"
   # The gate imports gate_scope.py at module level; without it the fixture tracebacks.
   cp "${SCRIPTS_DIR}/quality_allow.py" "${SCRIPTS_DIR}/gate_scope.py" \
     "${SCRIPTS_DIR}/verify_code_size.py" "${fix}/linux/scripts/"
@@ -322,6 +322,168 @@ _verdict
 t_assert_eq "1" "${rc}" "the extension decides, not the prefix"
 t_assert_contains "${out}" "${R}"
 rm -rf "${fix}"
+
+# Six parameters, long enough that the block alone would be a finding if it counted.
+PS_PARAMS="$(cat <<'EOF'
+  param(
+    [Parameter(Mandatory)][pscustomobject]$Context,
+    [Parameter(Mandatory)][string]$BuildRoot,
+    [ValidateSet('Debug', 'Release')][string]$Config = 'Debug',
+    [string[]]$Targets = @('engine', 'tests'),
+    [switch]$StageTestPlugins,
+    [switch]$CopyOrtBeside
+  )
+EOF
+)"
+PS_OTHER_PARAMS='  param([string]$Root, [int]$Depth = 3)'
+PS_BODY_A="$(cat <<'EOF'
+  $bin = Join-Path $BuildRoot 'bin'
+  New-Item -ItemType Directory -Force -Path $bin | Out-Null
+  Write-BuildLog -Context $Context -Message "staged $Config into $bin"
+EOF
+)"
+PS_BODY_B="$(cat <<'EOF'
+  foreach ($target in $Targets) {
+    Invoke-Native -FilePath 'cmake' -ArgumentList @('--build', $BuildRoot, '--target', $target)
+  }
+  if ($StageTestPlugins) { Copy-TestPlugin -Root $BuildRoot }
+EOF
+)"
+PS_BODY_DUP="$(cat <<'EOF'
+  if (-not (Test-Path -LiteralPath $BuildRoot)) {
+    throw "no build root at $BuildRoot"
+  }
+  $found = @(Get-ChildItem -LiteralPath $BuildRoot -Recurse -Filter '*.dll' | Sort-Object Name)
+  foreach ($item in $found) {
+    Write-Host "found $($item.FullName) for $Config"
+  }
+  return $found
+EOF
+)"
+# _ps_fn <name> <param block> <body>: one PowerShell function.
+_ps_fn() { printf 'function %s {\n%s\n%s\n}\n' "$1" "$2" "$3"; }
+# _ps_files <P text> <Q text>: a fixture whose only offender can be the PowerShell pair.
+_ps_files() {
+  _fixture "${A} | ${B} | ${N} | ${WHY}"
+  mkdir -p "${fix}/windows/scripts"
+  printf '%s\n' "$1" > "${fix}/${P}"
+  printf '%s\n' "$2" > "${fix}/${Q}"
+}
+# _ps_fns <P params> <P body> <Q params> <Q body> [gate args]: two renamed functions, judged; leaves rc and out.
+_ps_fns() {
+  _ps_files "$(_ps_fn Copy-Widget "$1" "$2")" "$(_ps_fn Copy-Gadget "$3" "$4")"
+  shift 4
+  _verdict "$@"
+}
+# The first counted unit pair --explain prints, 0 when only idiom is shared.
+_explained() { printf '%s\n' "${out}" | sed -nE 's/^ +([0-9]+) shingle\(s\)  line .*/\1/p' | head -1 | grep -e . || echo 0; }
+# What --explain dropped as idiom from a pair that counts nothing.
+_idiom_only() { printf '%s\n' "${out}" | sed -nE 's/^  ([0-9]+) further shingle\(s\).*/\1/p' | head -1; }
+
+t_case "two functions sharing only an identical param block pass: the block is idiom"
+_ps_fns "${PS_PARAMS}" "${PS_BODY_A}" "${PS_PARAMS}" "${PS_BODY_B}"
+t_assert_eq "0" "${rc}" "a shared parameter list is the language's shape, not a copy"
+_verdict --explain "${P}" "${Q}"
+t_assert_eq "0" "$(_explained)" "nothing counted between the two"
+t_assert_ok test "$(_idiom_only)" -gt 10
+rm -rf "${fix}"
+
+t_case "identical bodies behind different param blocks are still a copy"
+_ps_fns "${PS_PARAMS}" "${PS_BODY_DUP}" "${PS_OTHER_PARAMS}" "${PS_BODY_DUP}"
+PARAM_N="$(_shared)"
+t_assert_eq "1" "${rc}" "the body after the block is still compared"
+t_assert_contains "${out}" "${Q}"
+t_assert_ok test "${PARAM_N:-0}" -gt 10
+rm -rf "${fix}"
+
+t_case "a shared param block before a copied body adds nothing to its count"
+_ps_fns "${PS_PARAMS}" "${PS_BODY_DUP}" "${PS_PARAMS}" "${PS_BODY_DUP}"
+t_assert_eq "1" "${rc}" "a copy behind a twin header still fails"
+t_assert_eq "${PARAM_N}" "$(_shared)" "the block neither forms nor extends a counted shingle"
+rm -rf "${fix}"
+
+t_case "a script-level param block with blank lines and comments is idiom too"
+# The same parameters with a blank line and a comment mid-block, which splits it across two loose chunks.
+_ps_script() {
+  printf '[CmdletBinding()]\n'
+  printf '%s\n' "${PS_PARAMS}" | sed -e 's/^  //' -e '/ValidateSet/s/,$/,\n\n    # a comment line between parameters/'
+  printf '\n%s\n' "$1"
+}
+_ps_files "$(_ps_script "${PS_BODY_A}")" "$(_ps_script "${PS_BODY_B}")"
+_verdict
+t_assert_eq "0" "${rc}" "a block split across units is still found on the whole file"
+_verdict --explain "${P}" "${Q}"
+t_assert_ok test "$(_idiom_only)" -gt 10
+rm -rf "${fix}"
+
+t_case "a paren inside a param block's string or comment does not end the block"
+EARLY_CLOSE="  param([string]\$Close = ')', # ( opens nothing
+${PS_PARAMS#*param(}"
+_ps_fns "${EARLY_CLOSE}" "${PS_BODY_A}" "${EARLY_CLOSE}" "${PS_BODY_B}"
+t_assert_eq "0" "${rc}" "a literal paren closing the block early would count the rest of it"
+rm -rf "${fix}"
+
+t_case "-Param ( and .Param( in a body are calls, not param blocks"
+_ps_calls() {
+  cat <<EOF
+  \$builder = New-Builder -Name \$Name
+  \$builder.$1('mode', \$Mode)
+  \$builder.$1('jobs', \$Jobs)
+  Set-BuildOption -$1 (\$Mode) -Value (\$Jobs)
+  Set-BuildOption -$1 (\$Jobs) -Value (\$Mode)
+  return \$builder.Build()
+EOF
+}
+_ps_fns "" "$(_ps_calls Knob)" "" "$(_ps_calls Knob)"
+KNOB_N="$(_shared)"
+t_assert_eq "1" "${rc}"
+rm -rf "${fix}"
+_ps_fns "" "$(_ps_calls Param)" "" "$(_ps_calls Param)"
+t_assert_eq "1" "${rc}" "a method or argument named Param is still code"
+t_assert_eq "${KNOB_N}" "$(_shared)" "renaming Param to Knob must not move the count"
+rm -rf "${fix}"
+
+t_case "a shared run ending at a param block is not extended into it"
+_ps_visitor() {
+  printf '%s\n' '$ast = Get-TestScriptAst -ScriptPath $ScriptPath' "\$calls = @(\$ast.FindAll({ $1" "$2" '        }, $true))'
+}
+P_BODY='            $node -is [System.Management.Automation.Language.CommandAst] -and $recurse'
+Q_BODY='            Write-Verbose "visiting $node"; $node.Extent.Text.Length -gt 80'
+_ps_files "$(_ps_visitor 'param($node, $recurse)' "${P_BODY}")" "$(_ps_visitor 'param($node, $recurse)' "${Q_BODY}")"
+_verdict --explain "${P}" "${Q}"
+SAME_N="$(_explained)"
+rm -rf "${fix}"
+_ps_files "$(_ps_visitor 'param($node, $recurse)' "${P_BODY}")" "$(_ps_visitor 'param([string]$node)' "${Q_BODY}")"
+_verdict --explain "${P}" "${Q}"
+t_assert_ok test "${SAME_N}" -gt 0
+t_assert_eq "$(_explained)" "${SAME_N}" "a twin param block must not lengthen the run before it"
+rm -rf "${fix}"
+
+t_case "a param block still counts toward the idiom census"
+INLINE="([string[]]\$Names = @(), [string]\$Label = '', [switch]\$Force, [int]\$Depth = 3)"
+_ps_inline_pair() {
+  _ps_files "function Copy-Widget${INLINE} {
+${PS_BODY_A}
+}" "function Copy-Gadget${INLINE} {
+${PS_BODY_B}
+}"
+}
+_ps_inline_pair
+_verdict --explain "${P}" "${Q}"
+ALONE_N="$(_explained)"
+t_assert_ok test "${ALONE_N}" -gt 10
+rm -rf "${fix}"
+_ps_inline_pair
+for i in 1 2 3 4 5 6 7; do
+  _ps_fn "Get-Census${i}" "  param${INLINE}" "  Write-Output 'census ${i} of seven'" > "${fix}/windows/scripts/Get-Census${i}.ps1"
+done
+_verdict --explain "${P}" "${Q}"
+t_assert_ok test "$(_explained)" -lt "${ALONE_N}"
+rm -rf "${fix}"
+
+t_case "a param mark lost inside a folded string cannot leak past its line"
+touched="$(${PY} -c 'import sys; from pathlib import Path; sys.path.insert(0,str(Path(sys.argv[1]).parent)); import code_dupes_ps as m; print(sorted(m.strip_param_marks([m.PARAM_OPEN + " x", "y z"], 12)[1]))' "${GATE}")"
+t_assert_eq "[0]" "${touched}" "an open mark whose close was folded into a string ends with its line"
 
 if [ -z "${SKIP_REAL_TREE}" ]; then
   t_case "the REAL tree is clean today"

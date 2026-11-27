@@ -19,6 +19,24 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — the duplicate-code gate reads PowerShell param blocks as idiom (owner decision)
+
+- Owner decision of 2026-11-27: `verify_code_dupes.py` no longer counts a shingle that reaches into a
+  PowerShell `param(...)` block, at script, function or script-block level, toward a pair. The block stays
+  in the `MAX_OWNERS` idiom census, so a pair's count can only fall; the body after the block is compared
+  as before. `--explain` reports the dropped shingles as idiom. Inline parameter lists and the
+  `[CmdletBinding()]` attribute still count.
+- The PowerShell literal masking and the new block marks moved to `docs/scripts/code_dupes_ps.py`, which
+  keeps the gate under the 800-line file limit. The module joins the gate in the parameter and return
+  tier of `lint-python-types.sh`.
+- `code-dupes.allow`: 22 stale rows removed and 20 budgets lowered to the measurement. No row was added or
+  raised.
+- `test-code-dupes.sh` gains nine cases and `mutations.json` eight `code-dupes.ps-param-*` recipes, each
+  proven to bite. `code-quality-tooling.md` § PowerShell param blocks are idiom, the gate registry, the
+  derived mutation counts and the page's prose row follow.
+- In AccelerANTgine, the three `Build-Windows.ps1` `Copy-*` pairs that shared only their parameter list
+  (11 shingles each) now share nothing counted, and seven cross-file pairs fall under the threshold.
+
 ## 2026-11-27 — a Flutter 3.50 runner loads libgcc_s ahead of the engine's unwinder
 
 - Flutter 3.50.1's `libflutter_linux_gtk.so` exports 31 of LLVM libunwind's symbols (ten `_Unwind_*`, four
