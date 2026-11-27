@@ -2660,6 +2660,10 @@ byte-for-byte; each flavor binds the staged text, and missing, altered or linked
 destinations fail. Consumers distributing these modules carry that notice with
 ORT's own original notices.
 
+The web output carries ORT's `LICENSE` and `ThirdPartyNotices.txt` from the source tree beside any wasm.
+The collector skips the `*.mjs.bak` copy each loader leaves. A site stages the output with
+[`stage-ort-web.py`](docs-sites.md#staging-ort-web-for-an-app).
+
 Each flavor's runtime JSON is itself hash-bound to the schema-2 receipt.
 Verification requires both complete flavors and the current five runtime/probe
 companions. `web-wasm-cache.sh` additionally binds the full payload and eleven direct

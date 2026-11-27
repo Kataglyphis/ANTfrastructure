@@ -88,10 +88,10 @@ docs/dependency-updates.md | avg-sentence | 20.6
 docs/dependency-updates.md | long-share | 18.9
 docs/dependency-updates.md | ids-per-k | 3.7
 docs/dependency-updates.md | bold-per-k | 13.0
-docs/docs-sites.md | avg-sentence | 19.2
-docs/docs-sites.md | long-share | 15.0
-docs/docs-sites.md | ids-per-k | 5.2
-docs/docs-sites.md | bold-per-k | 3.5
+docs/docs-sites.md | avg-sentence | 18.9
+docs/docs-sites.md | long-share | 14.1
+docs/docs-sites.md | ids-per-k | 4.5
+docs/docs-sites.md | bold-per-k | 3.3
 docs/failure-modes.md | avg-sentence | 18.4
 docs/failure-modes.md | long-share | 11.5
 docs/failure-modes.md | ids-per-k | 5.2
@@ -225,7 +225,7 @@ docs/sbom.md | long-share | 21.1
 docs/sbom.md | ids-per-k | 6.5
 docs/sbom.md | bold-per-k | 22.7
 docs/shared-script-libraries.md | avg-sentence | 16.5
-docs/shared-script-libraries.md | long-share | 7.5
+docs/shared-script-libraries.md | long-share | 7.4
 docs/shared-script-libraries.md | ids-per-k | 1.8
 docs/shared-script-libraries.md | bold-per-k | 2.8
 docs/slang-shader-compilation.md | avg-sentence | 17.6

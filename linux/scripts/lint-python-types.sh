@@ -67,7 +67,7 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \
   'linux/scripts/qairt-key-handoff.py' 'linux/scripts/qairt-private-transfer.py' \
   'linux/scripts/layer-audit.py' 'linux/scripts/lib/cmakelang-py315.py' \
-  'linux/scripts/lib/fetch-data-lock.py' 'linux/scripts/lib/dartdoc-guides.py' \
+  'linux/scripts/lib/fetch-data-lock.py' 'linux/scripts/lib/dartdoc-guides.py' 'linux/scripts/lib/stage-ort-web.py' \
   'linux/scripts/renovate_audit.py' 'linux/scripts/renovate_cmake.py' \
   'linux/scripts/renovate_locator.py' 'linux/scripts/renovate_pep_git.py' \
   'linux/scripts/renovate_planner.py' 'linux/scripts/renovate_uv_exports.py' \
@@ -177,6 +177,7 @@ mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
   'linux/scripts/verify_site_links.py' \
   'linux/scripts/quality_allow.py' \
   'linux/scripts/lib/fetch-data-lock.py' \
+  'linux/scripts/lib/stage-ort-web.py' \
   'linux/scripts/06-packaging/ort_census_probe.py' \
   'linux/scripts/06-packaging/stage-cargo-native-helper.py' \
   'linux/scripts/06-packaging/venv-version-probe.py' \
@@ -210,7 +211,7 @@ windows_environment_checked_files=('windows/scripts/build/litert-wheel-smoke.py'
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#parameter_return_files[@]}" -eq 151 ] || { echo "Expected 151 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 152 ] || { echo "Expected 152 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
 jetson_dockerfile="${ROOT}/linux/Dockerfile.torch"
 [ -f "${jetson_dockerfile}" ] || { echo "Torch Dockerfile is missing for the Jetson type gate" >&2; exit 2; }
 grep -Fq 'source=linux/jetson-webcam/app.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro' "${jetson_dockerfile}" || {

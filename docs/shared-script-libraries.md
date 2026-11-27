@@ -1178,6 +1178,13 @@ options and names: [`branch-and-release-strategy.md` § *Collecting the release 
 or scenes a data lock pins, checked by SHA-256, through a cache; CMake reaches it through
 `kataglyphis_fetch_data`. The contract: [`data-repositories.md` § *The hub's fetcher*](data-repositories.md#the-hubs-fetcher).
 
+### `lib/stage-ort-web.py`
+
+`python3 -I stage-ort-web.py --out DIR [--source DIR] [--jsep] [--no-js-bundles] [--site-packages DIR]`: the
+image's ORT Web builds under `DIR/ort/<version>-<build hash>/`, checked against the image's receipt, with
+ORT's license texts and a manifest. Builds, files and refusals:
+[`docs-sites.md` § *Staging ORT Web for an app*](docs-sites.md#staging-ort-web-for-an-app).
+
 ### `lib/tiny-genai-model.py`
 
 `python3 -I tiny-genai-model.py --out DIR [--check] [--hidden-states]`: a GenAI model of a few hundred KB whose greedy

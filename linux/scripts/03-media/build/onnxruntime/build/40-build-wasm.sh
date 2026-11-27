@@ -156,7 +156,8 @@ collect_wasm_artifacts() {
   local names=(-name "$pattern")
   for pattern in "$@"; do names+=(-o -name "$pattern"); done
   local status=0
-  find "${BUILD_DIR}/${WASM_CONFIG}" -type f '(' "${names[@]}" ')' -print0 | xargs -0 cp -t "${WASM_OUTPUT_DIR}/" 2>/dev/null || status=$?
+  # The build leaves each loader's pre-rewrite copy as *.mjs.bak; it must never reach a site.
+  find "${BUILD_DIR}/${WASM_CONFIG}" -type f ! -name '*.bak' '(' "${names[@]}" ')' -print0 | xargs -0 cp -t "${WASM_OUTPUT_DIR}/" 2>/dev/null || status=$?
   if [ "${status}" -ne 0 ] && [ "${ORT_WEB_REQUIRED:-0}" = 1 ]; then return "${status}"; fi
   return 0
 }
@@ -185,6 +186,11 @@ if [ "${ORT_WASM_WEBGPU_FLAVORS}" = "true" ]; then
   run_webgpu_flavor_pass "Pass 4: WebGPU (JSPI)" jspi JSPI_COMMON_ARGS --enable_wasm_jspi
 else
   info "Skipping WebGPU wasm flavor passes (ORT_WASM_WEBGPU_FLAVORS=${ORT_WASM_WEBGPU_FLAVORS})"
+fi
+
+# A site ships the web output without the wheel, the only other copy of ORT's license texts.
+if compgen -G "${WASM_OUTPUT_DIR}/*.wasm" >/dev/null; then
+  cp "${ORT_SRC_DIR}/LICENSE" "${ORT_SRC_DIR}/ThirdPartyNotices.txt" "${WASM_OUTPUT_DIR}/"
 fi
 
 info "WASM artifacts in ${WASM_OUTPUT_DIR}"

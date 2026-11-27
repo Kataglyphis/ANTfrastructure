@@ -43398,6 +43398,22 @@
   "why": "A failed fresh-tree reset cannot reach a conditionally invoked compiler with stale outputs."
  },
  {
+  "id": "lib.onnx-wasm-collector-no-bak",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "-type f ! -name '*.bak' '('",
+  "replace": "-type f '('",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "a loader's pre-rewrite *.mjs.bak never reaches the web output"
+ },
+ {
+  "id": "lib.onnx-wasm-ort-license-texts",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "  cp \"${ORT_SRC_DIR}/LICENSE\" \"${ORT_SRC_DIR}/ThirdPartyNotices.txt\" \"${WASM_OUTPUT_DIR}/\"\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "ORT's LICENSE and ThirdPartyNotices ship beside its web output"
+ },
+ {
   "id": "lib.onnx-wasm-proof-gpu-fixture-isolation",
   "target": "linux/scripts/tests/test-gpu-variant.sh",
   "find": "unset ENABLE_NVIDIA ENABLE_AMD ONNX_PACKAGE PYTORCH_EXTRA",
@@ -65822,6 +65838,110 @@
   "replace": "/models/[^/]+/",
   "test": "bash linux/scripts/tests/test-flutter-web-isolated-htaccess.sh",
   "why": "a model path without its SHA-256 can change under the same name"
+ },
+ {
+  "id": "docs-site.ort-web-build-order",
+  "target": "linux/scripts/lib/stage-ort-web.py",
+  "find": "DEFAULT_BUILDS = (\"jspi\", \"asyncify\", \"cpu\")",
+  "replace": "DEFAULT_BUILDS = (\"asyncify\", \"jspi\", \"cpu\")",
+  "test": "bash linux/scripts/tests/test-stage-ort-web.sh",
+  "why": "the app tries JSPI, then Asyncify, then CPU, and the manifest lists them in that order"
+ },
+ {
+  "id": "docs-site.ort-web-jsep-on-request",
+  "target": "linux/scripts/lib/stage-ort-web.py",
+  "find": "builds = [*DEFAULT_BUILDS, *((\"jsep\",) if args.jsep else ())]",
+  "replace": "builds = [*DEFAULT_BUILDS, \"jsep\"]",
+  "test": "bash linux/scripts/tests/test-stage-ort-web.sh",
+  "why": "JSEP is staged only when --jsep asks for it"
+ },
+ {
+  "id": "docs-site.ort-web-missing-build-refused",
+  "target": "linux/scripts/lib/stage-ort-web.py",
+  "find": "for build in builds]",
+  "replace": "for build in builds if (source / f\"{BUILDS[build][1]}.wasm\").exists()]",
+  "test": "bash linux/scripts/tests/test-stage-ort-web.sh",
+  "why": "a missing requested build is refused instead of staging fewer builds"
+ },
+ {
+  "id": "docs-site.ort-web-receipt-hash",
+  "target": "linux/scripts/lib/stage-ort-web.py",
+  "find": "    if entry.get(\"sha256\") != actual:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-stage-ort-web.sh",
+  "why": "bytes that differ from the image's receipt are refused"
+ },
+ {
+  "id": "docs-site.ort-web-receipt-required",
+  "target": "linux/scripts/lib/stage-ort-web.py",
+  "find": "        if build in RECEIPT_REQUIRED:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-stage-ort-web.sh",
+  "why": "a WebGPU build without a receipt flavor is refused, not staged as receipt-less"
+ },
+ {
+  "id": "docs-site.ort-web-runtime-probe",
+  "target": "linux/scripts/lib/stage-ort-web.py",
+  "find": " or ran.get(\"returncode\") != 0:",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-stage-ort-web.sh",
+  "why": "a runtime receipt of a failed factory probe is refused"
+ },
+ {
+  "id": "docs-site.ort-web-wheel-version",
+  "target": "linux/scripts/lib/stage-ort-web.py",
+  "find": "        if wheel != version:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-stage-ort-web.sh",
+  "why": "the wheel's license texts are taken only from the receipt's ORT version"
+ },
+ {
+  "id": "docs-site.ort-web-wheel-record",
+  "target": "linux/scripts/lib/stage-ort-web.py",
+  "find": "            if rows[f\"onnxruntime/{name}\"] != f\"sha256={digest}\":",
+  "replace": "            if False:",
+  "test": "bash linux/scripts/tests/test-stage-ort-web.sh",
+  "why": "a wheel license text that differs from its RECORD is refused"
+ },
+ {
+  "id": "docs-site.ort-web-bundle-exact",
+  "target": "linux/scripts/lib/stage-ort-web.py",
+  "find": "if pattern.fullmatch(p.name)",
+  "replace": "if pattern.match(p.name)",
+  "test": "bash linux/scripts/tests/test-stage-ort-web.sh",
+  "why": "only a build's own ort.*.mjs bundles ship, never a *.bak or a source map beside them"
+ },
+ {
+  "id": "docs-site.ort-web-build-hash-bytes",
+  "target": "linux/scripts/lib/stage-ort-web.py",
+  "find": "\"\".join(f\"{e['sha256']}  {e['file']}\\n\" for e in files)",
+  "replace": "\"\".join(f\"{e['file']}\\n\" for e in files)",
+  "test": "bash linux/scripts/tests/test-stage-ort-web.sh",
+  "why": "new bytes get a new build path, so an immutable cached wasm never meets a new loader"
+ },
+ {
+  "id": "docs-site.ort-web-licenses-per-build",
+  "target": "linux/scripts/lib/stage-ort-web.py",
+  "find": "    roles.update({name: (\"license\", path) for name, path in licenses.items()})\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-stage-ort-web.sh",
+  "why": "every build directory carries ORT's LICENSE and ThirdPartyNotices"
+ },
+ {
+  "id": "docs-site.ort-web-bundles-required",
+  "target": "linux/scripts/lib/stage-ort-web.py",
+  "find": "    if js and not js_files:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-stage-ort-web.sh",
+  "why": "a build without its JS bundle is refused unless --no-js-bundles says so"
+ },
+ {
+  "id": "docs-site.ort-web-existing-refused",
+  "target": "linux/scripts/lib/stage-ort-web.py",
+  "find": "    if target.exists():",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-stage-ort-web.sh",
+  "why": "an existing ort/ is refused rather than mixed with a new staging"
  },
  {
   "id": "live-site.isolated-page",

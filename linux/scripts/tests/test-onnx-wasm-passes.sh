@@ -54,7 +54,7 @@ fi
 [ "$FIXTURE_ARTIFACTS" != none ] || exit 0
 stem=ort-wasm-simd-threaded
 case "$pass" in
-  simd) printf '\0asm\1\0\0\0' > "$BUILD_DIR/$WASM_CONFIG/$stem.wasm" ;;
+  simd) printf '\0asm\1\0\0\0' > "$BUILD_DIR/$WASM_CONFIG/$stem.wasm"; touch "$BUILD_DIR/$WASM_CONFIG/$stem.mjs.bak" ;;
   jsep) printf '\0asm\1\0\0\0' > "$BUILD_DIR/$WASM_CONFIG/$stem.jsep.wasm"; touch "$BUILD_DIR/$WASM_CONFIG/$stem.webnn.mjs" "$BUILD_DIR/$WASM_CONFIG/nested space/$stem.jsep.extra file" ;;
   *) : ;;
 esac
@@ -78,6 +78,7 @@ fi
 exec "$FIXTURE_REAL_RM" "$@"
 STUB
 printf '#!/usr/bin/env bash\nexit 0\n' > "${work}/bin/ccache"
+printf 'MIT' > "${work}/source tree/LICENSE"; printf 'notices' > "${work}/source tree/ThirdPartyNotices.txt"
 chmod +x "${work}/source tree/build.sh" "${work}/bin/cp" "${work}/bin/rm" "${work}/bin/ccache"
 _wasm_case() {
   local failure="$1" flavors="$2" required="$3" copy_failure="$4" artifacts="${5:-present}"
@@ -113,7 +114,8 @@ t_assert_eq "${common}${simd}" "$(cat "${work}/args.simd")"
 t_assert_eq "${common}${simd}<--use_jsep><--use_webnn>" "$(cat "${work}/args.jsep")"
 t_assert_eq "${common}${simd}<--use_webgpu><static_plugin><--use_webnn><--target><onnxruntime_webassembly><--cmake_extra_defines><CMAKE_PROJECT_TOP_LEVEL_INCLUDES=${work}/lib/webgpu-factory-probe/wasm.cmake>${reduced}" "$(cat "${work}/args.asyncify")"
 t_assert_eq "${common/<--disable_wasm_exception_catching>/}${simd}<--use_webgpu><static_plugin><--use_webnn><--enable_wasm_jspi><--target><onnxruntime_webassembly><--cmake_extra_defines><CMAKE_PROJECT_TOP_LEVEL_INCLUDES=${work}/lib/webgpu-factory-probe/wasm.cmake>${reduced}" "$(cat "${work}/args.jspi")"
-t_assert_eq $'ort-wasm-simd-threaded.asyncify.mjs\nort-wasm-simd-threaded.asyncify.wasm\nort-wasm-simd-threaded.jsep.extra file\nort-wasm-simd-threaded.jsep.wasm\nort-wasm-simd-threaded.jspi.mjs\nort-wasm-simd-threaded.jspi.wasm\nort-wasm-simd-threaded.wasm\nort-wasm-simd-threaded.webnn.mjs\nort-webgpu-factory-probe.LICENSE\nort-webgpu-wasm.asyncify.runtime.json\nort-webgpu-wasm.json\nort-webgpu-wasm.jspi.runtime.json' "$(find "${work}/output" -type f -printf '%f\n' | LC_ALL=C sort)"
+t_assert_eq $'LICENSE\nThirdPartyNotices.txt\nort-wasm-simd-threaded.asyncify.mjs\nort-wasm-simd-threaded.asyncify.wasm\nort-wasm-simd-threaded.jsep.extra file\nort-wasm-simd-threaded.jsep.wasm\nort-wasm-simd-threaded.jspi.mjs\nort-wasm-simd-threaded.jspi.wasm\nort-wasm-simd-threaded.wasm\nort-wasm-simd-threaded.webnn.mjs\nort-webgpu-factory-probe.LICENSE\nort-webgpu-wasm.asyncify.runtime.json\nort-webgpu-wasm.json\nort-webgpu-wasm.jspi.runtime.json' "$(find "${work}/output" -type f -printf '%f\n' | LC_ALL=C sort)" \
+  "ORT's license texts ship beside the wasm, and a loader's *.mjs.bak never does"
 t_case "operator CMake includes precede the required factory hook without splitting paths"
 CMAKE_PROJECT_TOP_LEVEL_INCLUDES='/operator path/first.cmake;/second.cmake' _wasm_case '' true 1 0
 t_assert_eq 0 "${status}" "${output}"

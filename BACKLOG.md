@@ -1758,6 +1758,13 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       ([cache scope](docs/build-cache-tiers.md#nvcc--hipcc)).
       Windows is this hub's Windows session. DirectML has no plugin and stays. The evidence, with links to every
       plugin: the 2026-11-08 deep research.
+      **ORT Web for OmniAccelerANT's browser port, 2026-11-27:** `linux/scripts/lib/stage-ort-web.py` stages
+      JSPI, Asyncify and CPU (JSEP on request) under `ort/<version>-<build hash>/` with a manifest; it takes the
+      WebGPU builds' hashes from `ort-webgpu-wasm.json` and refuses a mismatch
+      ([docs-sites.md](docs/docs-sites.md#staging-ort-web-for-an-app)). In source for the next media build: the
+      collector drops the loaders' `*.mjs.bak`, and ORT's `LICENSE` and `ThirdPartyNotices.txt` go beside the
+      wasm. The CPU and JSEP receipts are CON306. The real staging with the `ort.*.mjs` bundles runs in an amd64
+      job; the Pi run had none (`--no-js-bundles`).
       **Original handoff:** `rebuild-sequence-37` passed amd64 media/android, then exited 1 on
       arm64 at 2026-11-09T08:04:35Z; the repaired recovery below supersedes that failed run.
       **Linux proof 2026-11-10 (hub `9f4e6bd2`):** the complete isolated preflight and all
@@ -1821,6 +1828,13 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       detector parity on `TensorrtExecutionProvider` on a card of each supported major; then drop `--use_tensorrt`
       and, if the CUDA plugin is the only CUDA provider by then, `--use_cuda`. Consumers already register plugins
       after CON231 step 2.
+
+- [ ] **CON306 — receipts for the CPU and JSEP web builds** [M, ★★]. `ort-webgpu-wasm.json` proves only the
+      two WebGPU flavors, so `stage-ort-web.py` hashes the CPU and JSEP bytes itself and writes `"receipt": null`.
+      Record each core pass's product, loader and configured flags at build time, in a receipt the cache seal
+      binds, and let the stager take its hashes from it. Not small: `ort-webgpu-wasm-proof.py`'s schema, its
+      complete-flavor rule, the cache identity and their suites change together, and the media stage re-keys.
+      Done when the stager's manifest has a receipt for every build it stages.
 
 - [ ] **CON202 — investigate locked detector failure on WSL gfx1036 with MIGraphX** [L, ★★★].
       On 2026-10-31 the cached Linux x64 `:latest-rocm` image digest

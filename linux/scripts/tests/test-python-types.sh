@@ -42,9 +42,9 @@ _set_sibling_client() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (157 files)"
+  t_assert_contains "$1" "ty quality gate: clean (158 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
-  t_assert_contains "$1" "Linux Python report: clean (157 files)"
+  t_assert_contains "$1" "Linux Python report: clean (158 files)"
   t_assert_contains "$1" "Windows Python report: clean (2 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -180,6 +180,7 @@ printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scr
 printf 'import tvm\nimport numpy\nimport cv2\ndef answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/06-packaging/venv-version-probe.py"
 printf 'def main() -> None:\n    pass\n' > "${ROOT}/linux/scripts/03-media/build/gstreamer/common/gst-python-build-config.py"
 printf 'def cache_lock(cache: object) -> object:\n    return cache\n' > "${ROOT}/linux/scripts/lib/fetch-data-lock.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/lib/stage-ort-web.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/verify_dead_functions.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/image-acceptance.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/image_acceptance_local.py"
@@ -232,9 +233,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-  t_assert_contains "${out}" "Ruff signature annotation gate: clean (164 files)"
-  t_assert_contains "${out}" "Ruff private return gate: clean (164 files)"
-  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (151 files)"
+  t_assert_contains "${out}" "Ruff signature annotation gate: clean (165 files)"
+  t_assert_contains "${out}" "Ruff private return gate: clean (165 files)"
+  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (152 files)"
 
 for sibling in "${sibling_clients[@]}"; do
   _set_answer "${ROOT}/${sibling%%:*}" 42
@@ -537,6 +538,7 @@ parameter_targets=(
   linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py \
   linux/scripts/05-frameworks/flutter/check-web-artefacts.py \
   linux/scripts/lib/fetch-data-lock.py \
+  linux/scripts/lib/stage-ort-web.py \
   linux/scripts/image-acceptance.py \
   linux/scripts/image_acceptance_local.py \
   linux/scripts/preserve-consumer-sources.py \

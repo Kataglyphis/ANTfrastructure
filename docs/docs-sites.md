@@ -342,3 +342,50 @@ checks the headers and `crossOriginIsolated` in Chrome:
 publish, so it never runs on a pull request. It pulls the family image for node and Chrome, takes the published
 site, and runs `docs-site.sh live`. That checks every app, also after a red one, and fails if any is red. It refuses a
 plain-http address, an empty app list and an app path outside the site.
+
+## Staging ORT Web for an app
+
+An app that runs ONNX Runtime in the browser ships the image's own ORT Web builds. Stage them in the
+family image, in an amd64 job, before the link gate:
+
+```bash
+python3 -I linux/scripts/lib/stage-ort-web.py --out <site>/app [--jsep] [--no-js-bundles]
+```
+
+It reads `/usr/local/lib/onnxruntime-web` (`--source` changes it) and writes `ort/` below `--out`:
+
+- One directory per build, `ort/<version>-<build hash>/`, in the order JSPI, Asyncify, CPU. `--jsep`
+  adds JSEP last. The build hash is the first 16 hex digits of a SHA-256 over the build's file hashes, so
+  new bytes get a new path. The isolated-app `.htaccess` marks only such a path immutable.
+- Each directory holds the build's `.wasm`, its loader `.mjs`, its `ort.*.mjs` bundles, ORT's `LICENSE`
+  and `ThirdPartyNotices.txt` and the probe's `ort-webgpu-factory-probe.LICENSE`. A `*.bak`, a source
+  map or another build's bundle never ships.
+- `ort/manifest.json` lists each build with its path, its build hash, every file with role, SHA-256 and
+  size, and its receipt: the configured flags, the CMake cache hash and the factory probe's runtime
+  receipt. It also names the ORT version, ref and revision, the image receipt's hash and where the
+  license texts came from. `ort/manifest.json` itself keeps its name, so the app revalidates it.
+
+| Build | Files | Bundles |
+|---|---|---|
+| JSPI | `ort-wasm-simd-threaded.jspi.{wasm,mjs}` | `ort.jspi*.mjs` |
+| Asyncify | `ort-wasm-simd-threaded.asyncify.{wasm,mjs}` | `ort.webgpu*.mjs` |
+| CPU | `ort-wasm-simd-threaded.{wasm,mjs}` | `ort.wasm*.mjs` |
+| JSEP | `ort-wasm-simd-threaded.jsep.{wasm,mjs}` | `ort.mjs`, `ort.min.mjs`, `ort.bundle.min.mjs` |
+
+**It refuses rather than ships fewer builds or other bytes.** Exit 1, and no `ort/` is written, when:
+
+1. A requested build's `.wasm` or loader is missing, or its bundle is (pass `--no-js-bundles` where no
+   bundle can exist: the image builds them on amd64 only).
+2. A JSPI or Asyncify build has no flavor in `ort-webgpu-wasm.json`, or its bytes, its probe license or its
+   runtime receipt differ from the receipt, or that runtime receipt records a failed probe.
+3. ORT's license texts are neither beside the web output nor in an installed wheel of the receipt's ORT
+   version, or a wheel's text differs from its `RECORD`. `--site-packages` names the wheel's directory;
+   the default is the single `/opt/venv` one.
+4. `<out>/ort` already exists.
+
+The hashes of a build with a receipt come from the receipt, and the stager checks the bytes against them.
+The image writes no receipt for CPU and JSEP, so their manifest entry says `"receipt": null` and every
+hash there is of the bytes (`"hash_from": "bytes"`).
+
+Suite `linux/scripts/tests/test-stage-ort-web.sh` covers the order, the file lists, the hashes, the
+license sources and every refusal over fixture outputs. The `docs-site.ort-web-*` mutations prove it.

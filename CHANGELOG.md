@@ -19,6 +19,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — the ORT Web stager for an app's site (OmniAccelerANT browser port step 1, CON233)
+
+- `linux/scripts/lib/stage-ort-web.py` stages the image's ORT Web builds, JSPI, Asyncify and CPU, and JSEP with
+  `--jsep`, under `ort/<version>-<build hash>/` with ORT's license texts and `ort/manifest.json`. It refuses a
+  missing build, bytes that differ from `ort-webgpu-wasm.json`, and a wheel license text of another ORT
+  version. Owner section: `docs-sites.md` § Staging ORT Web for an app. Suite `test-stage-ort-web.sh` and the
+  `docs-site.ort-web-*` mutations.
+- `40-build-wasm.sh` no longer collects a loader's `*.mjs.bak` and puts ORT's `LICENSE` and
+  `ThirdPartyNotices.txt` beside the wasm. It lands with the next media build, which re-keys the web stage.
+- `BACKLOG.md`: a CON233 note, and CON306 for receipts of the CPU and JSEP builds.
+
 ## 2026-11-27 — the hub AGENTS.md is under its 6000-word target (CON303 phase 3)
 
 - `AGENTS.md` falls from 7,321 to 5,194 words. Six sections keep a short rule and a link; their full
