@@ -322,7 +322,7 @@ relative links; shortened on 2026-10-19. The RULES stayed there; this is the ref
 them.
 
 - **Pre-commit hooks:** run **`make hooks`** once after clone; it points `core.hooksPath` at
-  `linux/host-config/git-hooks`. What they run: [`AGENTS.md`](../AGENTS.md) § Validation.
+  `linux/host-config/git-hooks`. What they run: [the gate list](code-quality-tooling.md#where-the-gates-run).
 - **These gates guard the docs; none is optional.** They exist because this tree lost a licence
   page, a doc index and ~50 cross-references to silent drift on a single day. Run them with
   `PREFLIGHT_ONLY=doc-links,doc-dupes,doc-prose,sbom,version-snapshot,readme-length bash linux/scripts/preflight.sh`.

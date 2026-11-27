@@ -142,6 +142,12 @@ fast or the fixed path; the other value is the build as it was before.
 | `HAILO_NESTED_CACHE` | `carry`: the protobuf build that HailoRT runs inside its own configure uses the compiler cache | `off`: that build runs uncached, as before |
 | `HAILO_PYHAILORT_IPO` | `off`: upstream's forced LTO is patched out, so pyhailort is a real module | `upstream`: upstream's CMake as shipped, which under lld links an empty module, as before |
 
+The Hailo build has two switches; keep both. `HAILO_NESTED_CACHE=carry` fails a `carry` build the
+cache did not reach. Under `HAILO_PYHAILORT_IPO=off` pyhailort is checked on the wheel and on
+`/opt/venv`, where a failed install or a missing wheel is fatal too. `upstream` is the old empty
+module, and warns. Never soften either check under its default. Keep the code in
+`03-media/build/hailo/`, outside `01-core`, so a change there re-keys only the wrapper's Hailo RUN.
+
 **How to pick.** Keep the defaults. For one run on the old path, export the switch
 in front of `build-cross-chain.sh`, `build-runtime-manifest.sh` or
 `build-runtime-artifacts.sh`, for example `HAILO_NESTED_CACHE=off bash

@@ -19,6 +19,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — AGENTS.md's Linux Build Rules and Validation keep only the rules (CON303 phase 2)
+
+- `AGENTS.md` falls from 12,299 to 9,526 words. Each Linux Build Rules and Validation bullet is now the one
+  rule an agent must not break, with a link; the detail it carried moved to the page that owns it.
+- New owner sections: `linux-cross-builds.md` § Rules for the Linux lane, `onnxruntime-single-source.md`
+  § The rules on Linux, `code-quality-tooling.md` § Where the gates run (the four places table) and
+  `cross-build-verification.md` § Runtime verification. Short rule paragraphs join the DeepStream, TensorRT,
+  Intel, SBSA, Hailo, web-lane, wheelhouse, Chrome, uv-seed, free-threaded, ISA-floor, libsanitizer,
+  host-config and PowerShell sections; the companion table gains the runtime smoke's two modules.
+- Pointers that sent readers to `AGENTS.md` for that detail now name the owner sections. One `doc-dupes`
+  allow row is gone, because its overlap is gone. `test-doc-numbers.sh` now wants the hook's fast-slug count
+  on `code-quality-tooling.md` instead of `AGENTS.md`, because the gate table moved there.
+
 ## 2026-11-26 — a release carries FFmpeg's exact sources (CON227 step 3)
 
 - `Export-NativeSourceArchive` copies the archives, build scripts, patches and `ffmpeg-sources.json` the bundle owes

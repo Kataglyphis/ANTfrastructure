@@ -2,7 +2,7 @@
 
 > **See also:** [`docs/linux-build-basics.md`](linux-build-basics.md) for build fundamentals, caching, and troubleshooting. [`AGENTS.md`](../AGENTS.md) for agent guardrails and the full repo map.
 
-> Build-time download speed: the cross-compiler/SDK builds fetch the LLVM source with `git` inside a `RUN` step. On this host that is fast because rootless BuildKit runs with `--oci-worker-net=host` (host networking for `RUN` steps). Registry mirrors do not help that `git fetch`; the host-net setting does. The drop-in is `linux/host-config/buildkit.service-override.conf`, installed by `linux/host-config/apply-host-config.sh` (AGENTS.md § Validation: Linux host config is code); `docs/project-info.md` explains it. For repeated LLVM rebuilds, prefer caching the source on the host over re-fetching.
+> Build-time download speed: the cross-compiler/SDK builds fetch the LLVM source with `git` inside a `RUN` step. On this host that is fast because rootless BuildKit runs with `--oci-worker-net=host` (host networking for `RUN` steps). Registry mirrors do not help that `git fetch`; the host-net setting does. The drop-in is `linux/host-config/buildkit.service-override.conf`, installed by `linux/host-config/apply-host-config.sh` ([`linux-host-setup.md` § Phase B](linux-host-setup.md#phase-b--container-runtime-host-config): Linux host config is code); `docs/project-info.md` explains it. For repeated LLVM rebuilds, prefer caching the source on the host over re-fetching.
 
 <a id="build-logging"></a>
 
@@ -899,6 +899,11 @@ the rootfs export) waits for it, and a red gate fails the arch. A failed wrapper
 the gate before it returns. `[runtime-timing] arch=<a> step=smoke-wait secs=<n>` shows how long the
 wrapper waited for it. `RUNTIME_SMOKE_OVERLAP=0` runs the gate first, as before.
 
+The `wrapper-smoke` target in `Dockerfile.package` is a mandatory gate in `runtime_build_chain()`.
+It builds after the package stage, reusing cached package layers, beside the wrapper build.
+`WRAPPER_SMOKE_GATE=0` skips it. `test-runtime-smoke-gate.sh` pins that it runs,
+`test-runtime-smoke-overlap.sh` that it gates.
+
 Both wrapper entry points delegate to `_runtime_wrapper_then_ship`, which owns the build,
 failure reaping and smoke verdict before invoking either ship callback. The image callback
 queues the push; the rootfs callback exports first and then queues it. Keeping this sequence
@@ -939,6 +944,12 @@ while the wrapper builds.
 | `auto` (default) | The same as `image`, for now. |
 | `image` | The delivery every image was built with before 2026-09-24, unchanged. The torch RUN bind-mounts `/opt/wheels` from the android image (stage `wheels-source`). A pushing run hands BuildKit the digest-pinned ref. Under `ARTIFACT_CONTEXT_ROOT` (a `--no-push` chain) `runtime_wheels_context_dir` extracts the directory from containerd with `nerdctl export \| tar`. When the android tag is published, that ref is the registry's digest: a `--no-push` chain threads no pin, so `runtime_android_pin` falls back to the registry. The extraction then reads the PUBLISHED android (nerdctl pulls it when it is not local), and the venv gets its wheels while the package copies from this run's layout. That predates the knob, and neither mode changes it. |
 | `export` | Before each arch's base and package builds, BuildKit builds only `Dockerfile.torch`'s `wheels-export` stage with `--output type=local`. That copies `/opt/wheels` and the free-threaded twins in `/opt/wheels-free-threaded` out of the same image into `<RUNTIME_CONTEXT_ROOT>/runtime-flow.wheels.*/<arch>`, and a sha256 manifest of both is written beside it. The wrapper build re-checks the manifest, then mounts the directory (`WHEELS_IMAGE=runtime_wheels`, `--build-context runtime_wheels=<dir>`). The directory is removed after the wrapper. |
+
+The wrapper's `/opt/wheels` has two deliveries; keep both. Never add a fallback between them, and
+keep their logic in `linux/scripts/lib-runtime-wheels.sh`, outside every image closure, so a change
+there re-keys nothing. `export` refuses a `--no-push` chain whose android tag is published (every
+one on the amd64 cross host). Never "fix" that by re-exporting the layout, since changing the ref
+it reads is the owner's call.
 
 **How to pick one.**
 
@@ -1399,6 +1410,75 @@ images, so it can never be a preflight gate (preflight's `artifact-parity`
 slug is the UNRELATED `verify-artifact-copy-parity.sh`). Use it when a cross
 image misbehaves where the native one doesn't — it localizes the divergence
 in minutes.
+
+## Rules for the Linux lane
+
+`AGENTS.md` § Linux Build Rules states each rule in one line. This section gives the detail
+for the rules that have no page of their own.
+
+Build tools and lanes:
+
+- Use `nerdctl` first on this host. `buildctl` and `ctr` commonly fail with permission errors.
+- Keep both the QEMU/binfmt multi-platform lane and the cross-build lane working.
+- `build-cross-compiler.sh` builds one `linux/amd64` compiler image with cross toolchains for all
+  arches, not a multi-arch compiler manifest.
+
+Compilers:
+
+- Never remove LLVM/Clang features to make foreign-arch builds pass.
+- Foreign-arch runtime images must keep the source-built clang at `LLVM_RELEASE`, not the Ubuntu
+  distro clang.
+- Source-built GCC (`GCC_VERSION`) at `/opt/gcc-${GCC_VERSION}` is the default `cc`/`c++` on all
+  arches. On `arm64`/`riscv64` it is cross-compiled (Canadian cross) and swapped in at the Android
+  stage via `Dockerfile.android`.
+
+Supply chain:
+
+- Every network fetch is verified. `download_verified_file` is the default, `download_file` needs
+  a reason, and the sha256 sits in `versions.env`.
+- Python build executors are anything that runs code at build time or rewrites shipped binaries.
+  They are pinned through the `PY_*_VERSION` family and bumped together, deliberately, with a real
+  build. Never let an install site float back to `-U pkg`.
+- Never `curl | sh`. Clone at a tag with `--depth 1 --branch`, and hard-fail on a missing tag
+  rather than fall back to a branch.
+- Pinned downloads ask the Garage asset mirror first. The pinned sha256 stays the only gate, and
+  every Linux RUN that reads a hub script mounts the `asset_mirror` secret
+  ([§ The asset mirror](#the-asset-mirror)).
+
+The package stage:
+
+- Keep the optional runtime payloads and LLVM normalization in `Dockerfile.package`. Never drop
+  `/usr/local/lib/onnxruntime-*`, LiteRT/TensorFlow headers, pkg-config files, or the
+  `/usr/local/llvm-target` handling.
+- The runtime VENV-SET probe may skip only when `packaging` or the app distribution is absent. A
+  crashed probe or malformed installed requirement emits `VENV ERROR` and fails the gate.
+
+Distro packages and include paths:
+
+- A miss reported by `install_target_packages` is not automatically an outage. It prints the same
+  line whether or not the caller guarded it, so read the call site before escalating. Guarded is
+  information; unguarded means the stage is genuinely short a library.
+- Our source-built prefixes must win the include path. A later stage that installs a distro `-dev`
+  package puts its headers on the same search path. A distro FFmpeg once displaced ours and killed
+  a videoio build with an undeclared symbol.
+- Put `-I${PREFIX}/include` ahead of the multiarch `-idirafter`/`-isystem` entries rather than
+  trust the generator's ordering.
+- The same class bites package names across an Ubuntu release. It failed on one arch while passing
+  on another in the same run: a green arch is no evidence for the others.
+
+riscv64:
+
+- riscv64 cross probes must read only target pkg-config metadata. Keep the native
+  `PKG_CONFIG_PATH` out of `riscv64_cross_env`, and let the GStreamer smoke consume its exported
+  target settings. A host `.pc` can turn into an invalid sysroot-prefixed x86_64 link path
+  ([riscv64-cross-test-lanes.md](riscv64-cross-test-lanes.md)).
+- Feature parity has exactly two documented exemptions, both riscv64: `cmake` (Kitware publishes
+  no riscv64 archive) and `iree_base_compiler` (the IREE compiler cannot be cross-built).
+- `_parity_exempt` in `06-packaging/smoke-runtime-image.sh` is the source of truth. Record a new
+  exception there, never in prose; the gate fails an exemption that no longer applies.
+- The ORT flavour split and arm64-only QNN are deliberate, not gaps.
+- riscv64 self-builds `onnxruntime-genai` (GEN1); never re-add an arch guard.
+  `GENAI_ALLOW_RISCV64=false` backs it out ([gen1-riscv64-genai.md](gen1-riscv64-genai.md)).
 
 ## Five Critical Fixes To Maintain
 

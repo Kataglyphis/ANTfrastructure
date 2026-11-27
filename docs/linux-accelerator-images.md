@@ -166,6 +166,11 @@ fails a `libonnxruntime_providers_tensorrt.so` in the GPU prefix, and the runtim
 anywhere in the image. GenAI stays a plain CUDA build: its `--use_trt_rtx` is TensorRT-RTX, whose
 wheel requires `onnxruntime-trt-rtx`, which nothing here builds.
 
+Every published image ships only TensorRT's runtime `.so`/`.dll` files, DeepStream's 10.x and the
+Windows lane's included. Headers, dev links, `trtexec` and bindings serve build stages, and the
+gates fail an image that carries one. Never install the `tensorrt*` metapackages (the 1.9 GB
+Windows builder resource), and never ask GenAI for `--use_trt_rtx` (TensorRT-RTX, not TensorRT).
+
 **Size**: +2.81 GB in the runtime image (14 files; 1.93 GB of debs), +2.82 GB in the `gpu` stage,
 which media and android inherit, plus the plugin module (6.4 MB). DeepStream's TensorRT 10 (2.6 GB)
 stays beside it.
@@ -641,6 +646,14 @@ Ubuntu 24.04 GStreamer 1.24 that NVIDIA targets.
 CROSS_VARIANT=nvidia bash linux/scripts/build-cross-chain.sh \
   --target-arches amd64 --parallel-archs --log-dir ./logs/build-logs/nvidia
 ```
+
+Rules for DeepStream:
+
+- The package stage ships its runtime `.so` files without the static archives.
+- Never put `/opt/nvidia/deepstream/deepstream-*/lib` on `ld.so.conf`: its `libnvv4l2.so` carries
+  the SONAME `libv4l2.so.0`.
+- Its TensorRT is a private 10.x beside the variant's 11.x, and no process may hold TensorRT 11 in
+  its global symbol scope while it runs `nvinfer`.
 
 ### DeepStream on arm64 (SBSA)
 
@@ -2146,6 +2159,10 @@ space in the package stage (owner decision 2026-11-12, CON258 and CON259): the V
 Quick Sync codecs. It is not a variant: an Intel GPU sits beside other
 vendors' cards, and a tag names one variant only. Intel's Vulkan driver already ships with
 `mesa-vulkan-drivers`.
+
+Intel's GPU user space is the free build, in every amd64 image. The package stage installs
+`intel-media-va-driver`, `libmfx-gen1.2` and `intel-opencl-icd`, never
+`intel-media-va-driver-non-free`, and never a variant for them.
 
 - **Not proven on hardware.** No image carries it yet and nothing has run on an Intel GPU. The
   smoke's `check_intel_gpu_userspace` grades presence only: the three driver files and FFmpeg's

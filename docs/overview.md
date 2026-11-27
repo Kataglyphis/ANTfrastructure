@@ -83,7 +83,7 @@ Three build lanes ([Linux Image Chain](#linux-image-chain)).
 | Windows lane | `windows/amd64` | `windows/amd64` (native Windows Containers) |
 | Windows cross lane | `windows/amd64` | `arm64` artifact bundle (clang-cl `aarch64-pc-windows-msvc`), shipped as `:winarm64`, a `windows/amd64` image; **never** a `windows/arm64` one |
 
-riscv64's feature-parity exemptions: [`AGENTS.md` § Linux Build Rules](../AGENTS.md#linux-build-rules).
+riscv64's feature-parity exemptions: [`linux-cross-builds.md` § Rules for the Linux lane](linux-cross-builds.md#rules-for-the-linux-lane).
 
 ## Expected outputs, as AGENTS.md listed them
 

@@ -421,8 +421,8 @@ git config core.longpaths true                          # deep vendored trees; h
   ([`windows-build-invariants.md`](windows-build-invariants.md#preserve-committed-line-endings-when-editing-a-copyd-psm1ps1)).
 
 Verify: `git config core.hooksPath` prints `linux/host-config/git-hooks`;
-`git status` is clean. The hook set and what each hook runs: AGENTS.md
-§ Validation.
+`git status` is clean. The hook set and what each hook runs:
+[the gate list](code-quality-tooling.md#where-the-gates-run).
 
 ### B2. PowerShell 7 (pwsh)
 
@@ -540,7 +540,7 @@ processes (default 4), since PSScriptAnalyzer's caches break across runspaces of
 Verify: all three exit 0. Preflight's `KNOWN_SLUGS` array is the single
 source of the no-build gate list (don't enumerate it in docs — enumerations
 drift; `tests/test-preflight-slugs.sh` keeps the array honest) — see
-AGENTS.md § Validation.
+[the gate list](code-quality-tooling.md#where-the-gates-run).
 
 ### B7. ripgrep, s5cmd and the Linux suites in WSL
 

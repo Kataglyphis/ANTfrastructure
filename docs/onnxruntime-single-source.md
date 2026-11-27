@@ -15,7 +15,56 @@ This page owns the mechanism: which consumers exist, how each one reaches the
 chain ORT, which guard proves it, and what each guard cannot see. The rule
 itself, as an agent must keep it, is
 [`windows-build-invariants.md` § ONNX Runtime has exactly one source](windows-build-invariants.md#onnx-runtime-has-exactly-one-source-the-chain-owner-rule-2026-09-23)
-for Windows and `AGENTS.md` § Linux Build Rules for Linux.
+for Windows and [§ The rules on Linux](#the-rules-on-linux) for Linux.
+
+## The rules on Linux
+
+The chain build is the only source of ONNX Runtime. On Linux that is
+`/usr/local/lib/onnxruntime-cpu` on every variant, plus `/usr/local/lib/onnxruntime-gpu` on the
+GPU variants, and its wheel.
+
+- OpenCV, FFmpeg, gst-plugins-bad's `onnx` plugin and GenAI fail their build unless they resolve
+  the chain. Each ends in `ort_assert_chain_only` (`03-media/ort-provenance.sh`, mounted per file,
+  never under `core/` or `runtime/`).
+- `/opt/opencv5/lib/libonnxruntime*` are links into the chain, never copies. The chain's conf is
+  `000-onnxruntime.conf`.
+- No apt package may provide ORT, and the soname deny is in code: never map a `libonnxruntime*`
+  soname to a distro package.
+- The app venv's ORT is the chain wheel byte for byte (`ort-venv-census.py`). A missing chain
+  wheel fails the torch stage, with no PyPI fallback.
+- The census's ORT fingerprint is a whole NUL-terminated `__FILE__` source path, never the bare
+  `onnxruntime/core/` directory. Consumers name that directory as data (OxidANT's loader, FFmpeg's
+  configure line) and must stay importers.
+- A file that defines `OrtGetApiBase` (ELF dynamic symbol, PE export) is ORT under any name.
+- Every EP that has a plugin is the plugin, on both lanes. The nvidia variant's CUDA EP is the ORT
+  GPU build with `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`, under the same module name. The in-tree
+  module exports the two plugin entry points too, so only its `GetProvider` bridge tells them
+  apart. `assert_onnx_cuda_plugin_ep`, the GPU verify stage and `gpu_cuda_plugin_verdict` read it.
+- The nvidia variant's TensorRT EP is NVIDIA's plugin (`37-build-tensorrt-plugin-ep.sh`,
+  `/usr/local/lib/onnxruntime-ep-tensorrt`, `ORT_TENSORRT_EP_ROOT`, G2 + census contract).
+- The rocm variant's MIGraphX EP is AMD's plugin over the CPU prefix. The rocm variant has no ORT
+  GPU build.
+- Never pass `--use_tensorrt` or `--use_migraphx` again. Never ship
+  `libonnxruntime_providers_tensorrt.so` or `libonnxruntime_providers_migraphx.so`: the media
+  verify stage fails the TensorRT one, the runtime smoke both.
+- Keep the plugin EP check free of `grep -q`. It closes the pipe on a module with thousands of
+  symbols and `pipefail` fails `readelf`
+  ([the plugin pages](linux-accelerator-images.md#the-cuda-plugin-ep)).
+- Qualcomm's plugin QNN EP (`36-build-qnn-plugin-ep.sh`, arm64) is the chain's build of
+  Qualcomm's ORT fork. It is built from the pinned tag tarball with `--ort_home` over the chain
+  prefix, and it is a census root, never a downloaded wheel or archive. The ORT CPU build carries
+  no in-tree QNN EP ([qnn-linux.md](qnn-linux.md#the-plugin-ep)).
+- A package that keeps an ORT module unpatched (AMD's plugin, byte for byte the image's) states
+  its launcher's library path to the bundle census:
+  `check-ort-provenance.sh --library-path DIR[:DIR...] <bundle>`, entries relative to the bundle.
+  Never patch a RUNPATH into the module, exempt the finding or hand the probe a host path
+  ([contract](consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime)).
+- Linux ORT, GenAI and onnxruntime-extensions sources come through `source-fetch.sh` and its
+  `source-pins.txt`. Every checkout must match its pinned commit, a moved upstream tag never falls
+  back to a fork, and a version bump needs a new pin
+  ([source pins](#source-pins-and-fork-fallback)).
+- The image census (SHIPPED-TRUTH E) and `verify-critical-fixes.sh` fix11 enforce the single
+  source.
 
 ## What "the chain ORT" is
 

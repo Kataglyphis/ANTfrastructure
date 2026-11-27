@@ -12,11 +12,11 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
 | Debug an error message | [`docs/failure-modes.md`](docs/failure-modes.md) — symptom → cause → fix |
 | Launch or debug a Windows chain | [`docs/windows-build-lanes.md`](docs/windows-build-lanes.md) — BuildKit, nerdctl, classic (historical) |
 | Wire a new project to this repo | [`docs/adopting-in-a-new-project.md`](docs/adopting-in-a-new-project.md) |
-| **Add or bump a dependency** | [`docs/third-party-licenses.md`](docs/third-party-licenses.md) § Maintaining this list — an `spdx` id is mandatory, copyleft needs a source pointer, and the build gates both. The bump steps: [`docs/dependency-updates.md`](docs/dependency-updates.md#version-bumping-as-agentsmd-carried-it) |
+| Add or bump a dependency | [`docs/third-party-licenses.md`](docs/third-party-licenses.md) § Maintaining this list — an `spdx` id is mandatory, copyleft needs a source pointer, and the build gates both. The bump steps: [`docs/dependency-updates.md`](docs/dependency-updates.md#version-bumping-as-agentsmd-carried-it) |
 
 ## Contents
 
-**Rules — never regress these.** [Project priorities](#project-priorities-owner-directive--optimize-for-all-of-them-always) ·
+Rules — never regress these. [Project priorities](#project-priorities-owner-directive--optimize-for-all-of-them-always) ·
 [Shell safety](#shell-safety-conventions-five-bug-classes-all-found-live-2026-08-08) ·
 [No ghost processes](#background-jobs-and-test-processes-no-ghosts) ·
 [Caching discipline](#caching-discipline-do-not-regress) ·
@@ -774,191 +774,63 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
 
 ## Linux Build Rules
 
-- Use `nerdctl` first on this host; `buildctl`/`ctr` commonly fail with permission errors.
-- Keep both the QEMU/binfmt multi-platform lane and the cross-build lane working.
-- `build-cross-compiler.sh` builds one `linux/amd64` compiler image with cross toolchains for all
-  arches, not a multi-arch compiler manifest.
-- Never remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images
-  must keep the source-built clang at `LLVM_RELEASE` (currently 23.1.5), not the Ubuntu distro
-  clang. Source-built GCC (`GCC_VERSION`, currently 16.2.0) at `/opt/gcc-${GCC_VERSION}` is the
-  default `cc`/`c++` on all arches; on `arm64`/`riscv64` it is cross-compiled (Canadian cross) and
-  swapped in at the Android stage via `Dockerfile.android`.
-- **The Canadian native GCC builds libsanitizer (host == target); never trim `build-gcc.sh`'s
-  target list back to libgcc/libstdc++/libatomic.** The swap and the wrapper smoke fail an image
-  without it:
-  [`cross-build-verification.md`](docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer).
-- Supply-chain discipline. Every network fetch is verified: `download_verified_file` is the
-  default, `download_file` needs a reason, and the sha256 sits in `versions.env`. Python BUILD
-  EXECUTORS (anything that runs code at build time or rewrites shipped binaries) are pinned
-  through the `PY_*_VERSION` family and bumped together, deliberately, with a real build. Never
-  let an install site float back to `-U pkg`. Never `curl | sh`: clone at a tag with
-  `--depth 1 --branch` and hard-fail on a missing tag rather than fall back to a branch.
-  Pinned downloads ask the Garage asset mirror first; the pinned sha256 stays the only gate, and
-  every Linux RUN that reads a hub script mounts the `asset_mirror` secret
-  ([`linux-cross-builds.md`](docs/linux-cross-builds.md#the-asset-mirror)).
-- Keep the optional runtime payloads and LLVM normalization in `Dockerfile.package`: never drop
-  `/usr/local/lib/onnxruntime-*`, LiteRT/TensorFlow headers, pkg-config files, or the
-  `/usr/local/llvm-target` handling.
-- A miss reported by `install_target_packages` is not automatically an outage. It prints the
-  same line whether or not the caller guarded it, so read the CALL SITE before escalating. Guarded
-  is information, unguarded means the stage is genuinely short a library.
-- Our source-built prefixes must WIN the include path. A later stage that installs a distro
-  `-dev` package puts its headers on the same search path. A distro FFmpeg once displaced ours and
-  killed a videoio build with an undeclared symbol. Put `-I${PREFIX}/include` ahead of the
-  multiarch `-idirafter`/`-isystem` entries rather than trust the generator's ordering. The same
-  class bites package NAMES across an Ubuntu release, and failed on one arch while passing on
-  another in the same run. A green arch is no evidence for the others.
-- The arm64 GPU lane is SBSA CUDA: one image for Arm servers and Jetson. Build with the
-  image's GCC 16 (`NVCC_PREPEND_FLAGS=-allow-unsupported-compiler`), never a downgraded
-  `CUDAHOSTCXX`, and keep `87` (Orin) in `CUDA_ARCHITECTURES` (ascending for readability only;
-  nothing depends on the order since 2026-09-23). The amd64 host cross-builds it; a Jetson build
-  stays `--no-push`:
-  [`linux-accelerator-images.md` § NVIDIA on arm64 (SBSA)](docs/linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson).
-- Never give one nerdctl build two `oci-layout://` contexts. nerdctl maps them onto one store
-  id and one becomes unresolvable:
-  [`failure-modes.md`](docs/failure-modes.md#a-no-push-wrapper-build-cannot-find-its-own-android-image).
-- riscv64 self-builds `onnxruntime-genai` (GEN1); never re-add an arch guard.
-  `GENAI_ALLOW_RISCV64=false` backs it out. What is proven, and the one caveat that is not (real
-  silicon): [`gen1-riscv64-genai.md`](docs/gen1-riscv64-genai.md).
-- riscv64 cross probes must read only target pkg-config metadata. Keep the native
-  `PKG_CONFIG_PATH` out of `riscv64_cross_env` and let the GStreamer smoke consume its exported
-  target settings; a host `.pc` can turn into an invalid sysroot-prefixed x86_64 link path.
-- Feature parity has exactly TWO documented exemptions, both riscv64: `cmake` (Kitware
-  publishes no riscv64 archive) and `iree_base_compiler` (the IREE compiler cannot be
-  cross-built). `_parity_exempt` in `06-packaging/smoke-runtime-image.sh` is the source of truth:
-  record a new exception THERE, never in prose; the gate fails an exemption that no longer
-  applies. The ORT flavour split and arm64-only QNN are deliberate, not gaps.
-- The runtime VENV-SET probe may skip only when `packaging` or the app distribution is absent;
-  a crashed probe or malformed installed requirement emits `VENV ERROR` and fails the gate.
-- riscv64 builds WITH the vector extension, set through `--with-arch` in
-  `02-toolchain/build-gcc.sh`, never as a `CFLAGS` export: `-march` alone reaches neither OpenCV
-  nor ORT nor Rust, each of which has its own switch. Do not "restore compatibility" by reverting
-  it: an rv64gc-only board cannot run this image anyway, and changing it invalidates the warm
-  riscv64 compiler cache. The ISA string, and why the profile NAME does not work:
-  [`riscv64-rva23-baseline.md`](docs/riscv64-rva23-baseline.md).
-- amd64 builds for `x86-64-v3` (owner decision), set through `--with-arch`
-  with `--with-tune=generic` in `02-toolchain/build-gcc.sh`, never as a `CFLAGS` export, `native`
-  or a vendor tuning. OpenCV takes `CPU_BASELINE=AVX2`; AVX-512 is never baseline. Do not revert it
-  to "restore compatibility": every package built in the image inherits the floor, and changing it
-  empties the compile caches of all three arches. What is not covered (clang, Rust, Windows):
-  [`amd64-x86-64-v3-baseline.md`](docs/amd64-x86-64-v3-baseline.md).
-- Intel's GPU user space is the free build, in every amd64 image (owner decision):
-  `intel-media-va-driver`, `libmfx-gen1.2` and `intel-opencl-icd` in the package stage, never
-  `intel-media-va-driver-non-free` and never a variant for them. A copied `smoke-runtime-image.sh`
-  carries `check-arch-isa.sh` and `check-intel-gpu-userspace.sh`; a copied `build-opencv.sh` carries
-  `opencv-cpu-baseline.sh`: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md#intel-gpu-user-space).
-- riscv64's web-lane tools have two build paths; keep both (owner decision). By
-  default android cross-builds `wasm-pack` and `flutter_rust_bridge_codegen`, and the package
-  stage installs them after a fail-loud gate; `WEB_LANE_TOOLS_SOURCE=native` (plus
-  `WEB_LANE_TOOLS_CACHE=refresh` for a fresh compile) is the gated in-stage native build, and
-  `legacy` is the pre-2026-09-23 build verbatim. Never remove either, never let `legacy` drift
-  from the old command, and never soften the gate on a binary that claims to be good:
-  [`consumer-image-contract.md`](docs/consumer-image-contract.md#building-the-web-lane-tools-from-source).
-- The wrapper's `/opt/wheels` has two deliveries; keep both (owner decision).
-  `RUNTIME_WHEELS_SOURCE=image` (what `auto`, the default, means today) mounts the android image
-  as every published image did; `export` stages that image's wheelhouse, sealed, before each
-  package build. Never add a fallback between them, and keep their logic in
-  `linux/scripts/lib-runtime-wheels.sh`, outside every image closure, so a change there re-keys
-  nothing. `export` refuses a `--no-push` chain whose android tag is published (every one on the
-  amd64 cross host). Never "fix" that by re-exporting the layout, since changing the ref it reads
-  is the owner's call:
-  [`linux-cross-builds.md`](docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries).
-- The Hailo build has two switches; keep both. `HAILO_NESTED_CACHE=carry`
-  (default) carries the compiler cache into the protobuf build HailoRT runs under `env -i`, and
-  fails a `carry` build the cache did not reach; `off` is the old uncached build.
-  `HAILO_PYHAILORT_IPO=off` (default) patches out upstream's forced LTO, so pyhailort is a real
-  module, checked on the wheel and on `/opt/venv`, where a failed install or a missing wheel is
-  fatal too; `upstream` is the old empty module, and warns. Never soften either check under its
-  default, and keep the code in `03-media/build/hailo/`, outside `01-core`, so a change there
-  re-keys only the wrapper's Hailo RUN:
-  [`hailo-support.md`](docs/hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches).
-- DeepStream is nvidia-variant only, and on in every amd64 nvidia build (`ENABLE_DEEPSTREAM`,
-  CON42; owner 2026-10-07, at full size). `ENABLE_DEEPSTREAM=false` opts one run out, an arm64
-  nvidia build gets no default (no route, phase 7), and a default or rocm chain refuses it. The
-  owner allowed publishing it; the package stage ships its runtime `.so` files
-  without the static archives. Never put `/opt/nvidia/deepstream/deepstream-*/lib` on
-  `ld.so.conf`: its `libnvv4l2.so` carries the SONAME `libv4l2.so.0`. Its TensorRT is a private
-  10.x beside the variant's 11.x, and no process may hold TensorRT 11 in its global symbol scope
-  while it runs `nvinfer`:
-  [`linux-accelerator-images.md` § DeepStream](docs/linux-accelerator-images.md#deepstream-nvidia-variant).
-- TensorRT 11 is on in every amd64 nvidia build (`ENABLE_TENSORRT`, CON31; owner 2026-10-20),
-  at exactly `TENSORRT_VERSION`-1+cuda`TENSORRT_LINUX_CUDA` from NVIDIA's apt repo. Every published
-  image ships only TensorRT's runtime `.so`/`.dll` files, DeepStream's 10.x and the Windows lane's
-  included (owner decision). Headers, dev links, `trtexec` and bindings serve build stages, and the
-  gates fail an image that carries one. Never install the
-  `tensorrt*` metapackages (the 1.9 GB Windows builder resource) and never ask GenAI for
-  `--use_trt_rtx` (TensorRT-RTX, not TensorRT):
-  [`linux-accelerator-images.md` § TensorRT 11](docs/linux-accelerator-images.md#tensorrt-11).
-- The image's Chrome starts through `/usr/local/bin/chrome`; its emulator is amd64-only. `CHROME_EXECUTABLE` names that wrapper, which adds `--no-sandbox --no-zygote`: never
-  point it at the binary, and never ship a setuid sandbox helper. Keep the emulator's system image
-  at an API whose ARM translator runs arm64 apps (35; 30 SIGILLs):
-  [`consumer-image-contract.md`](docs/consumer-image-contract.md#browser-tests-run-in-chrome-for-testing).
-- Nothing under `/opt` or `/usr/local` may need `libunwind.so.8` (owner decision 2026-10-01:
-  every variant). GStreamer core and libcamera build with `libunwind=disabled`: a C host that
-  loads either first turns a C++ exception through `std::call_once` into a segfault.
-  `libunwind-dev` stays installed, so the flags are the guard: never set them back to `auto` for
-  backtraces. The runtime smoke fails a shipped file that needs it:
-  [`failure-modes.md`](docs/failure-modes.md#an-exception-through-stdcall_once-segfaults-in-libunwind).
-- ONNX Runtime has exactly one source on both lanes: the chain build (owner rule,
-  no exceptions). On Linux that is `/usr/local/lib/onnxruntime-cpu` on every variant, plus
-  `/usr/local/lib/onnxruntime-gpu` on the GPU variants, and its wheel:
-  - OpenCV, FFmpeg, gst-plugins-bad's `onnx` plugin and GenAI fail their build unless they
-    resolve the chain, and each ends in `ort_assert_chain_only` (`03-media/ort-provenance.sh`,
-    mounted per file, never under `core/` or `runtime/`).
-  - `/opt/opencv5/lib/libonnxruntime*` are links into the chain, never copies. The chain's conf is
-    `000-onnxruntime.conf`. No apt package may provide ORT, and the soname deny is in code: never
-    map a `libonnxruntime*` soname to a distro package.
-  - The app venv's ORT is the chain wheel byte for byte (`ort-venv-census.py`); a missing chain
-    wheel fails the torch stage, with no PyPI fallback.
-  - The census's ORT fingerprint is a whole NUL-terminated `__FILE__` source path, never the bare
-    `onnxruntime/core/` directory. Consumers name that directory as data (OxidANT's loader,
-    FFmpeg's configure line) and must stay importers. A file that DEFINES `OrtGetApiBase` (ELF
-    dynamic symbol, PE export) is ORT under any name.
-  - Every EP that has a plugin is the plugin (owner decision, both lanes). On Linux the nvidia
-    variant's CUDA EP is the ORT GPU build with `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON` (same module name, and the
-    in-tree module exports the two plugin entry points too: only its `GetProvider` bridge tells them apart, read by
-    `assert_onnx_cuda_plugin_ep`, the GPU verify stage and `gpu_cuda_plugin_verdict`), its
-    TensorRT EP is NVIDIA's plugin (`37-build-tensorrt-plugin-ep.sh`, `/usr/local/lib/onnxruntime-ep-tensorrt`,
-    `ORT_TENSORRT_EP_ROOT`, G2 + census contract), and the rocm variant's MIGraphX EP is AMD's plugin over the CPU
-    prefix. The rocm variant has no ORT GPU build. Never pass `--use_tensorrt` or `--use_migraphx` again, never
-    ship `libonnxruntime_providers_tensorrt.so` or `libonnxruntime_providers_migraphx.so` (the media verify stage
-    fails the TensorRT one, the runtime smoke both), and keep the plugin EP check free of `grep -q`. It closes the pipe on a module
-    with thousands of symbols and `pipefail` fails `readelf`
-    ([the plugin pages](docs/linux-accelerator-images.md#the-cuda-plugin-ep)).
-  - Qualcomm's plugin QNN EP (`36-build-qnn-plugin-ep.sh`, arm64) is the chain's build of Qualcomm's ORT fork, from
-    the pinned tag tarball with `--ort_home` over the chain prefix, and a census ROOT, never a downloaded wheel or
-    archive. The ORT CPU build carries no in-tree QNN EP ([qnn-linux.md](docs/qnn-linux.md#the-plugin-ep)).
-  - A package that keeps an ORT module unpatched (AMD's plugin, byte for byte the image's) states its launcher's
-    library path to the bundle census: `check-ort-provenance.sh --library-path DIR[:DIR...] <bundle>`, entries
-    relative to the bundle. Never patch a RUNPATH into the module, exempt the finding or hand the probe a host path
-    ([contract](docs/consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime)).
-  - Linux ORT, GenAI and onnxruntime-extensions sources come through `source-fetch.sh` and its
-    `source-pins.txt`. Every checkout must match its pinned commit, a moved upstream tag never falls
-    back to a fork, and a version bump needs a new pin
-    ([source pins](docs/onnxruntime-single-source.md#source-pins-and-fork-fallback)).
-  - The image census (SHIPPED-TRUTH E) and `verify-critical-fixes.sh` fix11 enforce it. Every
-    consumer, guard and gap: [`onnxruntime-single-source.md`](docs/onnxruntime-single-source.md);
-    the Windows rule:
-    [`windows-build-invariants.md`](docs/windows-build-invariants.md#onnx-runtime-has-exactly-one-source-the-chain-owner-rule-2026-09-23).
+Each rule links the page that explains it.
 
-- riscv64's Python lane gets a uv cache seed, not a wheel store. `/opt/uv-cache-seed`
-  (`PYTHON_UV_CACHE_SEED`) is a uv cache of the wheels the app lock's `test` extra builds from
-  source, on `X.Y` and on `X.Yt`, which `ci_tests.sh` copies into its own cache. A locked `uv sync` takes a built sdist
-  from the cache only, so never turn it into a `--find-links` store, and never prove it with
-  `--no-build`, which refuses every sdist, cached or not. The torch stage also installs shellcheck
-  at its `tool-pins.env` pin on every arch, and hadolint on amd64 and arm64 only; riscv64 ships
-  no hadolint (owner decision):
-  [`consumer-image-contract.md` § The riscv64 uv cache seed](docs/consumer-image-contract.md#the-riscv64-uv-cache-seed).
-
-- A native media wheel whose own code declares free-threading ships a proved `cp3XYt` twin, in
-  `/opt/wheels-free-threaded` and never in `/opt/wheels` (owner request).
-  `03-media/free-threaded-twins.txt` decides, row by row against a `versions.env` pin, so a bump
-  re-reads the evidence. It is the one table both lanes read (`ft_wheel_table`, Windows'
-  `Get-FreeThreadedTwinTable`), so never copy a row into either reader. A wheel the table does not
-  classify fails a native media build. `verify-wheels.sh` is ABI-exact on both stores. Never
-  install a twin into a GIL venv, and keep the library and its table mounted per file, outside
-  `01-core` and `runtime/`:
-  [`consumer-image-contract.md` § The free-threaded wheels](docs/consumer-image-contract.md#the-free-threaded-wheels).
+- Build with `nerdctl`, and keep both the QEMU multi-platform lane and the cross-build lane
+  working ([§ Rules for the Linux lane](docs/linux-cross-builds.md#rules-for-the-linux-lane)).
+  The other rules without a link of their own are explained there too.
+- Never remove LLVM or Clang features to make a foreign-arch build pass, and never swap the
+  source-built clang or GCC for the distro copy.
+- Never trim `build-gcc.sh`'s target list back to libgcc, libstdc++ and libatomic: the native GCC
+  must ship libsanitizer
+  ([§ The native GCC ships libsanitizer](docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer)).
+- Verify every network fetch against a sha256 in `versions.env`, pin every Python build executor,
+  and never `curl | sh`.
+- Never drop the optional runtime payloads or the LLVM normalization from `Dockerfile.package`.
+- Read the call site before you escalate a miss from `install_target_packages`: a guarded miss is
+  information, an unguarded one a missing library.
+- Our source-built prefixes must win the include path: put `-I${PREFIX}/include` ahead of the
+  multiarch entries, and do not take a green arch as proof for the others.
+- The arm64 GPU lane is SBSA CUDA, built with the image's GCC and with `87` in
+  `CUDA_ARCHITECTURES`
+  ([§ NVIDIA on arm64 (SBSA)](docs/linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson)).
+- Never give one nerdctl build two `oci-layout://` contexts
+  ([failure-modes.md](docs/failure-modes.md#a-no-push-wrapper-build-cannot-find-its-own-android-image)).
+- riscv64 builds `onnxruntime-genai` itself; never re-add an arch guard.
+- riscv64 cross probes read only target pkg-config metadata; keep the native `PKG_CONFIG_PATH`
+  out of `riscv64_cross_env`.
+- Record a feature-parity exemption only in `_parity_exempt` in
+  `06-packaging/smoke-runtime-image.sh`, never in prose.
+- The runtime VENV-SET probe skips only when `packaging` or the app distribution is absent.
+- Never revert the ISA floors: riscv64 builds with the vector extension and amd64 for
+  `x86-64-v3`, both through `--with-arch` in `build-gcc.sh`
+  ([riscv64-rva23-baseline.md](docs/riscv64-rva23-baseline.md),
+  [amd64-x86-64-v3-baseline.md](docs/amd64-x86-64-v3-baseline.md)).
+- Intel's GPU user space is the free build in every amd64 image; never install
+  `intel-media-va-driver-non-free`
+  ([§ Intel GPU user space](docs/linux-accelerator-images.md#intel-gpu-user-space)).
+- Keep both build paths of riscv64's web-lane tools
+  ([§ Building the web-lane tools from source](docs/consumer-image-contract.md#building-the-web-lane-tools-from-source)).
+- Keep both deliveries of the wrapper's `/opt/wheels`, with no fallback between them
+  ([§ The wrapper's wheelhouse](docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries)).
+- Keep both Hailo switches, and never soften either check under its default
+  ([hailo-support.md](docs/hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches)).
+- DeepStream is on in every amd64 nvidia build; never put its `lib` directory on `ld.so.conf`
+  ([§ DeepStream](docs/linux-accelerator-images.md#deepstream-nvidia-variant)).
+- TensorRT 11 is on in every amd64 nvidia build, and a published image ships only its runtime
+  files ([§ TensorRT 11](docs/linux-accelerator-images.md#tensorrt-11)).
+- `CHROME_EXECUTABLE` names the `/usr/local/bin/chrome` wrapper, never the binary
+  ([§ Browser tests](docs/consumer-image-contract.md#browser-tests-run-in-chrome-for-testing)).
+- Nothing under `/opt` or `/usr/local` may need `libunwind.so.8`
+  ([failure-modes.md](docs/failure-modes.md#an-exception-through-stdcall_once-segfaults-in-libunwind)).
+- ONNX Runtime has exactly one source on both lanes, the chain build, and every EP that has a
+  plugin is the plugin ([§ The rules on Linux](docs/onnxruntime-single-source.md#the-rules-on-linux);
+  Windows: [windows-build-invariants.md](docs/windows-build-invariants.md#onnx-runtime-has-exactly-one-source-the-chain-owner-rule-2026-09-23)).
+- riscv64's Python lane gets a uv cache seed, never a `--find-links` wheel store
+  ([§ The riscv64 uv cache seed](docs/consumer-image-contract.md#the-riscv64-uv-cache-seed)).
+- A free-threaded media wheel goes to `/opt/wheels-free-threaded`, decided by
+  `03-media/free-threaded-twins.txt`
+  ([§ The free-threaded wheels](docs/consumer-image-contract.md#the-free-threaded-wheels)).
 
 ## Dockerfile.media BuildKit Strategy
 
@@ -1009,142 +881,45 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 
 ## Validation
 
-- **Four places run the gates, deliberately not the same set.**
+Four places run the gates, each a different set on purpose: the commit hook, the push hook,
+`make preflight` by hand and CI on every push. Install the hooks once with `make hooks`. What each
+runs and what it costs: [code-quality-tooling.md § The pre-commit hook's cost budget](docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget)
+and [§ The pre-push hook](docs/code-quality-tooling.md#the-pre-push-hook).
 
-  | when | what runs | cost |
-  | --- | --- | --- |
-  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 22 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, the derived doc numbers when a page that quotes them is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | 8.0 s one-file, 27.2 s for a 43-file commit (measured 2026-09-04) |
-  | every `git push` | `linux/host-config/git-hooks/pre-push` — refuses an unfetched remote tip, then doc numbers and comment size, `--stale-check` over the whole manifest, and the mutation gate over `--push-range` with Chrome suites delegated to CI and counted. `--no-verify` only with a by-hand `--changed` proof named in the report ([`code-quality-tooling.md` § The pre-push hook](docs/code-quality-tooling.md#the-pre-push-hook)) | 16 to 339 s over four replayed commits with 10 to 481 entries (measured 2026-11-04) |
-  | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
-  | every push | `.github/workflows/linux-x64.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, a pinned WebDAV source type gate, plus the `mutations` slug as nine `PREFLIGHT_MUTATION_SHARD=K/9` jobs that together prove every entry, planned from `docs/scripts/mutation-costs.json` | CI |
-
-  The Hub's Linux x64 workflow must finish the active `develop` preflight and mutation
-  shards before the latest pending push runs. Keep ref-scoped concurrency and allow
-  active-run cancellation on PRs and `main`. The policy and its queue limit are in
-  [`ci-build-triggers.md` § This repository's lanes](docs/ci-build-triggers.md#this-repositorys-lanes).
-
-  Install the hooks once with `make hooks`: it sets `core.hooksPath` rather than copying into
-  `.git/hooks`, so both hooks are version-controlled and arrive with a clone.
-  `git commit --no-verify` bypasses the commit hook; then run `make preflight` before pushing.
-
-  The hook is a SUBSET and its mutation step a SAMPLE on purpose: a pre-commit gate that takes
-  minutes teaches everyone to type `--no-verify`. A sample never reports as full coverage; it
-  prints how many of how many it ran. Why it is capped, and what it measured before:
-  [`code-quality-tooling.md` § The pre-commit hook's cost budget](docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget).
-
-  A recipe names the narrowest command that still bites (`-k <section>` through `t_sections`,
-  `Invoke-HarnessSuite.ps1 -Only <suite>`). The unfiltered suite keeps the same cases in preflight
-  and a pick naming no section fails.
-
-  CI never samples: its eight `mutations` jobs split the manifest with `--shard` and together prove
-  every entry. The hub's jobs take shard K of a cost plan (`--shard-costs`) that keeps each test
-  command on one shard, so its baseline runs once per round. Refresh the table from a green run's
-  cost lines ([the shard plan](docs/code-quality-tooling.md#the-shard-plan)). A recipe whose mutant
-  no longer parses is refused before its test runs (`--parse-check` alone): its bite would prove a
-  syntax error ([mutants must parse](docs/code-quality-tooling.md#mutants-must-parse)). When the
-  gate gets slow, fix the suite that got slow; never raise a timeout or sample in CI. The 2026-09-23
-  timeout and the layout: [`code-quality-tooling.md` § The mutation gate in CI,
-  sharded](docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded).
-
-- The develop-red watch closes what can no longer pass, never by hand. `develop_red.py`
-  retires a red job that two newer green runs no longer have (a nested job only when its caller
-  ran) and closes the issue of a deleted or disabled workflow. Do not close, reopen or edit a
-  develop-red issue to make a push go through. Prove a change to it with
-  `develop-red-selftest.yml` ([A red develop opens an issue](docs/github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue)).
-
-- Never retype a number a gate can measure. Manifest sizes, per-prefix mutation counts and the
-  hook's own slug list are pinned by `linux/scripts/tests/test-doc-numbers.sh`, which reads them out of
-  `mutations.json` and the hook and fails on drift (`--update` rewrites the pages). Wall-clock
-  figures cannot be pinned: write them with the date they were measured, or leave the digit out.
-
-- `bash linux/scripts/preflight.sh` is the single source of the no-build gate list. The
-  inventory is its `KNOWN_SLUGS` array; do NOT enumerate it here (this paragraph once went stale by
-  three slugs). `linux/scripts/tests/test-preflight-slugs.sh` enforces that every slug has a
-  `run_check` line and vice versa, so a new gate needs a `KNOWN_SLUGS` entry and a `run_check` line.
-  Then regenerate the registry with `python3 linux/scripts/verify_gate_registry.py --write`, and
-  name its mutations `<slug>.<kebab>`. The commit hook runs a subset through `PREFLIGHT_ONLY` /
-  `PREFLIGHT_SKIP`; never copy the check list into a new caller. On a Windows host:
-  `MSYS=winsymlinks:nativestrict PREFLIGHT_PYTHON="uv run --no-project python" bash
-  linux/scripts/preflight.sh`. What each gate proves, and its allowlist:
-  [`code-quality-gates.md`](docs/code-quality-gates.md) (generated) and
-  [`code-quality-tooling.md`](docs/code-quality-tooling.md). Slugs, suites and shellcheck runs go
-  side by side; `PREFLIGHT_JOBS=1`, `RUN_TESTS_JOBS=1` and `LINT_SHELL_JOBS=1` run them in turn ([§
-  The gates run side by side](docs/code-quality-tooling.md#the-gates-run-side-by-side)).
-
-- Default ShellCheck includes Ansible. `linux/scripts/lint-shell.sh` without `--root`
-  scans `linux/ansible/` as well as the build and host trees; `--list-files` owns the warning
-  ratchet's scope. Keep new Ansible shell scripts in both scans. The scope suite proves their
-  selection ([ShellCheck warning ratchet](docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings)).
-
-- Linux host config is code. `linux/host-config/` carries the canonical rootless-BuildKit
-  `buildkitd.toml` and the systemd drop-in; `apply-host-config.sh` installs and
-  `verify-host-config.sh` warn-diffs live vs repo. Reconcile drift through the repo, never by
-  editing `~/.config` alone: a live-only toml edit silently regressed once.
-
-- Linux disk reclaim: `linux/host-config/prune-safe.sh`, NEVER `nerdctl builder prune -f`, and
-  `nerdctl system prune` / `nerdctl builder prune` are not steps on the list at all. The `-f`
-  prune deletes `type==exec.cachemount` records (hours of compile time) together with the cheap
-  layer cache. Standing owner authorization permits agents to run this script when the canonical disk reserve is insufficient, without another confirmation. Measure first; use `PRUNE_KEEP_GB=120 PRUNE_DUP_CACHEMOUNTS=0` by default and retain the documented minimum of 100 GB during builds. Verify cachemount and required-image identities afterward and recheck the unchanged disk guard. This does not authorize other deletion or a recurring service. The measurements, the mid-run lever ORDER and the third cache store
-  `prune-safe.sh` cannot reach:
-  [`linux-host-setup.md` § B7](docs/linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches).
-
-- Unused QA environments may be removed automatically under the owner's standing authorization, using `linux/host-config/cleanup-qa-venvs.py` with an explicit reviewed list and protected paths. Require fresh unit, container, BuildKit, process and mount observations, unchanged source/lock/input snapshots and an exact removal receipt. Preserve sources, caches, required images, finished packages, archives, logs and the current shared QA environment. Copy `qa_venv_cleanup.py` and `relocate-quality-venv.py` beside the entry, with `linux/scripts/qa_venv_usage.py`, `host_commands.py` and `source_ci/common.py` in their original layout. See [scope and limitations](docs/local-proof-workflows.md#unused-qa-environments); this authorizes neither arbitrary output deletion nor a scheduled service.
-
-- Host toolchain: install from the nerdctl-full bundle, and on a rootless-only host into
-  `$HOME/.local`. There is no separate buildkit package, so bumping buildkitd means installing
-  a newer bundle; `linux/host-config/install-nerdctl-full.sh` dry-runs by default, verifies the
-  release SHA256, backs up what it replaces (`--rollback`), refuses while a build runs, and counts
-  BuildKit cache-mount records before and after.
-  [`linux-host-setup.md` § B3b](docs/linux-host-setup.md#b3b-install-or-upgrade-nerdctl-full)
-  and [§ B3c](docs/linux-host-setup.md#b3c-install-rootless-into-homelocal-no-sudo).
-
-- riscv64 host tooling needs more than the amd64 one-liner (no riscv64 wheels, so uv builds
-  from source; the native RVA23 triple; an apt step that needs interactive sudo):
-  [`linux-host-setup.md` § D4](docs/linux-host-setup.md#d4-python-cli-tools-that-build-from-source-on-riscv64).
-
-- ghcr REGISTRY hygiene: two tools over `ghcr-common.sh` and `ghcr_metadata.py`, and NEVER "delete all untagged" by
-  hand. `ghcr-prune-package.sh` deletes UNTAGGED versions; `ghcr-delete-tags.sh` deletes NAMED
-  tags from an explicit list and never guesses what is legacy. The per-arch entries of a
-  multi-arch index are themselves untagged manifests, and a pushing chain creates untagged
-  manifests seconds before tagging them. Both dry-run by default. The keep-set rule, the one
-  Accept header that makes it a safety property, and the run numbers:
-  [`linux-host-setup.md` § B8](docs/linux-host-setup.md#b8-ghcr-registry-hygiene).
-
-- Windows host disk reclaim goes only through the allow-listed, default-dry
-  `windows/scripts/host/Clear-DiskSpace.ps1`, never an ad hoc command. Protected roots, the compile caches
-  and the user's installed software are never cleanup targets, and the `guard-destructive-deletes`
-  hook denies a command that touches a protected root. The rules:
-  [`windows-host-setup.md` § Host disk reclaim](docs/windows-host-setup.md#host-disk-reclaim).
-
-- PowerShell gate: `pwsh -File windows/scripts/Invoke-Lint.ps1` + `pwsh -File
-  windows/scripts/tests/Invoke-Tests.ps1` (CI: `.github/workflows/windows-x64.yml`). The suite
-  guards *classes* of defect, not instances: when you fix a bug here, prefer a guard for its class.
-  Which classes, and why the linter exits 2 for an infrastructure failure:
-  [`windows-builds.md`](docs/windows-builds.md).
-
-- PowerShell complexity: `pwsh -File windows/scripts/Invoke-CodeComplexity.ps1 -Strict`
-  enforces the 15/5/80 cyclomatic, nesting and function-line limits across every tracked
-  Windows PowerShell file in hub CI. The reusable `powershell-quality.yml` job reports
-  the consumer's `lint-path` under `-Root` and gates it when `strict: true` is set. Python Windows CI
-  calls that same job through `complexity-strict`.
-  Use `-Path <file-or-dir> -Strict` while working on new
-  files that Git has not tracked yet. For a local JSON result, create
-  `logs/code-quality/complexity/` and add
-  `-JsonPath logs/code-quality/complexity/windows-full.json` to the strict command. CI writes
-  and uploads that same ignored report even when the strict gate finds violations. Parse and scan
-  failures are fatal. Do not add exceptions or raise limits to silence findings.
-
-- Runtime verification happens inside a container, or against raw symlink targets. Never use
-  `readlink -f` against `out/linux-runtime/*/rootfs`: absolute symlinks resolve against the host
-  root. Confirm on all arches that `clang --version` reports `LLVM_RELEASE`, `cc -dumpmachine`
-  matches the arch, `gcc --version` reports the pinned GCC, and the `cc/c++/gcc/g++` and `clang`
-  symlinks point into `/opt/gcc-*/bin` and `/usr/local/llvm-target/bin`.
-
-- The `wrapper-smoke` target in `Dockerfile.package` is a MANDATORY gate in
-  `runtime_build_chain()`. It builds after the package stage, reusing cached package layers, beside
-  the wrapper build, and nothing of the arch is pushed or exported before it passes
-  (`RUNTIME_SMOKE_OVERLAP=0` runs it first). `WRAPPER_SMOKE_GATE=0` skips it;
-  `test-runtime-smoke-gate.sh` pins that it runs, `test-runtime-smoke-overlap.sh` that it gates.
+- Push with `--no-verify` only with a by-hand `--changed` proof named in the report. After
+  `git commit --no-verify`, run `make preflight` before pushing.
+- CI never samples the mutation gate, and a slow gate means a slow suite to fix, not a timeout to
+  raise ([§ The mutation gate in CI, sharded](docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded)).
+- Keep the hub workflow's ref-scoped concurrency, so an active `develop` preflight finishes
+  ([ci-build-triggers.md § This repository's lanes](docs/ci-build-triggers.md#this-repositorys-lanes)).
+- Never close, reopen or edit a develop-red issue to make a push go through
+  ([A red develop opens an issue](docs/github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue)).
+- Never retype a number a gate can measure
+  ([§ Doc numbers are derived](docs/code-quality-tooling.md#doc-numbers-are-derived)).
+- `linux/scripts/preflight.sh` is the single source of the gate list. Never copy its slugs into a
+  page or a new caller ([§ The gates run side by side](docs/code-quality-tooling.md#the-gates-run-side-by-side)).
+- Keep new Ansible shell scripts in the default ShellCheck scan
+  ([ShellCheck warning ratchet](docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings)).
+- Linux host config is code: reconcile drift through `linux/host-config/`, never by editing
+  `~/.config` alone ([§ Phase B](docs/linux-host-setup.md#phase-b--container-runtime-host-config)).
+- Reclaim Linux disk only with `linux/host-config/prune-safe.sh`, never `nerdctl builder prune -f`
+  ([§ B7](docs/linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches)).
+- Remove unused QA environments only with `cleanup-qa-venvs.py` and a reviewed list
+  ([§ Unused QA environments](docs/local-proof-workflows.md#unused-qa-environments)).
+- Install or upgrade the host toolchain only from the nerdctl-full bundle
+  ([§ B3b](docs/linux-host-setup.md#b3b-install-or-upgrade-nerdctl-full),
+  [§ B3c](docs/linux-host-setup.md#b3c-install-rootless-into-homelocal-no-sudo)); riscv64 needs
+  more ([§ D4](docs/linux-host-setup.md#d4-python-cli-tools-that-build-from-source-on-riscv64)).
+- Never "delete all untagged" ghcr versions by hand
+  ([§ B8](docs/linux-host-setup.md#b8-ghcr-registry-hygiene)).
+- Reclaim Windows host disk only with `windows/scripts/host/Clear-DiskSpace.ps1`
+  ([§ Host disk reclaim](docs/windows-host-setup.md#host-disk-reclaim)).
+- Never add an exception or raise a limit to silence a PowerShell lint, test or complexity finding
+  ([§ Windows PowerShell complexity](docs/code-quality-tooling.md#windows-powershell-complexity)).
+- Verify a runtime image inside a container, never with `readlink -f` against
+  `out/linux-runtime/*/rootfs` ([§ Runtime verification](docs/cross-build-verification.md#runtime-verification)).
+- The `wrapper-smoke` gate is mandatory: nothing of an arch is pushed or exported before it passes
+  ([§ The wrapper-smoke gate](docs/linux-cross-builds.md#the-wrapper-smoke-gate-runs-beside-the-wrapper-build)).
 
 ## Dependency Updates
 
@@ -1200,7 +975,7 @@ and [`cross-build-verification.md`](docs/cross-build-verification.md#per-arch-ve
 
 ## Development Rules
 
-- Every script starts with `#!/usr/bin/env bash`. `set -euo pipefail` is for **entry points**
+- Every script starts with `#!/usr/bin/env bash`. `set -euo pipefail` is for entry points
   only: a sourced file must not change its caller's shell options. The libraries under
   `linux/scripts/lib/` set no shell options at all
   ([`docs/shared-script-libraries.md`](docs/shared-script-libraries.md)), and neither do the

@@ -195,6 +195,11 @@ Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for
 
 ## Phase B — Container runtime host config
 
+Linux host config is code. `linux/host-config/` carries the canonical rootless-BuildKit
+`buildkitd.toml` and the systemd drop-in. `apply-host-config.sh` installs and
+`verify-host-config.sh` warn-diffs live vs repo. Reconcile drift through the repo, never by editing
+`~/.config` alone: a live-only toml edit silently regressed once.
+
 ### B1. Docker without sudo
 
 ```bash

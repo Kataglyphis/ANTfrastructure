@@ -281,6 +281,13 @@ records it there), in the stage's own environment, with no gate, no cache, no
 provenance line, and a failed `cargo install` only WARNs. It ignores
 `WEB_LANE_TOOLS_CACHE` and never reads the cross artifact.
 
+riscv64's web-lane tools have two build paths; keep both. By default android cross-builds
+`wasm-pack` and `flutter_rust_bridge_codegen`, and the package stage installs them after a
+fail-loud gate. `WEB_LANE_TOOLS_SOURCE=native` (plus `WEB_LANE_TOOLS_CACHE=refresh` for a fresh
+compile) is the gated in-stage native build, and `legacy` is the old build verbatim. Never remove
+either, never let `legacy` drift from the old command, and never soften the gate on a binary that
+claims to be good.
+
 amd64 and arm64 are untouched: they install upstream's sha-pinned musl binary
 first and reach this code only if that download fails.
 
@@ -723,6 +730,12 @@ every run's `uv sync --extra test`: 108 min of a 6 h job, numpy alone 107 min
 (2026-10-07). The image ships the result instead (CON83), for the GIL and the
 free-threaded leg (CON110).
 
+The rule: riscv64's Python lane gets a uv cache seed, not a wheel store. A locked `uv sync` takes a
+built sdist from the cache only, so never turn it into a `--find-links` store, and never prove it
+with `--no-build`, which refuses every sdist, cached or not. The torch stage also installs
+shellcheck at its `tool-pins.env` pin on every arch, and hadolint on amd64 and arm64 only; riscv64
+ships no hadolint.
+
 - **The contract is a uv cache, not a wheel store.** `PYTHON_UV_CACHE_SEED`
   (`/opt/uv-cache-seed`) is a uv cache directory holding only the wheels uv built from
   source for the app lock's `test` extra. A `--find-links` store does not work here:
@@ -838,6 +851,15 @@ Every wheel the media stage builds for a package whose own code declares free-th
 support also ships as a proved free-threaded (`cp3XYt`) twin, in a store of its own: `/opt/wheels-free-threaded`
 (owner request 2026-10-07; no version in the name since 2026-10-12, so a Python upgrade renames nothing). That holds for the cross-built arches too, arm64 and riscv64, since
 2026-10-09 in source (CON75, CON79 1b). The GIL wheels are built exactly as before.
+
+The rules for the twins:
+
+- `03-media/free-threaded-twins.txt` decides, row by row against a `versions.env` pin, so a bump
+  re-reads the evidence. It is the one table both lanes read (`ft_wheel_table`, Windows'
+  `Get-FreeThreadedTwinTable`), so never copy a row into either reader.
+- A wheel the table does not classify fails a native media build.
+- Never install a twin into a GIL venv, and keep the library and its table mounted per file,
+  outside `01-core` and `runtime/`.
 
 - **Which packages.** One table decides, `linux/scripts/03-media/free-threaded-twins.txt`, and
   both lanes read that file: `ft_wheel_table` here, `Get-FreeThreadedTwinTable` on Windows, so
@@ -1525,6 +1547,11 @@ arch). It installs the zip's `deb.deps` under their Ubuntu 26.04 names (only
 `fonts-liberation` was new), checks every ELF with `ldd`, compares both binaries with
 the pin, and renders a JavaScript page headless. The runtime smoke's `chrome` row
 repeats the last two as uid 1001.
+
+The image's Chrome starts through `/usr/local/bin/chrome`; its emulator is amd64-only.
+`CHROME_EXECUTABLE` names that wrapper, which adds `--no-sandbox --no-zygote`: never point it at
+the binary, and never ship a setuid sandbox helper. Keep the emulator's system image at an API
+whose ARM translator runs arm64 apps (35; 30 SIGILLs).
 
 ### Why the wrapper passes `--no-sandbox` and `--no-zygote`
 

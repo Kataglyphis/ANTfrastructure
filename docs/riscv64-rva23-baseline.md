@@ -55,6 +55,11 @@ be erased by a `-DCMAKE_C_FLAGS=` whole-string reset, cannot leak into an amd64
 host sub-build, and is inherited by meson cross builds — all of which a global
 `CFLAGS` export would get wrong.
 
+riscv64 builds with the vector extension, set through `--with-arch` in `02-toolchain/build-gcc.sh`,
+never as a `CFLAGS` export. `-march` alone reaches neither OpenCV nor ORT nor Rust, each of which
+has its own switch. Do not "restore compatibility" by reverting it: an rv64gc-only board cannot run
+this image anyway, and changing it invalidates the warm riscv64 compiler cache.
+
 Four consumers need more than `-march`, because they gate their vector paths on
 their own switches:
 

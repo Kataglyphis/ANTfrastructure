@@ -34,6 +34,11 @@ GCC takes `x86-64-v*` for `--with-arch` only, so the tuning is a separate flag. 
 compiler default over a `CFLAGS` export are the riscv64 ones:
 [`riscv64-rva23-baseline.md`](riscv64-rva23-baseline.md#where-it-is-set).
 
+amd64 builds for `x86-64-v3`. Set it through `--with-arch` with `--with-tune=generic` in
+`02-toolchain/build-gcc.sh`, never as a `CFLAGS` export, `native` or a vendor tuning. Do not revert
+it to "restore compatibility". Every package built in the image inherits the floor, and changing it
+empties the compile caches of all three arches.
+
 ## Not covered
 
 - **clang** keeps LLVM's generic x86-64 default. Pass `-march=x86-64-v3`.

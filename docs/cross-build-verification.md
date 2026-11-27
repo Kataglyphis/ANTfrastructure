@@ -829,6 +829,14 @@ and left `/usr/local/include/absl` — 384 headers, 4.6 MB, present in all three
 `cross-android-*` images — behind. It is in the copy list now; only a rebuild
 proves the bytes.
 
+### Runtime verification
+
+Runtime verification happens inside a container, or against raw symlink targets. Never use
+`readlink -f` against `out/linux-runtime/*/rootfs`: absolute symlinks resolve against the host
+root. Confirm on all arches that `clang --version` reports `LLVM_RELEASE`, that `cc -dumpmachine`
+matches the arch and that `gcc --version` reports the pinned GCC. The `cc/c++/gcc/g++` and `clang`
+symlinks must point into `/opt/gcc-*/bin` and `/usr/local/llvm-target/bin`.
+
 ### Foreign-arch execution needs QEMU binfmt — registered **without sudo**
 
 The foreign-arch smokes above only mean something if the image's binaries can
@@ -1403,6 +1411,9 @@ STL sort) all compile, link, and run correctly. amd64 never reaches this
 block (host GCC, no swap).
 
 ### The native GCC ships libsanitizer
+
+The Canadian native GCC builds libsanitizer (host == target). Never trim `build-gcc.sh`'s target
+list back to libgcc/libstdc++/libatomic. The swap and the wrapper smoke fail an image without it.
 
 **Symptom.** In the arm64 or riscv64 image, a `-fsanitize=address` build stops with
 `fatal error: sanitizer/common_interface_defs.h: No such file or directory`. abseil's

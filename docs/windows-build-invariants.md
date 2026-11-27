@@ -423,7 +423,7 @@ Do not regress any of these:
 
 The six guards, every consumer, the stamp contract and what each guard does NOT cover:
 [`onnxruntime-single-source.md`](onnxruntime-single-source.md). The Linux side of the rule
-is in `AGENTS.md` § Linux Build Rules.
+is [§ The rules on Linux](onnxruntime-single-source.md#the-rules-on-linux).
 
 ### A build-host setting is an ARG, never ENV — the publish gate refuses one
 

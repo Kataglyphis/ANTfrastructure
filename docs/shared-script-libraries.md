@@ -2739,6 +2739,7 @@ A helper copied into an image or a consumer needs the files it sources or import
 | Copied Torch setup carries `package-image-wiring.sh`, `wheelhouse-manifest.sh` and `native-gcc-system-paths.sh` before its first execution. |
 | Copied `build-app-wheelhouse.sh` carries `torch-source-pins.sh` beside it. |
 | Copied `lib-runtime-wheels.sh` carries `01-core/wheelhouse-manifest.sh`. |
+| A copied `smoke-runtime-image.sh` carries `check-arch-isa.sh` and `check-intel-gpu-userspace.sh`; a copied `build-opencv.sh` carries `opencv-cpu-baseline.sh`. |
 | Copied isolated-helper-compile.sh carries lib/log-bootstrap.sh; SDK failure fixtures own their temporary download archives through the harness. |
 | Copied package staging retirement requires the closed producer, fresh absence/mount observations, exact preview and retained archive hashes; remove only its three declared copied trees and preserve home caches, compiler targets, sources and receipts. |
 | - Compiler-plan copies carry `compiler_plan_profile.py`, `compiler_unique_profile.py`, `proof_profiles.py` and `native_oci_layout.py`; retain original profiles and record reviewed deltas without rewriting the old reference. The explicit GNU_UNIQUE profile binds its exact source, compiler6 inputs and normal matched-hook count; copied profile suites carry their shared fixture module. |

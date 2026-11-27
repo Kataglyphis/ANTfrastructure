@@ -19,6 +19,8 @@ MANIFEST = "docs/scripts/mutations.json"
 HOOK = "linux/host-config/git-hooks/pre-commit"
 OWNER = "docs/code-quality-tooling.md"
 MIRRORS = ("AGENTS.md", "docs/cross-build-verification.md")
+# The gate table moved from AGENTS.md to the owner page, so these two must state the count.
+FAST_PAGES = (OWNER, "docs/cross-build-verification.md")
 TOTALS = re.compile(r"\*\*(\d+) entries\*\* over \*\*(\d+) distinct test commands\*\*")
 FAMILY = re.compile(r"(\d+)([^()\n\d]{0,60}?)\(`([a-z0-9][a-z0-9-]*)\.\*`\)")
 BARE = re.compile(r"all \d+ entries|still run all \d+")
@@ -105,9 +107,9 @@ def check_bare(root, _t, out):
 
 
 def check_fast(root, t, out):
-    for rel in MIRRORS:
+    for rel in (OWNER,) + MIRRORS:
         hits = FAST.findall(read(root, rel))
-        if not hits:
+        if not hits and rel in FAST_PAGES:
             out.append(f"fast-slugs: {rel} no longer states the hook's fast-slug count")
         for num in hits:
             if int(num) != t["fast"]:

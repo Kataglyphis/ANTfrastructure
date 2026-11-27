@@ -618,6 +618,57 @@ these were "fixed" during the extraction.
 | 6 | Missing `compile_commands.json` | hard error, telling the user to configure CMake first | regenerates via `ninja -C <build> -t compdb` when possible, throws only if not |
 | 7 | File enumeration | `find` with `-not -path` exclusions, `CODE_QUALITY_UNTRACKED_EXCLUDES` among them | `git ls-files` with a `Get-ChildItem` fallback, because its container receives sources by tar-pipe and has no `.git`; also excludes `_deps`, `vcpkg_installed`, `.venv`, `site-packages`, and the walk skips the same dependency and output trees as Linux (`node_modules`, `.pub-cache`, `.dart_tool`, `.gradle`, `.cxx`, `.cargo`, `flutter\ephemeral`) |
 
+## Where the gates run
+
+Four places run the gates, deliberately not the same set.
+
+| when | what runs | cost |
+| --- | --- | --- |
+| every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 22 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, the derived doc numbers when a page that quotes them is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | 8.0 s one-file, 27.2 s for a 43-file commit (measured 2026-09-04) |
+| every `git push` | `linux/host-config/git-hooks/pre-push` — refuses an unfetched remote tip, then doc numbers and comment size, `--stale-check` over the whole manifest, and the mutation gate over `--push-range` with Chrome suites delegated to CI and counted. `--no-verify` only with a by-hand `--changed` proof named in the report ([§ The pre-push hook](#the-pre-push-hook)) | 16 to 339 s over four replayed commits with 10 to 481 entries (measured 2026-11-04) |
+| before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
+| every push | `.github/workflows/linux-x64.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, a pinned WebDAV source type gate, plus the `mutations` slug as nine `PREFLIGHT_MUTATION_SHARD=K/9` jobs that together prove every entry, planned from `docs/scripts/mutation-costs.json` | CI |
+
+Install the hooks once with `make hooks`: it sets `core.hooksPath` rather than copying into
+`.git/hooks`, so both hooks are version-controlled and arrive with a clone. `git commit
+--no-verify` bypasses the commit hook; then run `make preflight` before pushing.
+
+The hook is a subset and its mutation step a sample on purpose: a pre-commit gate that takes
+minutes teaches everyone to type `--no-verify`. A sample never reports as full coverage; it prints
+how many of how many it ran ([§ The pre-commit hook's cost budget](#the-pre-commit-hooks-cost-budget)).
+
+A recipe names the narrowest command that still bites (`-k <section>` through `t_sections`,
+`Invoke-HarnessSuite.ps1 -Only <suite>`). The unfiltered suite keeps the same cases in preflight,
+and a pick naming no section fails.
+
+The hub's mutation jobs take shard K of a cost plan (`--shard-costs`) that keeps each test command
+on one shard, so its baseline runs once per round. Refresh the table from a green run's cost lines
+([the shard plan](#the-shard-plan)). When the gate gets slow, fix the suite that got slow; never
+raise a timeout or sample in CI ([§ The mutation gate in CI, sharded](#the-mutation-gate-in-ci-sharded)).
+
+`bash linux/scripts/preflight.sh` is the single source of the no-build gate list. The inventory is
+its `KNOWN_SLUGS` array; do not enumerate it in a page. A new gate needs a `KNOWN_SLUGS` entry and a
+`run_check` line, which `test-preflight-slugs.sh` enforces. Then regenerate the registry with
+`python3 linux/scripts/verify_gate_registry.py --write`, and name its mutations `<slug>.<kebab>`.
+The commit hook runs a subset through `PREFLIGHT_ONLY` / `PREFLIGHT_SKIP`; never copy the check
+list into a new caller. Slugs, suites and shellcheck runs go side by side; `PREFLIGHT_JOBS=1`,
+`RUN_TESTS_JOBS=1` and `LINT_SHELL_JOBS=1` run them in turn
+([§ The gates run side by side](#the-gates-run-side-by-side)). On a Windows host, run
+`MSYS=winsymlinks:nativestrict PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh`.
+
+Manifest sizes, per-prefix mutation counts and the hook's own slug list are pinned by
+`linux/scripts/tests/test-doc-numbers.sh`, which reads them out of `mutations.json` and the hook
+and fails on drift ([§ Doc numbers are derived](#doc-numbers-are-derived)). Wall-clock figures
+cannot be pinned: write them with the date they were measured, or leave the digit out.
+
+The develop-red watch closes what can no longer pass, never by hand. Prove a change to it with
+`develop-red-selftest.yml`
+([A red develop opens an issue](github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue)).
+
+`lint-shell.sh` without `--root` scans `linux/ansible/` as well as the build and host trees, and
+`--list-files` owns the warning ratchet's scope. Keep new Ansible shell scripts in both scans. The
+scope suite proves their selection.
+
 ## This repository's own gates
 
 The sections below are the design notes per gate: why it exists (with the
@@ -2939,6 +2990,15 @@ save local JSON results in the Git-ignored `logs/code-quality/complexity/` folde
 New-Item -ItemType Directory -Force logs/code-quality/complexity | Out-Null
 pwsh -File windows/scripts/Invoke-CodeComplexity.ps1 -Strict -JsonPath logs/code-quality/complexity/windows-full.json
 ```
+
+The PowerShell gate is `pwsh -File windows/scripts/Invoke-Lint.ps1` + `pwsh -File
+windows/scripts/tests/Invoke-Tests.ps1` (CI: `.github/workflows/windows-x64.yml`). The suite
+guards classes of defect, not instances: when you fix a bug here, prefer a guard for its class.
+`Invoke-CodeComplexity.ps1 -Strict` enforces the 15/5/80 cyclomatic, nesting and function-line
+limits across every tracked Windows PowerShell file in hub CI. The reusable
+`powershell-quality.yml` job reports the consumer's `lint-path` under `-Root` and gates it when
+`strict: true` is set. Python Windows CI calls that same job through `complexity-strict`. Parse and
+scan failures are fatal. Do not add exceptions or raise limits to silence findings.
 
 `-JsonPath` remains optional for local runs; CI supplies it to the strict gate.
 For a consumer checkout, pass `-Root <consumer-root> -Path <relative-file-or-dir>`;
