@@ -66982,5 +66982,13 @@
   "replace": "--source-ref \"${WEBGPU_EXPECT_REF:?missing ORT source pin}\" 2>&1)\"",
   "test": "bash linux/scripts/tests/test-webgpu-runtime-transport.sh",
   "why": "ORT's early stderr warning (Unknown CPU vendor under qemu-riscv64) heads the proof row, and the riscv64 runtime smoke then fails a proved factory"
+ },
+ {
+  "id": "rust.package-rustup-downloads-with-curl",
+  "target": "linux/scripts/06-packaging/setup-package-image.sh",
+  "find": "    RUSTUP_USE_CURL=1 RUST_INSTALL_CARGO_C=0 BUILD_MODE=native bash",
+  "replace": "    RUST_INSTALL_CARGO_C=0 BUILD_MODE=native bash",
+  "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+  "why": "rustup 1.29's default TLS download aborts with SIGABRT under qemu-user, and the arm64 package then fails in rustup component add"
  }
 ]

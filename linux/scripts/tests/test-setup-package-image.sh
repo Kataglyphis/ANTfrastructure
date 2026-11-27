@@ -22,7 +22,7 @@ _rust() {
     rust_target_triple_for_arch() {
       case "$1" in amd64) echo x86_64-unknown-linux-gnu;; arm64) echo aarch64-unknown-linux-gnu;;
                    riscv64) echo riscv64gc-unknown-linux-gnu;; *) return 1;; esac; }
-    bash() { printf "installer=%s cargo_c=%s mode=%s\n" "$*" "${RUST_INSTALL_CARGO_C:-unset}" "${BUILD_MODE:-unset}"; }
+    bash() { printf "installer=%s cargo_c=%s mode=%s curl=%s\n" "$*" "${RUST_INSTALL_CARGO_C:-unset}" "${BUILD_MODE:-unset}" "${RUSTUP_USE_CURL:-unset}"; }
     '"${_fn_src}"'
     ensure_native_rust_toolchain
     printf "left=%s\n" "$(ls "${RUSTUP_HOME}/toolchains" 2>/dev/null | tr "\n" " ")"
@@ -36,6 +36,7 @@ _out="$(_rust arm64 1.98.0-x86_64-unknown-linux-gnu nightly-2026-06-28-x86_64-un
 t_assert_contains "${_out}" "is not aarch64-unknown-linux-gnu" "the mismatch must be named"
 t_assert_contains "${_out}" "installer=/opt/scripts/toolchain/install-rust.sh cargo_c=0 mode=native" \
   "the toolchain stage's installer, without the QEMU-hostile cargo-c compile"
+t_assert_contains "${_out}" "curl=1" "rustup downloads through curl: its default TLS backend aborts under qemu-user"
 t_assert_contains "${_out}" "left=" "both trees are wiped before the install"
 t_assert_eq "left=" "$(printf '%s\n' "${_out}" | grep '^left=')" "no x86_64 dir survives"
 
