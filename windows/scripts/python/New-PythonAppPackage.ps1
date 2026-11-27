@@ -211,4 +211,7 @@ foreach ($format in @($Formats -split ',' | ForEach-Object { $_.Trim() } | Where
         default { throw "Unknown format '$format' (zip, msi, msix)" }
     }
 }
+# The release collects these beside the packages, so it carries FFmpeg's exact sources.
+$offered = @(Export-NativeSourceArchive -Offer $ffmpegOffer -Destination (Join-Path $OutDir 'source-offer'))
+if ($offered) { Write-Host "FFmpeg source offer: $($offered.Count) file(s) in $(Join-Path $OutDir 'source-offer')" }
 Write-Host "Packages ready in $OutDir"

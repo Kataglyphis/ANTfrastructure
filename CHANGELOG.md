@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-26 — a release carries FFmpeg's exact sources (CON227 step 3)
+
+- `Export-NativeSourceArchive` copies the archives, build scripts, patches and `ffmpeg-sources.json` the bundle owes
+  to the package folder's `source-offer/`, each checked against its SHA-256; `New-PythonAppPackage.ps1` calls it.
+- `collect-release-assets.sh` collects a byte-identical copy from several lanes once, still fails on two different
+  files of one name, and has `check-source-offer.py` prove every collected index complete before publishing.
+- `Publish-NativeSourceOffer` refuses an offer that names one file twice. Ten new recipes, one re-anchored.
+
 ## 2026-11-26 — the develop-red watch retries a dropped connection
 
 - One watch run failed and opened develop-red #402 on itself because GitHub closed a connection before any answer

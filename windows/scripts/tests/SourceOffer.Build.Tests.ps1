@@ -44,7 +44,8 @@ Describe 'Publish-NativeSourceOffer: texts, sources and a manifest beside the bi
                 @{ Expect = 'has no licence text'; Edit = { param($c) Remove-Item -LiteralPath (Join-Path $c.NoticeDir 'COPYING.GPLv3') } },
                 @{ Expect = 'archive of x264 is missing'; Edit = { param($c) $c.Archive = Join-Path $dir 'absent.tar.gz' } },
                 @{ Expect = 'archive name is unsafe'; Edit = { param($c) $c.ArchiveName = '..\escape.tar.gz' } },
-                @{ Expect = 'lacks Url'; Edit = { param($c) $c.Remove('Url') } })
+                @{ Expect = 'lacks Url'; Edit = { param($c) $c.Remove('Url') } },
+                @{ Expect = 'names Build-Demo\.ps1 twice'; Edit = { param($c) $c.ArchiveName = 'Build-Demo.ps1' } })
             foreach ($case in $broken) {
                 $fresh = New-SourceOfferFixture -Dir (Join-Path $dir ([guid]::NewGuid().ToString('N')))
                 & $case.Edit $fresh.Component[1]

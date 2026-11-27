@@ -47,6 +47,26 @@ Describe 'Copy-NativeSourceOffer and Assert-PackageSourceOffer: FFmpeg ships wit
         }
     }
 
+    It 'exports the exact sources and build files for the release, which the release check then proves complete' {
+        Invoke-InTestDir { param($dir)
+            $gate = (New-OfferBundleCase -Dir $dir).Gate
+            $release = Join-Path $dir 'release'
+            $names = @(Export-NativeSourceArchive -Offer $gate -Destination $release)
+            Assert-Equal 'Build-Demo.ps1,ffmpeg-1.0.tar.gz,ffmpeg-sources.json,x264-1.0.tar.gz' (($names | Sort-Object) -join ',')
+            $checker = Join-Path (Get-RepoRoot) 'linux/scripts/06-packaging/check-source-offer.py'
+            & $script:offerPython -I $checker $release 'ffmpeg-sources.json' 2>&1 | Out-Null
+            Assert-Equal 0 $LASTEXITCODE 'the exported set is the complete offer'
+            Remove-Item -LiteralPath (Join-Path $release 'Build-Demo.ps1')
+            & $script:offerPython -I $checker $release 'ffmpeg-sources.json' 2>&1 | Out-Null
+            Assert-Equal 1 $LASTEXITCODE 'a release without one offered file fails'
+
+            Set-Content -LiteralPath (Join-Path $gate.Root 'share\sources\ffmpeg\x264-1.0.tar.gz') -Value 'not the archive'
+            Assert-Throws { Export-NativeSourceArchive -Offer $gate -Destination (Join-Path $dir 'again') } -MessagePattern 'x264-1\.0\.tar\.gz is not the ffmpeg source'
+            $old = (New-OfferBundleCase -Dir (Join-Path $dir 'old') -Unpublished).Gate
+            Assert-Equal 0 @(Export-NativeSourceArchive -Offer $old -Destination (Join-Path $dir 'none') -WarningAction SilentlyContinue).Count 'an image without the offer exports nothing'
+        }
+    }
+
     It 'owes nothing without the DLLs, warns for an image that predates the offer, and refuses changed image texts' {
         Invoke-InTestDir { param($dir)
             $none = (New-OfferBundleCase -Dir (Join-Path $dir 'none') -Binary 'opencv_world.dll').Gate

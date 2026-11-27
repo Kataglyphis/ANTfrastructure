@@ -36,10 +36,10 @@ docs/artifact-copy-completeness.md | avg-sentence | 24.6
 docs/artifact-copy-completeness.md | long-share | 30.4
 docs/artifact-copy-completeness.md | ids-per-k | 4.5
 docs/artifact-copy-completeness.md | bold-per-k | 9.0
-docs/branch-and-release-strategy.md | avg-sentence | 19.0
-docs/branch-and-release-strategy.md | long-share | 15.7
-docs/branch-and-release-strategy.md | ids-per-k | 3.4
-docs/branch-and-release-strategy.md | bold-per-k | 15.1
+docs/branch-and-release-strategy.md | avg-sentence | 18.8
+docs/branch-and-release-strategy.md | long-share | 15.0
+docs/branch-and-release-strategy.md | ids-per-k | 3.3
+docs/branch-and-release-strategy.md | bold-per-k | 14.6
 docs/build-cache-tiers.md | avg-sentence | 22.2
 docs/build-cache-tiers.md | long-share | 23.3
 docs/build-cache-tiers.md | ids-per-k | 6.5
@@ -69,9 +69,9 @@ docs/code-quality-tooling.md | long-share | 20.3
 docs/code-quality-tooling.md | ids-per-k | 3.1
 docs/code-quality-tooling.md | bold-per-k | 6.6
 docs/consumer-image-contract.md | avg-sentence | 19.9
-docs/consumer-image-contract.md | long-share | 16.1
+docs/consumer-image-contract.md | long-share | 16.0
 docs/consumer-image-contract.md | ids-per-k | 6.7
-docs/consumer-image-contract.md | bold-per-k | 7.3
+docs/consumer-image-contract.md | bold-per-k | 7.2
 docs/consumer-inventory.md | avg-sentence | 17.3
 docs/consumer-inventory.md | long-share | 2.7
 docs/consumer-inventory.md | ids-per-k | 0.0

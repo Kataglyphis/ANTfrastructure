@@ -61,6 +61,9 @@ function Publish-NativeSourceOffer {
     )
     # ValidatePattern ignores case, and the owner names files a case-sensitive reader looks up.
     if ($Owner -cnotmatch '^[a-z0-9][a-z0-9-]*$') { throw "source offer owner must be lower-case kebab: $Owner" }
+    # A release attaches every offered file under its own name, flat, so one name may appear once.
+    $repeated = @(@($Component.ArchiveName) + @($BuildFile | Split-Path -Leaf) | Group-Object | Where-Object Count -gt 1)
+    if ($repeated) { throw "the $Owner source offer names $($repeated[0].Name) twice" }
     $offerDir = Join-Path $Root "share\sources\$Owner"
     if (Test-Path -LiteralPath $offerDir) { Remove-Item -LiteralPath $offerDir -Recurse -Force }
     $buildDir = Join-Path $offerDir 'build'

@@ -518,6 +518,48 @@ t_assert_eq 2 "$(count "${work}/doc-r3" '*')"
 t_case "DocumANTation: a lone upload that matches --skip gives nothing"
 t_assert_fails doc doc-4 --lone-upload theme-dist --skip 'theme-*' "${a}" "${work}/doc-r4"
 
+# offer_upload <dir> <archive bytes>: a lane upload whose packages carry a source offer of one archive and one build file.
+offer_upload() {
+  mkdir -p "$1/packages/source-offer"
+  printf 'app' > "$1/packages/app.zip"
+  printf '%s' "$2" > "$1/packages/source-offer/ffmpeg-n9.0.2.tar.gz"
+  printf 'script' > "$1/packages/source-offer/Build-FfmpegFromSource.ps1"
+  local archive build
+  archive="$(printf '%s' "${3:-$2}" | sha256sum | cut -d' ' -f1)"
+  build="$(printf 'script' | sha256sum | cut -d' ' -f1)"
+  printf '{"owner": "ffmpeg", "sources": [{"name": "ffmpeg", "file": "share/sources/ffmpeg/ffmpeg-n9.0.2.tar.gz", "sha256": "%s"}], "build": [{"file": "share/sources/ffmpeg/build/Build-FfmpegFromSource.ps1", "sha256": "%s"}]}\n' \
+    "${archive}" "${build}" > "$1/packages/source-offer/ffmpeg-sources.json"
+}
+
+t_case "a source offer every lane uploads ships once, and only complete and byte-identical"
+t_needs python3 command -v python3
+offer_upload "${work}/offer/app-windows-x64" 'source bytes'
+offer_upload "${work}/offer/app-windows-arm64" 'source bytes'
+mv "${work}/offer/app-windows-arm64/packages/app.zip" "${work}/offer/app-windows-arm64/packages/app-arm64.zip"
+t_assert_ok collect offer-1 --include '*/packages/*' "${work}/offer" "${work}/offer-r1"
+t_assert_eq 1 "$(count "${work}/offer-r1" 'ffmpeg-n9.0.2.tar.gz')" "identical copies from two lanes ship once"
+t_assert_eq 1 "$(count "${work}/offer-r1" 'ffmpeg-sources.json')"
+offer_upload "${work}/offer-diff/app-windows-x64" 'source bytes'
+offer_upload "${work}/offer-diff/app-windows-arm64" 'other bytes'
+mv "${work}/offer-diff/app-windows-arm64/packages/app.zip" "${work}/offer-diff/app-windows-arm64/packages/app-arm64.zip"
+t_assert_fails collect offer-2 --include '*/packages/*' "${work}/offer-diff" "${work}/offer-r2"
+t_assert_contains "$(log offer-2)" "two artifacts carry ffmpeg-n9.0.2.tar.gz"
+offer_upload "${work}/offer-bad/app-windows-x64" 'source bytes' 'what the index records'
+t_assert_fails collect offer-3 --include '*/packages/*' "${work}/offer-bad" "${work}/offer-r3"
+t_assert_contains "$(log offer-3)" "does not carry the source offer ffmpeg-sources.json"
+offer_upload "${work}/offer-gone/app-windows-x64" 'source bytes'
+t_assert_fails collect offer-4 --include '*/packages/*' --exclude '*/Build-FfmpegFromSource.ps1' "${work}/offer-gone" "${work}/offer-r4"
+t_assert_contains "$(log offer-4)" "Build-FfmpegFromSource.ps1 is missing"
+mkdir -p "${work}/offer-twice/a/packages" "${work}/offer-twice/b/packages"
+printf 'same' > "${work}/offer-twice/a/packages/same.zip"
+printf 'same' > "${work}/offer-twice/b/packages/same.zip"
+t_assert_fails collect offer-5 --include '*/packages/*' "${work}/offer-twice" "${work}/offer-r5"
+t_assert_contains "$(log offer-5)" "two artifacts carry same.zip"
+offer_upload "${work}/offer-empty/app-windows-x64" 'source bytes'
+printf '{"owner": "ffmpeg", "sources": [], "build": []}\n' > "${work}/offer-empty/app-windows-x64/packages/source-offer/ffmpeg-sources.json"
+t_assert_fails collect offer-6 --include '*/packages/*' "${work}/offer-empty" "${work}/offer-r6"
+t_assert_contains "$(log offer-6)" "ffmpeg-sources.json offers no source"
+
 # _job <name>: the lines of one job of the workflow, from its key to the next job's; a CRLF checkout's \r is dropped.
 _job() { awk -v job="  $1:" '{ sub(/\r$/, "") } $0 == job { on = 1; next } on && /^  [a-z-]+:$/ { exit } on' "${WORKFLOW}"; }
 

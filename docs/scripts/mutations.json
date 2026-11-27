@@ -15830,8 +15830,8 @@
  {
   "id": "release.collect-duplicate-fails",
   "target": "linux/scripts/06-packaging/collect-release-assets.sh",
-  "find": "  [ ! -e \"${OUT}/$2\" ] || die \"two artifacts carry $2\"",
-  "replace": "  true || die \"two artifacts carry $2\"",
+  "find": "    die \"two artifacts carry $2\"\n  fi",
+  "replace": "    true\n  fi",
   "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
   "why": "two uploads with one file name would ship whichever came last, silently"
  },
@@ -66822,6 +66822,86 @@
   "replace": "    $offer = @()",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PythonApp.PackageLicense.Tests.ps1",
   "why": "The bundle copies FFmpeg's texts and offer once cv2\\bin holds it."
+ },
+ {
+  "id": "packaging.release-offer-identical-once",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "if cmp -s \"$1\" \"${OUT}/$2\"; then GAVE=1; return 0; fi",
+  "replace": "if false; then GAVE=1; return 0; fi",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "The same source offer from two lanes ships once instead of failing the release."
+ },
+ {
+  "id": "packaging.release-offer-dedupe-scoped",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "case \"$1\" in */source-offer/*) if cmp",
+  "replace": "case \"$1\" in *) if cmp",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "Only the shared source offer may repeat; two packages of one name still fail."
+ },
+ {
+  "id": "packaging.release-offer-index-tracked",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "case \"$1\" in */source-offer/*-sources.json) OFFER_INDEXES+=(\"$2\") ;; esac\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "A collected offer index is checked, not shipped unread."
+ },
+ {
+  "id": "packaging.release-offer-checked",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "  check_source_offers\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "A release missing an offered file stops before it is published."
+ },
+ {
+  "id": "packaging.release-offer-hash",
+  "target": "linux/scripts/06-packaging/check-source-offer.py",
+  "find": "elif hashlib.sha256(path.read_bytes()).hexdigest() != str(row[\"sha256\"]).lower():",
+  "replace": "elif False:",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "An offered file with other bytes than its index records fails the release."
+ },
+ {
+  "id": "packaging.release-offer-missing",
+  "target": "linux/scripts/06-packaging/check-source-offer.py",
+  "find": "if not path.is_file():",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "An offered file the release lacks is named as missing."
+ },
+ {
+  "id": "packaging.release-offer-empty",
+  "target": "linux/scripts/06-packaging/check-source-offer.py",
+  "find": "found = [] if sources else [f\"{index} offers no source\"]",
+  "replace": "found = []",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "An index that offers no source is a failure, not an empty pass."
+ },
+ {
+  "id": "windows-lane.source-offer-export-hash",
+  "target": "windows/scripts/modules/WindowsSourceOffer.Common.psm1",
+  "find": "-ine $row.sha256) { throw \"$leaf is not the",
+  "replace": "-ine $row.sha256 -and $false) { throw \"$leaf is not the",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceOffer.Common.Tests.ps1",
+  "why": "Only the archive the offer records leaves the image for the release."
+ },
+ {
+  "id": "windows-lane.source-offer-names-once",
+  "target": "windows/scripts/modules/WindowsSourceOffer.Build.psm1",
+  "find": "if ($repeated) { throw \"the $Owner source offer names",
+  "replace": "if ($false) { throw \"the $Owner source offer names",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceOffer.Build.Tests.ps1",
+  "why": "Two offered files of one name cannot overwrite each other in the image or the release."
+ },
+ {
+  "id": "windows-lane.source-offer-release-export",
+  "target": "windows/scripts/python/New-PythonAppPackage.ps1",
+  "find": "$offered = @(Export-NativeSourceArchive -Offer $ffmpegOffer -Destination (Join-Path $OutDir 'source-offer'))",
+  "replace": "$offered = @()",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PythonApp.PackageLicense.Tests.ps1",
+  "why": "The package step puts FFmpeg's exact sources where the release collects them."
  },
  {
   "id": "wheels.torch-ft-drops-find-abi",

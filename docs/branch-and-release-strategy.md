@@ -179,6 +179,13 @@ name) and `{machine}` (`x86_64`, `aarch64`, `riscv64`). An options file holds it
 quoted one fails, since it would match nothing. `tests/test-collect-release-assets.sh` runs the
 script over each consumer's uploads with that consumer's options, the `<repo>.options` blocks there.
 
+A Windows package step writes a copyleft binary's exact sources to `packages/source-offer/` (the
+[FFmpeg source offer](consumer-image-contract.md#the-ffmpeg-source-offer)). Every lane uploads the same
+files, so a byte-identical copy there is collected once. A different one of the same name still fails.
+Each `<owner>-sources.json` collected from there must find every file it names in the release, with
+its recorded SHA-256 (`check-source-offer.py`); otherwise the release stops. Outside `source-offer/`
+the one-name rule is unchanged.
+
 ## Supplementing a release
 
 `shared/python/attach_release_assets.py` attaches a flat set of already-verified files to an existing published release. Pass `--repo`, `--tag`, the full expected `--revision` commit and `--assets` directory; authenticate `gh` with `contents: write`. The helper resolves annotated tags, requires the tag to name that exact commit, reads all existing asset pages and fails on a name collision. It never uses `--clobber`. `--check-only` checks the release and tag before expensive work; repeat `--expected-name` to check prospective names then too. `--dry-run` lists files without contacting GitHub or proving that a release exists. The caller must bind and verify every asset before calling it. A failed upload can leave a subset attached, and a retry then stops on those existing names rather than replacing them.

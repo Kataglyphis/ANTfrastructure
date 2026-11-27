@@ -34,7 +34,7 @@ VERSION="" STRICT=0 GAVE=0 OUT="" SCRATCH="" LONE=""
 SKIP=('*-docs-site' 'docs-site-*')
 # Draft GPU outputs must not be collected by broad release file globs.
 DRAFT_SKIP=('*candidate*' '*unverified*' '*inventory-only*')
-INCLUDE=() EXCLUDE=() ONLY_FROM=() RENAME=() ZIP=() UNPACK=() EXPECT=() POSITIONAL=()
+INCLUDE=() EXCLUDE=() ONLY_FROM=() RENAME=() ZIP=() UNPACK=() EXPECT=() POSITIONAL=() OFFER_INDEXES=()
 
 add_to() {
   local -n _list="$1"
@@ -158,11 +158,24 @@ release_name() {
   if any_match "$1" "${INCLUDE[@]}"; then printf '%s' "${1##*/}"; fi
 }
 
-# put <file> <name>: one release file; a second one of the same name would silently replace the first.
+# put <file> <name>: one release file; a second of that name fails, unless it is a byte-identical copy of the lanes' shared source offer.
 put() {
-  [ ! -e "${OUT}/$2" ] || die "two artifacts carry $2"
+  case "$1" in */source-offer/*-sources.json) OFFER_INDEXES+=("$2") ;; esac
+  if [ -e "${OUT}/$2" ]; then
+    case "$1" in */source-offer/*) if cmp -s "$1" "${OUT}/$2"; then GAVE=1; return 0; fi ;; esac
+    die "two artifacts carry $2"
+  fi
   cp "$1" "${OUT}/$2"
   GAVE=1
+}
+
+# check_source_offers: each collected offer index names files the release carries with the bytes it records.
+check_source_offers() {
+  local index
+  for index in "${OFFER_INDEXES[@]}"; do
+    python3 -I "$(dirname "${BASH_SOURCE[0]}")/check-source-offer.py" "${OUT}" "${index}" ||
+      die "the release does not carry the source offer ${index} names"
+  done
 }
 
 zip_rules() {
@@ -245,6 +258,7 @@ main() {
     done
   fi
   check_expected
+  check_source_offers
   [ -n "$(ls -A "$OUT")" ] || die "no packages under ${artifacts}"
   ls -1 "$OUT"
 }

@@ -1078,6 +1078,9 @@ its manifest entry. Licence texts keep `licenses\<component>\`; the two offer fi
 `Assert-PackageSourceOffer` then compares each one in the finished ZIP, MSIX or MSI with the image's bytes. An image
 that predates the offer has no manifest: both print a warning and pass, so a consumer is not red before the rebuild.
 The smoke gate makes every newer image carry the manifest, so the warning cannot hide a lost offer.
+`Export-NativeSourceArchive` then copies the archives, build scripts and patches to the package folder's
+`source-offer/`, each checked against its SHA-256. The release attaches them
+([collecting the release files](branch-and-release-strategy.md#collecting-the-release-files)).
 
 ## The CUDA plugin EP
 

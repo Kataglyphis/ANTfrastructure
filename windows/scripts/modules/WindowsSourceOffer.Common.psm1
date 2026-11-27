@@ -99,4 +99,35 @@ function Assert-PackageSourceOffer {
     Assert-PackageLicenses -Path $Path -Pattern $members -LicensePath @($plan.Values) -PythonPath $PythonPath
 }
 
-Export-ModuleMember -Function Get-NativeSourceOfferPlan, Copy-NativeSourceOffer, Assert-PackageSourceOffer
+<#
+.SYNOPSIS
+    Copies the exact sources, build scripts and patches the -Offer bundle owes into -Destination for the release; returns their names.
+.DESCRIPTION
+    Each copy is checked against the SHA-256 its offer records. <owner>-sources.json goes beside them, so the release
+    collector can prove the set complete (collect-release-assets.sh, check-source-offer.py).
+#>
+function Export-NativeSourceArchive {
+    [CmdletBinding()]
+    [OutputType([string[]])]
+    param([Parameter(Mandatory)][hashtable]$Offer, [Parameter(Mandatory)][string]$Destination)
+    # The copy and the package check already warned for an image that predates the offer.
+    $plan = Get-NativeSourceOfferPlan -Root $Offer.Root -Owner $Offer.Owner -Bundle $Offer.Bundle
+    if (-not $plan -or -not $plan.Count) { return [string[]]@() }
+    $listing = Join-Path $Offer.Root "share\sources\$($Offer.Owner)\sources.json"
+    $record = Get-Content -LiteralPath $listing -Raw | ConvertFrom-Json
+    $null = New-Item -ItemType Directory -Force -Path $Destination
+    $names = [Collections.Generic.List[string]]::new()
+    foreach ($row in @($record.sources) + @($record.build)) {
+        $leaf = Split-Path -Leaf $row.file
+        $copy = Join-Path $Destination $leaf
+        Copy-Item -LiteralPath (Join-Path $Offer.Root $row.file) -Destination $copy -Force
+        if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash -ine $row.sha256) { throw "$leaf is not the $($Offer.Owner) source its offer records" }
+        $names.Add($leaf)
+    }
+    $index = "$($Offer.Owner)-sources.json"
+    Copy-Item -LiteralPath $listing -Destination (Join-Path $Destination $index) -Force
+    $names.Add($index)
+    return [string[]]$names
+}
+
+Export-ModuleMember -Function Get-NativeSourceOfferPlan, Copy-NativeSourceOffer, Assert-PackageSourceOffer, Export-NativeSourceArchive

@@ -28,6 +28,9 @@ Describe 'Python application package license checks' {
         $bundleText = [IO.File]::ReadAllText([IO.Path]::Combine((Get-RepoRoot), 'windows', 'scripts', 'python', 'New-PythonAppBundle.ps1'))
         $copyAt = $bundleText.IndexOf('Copy-PythonAppFfmpegOffer -Bundle $bundle')
         Assert-True ($copyAt -gt $bundleText.IndexOf('Install-PythonAppChainOpenCv @cv2Args')) 'the bundle copies the offer after cv2\bin holds FFmpeg'
+        $packageText = [IO.File]::ReadAllText([IO.Path]::Combine((Get-RepoRoot), $path))
+        $exportAt = $packageText.IndexOf("Export-NativeSourceArchive -Offer `$ffmpegOffer -Destination (Join-Path `$OutDir 'source-offer')")
+        Assert-True ($exportAt -gt $packageText.IndexOf("'msix' { Invoke-MsixAppPackage }")) 'the release sources go beside the packages, under the collected packages folder'
         $msi = (Get-ScriptFunctionDefinition -ScriptPath $path -FunctionName 'Invoke-MsiAppPackage').ToString()
         Assert-True ($msi.Contains("Get-WixSourceFileId -WixPath `$wxs -SourcePath (Join-Path `$Bundle 'LICENSE')")) 'MSI maps this bundle license dynamically'
         $archive = (Get-ScriptFunctionDefinition -ScriptPath $path -FunctionName 'Assert-PythonAppArchiveLicenses').ToString()
