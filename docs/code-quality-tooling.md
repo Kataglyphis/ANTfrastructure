@@ -4940,61 +4940,59 @@ merge driver for the validated additions after removing only the mapped old IDs.
 
 ## Test harness and lint invariants
 
-Rules for the test harnesses, the lint lanes and the mutation tooling. Each row is one rule.
+Rules for the test harnesses, the lint lanes and the mutation tooling. Each item is one rule.
 
-| Rule |
-|---|
-| A declared shared shell mirror may count a real command from the validated image-consumer plan as a caller; retain the executable call and the separate shared-config drift gate. |
-| The duplication scanner shares the code-size shell lexer so quoted braces and here-doc bodies do not merge function units. |
-| Mutation --root controls Git change/push selection as well as execution; an empty selection is no coverage receipt. |
-| Runner fixtures clear inherited RUN_TESTS_JOBS before applying explicit case values; default scheduling controls must exercise the default. |
-| Regex cardinality assertions use the shared harness counter and retain caller-selected patterns and text. |
-| Wrap provisioning deletes the git wraps it extracts; a dependency reached only through a wrap's `[provide]` needs a pinned wrap-file, and its plugin belongs in the contract. |
-| Synthetic ELF and gst-inspect test fixtures share their writers; retain caller-specific `DT_STRSZ`, symbol-table and `Name` options. |
-| Compiler argv fixtures normalize generated probe basenames under arbitrary temporary roots; retain the independent path-with-spaces control. |
-| `ctest-run.sh --fail-on-skipped` fails on every matching JUnit skip but never on ctest's Disabled tests; a missing or stale report fails rather than passes. |
-| Its bootstrap helpers must fit the consumer's 15-path complexity limit; the copied-template fixture measures that limit and proves a complex mutant fails. |
-| The same fixture runs the consumer trailing-conditional gate and must reject a planted final test. |
-| Renovate planner companions belong in the strict ty and ANN001/ANN201 scopes; the isolated type fixture must detect their removal. |
-| Consumer-hook fixtures retain Git's canonical root spelling and a checked discovery ceiling above their empty-directory cases; prove isolation with an owned parent repository. |
-| Shared Python runtime protocols mark unused positional-only arguments with an underscore; copy the canonical module and retain strict consumer dead-code grading. |
-| Mutation namespace repairs preserve every target, edit and test and record a one-to-one ID map; keep the registry's existing coverage. |
-| Use `docs/scripts/generate_require_mutations.py` for recurring require-removal recipe preparation; it does not replace canonical merge, parse checks or actual mutation runs. |
-| Use `docs/scripts/merge_mutation_recipes.py` to preview or merge recurring mutation recipe updates; stale anchors and unintended replacements fail before writing. Keep serialized registries ASCII-safe and decoded values exact, including deliberately corrupt negative-test strings. |
-| Core disk probes share validation without merging zero-disabled and nonnegative-free-space policies. |
-| Invalid temporary-allocation fixtures share the harness emitter and retain failed, empty and missing-path outcomes. |
-| Test workers use the harness optional-function emitter; keep required definitions mandatory. |
-| Stream receipt suites carry `stream-receipt-fixture.sh`; keep their expected results independent of production code. |
-| Wheelhouse stderr fixtures pin child locale to C.UTF-8; retain both parent-locale controls and original receipt bytes. |
-| Named mutation-check suites carry their case-executor companion; failed controls and invalid recipes remain failed results. |
-| FT transport fixtures supply and assert both dependency pins before interpreting factory results; keep raw probe status and each interpreter branch observable. |
-| Standalone native C++ probe libraries import their own logging bootstrap; FT dependency RUNs retain guarded cache setup, the narrow drain mount and a closing drain. SDK dispatch fixtures quote redirects and assert complete argv, including paths with spaces. |
-| Python CI driver tests use `t_python_ci_fixture` for isolated script trees and workspace detection; keep tool stubs in each suite. |
-| Git fixtures share checked local repository setup; native tool failures must fail the fixture without changing global identity. Renovate bootstrap tests use the shared Git fixture and supply only their driver and wrapper layout. |
-| Python CI suites carry their shared driver fixture; preserve child status, call logs and parent environment isolation. |
-| Consumer inventory includes shared shell libraries and requirements; ambiguous consumer basenames remain mentions, not proof of a hub call or absence. |
-| Cache-unavailability fixtures stub the selected tool probe without removing directories that contain shell utilities; keep the grouped-tool regression and raw fallback verdict. |
-| The strict-type fixture carries every explicitly selected native helper and proves both incorrect returns and missing annotations; production scope counts remain enforced. |
-| The hub's full Ruff scan, all-file annotations and compatible Linux/Windows type checks fail on findings. Keep the tracked-file coverage and pinned tools intact; run dependency-specific checks in the workflow or build that provides their imports. See [Python type analysis](#python-type-analysis) for the current scopes and test requirements. Ty checks inferred types but does not require annotations. |
-| `python-static.sh` adds the quality site-packages and the pinned docs theme to ty as extra search paths; do not replace ty's own environment discovery with `--python`, which unresolves imports it found before. |
-| Dependency-specific checks run in their owning workflow or image build; keep checker tools out of shipped images. The version probe catches only expected import, metadata, lock-parse and OpenCV failures; malformed present locks and unexpected runtime exceptions must fail. |
-| Ruff B012 and B023 are fatal for tracked Python and extracted shell heredocs; the default hub preflight sweep makes the full Ruff default ruleset fatal, including F401, F841, RUF059, FURB167, ISC004, UP032 and B009. Python shebangs require executable file modes, so keep Ruff EXE001 in that sweep. Targeted and named-root lint calls keep their consumer adoption tier advisory. Preserve the selector, full-sweep and extraction mutation proofs. |
-| Consumer Python lint maps tracked shell heredocs back to source lines across Windows path separators and forces UTF-8 when it prints remapped findings; extraction failure is fatal, and a valid no-block scan is green. |
-| Stable Python CI test legs require fresh JUnit and measured, covered package lines; a configured coverage floor must reach every leg. |
-| Bash script discovery fails when no suite runs; the hub runner requires a pass per Pester file, and the shared Pester action requires one across its selected path. Preserve legitimate partial skips. |
-| Detected consumer lint calls keep ratchets enabled and failures fatal; the weekly inventory reports missing calls as advisory. Duplication reporting is available in every reusable lint run, while `--code-dupes` / `code-dupes: true` is a separate fatal gate for consumers that have removed the measured debt; do not freeze that debt with new allowances. The report-only size, complexity and duplication lane writes ignored artifacts and keeps broken inputs fatal. |
-| A Linux job refused for disk re-runs through `retry-disk-refusal` only; it keys on the exact annotation and the one-job endpoint, so a genuine failure never re-runs. |
-| Consumer mutation jobs supply a tracked, nonempty recipe manifest; an empty shard or missing setup file cannot pass as proof. Python refactor previews target the caller root and upload a patch without publishing it. |
-| - Negative search assertions require the no-match status `1`; missing-tool `127` and search-error `2` must fail the fixture. |
-| Host test jobs use an on-disk TMPDIR outside every Git checkout, so non-Git fixtures cannot inherit an ancestor repository index. |
-| Fixtures unrelated to ref resolution use a synthetic immutable app identity; moving-ref resolution belongs to `test-app-ref.sh`, not a graph dry-run. |
-| Chain lifecycle fixtures disable inherited BuildKit and image-store pruning; sentinel engines prove that isolation. |
-| Graph/runtime fixtures also use disposable context directories and immutable parent pins. |
-| Host-executed consumer-probe fixtures use native utility paths and explicit fixture tools; keep the outer runner PATH intact. |
-| Opt-in fixed mutation workspace roots are fresh, absolute and outside the source tree; use container-private paths. Keep exclusive allocation, per-worker isolation, identity-checked cleanup and fatal cleanup errors. Never reuse a writable host checkout as a mutation workspace. |
-| Runtime dry runs start no heartbeat. A live heartbeat kills its current timer child with SIGKILL and waits for it; TERM can be lost while the timer starts, and a separate PID assignment leaves a signal window that leaks output pipes. |
-| Shared Chrome cleanup is asynchronous: callers await child exit and profile cleanup; an immediate process-exit hook only kills. Cleanup failures remain fatal, and every browser finishes cleanup before one peer's failure is reported ([docs-sites.md](docs-sites.md#the-sidebar-toggle-check)). The launcher owns cleanup until it returns: endpoint/page discovery, WebSocket connection and initial DevTools failures must release the group, profile and hooks. |
-| Register ownership before suite work starts; cancellation covers pending launches and joins owned supervisors and watchdogs. Supervisors and watchdogs write to job logs, never to a caller's captured pipe; commands append so earlier diagnostics survive. Cleanup in a signal or EXIT trap checks group disappearance without reentering Bash's `wait`; a trapped wait can hang after a watchdog timeout. Supervisors retry an interrupted command wait before recording its status, including when the child has just exited. |
-| Rootless nerdctl QA for a pinned public base uses a per-run empty `DOCKER_CONFIG` and the native Linux CLI; retain the user's authentication/context files and distinguish a failed preparatory pull from a started build ([failure](failure-modes.md#error-getting-credentials---err-exit-status-1)). |
-| Unix mutation test commands get private `XDG_CACHE_HOME` directories, removed only after child reaping; preserve caller `HOME`, raw statuses and the Windows environment policy. Mutation test children get closed stdin so caller input cannot stall a proof. |
-| Git Bash fixtures need real symlinks; denied creation remains a missing prerequisite. |
+- A declared shared shell mirror may count a real command from the validated image-consumer plan as a caller. Retain the executable call and the separate shared-config drift gate.
+- The duplication scanner shares the code-size shell lexer so quoted braces and here-doc bodies do not merge function units.
+- Mutation --root controls Git change/push selection as well as execution. An empty selection is no coverage receipt.
+- Runner fixtures clear inherited RUN_TESTS_JOBS before applying explicit case values. Default scheduling controls must exercise the default.
+- Regex cardinality assertions use the shared harness counter and retain caller-selected patterns and text.
+- Wrap provisioning deletes the git wraps it extracts. A dependency reached only through a wrap's `[provide]` needs a pinned wrap-file, and its plugin belongs in the contract.
+- Synthetic ELF and gst-inspect test fixtures share their writers. Retain caller-specific `DT_STRSZ`, symbol-table and `Name` options.
+- Compiler argv fixtures normalize generated probe basenames under arbitrary temporary roots. Retain the independent path-with-spaces control.
+- `ctest-run.sh --fail-on-skipped` fails on every matching JUnit skip but never on ctest's Disabled tests. A missing or stale report fails rather than passes.
+- Its bootstrap helpers must fit the consumer's 15-path complexity limit. The copied-template fixture measures that limit and proves a complex mutant fails.
+- The same fixture runs the consumer trailing-conditional gate and must reject a planted final test.
+- Renovate planner companions belong in the strict ty and ANN001/ANN201 scopes. The isolated type fixture must detect their removal.
+- Consumer-hook fixtures retain Git's canonical root spelling and a checked discovery ceiling above their empty-directory cases. Prove isolation with an owned parent repository.
+- Shared Python runtime protocols mark unused positional-only arguments with an underscore. Copy the canonical module and retain strict consumer dead-code grading.
+- Mutation namespace repairs preserve every target, edit and test and record a one-to-one ID map. Keep the registry's existing coverage.
+- Use `docs/scripts/generate_require_mutations.py` for recurring require-removal recipe preparation. It does not replace canonical merge, parse checks or actual mutation runs.
+- Use `docs/scripts/merge_mutation_recipes.py` to preview or merge recurring mutation recipe updates. Stale anchors and unintended replacements fail before writing. Keep serialized registries ASCII-safe and decoded values exact, including deliberately corrupt negative-test strings.
+- Core disk probes share validation without merging zero-disabled and nonnegative-free-space policies.
+- Invalid temporary-allocation fixtures share the harness emitter and retain failed, empty and missing-path outcomes.
+- Test workers use the harness optional-function emitter. Keep required definitions mandatory.
+- Stream receipt suites carry `stream-receipt-fixture.sh`. Keep their expected results independent of production code.
+- Wheelhouse stderr fixtures pin child locale to C.UTF-8. Retain both parent-locale controls and original receipt bytes.
+- Named mutation-check suites carry their case-executor companion. Failed controls and invalid recipes remain failed results.
+- FT transport fixtures supply and assert both dependency pins before interpreting factory results. Keep raw probe status and each interpreter branch observable.
+- Standalone native C++ probe libraries import their own logging bootstrap. FT dependency RUNs retain guarded cache setup, the narrow drain mount and a closing drain. SDK dispatch fixtures quote redirects and assert complete argv, including paths with spaces.
+- Python CI driver tests use `t_python_ci_fixture` for isolated script trees and workspace detection. Keep tool stubs in each suite.
+- Git fixtures share checked local repository setup. Native tool failures must fail the fixture without changing global identity. Renovate bootstrap tests use the shared Git fixture and supply only their driver and wrapper layout.
+- Python CI suites carry their shared driver fixture. Preserve child status, call logs and parent environment isolation.
+- Consumer inventory includes shared shell libraries and requirements. Ambiguous consumer basenames remain mentions, not proof of a hub call or absence.
+- Cache-unavailability fixtures stub the selected tool probe without removing directories that contain shell utilities. Keep the grouped-tool regression and raw fallback verdict.
+- The strict-type fixture carries every explicitly selected native helper and proves both incorrect returns and missing annotations. Production scope counts remain enforced.
+- The hub's full Ruff scan, all-file annotations and compatible Linux/Windows type checks fail on findings. Keep the tracked-file coverage and pinned tools intact. Run dependency-specific checks in the workflow or build that provides their imports. See [Python type analysis](#python-type-analysis) for the current scopes and test requirements. Ty checks inferred types but does not require annotations.
+- `python-static.sh` adds the quality site-packages and the pinned docs theme to ty as extra search paths. Do not replace ty's own environment discovery with `--python`, which unresolves imports it found before.
+- Dependency-specific checks run in their owning workflow or image build. Keep checker tools out of shipped images. The version probe catches only expected import, metadata, lock-parse and OpenCV failures. Malformed present locks and unexpected runtime exceptions must fail.
+- Ruff B012 and B023 are fatal for tracked Python and extracted shell heredocs. The default hub preflight sweep makes the full Ruff default ruleset fatal, including F401, F841, RUF059, FURB167, ISC004, UP032 and B009. Python shebangs require executable file modes, so keep Ruff EXE001 in that sweep. Targeted and named-root lint calls keep their consumer adoption tier advisory. Preserve the selector, full-sweep and extraction mutation proofs.
+- Consumer Python lint maps tracked shell heredocs back to source lines across Windows path separators and forces UTF-8 when it prints remapped findings. Extraction failure is fatal, and a valid no-block scan is green.
+- Stable Python CI test legs require fresh JUnit and measured, covered package lines. A configured coverage floor must reach every leg.
+- Bash script discovery fails when no suite runs. The hub runner requires a pass per Pester file, and the shared Pester action requires one across its selected path. Preserve legitimate partial skips.
+- Detected consumer lint calls keep ratchets enabled and failures fatal. The weekly inventory reports missing calls as advisory. Duplication reporting is available in every reusable lint run, while `--code-dupes` / `code-dupes: true` is a separate fatal gate for consumers that have removed the measured debt. Do not freeze that debt with new allowances. The report-only size, complexity and duplication lane writes ignored artifacts and keeps broken inputs fatal.
+- A Linux job refused for disk re-runs through `retry-disk-refusal` only. It keys on the exact annotation and the one-job endpoint, so a genuine failure never re-runs.
+- Consumer mutation jobs supply a tracked, nonempty recipe manifest. An empty shard or missing setup file cannot pass as proof. Python refactor previews target the caller root and upload a patch without publishing it.
+- - Negative search assertions require the no-match status `1`. Missing-tool `127` and search-error `2` must fail the fixture.
+- Host test jobs use an on-disk TMPDIR outside every Git checkout, so non-Git fixtures cannot inherit an ancestor repository index.
+- Fixtures unrelated to ref resolution use a synthetic immutable app identity. Moving-ref resolution belongs to `test-app-ref.sh`, not a graph dry-run.
+- Chain lifecycle fixtures disable inherited BuildKit and image-store pruning. Sentinel engines prove that isolation.
+- Graph/runtime fixtures also use disposable context directories and immutable parent pins.
+- Host-executed consumer-probe fixtures use native utility paths and explicit fixture tools. Keep the outer runner PATH intact.
+- Opt-in fixed mutation workspace roots are fresh, absolute and outside the source tree. Use container-private paths. Keep exclusive allocation, per-worker isolation, identity-checked cleanup and fatal cleanup errors. Never reuse a writable host checkout as a mutation workspace.
+- Runtime dry runs start no heartbeat. A live heartbeat kills its current timer child with SIGKILL and waits for it. TERM can be lost while the timer starts, and a separate PID assignment leaves a signal window that leaks output pipes.
+- Shared Chrome cleanup is asynchronous: callers await child exit and profile cleanup. An immediate process-exit hook only kills. Cleanup failures remain fatal, and every browser finishes cleanup before one peer's failure is reported ([docs-sites.md](docs-sites.md#the-sidebar-toggle-check)). The launcher owns cleanup until it returns: endpoint/page discovery, WebSocket connection and initial DevTools failures must release the group, profile and hooks.
+- Register ownership before suite work starts. Cancellation covers pending launches and joins owned supervisors and watchdogs. Supervisors and watchdogs write to job logs, never to a caller's captured pipe. Commands append so earlier diagnostics survive. Cleanup in a signal or EXIT trap checks group disappearance without reentering Bash's `wait`. A trapped wait can hang after a watchdog timeout. Supervisors retry an interrupted command wait before recording its status, including when the child has just exited.
+- Rootless nerdctl QA for a pinned public base uses a per-run empty `DOCKER_CONFIG` and the native Linux CLI. Retain the user's authentication/context files and distinguish a failed preparatory pull from a started build ([failure](failure-modes.md#error-getting-credentials---err-exit-status-1)).
+- Unix mutation test commands get private `XDG_CACHE_HOME` directories, removed only after child reaping. Preserve caller `HOME`, raw statuses and the Windows environment policy. Mutation test children get closed stdin so caller input cannot stall a proof.
+- Git Bash fixtures need real symlinks. Denied creation remains a missing prerequisite.

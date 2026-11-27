@@ -1019,83 +1019,81 @@ development version. Restore the process environment on every exit.
 
 Rules for the Windows scripts, their Pester suites and the Windows packages. Each row is one rule; break none of them.
 
-| Rule |
-|---|
-| Windows ONNX source recovery must retain the full release commit, matching version file and recursively pinned submodules; a mirror branch or successful download alone is insufficient. QNN header recovery preserves its separate release and CMake patch population through a verified local source archive. |
-| Windows mutation recipes use harness-only suites; Linux mutation shards do not install Pester. Source-pin ARG/ENV checks retain exact compile-stage scope through the shared Dockerfile facts. |
-| Sparse ONNX patch checks share source identity validation; keep their original-commit fallback and both patch dry runs fatal. Source and patch suites carry WindowsOrt.SourceFixture.psm1 with its Git and harness companions. |
-| GenAI source recovery shares the pinned clone helper with its explicit VERSION_INFO; keep its original commit and compile-only forwarding before patches. |
-| Its extensions retain the exact upstream deps.txt commit, recursive checkout and fatal identity checks before their explicit FetchContent source argument; a mirror tip never substitutes for that commit. |
-| Windows vendor-specific DirectML defaults use the shared DXGI selector only when no explicit adapter is set; enumeration does not prove inference. |
-| Windows GPU MSI/MSIX payload checks share the installer extraction and process cleanup helpers; extraction does not prove installation. |
-| Windows ShellCheck warning scans keep each command below 24,000 characters and merge every batch's JSON findings; preserve `-x` in each call. |
-| Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable. |
-| ARM64 device-gate exports carry required module siblings; prove cold imports from the exported directory before device execution. |
-| Exported ARM64 bundles stage chain ORT DLLs beside their executables; reject duplicate ZIP paths and preserve the source image tree. |
-| ARM64 candidate acceptance validates a digest before pulling, binds the ZIP and CI attempt to the actual image, and preserves failing device statuses and receipts before tag promotion. |
-| Required entry-script import loops list concrete .psm1 filenames so the cold script-call gate can discover the complete closure. |
-| Entry scripts that read `$scriptAssetRoot` declare the canonical resolver at top level, including when a dot-sourced builder also initializes it. |
-| Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser; parse errors must fail before inspecting declarations. Copy `WindowsAst.Common.psm1` beside any copied harness module tree. |
-| Every static Windows patch keeps its actual upstream mapping and source pin in the patch-drift gate; torchvision's host adapter targets PyTorch's `cpp_extension.py`. |
-| Required patch acceptance rejects unchecked upstreams after exact-commit fallback; CPack diagnostics use the shared batch logger without duplication exceptions. Their mutation cases use the portable harness without Pester. |
-| Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies. |
-| Windows diagnostic and host scripts carry their shared module companions; keep required failures fatal and advisory failures visible. |
-| NVIDIA cuDNN smoke resolves exact main SDK files through the shared recursive finder and fails on missing inputs; preserve native host-API execution and cross-target link/PE checks. |
-| Windows disk probes distinguish zero from unknown; shared lavapipe acquisition retains caller PE, registry and environment verdicts. |
-| Host lavapipe setup imports WindowsScripts.Shared directly and unforced for Test-Elevated; a private image-module import cannot satisfy the entry script. Keep ICD registration elevated-only. |
-| Source file-tree staging and patch sweeps share transport and accounting; keep caller selection, ordering and fatal minimums. |
-| Stateful Windows fixtures use the harness binding APIs; preserve collection identity, fake argv and nested-function restoration. |
-| Required Windows siblings import unforced into their owner scope and fail on missing companions; test cold, private-warm and global-warm visibility. |
-| Windows compiler-wrapper setup and removal share the canonical variable list; emptying an environment variable and removing it remain distinct. |
-| Windows native-DLL manifests share `WindowsNativeProvenance.Common.psm1`; a mismatch, missing text or unlisted closure DLL fails, and a manifest does not prove GPU inference. |
-| Windows source builders share Meson binaries, ARM per-file feature selection, handoff transfers and sccache commands; retain caller flags and failure policy. |
-| IREE x86 dispatched AVX512 kernels retain explicit clang-cl feature flags beside the global x86-64-v3 floor; never promote those flags to global C/C++ options. Patch before native and cross-host configuration and refuse unknown source layouts. |
-| CPython applies x64 ClangCL ISA floors after per-file metadata: ordinary files retain v3, upstream AVX512 files retain v4 and their VNNI/VPCLMUL options; ARM64 stays untouched. |
-| Windows source builders share required-child path enumeration for FFmpeg's Vulkan SDK and the LiteRT wheel smoke; preserve leaf versus directory checks and each caller's fatal diagnostic. |
-| Source-chain scrubbing must remove the default QNN SDK extraction after runtime staging, preserve cached archives and CPython, and fail on unsafe paths or incomplete removal. |
-| Windows MIGraphX applies the shared explicit-zero MaxPool correction to the pinned primary source before dependencies; keep average/max pads explicit, LP-norm folding and the narrow patch mount. |
-| Windows AMD EP builds carry both canonical Linux-owned lifetime patches in the EP RUN; retain all six C-base callback adjustments, typed node deletion and synchronized registry ownership before configuration. |
-| Windows call assertion suites carry WindowsHarness.CallAssertions.psm1 beside TestHarness.psm1; preserve sequence counts, argument boundaries, unique calls and source order. |
-| Windows mutation recipes use harness suites; Linux shards do not install Pester. Keep fixture cleanup scoped to each case. |
-| Windows mutation fixtures share module lifetime; import or parse failures cannot satisfy an expected assertion failure. |
-| Captured child diagnostics share ANSI and continuation-gutter normalization; native and portable Torch refusal tests share WindowsTorchRocm.RefusalFixture.psm1; refusal assertions retain raw status, reason and pre-download checks. Census-path fixtures clear inherited twin-wheel overrides and run under both host platforms; preserve all native sync cases and the shared wheel-store fixture. |
-| Windows script workspaces share AST validation before allocation and cleanup; log and Cargo paths use the canonical rooted-path resolver. |
-| Windows build drivers share config-file and workspace-root selection; callers still validate the resolved path. |
-| Windows source-copy mutation suites share AST loop selection and fixture execution; callers keep their source lists and assertions. |
-| Windows parameter-default and Dockerfile build-mount tests share their harness assertions; preserve parsed stages, required arguments and caller-selected filename exclusivity. |
-| Windows Slang consumers snapshot pinned WGSL before compilation and use the shared parity assertion for every fresh manifest output after CRLF/LF normalization. |
-| Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`; suite-scoped directories retain their `AfterAll` cleanup. |
-| Shared harness mutation suites stay host-portable; native batch execution remains in the separately discovered Windows suite. |
-| Windows ORT provider staging validates requested DLL names and their presence before changing the destination; unrelated SDK DLLs remain opt-in. |
-| Child Windows test reports create the requested result directory, including in isolated mutation mirrors, and failures to write remain fatal. Mutation recipes call that runner directly without shell-specific directory setup. |
-| Windows packages that carry the VC++ runtime ship its notice; copied `WindowsCrossBundle.Common.psm1` carries `WindowsMsvcRuntimeNotice.Common.psm1`, `WindowsMsiLicense.Common.psm1` and `cmake/msvc-runtime-notice.txt` in the hub layout. |
-| Standalone `WindowsIcon.Common.psm1` carries `WindowsMsix.Common.psm1` and `WindowsScripts.Shared.psm1`; its PNG decoder rejects corrupt or invisible inputs. |
-| Windows EXE icons use the shared CMake, Rust or Python resource helpers; test actual x64 and ARM64 PE resources and retain the Linux PE-tool setup in preflight and mutation jobs. |
-| Portable bundle package checks log to the host and propagate failures; return only the bundle object and keep their shared callback mutation fixtures host-portable. |
-| MSI license checks map each unique File-table ID through its sequence to the embedded Media cabinet before verifying the real text; copied callers carry `WindowsMsiLicense.Common.psm1` and the Python verifier. |
-| Batch installed-path mapping reads the MSI tables once and retains the exact anchored path checks for every requested file. |
-| Windows ORT license staging matches the shipped DLL's SHA256 against exactly one wheel before copying both original texts; copied `WindowsOrtLicense.Common.psm1` carries its provenance, MSI and Python-wheel companions. |
-| When selected Windows ORT providers are supplied, their bytes must match that same wheel before its texts are copied. |
-| Finished-package binary checks use streaming exact hashes, not text-license normalization; copied `WindowsPackageBinary.Common.psm1` carries the MSI module and both Python verifiers, and MSI members map through the File and Media tables. |
-| Python app packages that contain Windows ORT must compare the installed texts with the matched wheel and check them in ZIP, MSI and MSIX; apps without ORT remain supported. |
-| Windows media staging rejects foreign ORT, GenAI and DirectML DLLs before copying and checks staged bytes against the chain. |
-| Windows formatting preserves distinct C/C++ fallback and tracked-only Dart policies; copied source-build suites carry their retry and media wiring fixture companions. |
-| Windows TVM-FFI builds share the cross-lane version selector, scope the SCM override to that distribution and verify installed GIL and saved twin metadata; restore the environment on failure. |
-| Windows TCP reachability shares one bounded dual-stack socket probe; malformed URLs stay closed and the socket helper stays private. |
-| Silo probes share wininit discovery, debugger transport and recursive read grants; preserve attach policy, raw status and manual handle mode. |
-| Windows native logging and DLL smoke probes share transport; preserve blank failure evidence, loader cleanup and caller coverage minimums. Smoke module copies carry Shared. |
-| MSIX smoke consumers share the archive manifest reader; missing or malformed manifests stay fatal and archive handles close on every path. |
-| Windows container drivers pass root-only source exclusions to the shared runner; never rebuild the inbound list locally or use recursive tar exclusions for root-only skips. |
-| Windows archives share extraction lifecycle; strict failures remain the default and pinned link exceptions stay explicit. |
-| Windows Python CI build, packaging and installed-wheel drivers share the summary, log-close and fatal-step verdict in `Complete-CiBuildSession`; preserve that order and verdict. |
-| Windows Pester coverage must measure one file and executed commands in each of its fifteen named modules, including Vulkan validation at 80%; missing or empty reports, missing targets and scores below the module floor fail the test run. |
-| Consumer Windows PowerShell lint jobs report complexity over the same selected path and upload JSON; enable strict verdicts with `complexity-strict` after the consumer meets the limits. PowerShell-only repos call `powershell-quality.yml` with `strict: true` when clean. |
-| Windows CI installs Pester and PSScriptAnalyzer through `WindowsCi.ModuleBootstrap.psm1`; reuse an installed matching version, retry transient Gallery lookup failures, and verify the requested exact or minimum version. Exhausted retries and missing installed modules remain fatal. |
-| The short-path Windows checkout preserves the submodule mode: `true` initializes direct submodules, `recursive` also initializes nested ones, and `false` skips them. No family repo below this hub may vendor it again: smile and awesome-beamer did, through DocumANTation, until 2026-10-28, and no recursive clone could end. Consumers below the hub call its workflows with `hub-checkout: true`; the `submodule-cycles` job in `linux-x64.yml` fails a submodule at any depth that vendors the hub. See [the action contract](../.github/actions/README.md#clone-into-short-path). |
-| The host lavapipe entry imports its shared elevation predicate in its own scope. Check that boundary with `pwsh windows/scripts/tests/Invoke-Tests.ps1 -Only Lavapipe.HostVisibility.Tests.ps1 -ResultFile logs/test-results/lavapipe-host-visibility.json` before changing its imports. |
-| ROCm installers called from flat BuildKit mounts receive `-ModuleRoot` explicitly; direct checkout calls default to `windows/scripts`. See [`windows-rocm.md`](windows-rocm.md). |
-| Copied Windows module stages keep a no-op `RUN` after their last `COPY`, including the TVM-private and ROCm closures. External-image views redeclare `WINDOWS_TARGET_ARCH` before their `RUN`. Keep these source views outside delivered image ancestry and retain narrow per-file closures. Every media-core and LiteRT RUN delivers the same seven shared modules as individual file mounts; TVM adds only its private leaf module. A cached module view can remain unreadable. See the [readable module view rule](#copied-module-stages-need-a-readable-view). |
-| TensorRT's protobuf repair preserves comments and treats their parentheses as text. Validate all four scoped blocks and every option before writing; unsupported input remains fatal. |
-| CMD fixture `COPY` calls take native Windows paths at that boundary, even when the shared test helper emits forward slashes. Prove the copy before trusting its build result. |
-| Convert GiB admission targets to rounded-up decimal MB at the BuildKit CLI boundary; `* 1024` understates the target. |
-| The full native suite requires host x64 MSVC and a Visual Studio CMake generator for its real crash fixture; missing prerequisites remain a failed run. The test runner writes each parent run's JSON summary to ignored `logs/windows-tests/`. |
+- Windows ONNX source recovery must retain the full release commit, matching version file and recursively pinned submodules. A mirror branch or successful download alone is insufficient. QNN header recovery preserves its separate release and CMake patch population through a verified local source archive.
+- Windows mutation recipes use harness-only suites. Linux mutation shards do not install Pester. Source-pin ARG/ENV checks retain exact compile-stage scope through the shared Dockerfile facts.
+- Sparse ONNX patch checks share source identity validation. Keep their original-commit fallback and both patch dry runs fatal. Source and patch suites carry WindowsOrt.SourceFixture.psm1 with its Git and harness companions.
+- GenAI source recovery shares the pinned clone helper with its explicit VERSION_INFO. Keep its original commit and compile-only forwarding before patches.
+- Its extensions retain the exact upstream deps.txt commit, recursive checkout and fatal identity checks before their explicit FetchContent source argument. A mirror tip never substitutes for that commit.
+- Windows vendor-specific DirectML defaults use the shared DXGI selector only when no explicit adapter is set. Enumeration does not prove inference.
+- Windows GPU MSI/MSIX payload checks share the installer extraction and process cleanup helpers. Extraction does not prove installation.
+- Windows ShellCheck warning scans keep each command below 24,000 characters and merge every batch's JSON findings. Preserve `-x` in each call.
+- Windows module visibility suites share the cold-import probe. Keep child failures and parent-session isolation observable.
+- ARM64 device-gate exports carry required module siblings. Prove cold imports from the exported directory before device execution.
+- Exported ARM64 bundles stage chain ORT DLLs beside their executables. Reject duplicate ZIP paths and preserve the source image tree.
+- ARM64 candidate acceptance validates a digest before pulling, binds the ZIP and CI attempt to the actual image, and preserves failing device statuses and receipts before tag promotion.
+- Required entry-script import loops list concrete .psm1 filenames so the cold script-call gate can discover the complete closure.
+- Entry scripts that read `$scriptAssetRoot` declare the canonical resolver at top level, including when a dot-sourced builder also initializes it.
+- Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser. Parse errors must fail before inspecting declarations. Copy `WindowsAst.Common.psm1` beside any copied harness module tree.
+- Every static Windows patch keeps its actual upstream mapping and source pin in the patch-drift gate. Torchvision's host adapter targets PyTorch's `cpp_extension.py`.
+- Required patch acceptance rejects unchecked upstreams after exact-commit fallback. CPack diagnostics use the shared batch logger without duplication exceptions. Their mutation cases use the portable harness without Pester.
+- Windows probe transports share child cleanup and report parsing. Retain stderr, timeout, exit and assertion accounting policies.
+- Windows diagnostic and host scripts carry their shared module companions. Keep required failures fatal and advisory failures visible.
+- NVIDIA cuDNN smoke resolves exact main SDK files through the shared recursive finder and fails on missing inputs. Preserve native host-API execution and cross-target link/PE checks.
+- Windows disk probes distinguish zero from unknown. Shared lavapipe acquisition retains caller PE, registry and environment verdicts.
+- Host lavapipe setup imports WindowsScripts.Shared directly and unforced for Test-Elevated. A private image-module import cannot satisfy the entry script. Keep ICD registration elevated-only.
+- Source file-tree staging and patch sweeps share transport and accounting. Keep caller selection, ordering and fatal minimums.
+- Stateful Windows fixtures use the harness binding APIs. Preserve collection identity, fake argv and nested-function restoration.
+- Required Windows siblings import unforced into their owner scope and fail on missing companions. Test cold, private-warm and global-warm visibility.
+- Windows compiler-wrapper setup and removal share the canonical variable list. Emptying an environment variable and removing it remain distinct.
+- Windows native-DLL manifests share `WindowsNativeProvenance.Common.psm1`. A mismatch, missing text or unlisted closure DLL fails, and a manifest does not prove GPU inference.
+- Windows source builders share Meson binaries, ARM per-file feature selection, handoff transfers and sccache commands. Retain caller flags and failure policy.
+- IREE x86 dispatched AVX512 kernels retain explicit clang-cl feature flags beside the global x86-64-v3 floor. Never promote those flags to global C/C++ options. Patch before native and cross-host configuration and refuse unknown source layouts.
+- CPython applies x64 ClangCL ISA floors after per-file metadata: ordinary files retain v3, upstream AVX512 files retain v4 and their VNNI/VPCLMUL options. ARM64 stays untouched.
+- Windows source builders share required-child path enumeration for FFmpeg's Vulkan SDK and the LiteRT wheel smoke. Preserve leaf versus directory checks and each caller's fatal diagnostic.
+- Source-chain scrubbing must remove the default QNN SDK extraction after runtime staging, preserve cached archives and CPython, and fail on unsafe paths or incomplete removal.
+- Windows MIGraphX applies the shared explicit-zero MaxPool correction to the pinned primary source before dependencies. Keep average/max pads explicit, LP-norm folding and the narrow patch mount.
+- Windows AMD EP builds carry both canonical Linux-owned lifetime patches in the EP RUN. Retain all six C-base callback adjustments, typed node deletion and synchronized registry ownership before configuration.
+- Windows call assertion suites carry WindowsHarness.CallAssertions.psm1 beside TestHarness.psm1. Preserve sequence counts, argument boundaries, unique calls and source order.
+- Windows mutation recipes use harness suites. Linux shards do not install Pester. Keep fixture cleanup scoped to each case.
+- Windows mutation fixtures share module lifetime. Import or parse failures cannot satisfy an expected assertion failure.
+- Captured child diagnostics share ANSI and continuation-gutter normalization. Native and portable Torch refusal tests share WindowsTorchRocm.RefusalFixture.psm1. Refusal assertions retain raw status, reason and pre-download checks. Census-path fixtures clear inherited twin-wheel overrides and run under both host platforms. Preserve all native sync cases and the shared wheel-store fixture.
+- Windows script workspaces share AST validation before allocation and cleanup. Log and Cargo paths use the canonical rooted-path resolver.
+- Windows build drivers share config-file and workspace-root selection. Callers still validate the resolved path.
+- Windows source-copy mutation suites share AST loop selection and fixture execution. Callers keep their source lists and assertions.
+- Windows parameter-default and Dockerfile build-mount tests share their harness assertions. Preserve parsed stages, required arguments and caller-selected filename exclusivity.
+- Windows Slang consumers snapshot pinned WGSL before compilation and use the shared parity assertion for every fresh manifest output after CRLF/LF normalization.
+- Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`. Suite-scoped directories retain their `AfterAll` cleanup.
+- Shared harness mutation suites stay host-portable. Native batch execution remains in the separately discovered Windows suite.
+- Windows ORT provider staging validates requested DLL names and their presence before changing the destination. Unrelated SDK DLLs remain opt-in.
+- Child Windows test reports create the requested result directory, including in isolated mutation mirrors, and failures to write remain fatal. Mutation recipes call that runner directly without shell-specific directory setup.
+- Windows packages that carry the VC++ runtime ship its notice. Copied `WindowsCrossBundle.Common.psm1` carries `WindowsMsvcRuntimeNotice.Common.psm1`, `WindowsMsiLicense.Common.psm1` and `cmake/msvc-runtime-notice.txt` in the hub layout.
+- Standalone `WindowsIcon.Common.psm1` carries `WindowsMsix.Common.psm1` and `WindowsScripts.Shared.psm1`. Its PNG decoder rejects corrupt or invisible inputs.
+- Windows EXE icons use the shared CMake, Rust or Python resource helpers. Test actual x64 and ARM64 PE resources and retain the Linux PE-tool setup in preflight and mutation jobs.
+- Portable bundle package checks log to the host and propagate failures. Return only the bundle object and keep their shared callback mutation fixtures host-portable.
+- MSI license checks map each unique File-table ID through its sequence to the embedded Media cabinet before verifying the real text. Copied callers carry `WindowsMsiLicense.Common.psm1` and the Python verifier.
+- Batch installed-path mapping reads the MSI tables once and retains the exact anchored path checks for every requested file.
+- Windows ORT license staging matches the shipped DLL's SHA256 against exactly one wheel before copying both original texts. Copied `WindowsOrtLicense.Common.psm1` carries its provenance, MSI and Python-wheel companions.
+- When selected Windows ORT providers are supplied, their bytes must match that same wheel before its texts are copied.
+- Finished-package binary checks use streaming exact hashes, not text-license normalization. Copied `WindowsPackageBinary.Common.psm1` carries the MSI module and both Python verifiers, and MSI members map through the File and Media tables.
+- Python app packages that contain Windows ORT must compare the installed texts with the matched wheel and check them in ZIP, MSI and MSIX. Apps without ORT remain supported.
+- Windows media staging rejects foreign ORT, GenAI and DirectML DLLs before copying and checks staged bytes against the chain.
+- Windows formatting preserves distinct C/C++ fallback and tracked-only Dart policies. Copied source-build suites carry their retry and media wiring fixture companions.
+- Windows TVM-FFI builds share the cross-lane version selector, scope the SCM override to that distribution and verify installed GIL and saved twin metadata. Restore the environment on failure.
+- Windows TCP reachability shares one bounded dual-stack socket probe. Malformed URLs stay closed and the socket helper stays private.
+- Silo probes share wininit discovery, debugger transport and recursive read grants. Preserve attach policy, raw status and manual handle mode.
+- Windows native logging and DLL smoke probes share transport. Preserve blank failure evidence, loader cleanup and caller coverage minimums. Smoke module copies carry Shared.
+- MSIX smoke consumers share the archive manifest reader. Missing or malformed manifests stay fatal and archive handles close on every path.
+- Windows container drivers pass root-only source exclusions to the shared runner. Never rebuild the inbound list locally or use recursive tar exclusions for root-only skips.
+- Windows archives share extraction lifecycle. Strict failures remain the default and pinned link exceptions stay explicit.
+- Windows Python CI build, packaging and installed-wheel drivers share the summary, log-close and fatal-step verdict in `Complete-CiBuildSession`. Preserve that order and verdict.
+- Windows Pester coverage must measure one file and executed commands in each of its fifteen named modules, including Vulkan validation at 80%. Missing or empty reports, missing targets and scores below the module floor fail the test run.
+- Consumer Windows PowerShell lint jobs report complexity over the same selected path and upload JSON. Enable strict verdicts with `complexity-strict` after the consumer meets the limits. PowerShell-only repos call `powershell-quality.yml` with `strict: true` when clean.
+- Windows CI installs Pester and PSScriptAnalyzer through `WindowsCi.ModuleBootstrap.psm1`. Reuse an installed matching version, retry transient Gallery lookup failures, and verify the requested exact or minimum version. Exhausted retries and missing installed modules remain fatal.
+- The short-path Windows checkout preserves the submodule mode: `true` initializes direct submodules, `recursive` also initializes nested ones, and `false` skips them. No family repo below this hub may vendor it again: smile and awesome-beamer did, through DocumANTation, until 2026-10-28, and no recursive clone could end. Consumers below the hub call its workflows with `hub-checkout: true`. The `submodule-cycles` job in `linux-x64.yml` fails a submodule at any depth that vendors the hub. See [the action contract](../.github/actions/README.md#clone-into-short-path).
+- The host lavapipe entry imports its shared elevation predicate in its own scope. Check that boundary with `pwsh windows/scripts/tests/Invoke-Tests.ps1 -Only Lavapipe.HostVisibility.Tests.ps1 -ResultFile logs/test-results/lavapipe-host-visibility.json` before changing its imports.
+- ROCm installers called from flat BuildKit mounts receive `-ModuleRoot` explicitly. Direct checkout calls default to `windows/scripts`. See [`windows-rocm.md`](windows-rocm.md).
+- Copied Windows module stages keep a no-op `RUN` after their last `COPY`, including the TVM-private and ROCm closures. External-image views redeclare `WINDOWS_TARGET_ARCH` before their `RUN`. Keep these source views outside delivered image ancestry and retain narrow per-file closures. Every media-core and LiteRT RUN delivers the same seven shared modules as individual file mounts. TVM adds only its private leaf module. A cached module view can remain unreadable. See the [readable module view rule](#copied-module-stages-need-a-readable-view).
+- TensorRT's protobuf repair preserves comments and treats their parentheses as text. Validate all four scoped blocks and every option before writing. Unsupported input remains fatal.
+- CMD fixture `COPY` calls take native Windows paths at that boundary, even when the shared test helper emits forward slashes. Prove the copy before trusting its build result.
+- Convert GiB admission targets to rounded-up decimal MB at the BuildKit CLI boundary. `* 1024` understates the target.
+- The full native suite requires host x64 MSVC and a Visual Studio CMake generator for its real crash fixture. Missing prerequisites remain a failed run. The test runner writes each parent run's JSON summary to ignored `logs/windows-tests/`.

@@ -19,6 +19,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — the last four invariant tables read as rule lists (CON303 phase 2)
+
+- Script, test and packaging (Windows), shell helper, ONNX Runtime build and plugin, and test harness and lint
+  invariants: each table row is a bullet, one clause per sentence. No rule changed; the doc-prose rows fall.
+- `BACKLOG.md` CON303 records the second pass and what is left.
+
 ## 2026-11-27 — eight more invariant tables read as rule lists (CON303 phase 2)
 
 - AMD source-stack, acceptance, compiler and SDK proof, GPU workflow, cleanup and relocation, local launch and

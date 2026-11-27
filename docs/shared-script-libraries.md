@@ -2754,60 +2754,58 @@ A helper copied into an image or a consumer needs the files it sources or import
 
 ## Shell helper invariants
 
-Rules for the shared shell helpers and the callers that use them. Each row is one rule.
+Rules for the shared shell helpers and the callers that use them. Each item is one rule.
 
-| Rule |
-|---|
-| Compiler smoke callbacks stay unconditional; preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses. |
-| The hooks' host-red helper imports the canonical logging bootstrap; copied helpers retain it and the existing positive library-import controls. |
-| Optional Cargo release JSON paths are paired, distinct regular outputs cleared before wrapper setup; retain the whole workspace then explicit CLI, their original alias parse points, raw failures and one unfiltered invocation per stream. |
-| Validate the host binfmt owner's source API marker before sourcing its probe mode; an older installer ignores unknown arguments and could install. |
-| Invoke selected Meson providers and callbacks unconditionally; retain availability guards, order, partial flags and raw failures. |
-| Callback dispatch preserves caller-visible bindings and positional context; generic helper locals must not hide configuration used by supplied shell wrappers. |
-| Host compiler wrappers retain parent-shell publication and original local slots; optional media pinning retains caller-bound lookup and invocation. |
-| Validate cross-apt's first-line source API marker before its helper-only import; older full imports must not overwrite provided SDK updaters. |
-| Shared CLI consumers retain complete argument lists when nameref assignments can read positional parameters. |
-| Bound command callbacks retain their original parse phase and source scope; preserve caller-specific raw failure and advisory policies. |
-| Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls. |
-| Require child cleanup APIs before starting timers or watchers; advisory cleanup signals then reaps and retains caller PID guards, reset and command status. |
-| CMake consumers use `Get-CmakeBuildArgs` for target, configuration and parallel flags; keep its argument order and caller-specific build verdict. |
-| Fixture byte-preservation checks share `Assert-FileUnchanged`; retain caller bindings and propagate operation exceptions. |
-| Fixture cleanup uses `Remove-TestDir` with literal paths; bracketed diagnostic prefixes must leave no temporary roots. |
-| Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions. |
-| CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts. |
-| Shared mirror enumeration preserves source-file order and original shell-option behavior; artifact and image probes retain caller failure policies. |
-| Minimal toolchain bootstraps carry `elf-strip.sh` and `load-versions-env.sh`; keep the narrow GCC/LLVM mounts. |
-| New required toolchain imports validate their expected export and preserve selected-file failures; legacy file-only imports retain their caller policy. |
-| Standalone Android, GCC and Vulkan entries carry `bootstrap-import.sh` and `bootstrap.sh` beside them; Vulkan also carries `vulkan-install.sh`, and supplied download helpers retain precedence. |
-| Consumer checks running inside the family Linux image use `ci_image_python_require` from `python-probe.sh`; retain its image marker, pinned interpreter probe and caller-specific diagnostic. |
-| Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts. |
-| Rust plugin consumers carry the exact shared policy, preserve GetEpDevices failures and retain the owning environment during V2 calls without blocking its normal teardown. |
-| Native child waits under Dart must preserve external-reaper failures; an ECHILD or a successful failure-control probe never proves worker teardown or bridge acceptance. |
-| Cargo native helper staging uses the exact successful Cargo JSON artifact and build-script OUT_DIR; copy stage-cargo-native-helper.py with ort_census_probe.py and retain target checks and no-replace publication. |
-| Native transport controls execute while the bounded Dart child is live; preserve the canonical HIP worker/fake-runtime companions, normal sanitizer teardown, its real report and the expected leak-control exit. |
-| Native GCC profiles carry `native-gcc-system-paths.sh`; preserve flag expansion when the profile is sourced. |
-| `verify-cross-chain.sh` help carries `runtime-build-fns.sh`; ordinary forwarding must not load build helpers. |
-| Repository refresh shares best-effort fetches; callers retain checkout failure policy. Linux parser destination maps preserve raw values and consumed-argument counts. |
-| Object smokes share compile/cleanup lifecycle while retaining caller ELF policies; allocation or cleanup failure cannot pass. |
-| Host probing preserves target/build precedence and failed/empty probe behavior; shared runtime transports retain Python guards and caller sentinel verdicts. TVM codegen skips only a missing import; unexpected initialization errors fail the smoke. |
-| Flutter browser smokes record Playwright failures and let unexpected Python errors propagate, so an implementation bug cannot report a green run. |
-| Logging prefixes share severity formatting; preserve ANSI bytes, streams and NO_COLOR precedence. |
-| Standalone fallback registration keeps caller lookup policy; copied Abseil and payload entry points carry the logging bootstrap in its documented layout. |
-| Smoke ELF inspection carries its platform owner and preserves caller parser overrides without leaking platform initialization. |
-| ONNX web steps share lockfile retries and JS artifact verdicts; keep install failures fatal and check both source and copied artifacts. |
-| Agentic build, test and quality phases share execution; preserve fatal build/test results and advisory quality results. |
-| Runtime and cross orchestrators share common CLI dispatch; preserve consumed-argument counts and help code 255. |
-| Critical source-pattern checks share verdict handling; failed probes increment the aggregate and must reach the failing summary. |
-| Verified downloads must propagate fetch failures even under conditional calls; a matching stale archive does not excuse a failed fetch. |
-| Temporary process environments restore absent, empty and existing values after setup or callback failure; sanitizer overrides belong to the test child. |
-| Cross-bundle DLL closure uses the architecture graph; retain first-directory precedence, machine checks, indexed API sets and system descendants. |
-| ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts. |
-| Guard empty arguments before associative-array lookups; an empty positional CMake preset retains the caller-default behavior and its positional-array entry. |
-| Shell fixture environment values remain individually quoted arguments, including PATH and SDK directories with spaces; do not word-split a string of assignments. |
-| Keep QNN's frozen query receipts independent of directory enumeration while retaining raw tool status, argument boundaries and all 120 original cases. |
-| A knob's `${X:=...}` default goes at the top level above its first reader; `knob-order` follows call order and has no allow file. |
-| Parallel result collection must explicitly propagate a failed harvest, including when workers succeeded. Publish worker pins only after a successful, nonempty read; conditional callers disable `errexit` throughout the helper's body. |
-| Shared Git-hook diagnostics import `log-bootstrap.sh`; standalone library checks must publish the real logging API before any mutation can count. |
+- Compiler smoke callbacks stay unconditional. Preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses.
+- The hooks' host-red helper imports the canonical logging bootstrap. Copied helpers retain it and the existing positive library-import controls.
+- Optional Cargo release JSON paths are paired, distinct regular outputs cleared before wrapper setup. Retain the whole workspace then explicit CLI, their original alias parse points, raw failures and one unfiltered invocation per stream.
+- Validate the host binfmt owner's source API marker before sourcing its probe mode. An older installer ignores unknown arguments and could install.
+- Invoke selected Meson providers and callbacks unconditionally. Retain availability guards, order, partial flags and raw failures.
+- Callback dispatch preserves caller-visible bindings and positional context. Generic helper locals must not hide configuration used by supplied shell wrappers.
+- Host compiler wrappers retain parent-shell publication and original local slots. Optional media pinning retains caller-bound lookup and invocation.
+- Validate cross-apt's first-line source API marker before its helper-only import. Older full imports must not overwrite provided SDK updaters.
+- Shared CLI consumers retain complete argument lists when nameref assignments can read positional parameters.
+- Bound command callbacks retain their original parse phase and source scope. Preserve caller-specific raw failure and advisory policies.
+- Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls.
+- Require child cleanup APIs before starting timers or watchers. Advisory cleanup signals then reaps and retains caller PID guards, reset and command status.
+- CMake consumers use `Get-CmakeBuildArgs` for target, configuration and parallel flags. Keep its argument order and caller-specific build verdict.
+- Fixture byte-preservation checks share `Assert-FileUnchanged`. Retain caller bindings and propagate operation exceptions.
+- Fixture cleanup uses `Remove-TestDir` with literal paths. Bracketed diagnostic prefixes must leave no temporary roots.
+- Inline source patchers share the patch API. `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
+- CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf. SDK hooks keep precedence over explicit setup scripts.
+- Shared mirror enumeration preserves source-file order and original shell-option behavior. Artifact and image probes retain caller failure policies.
+- Minimal toolchain bootstraps carry `elf-strip.sh` and `load-versions-env.sh`. Keep the narrow GCC/LLVM mounts.
+- New required toolchain imports validate their expected export and preserve selected-file failures. Legacy file-only imports retain their caller policy.
+- Standalone Android, GCC and Vulkan entries carry `bootstrap-import.sh` and `bootstrap.sh` beside them. Vulkan also carries `vulkan-install.sh`, and supplied download helpers retain precedence.
+- Consumer checks running inside the family Linux image use `ci_image_python_require` from `python-probe.sh`. Retain its image marker, pinned interpreter probe and caller-specific diagnostic.
+- Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts.
+- Rust plugin consumers carry the exact shared policy, preserve GetEpDevices failures and retain the owning environment during V2 calls without blocking its normal teardown.
+- Native child waits under Dart must preserve external-reaper failures. An ECHILD or a successful failure-control probe never proves worker teardown or bridge acceptance.
+- Cargo native helper staging uses the exact successful Cargo JSON artifact and build-script OUT_DIR. Copy stage-cargo-native-helper.py with ort_census_probe.py and retain target checks and no-replace publication.
+- Native transport controls execute while the bounded Dart child is live. Preserve the canonical HIP worker/fake-runtime companions, normal sanitizer teardown, its real report and the expected leak-control exit.
+- Native GCC profiles carry `native-gcc-system-paths.sh`. Preserve flag expansion when the profile is sourced.
+- `verify-cross-chain.sh` help carries `runtime-build-fns.sh`. Ordinary forwarding must not load build helpers.
+- Repository refresh shares best-effort fetches. Callers retain checkout failure policy. Linux parser destination maps preserve raw values and consumed-argument counts.
+- Object smokes share compile/cleanup lifecycle while retaining caller ELF policies. Allocation or cleanup failure cannot pass.
+- Host probing preserves target/build precedence and failed/empty probe behavior. Shared runtime transports retain Python guards and caller sentinel verdicts. TVM codegen skips only a missing import. Unexpected initialization errors fail the smoke.
+- Flutter browser smokes record Playwright failures and let unexpected Python errors propagate, so an implementation bug cannot report a green run.
+- Logging prefixes share severity formatting. Preserve ANSI bytes, streams and NO_COLOR precedence.
+- Standalone fallback registration keeps caller lookup policy. Copied Abseil and payload entry points carry the logging bootstrap in its documented layout.
+- Smoke ELF inspection carries its platform owner and preserves caller parser overrides without leaking platform initialization.
+- ONNX web steps share lockfile retries and JS artifact verdicts. Keep install failures fatal and check both source and copied artifacts.
+- Agentic build, test and quality phases share execution. Preserve fatal build/test results and advisory quality results.
+- Runtime and cross orchestrators share common CLI dispatch. Preserve consumed-argument counts and help code 255.
+- Critical source-pattern checks share verdict handling. Failed probes increment the aggregate and must reach the failing summary.
+- Verified downloads must propagate fetch failures even under conditional calls. A matching stale archive does not excuse a failed fetch.
+- Temporary process environments restore absent, empty and existing values after setup or callback failure. Sanitizer overrides belong to the test child.
+- Cross-bundle DLL closure uses the architecture graph. Retain first-directory precedence, machine checks, indexed API sets and system descendants.
+- ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.
+- Guard empty arguments before associative-array lookups. An empty positional CMake preset retains the caller-default behavior and its positional-array entry.
+- Shell fixture environment values remain individually quoted arguments, including PATH and SDK directories with spaces. Do not word-split a string of assignments.
+- Keep QNN's frozen query receipts independent of directory enumeration while retaining raw tool status, argument boundaries and all 120 original cases.
+- A knob's `${X:=...}` default goes at the top level above its first reader. `knob-order` follows call order and has no allow file.
+- Parallel result collection must explicitly propagate a failed harvest, including when workers succeeded. Publish worker pins only after a successful, nonempty read. Conditional callers disable `errexit` throughout the helper's body.
+- Shared Git-hook diagnostics import `log-bootstrap.sh`. Standalone library checks must publish the real logging API before any mutation can count.
 
 ## Key shared utilities
 

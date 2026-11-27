@@ -797,56 +797,54 @@ same name; unregistration alone still needs the configured product binding above
 
 ## Build, plugin and WebGPU invariants
 
-Rules for the ORT build, its plugin execution providers and its WebGPU and WASM products. Each row is one rule.
+Rules for the ORT build, its plugin execution providers and its WebGPU and WASM products. Each item is one rule.
 
-| Rule |
-|---|
-| ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions. |
-| The plugin QNN EP stage checks the module, both exports and the HTP backend beside it on arm64; the CPU prefix refuses an in-tree QNN provider. |
-| Native plugin appends keep external-device reuse explicit; validate module and owned-path bindings first, retain raw enumeration failures and never claim an external registration as owned. |
-| Native module fallback compares the queried file-status type and preserves errors for dangling bundle links; exact consumer mirrors keep their conservative filesystem guards. |
-| Native external-registration mutation controls compile and link each variant before requiring an assertion or independent count failure; crashes, malformed reports and tool failures never count as semantic evidence. |
-| The GPU prefix refuses an in-tree TensorRT provider and requires the CUDA module's plugin exports; the TensorRT plugin stage runs on nvidia images with TensorRT. |
-| Native and C++ WASM WebGPU select `--use_webgpu static_plugin`; retain native external Dawn and Emscripten's integrated Dawn. |
-| Check the configured flags on CPU, NVIDIA, free-threaded, Asyncify and JSPI builds; explicit opt-outs prove OFF. |
-| Record both WASM products before their configured trees change; reuse the shared pool only after its source, mode, direct recipe and every artifact hash pass. |
-| Both WASM factory receipts require the real linked C export, exact unregister/negative controls, raw Node success and unchanged module/loader/recipe bytes; initialization or Dawn instance creation is insufficient. |
-| Instrumented WASM products carry the Hub probe's original MIT notice as a hash-bound sidecar; keep the companion identical to the root LICENSE and refuse foreign or linked destinations. |
-| Media chains forward ORT_WEB_REQUIRED=1 and require fresh Node factory replays of both delivered flavors after JS staging; preserve strict failures and the explicit disabled-flavor check. |
-| Python proof suites carry python-proof-fixture.sh; raw zero, a nonempty executed unittest suite and its successful summary are all required. |
-| Native/GIL and free-threaded builds carry `ort-webgpu-build-proof.py`; record each linker product before its configured tree changes. |
-| Build receipts retain pre-repair bytes; wheel repair checks their source/mode and records validated final hashes before runtime registration proof. |
-| WebGPU delivery requires a matching precheck and unchanged loaded code/data; loader metadata normalization does not prove loader safety or inference. |
-| Only unbuilt ORT prefixes containing directories and empty top-level census placeholders may omit WebGPU receipts; payloads, unknown files and symlinks still fail. |
-| Runtime default-prefix discovery shares that unbuilt-prefix predicate; explicit prefix requests are never silently filtered. |
-| Native WebGPU probes load each checked core directly, reject the legacy compiled provider and retain exact API failure and cleanup controls. |
-| Compile each shipped probe through shared cache/CMake helpers using its core's configured target compiler, flags and absolute C API header. |
-| Python WebGPU factory checks require a completed delivery and the loaded extension's own hash; native core hashes do not prove Python modes. |
-| FT smoke dependencies use the separate pinned offline probe pool; never add NumPy to the exact twin-family store or fetch it during acceptance. |
-| Keep factory unregistration isolated, its precise missing-registration control and FT GIL checks before and after loading and execution. |
-| Media factory replay selects collected wheels from completed delivery receipts and uses fresh GIL/FT environments with an explicit NumPy pin. |
-| Preserve raw child statuses and both streams, including timeout output; an existing evidence directory or partial phase set cannot publish a passed receipt. |
-| `finalize-media.sh` retains collection, both Python-mode repairs/verdicts and final smoke ordering; native install failures stay fatal and foreign failures stay advisory. |
-| Shared CMake entry checks retain first-value launcher reads and strict typed, duplicate-refusing Boolean reads. |
-| Static-plugin WASM assets key the shared cache by build type and `-wgpu4`; an old completed artifact cache is not a rebuild. |
-| Its protobuf seed validates every C/C++ option argument, including mixed scoped inputs; none may reach rc.exe or its cmcldeps preprocessor. |
-| Shared plugin C++ flags retain /EHsc because the ORT C++ API throws. |
-| CUDA standard options stay joined so sccache does not parse the value as another input. |
-| Linux ORT patches both CUDA option branches and refuses source drift before configuration. |
-| TensorRT cross builds select target CXX before CUDAHOSTCXX is published; failed setup stops the build. |
-| Plugin closure checks retain inspector failures; SBSA TensorRT uses the target loader under bounded QEMU, not native ldd. |
-| G6 accepts an explicit loader search path for launcher-based bundles; retain strict defaults, byte identity and foreign-first refusal. |
-| G2 reads `onnxruntime_ep_*` modules and `Microsoft.ML.OnnxRuntime.EP.*` directories as ORT consumers, never as ORT. |
-| AMD Python bundles carry the plugin MIGraphX EP beside the chain core and prove it against the image's module; their self-test proves registration, not availability. |
-| MIGraphX node cleanup retains its ownership patch and adjusting casts in all six C ABI callbacks; the SDK C base has no virtual destructor. |
-| The factory owns its cached kernel registry, serializes creation and releases it before its data transfer; preserve the nonvirtual factory C ABI. |
-| GPU-less app-venv checks load the selected MIGraphX/TensorRT plugin and require both factory exports; registration and inference need separate evidence. |
-| ONNX Runtime staging checks every selected provider before writing; external loader paths and dropping the default system list stay explicit opt-ins. |
-| Linux uv chain exclusions must recognize ORT entries in both LF and CRLF lockfiles. |
-| ORT and GenAI provenance checks share hashing and chain-byte membership; keep their distinct archive and exemption policies. |
-| QNN plugin configure retries use the shared retry helper, retain every attempt in `build.log` and return the last raw configure failure after exhaustion. Keep compilation outside that retry; fixtures prove transport and verdicts, not network recovery or hardware inference. |
-| The GenAI smoke catches only known binding and native failures; unexpected exceptions stay fatal and cannot produce a green sentinel. |
-| The venv census reports known input errors as findings; unexpected implementation errors keep their traceback and cannot pass. |
-| Linux app bundles exclude PyPI ORT providers before exporting the lock and pass the chain wheel to the first requirements install; a later replacement cannot rescue a failed resolver. |
-| Python's opt-in host GPU runtime path must record exact provider imports, reject bundled SDK libraries and preserve external loader paths; provider availability does not prove GPU execution. |
-| Debian app dependency scans fail on unsuccessful `readelf` or `ldconfig`; only `dpkg -S` nonzero means no package owns a soname. |
+- ORT tree scans retain archive candidates. Record scans stay shallow and preserve component-name exclusions.
+- The plugin QNN EP stage checks the module, both exports and the HTP backend beside it on arm64. The CPU prefix refuses an in-tree QNN provider.
+- Native plugin appends keep external-device reuse explicit. Validate module and owned-path bindings first, retain raw enumeration failures and never claim an external registration as owned.
+- Native module fallback compares the queried file-status type and preserves errors for dangling bundle links. Exact consumer mirrors keep their conservative filesystem guards.
+- Native external-registration mutation controls compile and link each variant before requiring an assertion or independent count failure. Crashes, malformed reports and tool failures never count as semantic evidence.
+- The GPU prefix refuses an in-tree TensorRT provider and requires the CUDA module's plugin exports. The TensorRT plugin stage runs on nvidia images with TensorRT.
+- Native and C++ WASM WebGPU select `--use_webgpu static_plugin`. Retain native external Dawn and Emscripten's integrated Dawn.
+- Check the configured flags on CPU, NVIDIA, free-threaded, Asyncify and JSPI builds. Explicit opt-outs prove OFF.
+- Record both WASM products before their configured trees change. Reuse the shared pool only after its source, mode, direct recipe and every artifact hash pass.
+- Both WASM factory receipts require the real linked C export, exact unregister/negative controls, raw Node success and unchanged module/loader/recipe bytes. Initialization or Dawn instance creation is insufficient.
+- Instrumented WASM products carry the Hub probe's original MIT notice as a hash-bound sidecar. Keep the companion identical to the root LICENSE and refuse foreign or linked destinations.
+- Media chains forward ORT_WEB_REQUIRED=1 and require fresh Node factory replays of both delivered flavors after JS staging. Preserve strict failures and the explicit disabled-flavor check.
+- Python proof suites carry python-proof-fixture.sh. Raw zero, a nonempty executed unittest suite and its successful summary are all required.
+- Native/GIL and free-threaded builds carry `ort-webgpu-build-proof.py`. Record each linker product before its configured tree changes.
+- Build receipts retain pre-repair bytes. Wheel repair checks their source/mode and records validated final hashes before runtime registration proof.
+- WebGPU delivery requires a matching precheck and unchanged loaded code/data. Loader metadata normalization does not prove loader safety or inference.
+- Only unbuilt ORT prefixes containing directories and empty top-level census placeholders may omit WebGPU receipts. Payloads, unknown files and symlinks still fail.
+- Runtime default-prefix discovery shares that unbuilt-prefix predicate. Explicit prefix requests are never silently filtered.
+- Native WebGPU probes load each checked core directly, reject the legacy compiled provider and retain exact API failure and cleanup controls.
+- Compile each shipped probe through shared cache/CMake helpers using its core's configured target compiler, flags and absolute C API header.
+- Python WebGPU factory checks require a completed delivery and the loaded extension's own hash. Native core hashes do not prove Python modes.
+- FT smoke dependencies use the separate pinned offline probe pool. Never add NumPy to the exact twin-family store or fetch it during acceptance.
+- Keep factory unregistration isolated, its precise missing-registration control and FT GIL checks before and after loading and execution.
+- Media factory replay selects collected wheels from completed delivery receipts and uses fresh GIL/FT environments with an explicit NumPy pin.
+- Preserve raw child statuses and both streams, including timeout output. An existing evidence directory or partial phase set cannot publish a passed receipt.
+- `finalize-media.sh` retains collection, both Python-mode repairs/verdicts and final smoke ordering. Native install failures stay fatal and foreign failures stay advisory.
+- Shared CMake entry checks retain first-value launcher reads and strict typed, duplicate-refusing Boolean reads.
+- Static-plugin WASM assets key the shared cache by build type and `-wgpu4`. An old completed artifact cache is not a rebuild.
+- Its protobuf seed validates every C/C++ option argument, including mixed scoped inputs. None may reach rc.exe or its cmcldeps preprocessor.
+- Shared plugin C++ flags retain /EHsc because the ORT C++ API throws.
+- CUDA standard options stay joined so sccache does not parse the value as another input.
+- Linux ORT patches both CUDA option branches and refuses source drift before configuration.
+- TensorRT cross builds select target CXX before CUDAHOSTCXX is published. Failed setup stops the build.
+- Plugin closure checks retain inspector failures. SBSA TensorRT uses the target loader under bounded QEMU, not native ldd.
+- G6 accepts an explicit loader search path for launcher-based bundles. Retain strict defaults, byte identity and foreign-first refusal.
+- G2 reads `onnxruntime_ep_*` modules and `Microsoft.ML.OnnxRuntime.EP.*` directories as ORT consumers, never as ORT.
+- AMD Python bundles carry the plugin MIGraphX EP beside the chain core and prove it against the image's module. Their self-test proves registration, not availability.
+- MIGraphX node cleanup retains its ownership patch and adjusting casts in all six C ABI callbacks. The SDK C base has no virtual destructor.
+- The factory owns its cached kernel registry, serializes creation and releases it before its data transfer. Preserve the nonvirtual factory C ABI.
+- GPU-less app-venv checks load the selected MIGraphX/TensorRT plugin and require both factory exports. Registration and inference need separate evidence.
+- ONNX Runtime staging checks every selected provider before writing. External loader paths and dropping the default system list stay explicit opt-ins.
+- Linux uv chain exclusions must recognize ORT entries in both LF and CRLF lockfiles.
+- ORT and GenAI provenance checks share hashing and chain-byte membership. Keep their distinct archive and exemption policies.
+- QNN plugin configure retries use the shared retry helper, retain every attempt in `build.log` and return the last raw configure failure after exhaustion. Keep compilation outside that retry. Fixtures prove transport and verdicts, not network recovery or hardware inference.
+- The GenAI smoke catches only known binding and native failures. Unexpected exceptions stay fatal and cannot produce a green sentinel.
+- The venv census reports known input errors as findings. Unexpected implementation errors keep their traceback and cannot pass.
+- Linux app bundles exclude PyPI ORT providers before exporting the lock and pass the chain wheel to the first requirements install. A later replacement cannot rescue a failed resolver.
+- Python's opt-in host GPU runtime path must record exact provider imports, reject bundled SDK libraries and preserve external loader paths. Provider availability does not prove GPU execution.
+- Debian app dependency scans fail on unsuccessful `readelf` or `ldconfig`. Only `dpkg -S` nonzero means no package owns a soname.
