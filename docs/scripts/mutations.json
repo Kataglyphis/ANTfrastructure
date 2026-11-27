@@ -65452,7 +65452,7 @@
   "target": "windows/Dockerfile.media-builder",
   "find": "    FFMPEG_SHA256=\"${FFMPEG_SHA256}\" `\n",
   "replace": "",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.TwinParity.Tests.ps1 -ResultFile logs/code-quality/ffmpeg-pin-env-mutation.json",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Artifact.Tests.ps1 -ResultFile logs/code-quality/ffmpeg-pin-env-mutation.json",
   "why": "an ARG the RUN cannot read as ENV leaves the script on its baked default"
  },
  {

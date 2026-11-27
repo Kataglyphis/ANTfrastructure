@@ -191,6 +191,12 @@ Describe 'Assert-FfmpegTarballStream / Get-FfmpegSourceTree (the FFMPEG_SHA256 p
         }
     }
 
+    It 'reaches the FFmpeg RUN: its stage declares FFMPEG_SHA256 and mirrors it into ENV (mutation)' {
+        $facts = Get-TestDockerfileStageFacts -Path (Join-Path (Get-RepoRoot) 'windows/Dockerfile.media-builder')
+        Assert-True ($facts['media-core-built-ffmpeg'].Args -ccontains 'FFMPEG_SHA256') 'media-core-built-ffmpeg declares FFMPEG_SHA256'
+        Assert-True ($facts['media-core-built-ffmpeg'].EnvMirrored -ccontains 'FFMPEG_SHA256') 'an ARG the RUN cannot read as ENV leaves the script on its baked default'
+    }
+
     It 'hashes the decompressed stream, so a re-gzipped archive of the same tar still matches' {
         Invoke-InTestDir { param($dir)
             foreach ($level in 'Optimal', 'Fastest', 'NoCompression') {
