@@ -466,24 +466,22 @@ separates evidence; it does not authenticate an artifact or verify GPU execution
 
 ## GPU workflow invariants
 
-Rules for the reusable GPU workflows, their artifacts and the GPU diagnostics. Each row is one rule.
+Rules for the reusable GPU workflows, their artifacts and the GPU diagnostics. Each item is one rule.
 
-| Rule |
-|---|
-| The reusable Python Linux GPU lane checks the consumer pin before pulling, forwards the default-off host-runtime input only to packaging, and isolates unverified outputs. |
-| Its optional nondefault invocation scope requires attempt-scoped GPU uploads, uses a case-sensitive plan and the pinned validator before the build, and scopes both package and always-uploaded test-report names; CPU/default plans remain checkout-free. |
-| Its optional attempt-scoped GPU artifacts use the current run attempt and never overwrite; CPU and default GPU names remain unchanged. |
-| Release collection always skips upload names containing `candidate`, `unverified` or `inventory-only`, regardless of case; user skip globs stay case-sensitive. A promoted GPU upload needs separate checks and expected asset names. |
-| GPU package receipts bind exact filenames and hashes to a caller-supplied check and CI identity; they do not authenticate or run that check. Preserve the trust and pre/post-test requirements in `docs/gpu-artifact-receipts.md`. |
-| The GPU producer resolver independently matches the current run's artifact ID and digest against its receipt; preserve attempt-scoped names and trusted producer checks. |
-| Windows GPU producer resolution requires an explicit package layout and checks matching versions and vendor across package names; Windows ARM GPU tuples remain unsupported. |
-| Reusable GPU workflow invocation scopes use the shared validated suffix for artifact names and job concurrency; raw caller input must not cancel a valid invocation before validation. |
-| GPU artifact staging checks the raw archive digest, both required check receipts and exact expanded files before atomic no-replace publication; trusted callers remain responsible for receipt provenance and hardware checks. |
-| GPU detector parity uses the shared two-cats comparator; validate the CPU baseline before using `--pairwise` for repeats, and require real provider profiles and matched results. For repeated inference, `verify_ort_profile.py --min-runs` requires provider operators in every complete sequential run; process identity alone does not prove one session. |
-| GPU loader-origin checks use `shared/python/verify_ort_loader_trace.py`; profile-bound checks select the matching PID trace and retain the canonical provider/run verdict. Every selected ORT/plugin record must match that PID, including duplicate records; unrelated fork-child libraries may share the trace. Paths and process identity do not prove bytes or one ORT session. |
-| Loader trace parent segments require explicit live root resolution, normalized package-directory agreement and actual containment; CLI roots remain canonical, and raw trace paths stay in the receipt. |
-| Tensor diagnostics compare every repeated input before describing model-output differences; a successful diagnostic never grants numerical/provider/package acceptance. Copy `compare_detector_parity.py` beside `summarize_detector_tensors.py` for its canonical JSON reader. |
-| Native tensor replay and the tiny SDK probe carry `ort_probe_session.hpp` beside `ort_plugin_eps.hpp`; preserve caller-owned options/input memory and use the canonical GCC toolchain for Clang SDK links. Raw replay success never grants parity. |
-| Intermediate-tensor diagnostics bind the original and instrumented model hashes and preserve node/initializer bytes; exposed outputs can change fusion, so they cannot replace original-model or finished-consumer acceptance. |
-| Native C++ diagnostic builders carry `lib/native-cxx-probe.sh`; preserve its caller-visible launcher, GCC root, single-argument toolchain flag and raw failures. |
-| The opt-in Linux clean-host and GPU profile actions download by immutable ID, check the upload digest and compare the same packages before and after the actual check; keep the default CPU name-based path. |
+- The reusable Python Linux GPU lane checks the consumer pin before pulling, forwards the default-off host-runtime input only to packaging, and isolates unverified outputs.
+- Its optional nondefault invocation scope requires attempt-scoped GPU uploads, uses a case-sensitive plan and the pinned validator before the build, and scopes both package and always-uploaded test-report names. CPU/default plans remain checkout-free.
+- Its optional attempt-scoped GPU artifacts use the current run attempt and never overwrite. CPU and default GPU names remain unchanged.
+- Release collection always skips upload names containing `candidate`, `unverified` or `inventory-only`, regardless of case. User skip globs stay case-sensitive. A promoted GPU upload needs separate checks and expected asset names.
+- GPU package receipts bind exact filenames and hashes to a caller-supplied check and CI identity. They do not authenticate or run that check. Preserve the trust and pre/post-test requirements in `docs/gpu-artifact-receipts.md`.
+- The GPU producer resolver independently matches the current run's artifact ID and digest against its receipt. Preserve attempt-scoped names and trusted producer checks.
+- Windows GPU producer resolution requires an explicit package layout and checks matching versions and vendor across package names. Windows ARM GPU tuples remain unsupported.
+- Reusable GPU workflow invocation scopes use the shared validated suffix for artifact names and job concurrency. Raw caller input must not cancel a valid invocation before validation.
+- GPU artifact staging checks the raw archive digest, both required check receipts and exact expanded files before atomic no-replace publication. Trusted callers remain responsible for receipt provenance and hardware checks.
+- GPU detector parity uses the shared two-cats comparator. Validate the CPU baseline before using `--pairwise` for repeats, and require real provider profiles and matched results. For repeated inference, `verify_ort_profile.py --min-runs` requires provider operators in every complete sequential run. Process identity alone does not prove one session.
+- GPU loader-origin checks use `shared/python/verify_ort_loader_trace.py`. Profile-bound checks select the matching PID trace and retain the canonical provider/run verdict. Every selected ORT/plugin record must match that PID, including duplicate records. Unrelated fork-child libraries may share the trace. Paths and process identity do not prove bytes or one ORT session.
+- Loader trace parent segments require explicit live root resolution, normalized package-directory agreement and actual containment. CLI roots remain canonical, and raw trace paths stay in the receipt.
+- Tensor diagnostics compare every repeated input before describing model-output differences. A successful diagnostic never grants numerical/provider/package acceptance. Copy `compare_detector_parity.py` beside `summarize_detector_tensors.py` for its canonical JSON reader.
+- Native tensor replay and the tiny SDK probe carry `ort_probe_session.hpp` beside `ort_plugin_eps.hpp`. Preserve caller-owned options/input memory and use the canonical GCC toolchain for Clang SDK links. Raw replay success never grants parity.
+- Intermediate-tensor diagnostics bind the original and instrumented model hashes and preserve node/initializer bytes. Exposed outputs can change fusion, so they cannot replace original-model or finished-consumer acceptance.
+- Native C++ diagnostic builders carry `lib/native-cxx-probe.sh`. Preserve its caller-visible launcher, GCC root, single-argument toolchain flag and raw failures.
+- The opt-in Linux clean-host and GPU profile actions download by immutable ID, check the upload digest and compare the same packages before and after the actual check. Keep the default CPU name-based path.

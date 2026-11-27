@@ -19,6 +19,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — eight more invariant tables read as rule lists (CON303 phase 2)
+
+- AMD source-stack, acceptance, compiler and SDK proof, GPU workflow, cleanup and relocation, local launch and
+  handoff, packaging and licence, and Renovate driver invariants: each table row is a bullet, and each clause
+  it chained with a semicolon is its own sentence. No rule changed; the doc-prose rows of the pages fall.
+
 ## 2026-11-27 — six invariant tables read as rule lists (CON303 phase 2)
 
 - The one-column rule tables phase 1 moved out of `AGENTS.md` become bullet lists of short sentences, each

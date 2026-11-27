@@ -2647,50 +2647,48 @@ no suite repeats that run.
 
 ## Renovate driver invariants
 
-Rules for the Renovate drivers and the update writers. Each row is one rule.
+Rules for the Renovate drivers and the update writers. Each item is one rule.
 
-| Rule |
-|---|
-| Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; the local driver also requires `renovate-node.sh`, `renovate-submodules.sh` and `renovate-uv-exports.sh`. `renovate_planner.py` carries `renovate_uv_exports.py`. Preserve dry-run, rollback and nonempty-list policies. |
-| Reject invalid Renovate entrypoints before executing their help probe; valid wrappers still require the live delegation check. |
-| Exact `--submodule-path` selections filter writes only; retain the complete direct-gitlink scan and reject unknown or repeated paths. |
-| Gradle wrapper updates change only the version in one distribution URL; duplicate properties and checksum-pinned archives refuse before writing. |
-| A targeted family gitlink pin uses the shared helper. Pass `--path` for a direct `.gitmodules` entry other than `third_party/ANTfrastructure`. |
-| Require the consumer's live remote branch, a clean initialized child and its remote default-branch tip; stage only that gitlink. |
-| Do not use `.gitmodules branch` as the target or copy the pin logic into consumers. |
-| A live Renovate scan checks its own CLI first. Resolve npm's `renovate@latest` tag and install that exact release into the isolated user cache before scanning dependencies. |
-| A failed lookup or install fails the run; never report repository dependencies with an unchecked stale CLI. |
-| Use a PATH Node only when its full version reaches the pinned minimum in the same major; reuse cached Node only at the exact pin with working npm. |
-| Report and dry-run modes do not rewrite the tracked Renovate pin or lock. |
-| An owner-wide run uses GitHub's active, nonfork inventory. `linux/scripts/renovate-fleet.sh --github-owned` reports; add `--apply` only under the rule above. |
-| Require every eligible repo's own checkout and tracked Renovate config, wrapper and CI caller before any apply. |
-| Forks and archives are outside this mode; the older sibling-only fleet remains available for offline work. |
-| A complete Renovate result includes custom regex managers and successful lookups. The default manager set includes `custom.regex`; an explicit `--managers` remains exact except that `pep621` adds `custom.regex` when the Python manifest has tagged Torch/vision Git sources. |
-| Live runs require a GitHub token, resolved by the shared driver, and any NOT CHECKED dependency makes the report or apply fail before writing. |
-| Only source-proved non-version inputs are DESIGN; failed lookups, invalid config and unreconciled tagged direct Git pins remain fatal. |
-| OrchestrANT's Torch/vision Git URLs count as checked only when all seven custom regex lookups match the declarations; apply projects only the pair accepted in the parent-committed hub gitlink, with wheel pins and a parsed, matching `uv.lock` in the same rollback unit. |
-| Commit a moved hub gitlink before rerunning the pair update. |
-| The riscv64 Torch wheelhouse uses the pinned source pair. Read Torch and TorchVision from `versions.env` or explicit build inputs. |
-| Missing pins or a source-tag/version disagreement fail; a commit ref requires an explicit Torch package version. |
-| The host `uv pip install` receives the package version without the source tag's `v`. |
-| The default Renovate run covers every direct `.gitmodules` submodule (owner directive 2026-10-26). |
-| Resolve each remote's current default branch, regardless of a local `branch =` override or a Renovate report row. |
-| Report its exact tip; `--apply` initializes a missing checkout and checks out that commit even when it is many commits ahead. |
-| Report and dry-run must not clone or alter a missing checkout. |
-| A missing default branch or failed fetch must fail visibly, never look current. |
-| Reject a symlink anywhere in a tracked submodule path before remote lookup, including a dangling link. |
-| Never overwrite an ignored local file during checkout. |
-| Before auto-initialization, snapshot the parent's complete local Git config; rollback must restore it byte-for-byte, even when initialization fails before creating `.git`. |
-| Restore gitlinks, checkouts and other writes too. |
-| Under WSL, select Windows Git for a Windows CRLF checkout even after the last missing submodule initializes or selected files show no CRLF drift. |
-| Do not recurse into nested external submodules, stage or commit gitlinks. |
-| An explicit `--managers` selection still controls whether the `git-submodules` manager runs. |
-| See [the submodule mechanism](dependency-updates.md#how-the-submodule-half-follows-default-branches). |
-| A consumer wrapper can start from an uninitialized hub. Its copied bootstrap initializes only the tracked direct `third_party/ANTfrastructure` gitlink for a real `--apply`, before the hub driver exists to handle the rest. |
-| Report and dry-run must not clone. |
-| On fatal driver or initialization failure, deinitialize that bootstrap checkout, restore the parent's Git config byte-for-byte and remove only paths absent before the call. |
-| Exit 2 retains the checkout for review; an incomplete rollback retains the config backup and fails visibly. |
-| In WSL, use Windows Git for the index checks, initialization and deinitialization of a Windows CRLF checkout; keep the Linux path for shell file backups. |
-| Security refreshes update tracked locks as well as live tools. A Renovate baseline bump moves `tool-pins.env`, its npm manifest and lock together. |
-| A setuptools bump moves the shared pin, verified arm64 wheel URL and SHA256, LiteRT hash lock and fallback defaults together; the torch `<82` compatibility pin remains separate until its build supports a newer release. |
-| `bump_fetch.py` falls back only for expected network or invalid-JSON failures; unexpected Python exceptions must propagate instead of becoming missing metadata or an unnecessary asset download. |
+- Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`. The local driver also requires `renovate-node.sh`, `renovate-submodules.sh` and `renovate-uv-exports.sh`. `renovate_planner.py` carries `renovate_uv_exports.py`. Preserve dry-run, rollback and nonempty-list policies.
+- Reject invalid Renovate entrypoints before executing their help probe. Valid wrappers still require the live delegation check.
+- Exact `--submodule-path` selections filter writes only. Retain the complete direct-gitlink scan and reject unknown or repeated paths.
+- Gradle wrapper updates change only the version in one distribution URL. Duplicate properties and checksum-pinned archives refuse before writing.
+- A targeted family gitlink pin uses the shared helper. Pass `--path` for a direct `.gitmodules` entry other than `third_party/ANTfrastructure`.
+- Require the consumer's live remote branch, a clean initialized child and its remote default-branch tip. Stage only that gitlink.
+- Do not use `.gitmodules branch` as the target or copy the pin logic into consumers.
+- A live Renovate scan checks its own CLI first. Resolve npm's `renovate@latest` tag and install that exact release into the isolated user cache before scanning dependencies.
+- A failed lookup or install fails the run. Never report repository dependencies with an unchecked stale CLI.
+- Use a PATH Node only when its full version reaches the pinned minimum in the same major. Reuse cached Node only at the exact pin with working npm.
+- Report and dry-run modes do not rewrite the tracked Renovate pin or lock.
+- An owner-wide run uses GitHub's active, nonfork inventory. `linux/scripts/renovate-fleet.sh --github-owned` reports. Add `--apply` only under the rule above.
+- Require every eligible repo's own checkout and tracked Renovate config, wrapper and CI caller before any apply.
+- Forks and archives are outside this mode. The older sibling-only fleet remains available for offline work.
+- A complete Renovate result includes custom regex managers and successful lookups. The default manager set includes `custom.regex`. An explicit `--managers` remains exact except that `pep621` adds `custom.regex` when the Python manifest has tagged Torch/vision Git sources.
+- Live runs require a GitHub token, resolved by the shared driver, and any NOT CHECKED dependency makes the report or apply fail before writing.
+- Only source-proved non-version inputs are DESIGN. Failed lookups, invalid config and unreconciled tagged direct Git pins remain fatal.
+- OrchestrANT's Torch/vision Git URLs count as checked only when all seven custom regex lookups match the declarations. Apply projects only the pair accepted in the parent-committed hub gitlink, with wheel pins and a parsed, matching `uv.lock` in the same rollback unit.
+- Commit a moved hub gitlink before rerunning the pair update.
+- The riscv64 Torch wheelhouse uses the pinned source pair. Read Torch and TorchVision from `versions.env` or explicit build inputs.
+- Missing pins or a source-tag/version disagreement fail. A commit ref requires an explicit Torch package version.
+- The host `uv pip install` receives the package version without the source tag's `v`.
+- The default Renovate run covers every direct `.gitmodules` submodule (owner directive 2026-10-26).
+- Resolve each remote's current default branch, regardless of a local `branch =` override or a Renovate report row.
+- Report its exact tip. `--apply` initializes a missing checkout and checks out that commit even when it is many commits ahead.
+- Report and dry-run must not clone or alter a missing checkout.
+- A missing default branch or failed fetch must fail visibly, never look current.
+- Reject a symlink anywhere in a tracked submodule path before remote lookup, including a dangling link.
+- Never overwrite an ignored local file during checkout.
+- Before auto-initialization, snapshot the parent's complete local Git config. Rollback must restore it byte-for-byte, even when initialization fails before creating `.git`.
+- Restore gitlinks, checkouts and other writes too.
+- Under WSL, select Windows Git for a Windows CRLF checkout even after the last missing submodule initializes or selected files show no CRLF drift.
+- Do not recurse into nested external submodules, stage or commit gitlinks.
+- An explicit `--managers` selection still controls whether the `git-submodules` manager runs.
+- See [the submodule mechanism](dependency-updates.md#how-the-submodule-half-follows-default-branches).
+- A consumer wrapper can start from an uninitialized hub. Its copied bootstrap initializes only the tracked direct `third_party/ANTfrastructure` gitlink for a real `--apply`, before the hub driver exists to handle the rest.
+- Report and dry-run must not clone.
+- On fatal driver or initialization failure, deinitialize that bootstrap checkout, restore the parent's Git config byte-for-byte and remove only paths absent before the call.
+- Exit 2 retains the checkout for review. An incomplete rollback retains the config backup and fails visibly.
+- In WSL, use Windows Git for the index checks, initialization and deinitialization of a Windows CRLF checkout. Keep the Linux path for shell file backups.
+- Security refreshes update tracked locks as well as live tools. A Renovate baseline bump moves `tool-pins.env`, its npm manifest and lock together.
+- A setuptools bump moves the shared pin, verified arm64 wheel URL and SHA256, LiteRT hash lock and fallback defaults together. The torch `<82` compatibility pin remains separate until its build supports a newer release.
+- `bump_fetch.py` falls back only for expected network or invalid-JSON failures. Unexpected Python exceptions must propagate instead of becoming missing metadata or an unnecessary asset download.

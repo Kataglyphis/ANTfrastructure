@@ -1162,63 +1162,59 @@ not lock other writers, authenticate receipts or establish runtime acceptance.
 
 ## Cleanup and relocation invariants
 
-Rules for local proofs that clean up, relocate or retire trees. Each row is one rule.
+Rules for local proofs that clean up, relocate or retire trees. Each item is one rule.
 
-| Rule |
-|---|
-| Isolated preflight mirror opt-ins use the shared Ubuntu rewrite before apt; retain signed source metadata, the recorded URL and default-off behavior. |
-| Relocate only closed, Git-ignored quality venvs to a different existing tmpfs; shared inodes, nonregular payloads or changed canonical archive bytes cannot produce a receipt. |
-| Recurring source proofs use the versioned launcher and current recipe definitions by ID; retain reviewed resource limits, matching tool locks, fresh units, raw statuses and canonical cleanup. |
-| Share unconditional and source-order wiring checks through `Assert-TestAstCommand -Unconditional` and `Assert-TestAstOrder`. |
-| Isolated preflight installs the source-pinned managed FT interpreter, retains it across env-i and refuses wrong versions, enabled GILs or missing headers before running gates. |
-| Reviewed OCI archive deduplication uses its versioned preview/apply helper, preserves equal bytes and stable metadata, and excludes receipt-bound or externally linked inodes; copy its host-command and native-OCI companions together. |
-| Retire closed temporary quality installations only after closure hashes and a durable archive comparison match; retain source trees, packages and shared compiler/Cargo/uv caches. |
+- Isolated preflight mirror opt-ins use the shared Ubuntu rewrite before apt. Retain signed source metadata, the recorded URL and default-off behavior.
+- Relocate only closed, Git-ignored quality venvs to a different existing tmpfs. Shared inodes, nonregular payloads or changed canonical archive bytes cannot produce a receipt.
+- Recurring source proofs use the versioned launcher and current recipe definitions by ID. Retain reviewed resource limits, matching tool locks, fresh units, raw statuses and canonical cleanup.
+- Share unconditional and source-order wiring checks through `Assert-TestAstCommand -Unconditional` and `Assert-TestAstOrder`.
+- Isolated preflight installs the source-pinned managed FT interpreter, retains it across env-i and refuses wrong versions, enabled GILs or missing headers before running gates.
+- Reviewed OCI archive deduplication uses its versioned preview/apply helper, preserves equal bytes and stable metadata, and excludes receipt-bound or externally linked inodes. Copy its host-command and native-OCI companions together.
+- Retire closed temporary quality installations only after closure hashes and a durable archive comparison match. Retain source trees, packages and shared compiler/Cargo/uv caches.
 
 ## Local launch and handoff invariants
 
-Rules for the local stage launches, their handoffs and the operational toolkit. Each row is one rule.
+Rules for the local stage launches, their handoffs and the operational toolkit. Each item is one rule.
 
-| Rule |
-|---|
-| - Local GPU-to-Media handoffs rehash native OCI bytes and SDK layer/diffID ancestry; require the actual terminal GPU producer, exact source proof and bounded export before ordinary Media with both required Wasm modes. Resolve the immutable local manifest ID independently against the tagged config before export; Media retains its repository@digest and native-context binding. |
-| - Ordinary local Media launches require at least 300 GiB available across the default, ROCm and NVIDIA lanes. A stricter plan still applies. |
-| - A ROCm Media source newer than its GPU parent requires `media_source_profile.py`: ancestry, its own complete source proof and byte-identical compiler, SDK and GPU inputs, rechecked at the Media export ([alternate Media source](#a-media-source-newer-than-its-gpu-parent)). |
-| - Local Media-to-Android handoffs retain the same exact source/command checks and native GPU ancestry; keep distinct Media receipts, complete worker companions, raw export statuses and the unchanged disk floor. Android precedes runtime; native exports are not FINAL acceptance. Native Android exports keep their own subject and all Media ancestors; GPU/Media/Android copies carry `stage_handoff_profile.py` and the recursive parent companions. |
-| - Ordinary local runtime launches retain the verified native Android layout, exact app commit, all three fresh canonical image names and default image wheel transport. Create the immutable local alias from the verified source tag and independently inspect its bare manifest/config; preserve the post-tag identity checks. Carry `owned-nerdctl.py`, `owned_nerdctl_args.py`, `owned_containers.py`, `host_commands.py` and the cleanup entry together; install the same fresh ownership token, required cleanup CID-file argument and ExecStopPost before launch, then require cleanup and an independent absence query before acceptance. Runtime command success is not FINAL consumer acceptance. |
-| - The alternate ROCm runtime selector requires the exact reviewed wheel-context/smoke-export source with context-valid exporter controls and its own complete current preflight before any tags or units; an older source receipt cannot qualify the repair. Preserve the original Android/native parent, shared admission minimum, app commit and invocation cleanup bindings; ordinary ROCm runtime launches additionally require at least 300 GiB before allocating outputs, aliases or units. |
-| - A bounded local FINAL run keeps the complete canonical consumer plan, committed tooling and successful runtime binding; install fresh UUID-labelled container cleanup before any consumer work and require actual terminal unit status, receipt validation, canonical cleanup and an independent empty label query before the stopped proof. Failed outer status cannot become acceptance through an inner receipt. An unloaded successful runtime requires the sealed canonical guardian plus freshly queried trusted same-boot lifecycle records; preserve actual exit time and explicit observation provenance, and never infer success from not-found defaults. Copied acceptance/guardian workers carry `runtime_terminal_evidence.py`. |
-| - A runtime storage guardian binds one already live ordinary runtime by invocation hash, unit, PID and start ticks; commit its source and worker closure before launch. Reuse the canonical regular-layer worker synchronously in its bounded control group, retaining at least 100 GB while the outer producer is live even if BuildKit reports zero in-use records. Never restart, stop or accept the producer from storage observation; retain failed producer status in the stopped receipt. A stopped failed unit may retain systemd's failed state with PID 0; a successful guardian still requires an inactive stopped state. |
-| - The explicit ordinary-runtime `--serial-smoke` host option sets only `RUNTIME_SMOKE_OVERLAP=0`; keep the same required smoke, raw failure, production source proof, app, native parent and cleanup bindings. Ordinary overlap remains the default. |
-| - Automatic local image cleanup selects explicit obsolete published tags, verifies their immutable registry manifests/configs and waits for an idle engine; preserve current build parents, E30/receipts, all cachemounts and every unselected image identity. Keep before/after evidence and recheck the ordinary reserve ([host cleanup](linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches)). |
-| - Native ORT, OpenCV and app-wheelhouse Media cache readers require the outer RUN and the Media unit family. For OpenCV, require the final drain after the build command. Retain mandatory worker/profile hashes and explicit partial-timeout scope. IREE configure snapshots require the selected target build tree and the same live process identity. |
-| Diagnostic compiler prefixes remain explicitly unverified and cannot qualify an SDK parent; retain the failed producer and mandatory source smoke. |
-| Keep run-specific inputs, extracted code and reports under `logs/`. |
-| Add missing recurring functionality to Git before its next use. |
-| Local BuildKit cache transfers use `local-proof/seed-buildkit-cache.py` with its stopped-producer proof; preserve separate mutable metadata and verify the actual next command's cache import before launch. |
-| A transport receipt does not prove cache hits. |
-| Current compiler plans with `source_proofs` require `image_qualification_profile=compiler-cross-cpu`; retain both shell modes, all six wrappers and the OCI parent refusals. |
-| Its subject and OCI modules stay in strict ty and ANN001/ANN201 scopes; retain their sibling module search roots. |
-| Direct-suite failures retain raw failed status and assertion logs; a missing mutator log cannot become passing mutation evidence. |
-| The permanent isolated preflight, unit watcher and native plugin probe are documented in [quality tooling](code-quality-tooling.md#preserved-local-proof-workflows). |
-| Isolated preflight keeps the mounted worker transcript separately from engine attach output; a missing or linked transcript cannot pass, and complete source acceptance still requires every normal group and mutation. |
-| Complete-preflight cleanup readers accept joined and separated systemd property arguments, require exactly one ExecStopPost, and retain the original argv and all cleanup/owner checks. |
-| Isolated preflight requires the engine init to reap orphaned test children; group-disappearance checks stay strict. |
-| Cached-image replays use its explicit image and read-only native-tools-cache options; retain report writability and record the altered environment scope. |
-| Long isolated-preflight units pass one fresh run-id to both the driver and independent cleanup hook before launch. |
-| Container cleanup tools also carry `owned_containers.py`; long container units require its `cleanup-owned-containers.py` ExecStopPost hook with the same fresh label/token and CID file. |
-| Source CI dispatch, retrieval and audits use `source-ci.py` with its `source_ci/` and `host_commands.py` companions. |
-| Mutation seals require a loaded, terminal successful unit before stopping; cached default success is insufficient. |
-| Direct-wrapper complete receipts use the original closed evidence and unchanged canonical suite discovery; never synthesize driver run.json, re-seal or repeat exclusive cleanup. |
-| Native worker source tests require Dart, C/C++, Rust and sccache; use `ensure-native-worker-test-tools.sh` and preserve mandatory VM coverage. |
-| Flutter `--keep-cache` is a test-runner opt-in; fresh image installs retain their default bare-SDK policy. |
-| Check the [fallback-font lock](../linux/webserver/README.md#fallback-fonts-from-the-site) against the exact pinned Flutter SDK when its engine changes. |
-| Parity CLI copies carry `lib/cli-value-options.sh` and logging companions; retain usage alias binding and complete remaining arguments. |
-| `+CALLBACK` CLI dispatch uses an output count and an unconditional invocation; do not swallow the caller's active errexit policy. |
-| Container transport fixtures accept the shared runner security and value flags before parsing the image and command; preserve the production AppArmor setting. |
-| QAIRT endpoint exchange uses `qairt-key-handoff.py`; private keys and decrypted endpoints stay outside every Git checkout, and issue comments carry only public SPKI keys, fingerprints or ciphertext. |
-| Private SDK delivery uses `qairt-private-transfer.py` beside the key helper; retain exact source/remote hashes, conditional no-replace, bounded execution and redacted receipts. |
-| Receiver cache/hash gates stay mandatory. |
-| An alternate runtime source requires its own complete source proof and explicit reviewed selection; preserve the original Android source, invocation and native ancestry separately. A host-tools commit or the parent's source proof cannot qualify changed runtime code. A later runtime source on a newer Android parent may differ only in host-only runtime files ([runtime source](#a-runtime-source-newer-than-its-android-parent)). |
-| Literal shell expressions in unit argv require `--expand-environment=no`; host-shell quoting does not disable systemd expansion. |
-| Container engines may keep their payload outside the starter unit; use the versioned owned-container ExecStopPost hook and verify cleanup separately before handoff. Command success without stopped/PID0 or absence is insufficient; retained failed containers stay stopped. |
-| User units retain system utility directories in PATH, including `/usr/sbin` and `/sbin`, for probes such as `ldconfig`. |
+- - Local GPU-to-Media handoffs rehash native OCI bytes and SDK layer/diffID ancestry. Require the actual terminal GPU producer, exact source proof and bounded export before ordinary Media with both required Wasm modes. Resolve the immutable local manifest ID independently against the tagged config before export. Media retains its repository@digest and native-context binding.
+- - Ordinary local Media launches require at least 300 GiB available across the default, ROCm and NVIDIA lanes. A stricter plan still applies.
+- - A ROCm Media source newer than its GPU parent requires `media_source_profile.py`: ancestry, its own complete source proof and byte-identical compiler, SDK and GPU inputs, rechecked at the Media export ([alternate Media source](#a-media-source-newer-than-its-gpu-parent)).
+- - Local Media-to-Android handoffs retain the same exact source/command checks and native GPU ancestry. Keep distinct Media receipts, complete worker companions, raw export statuses and the unchanged disk floor. Android precedes runtime. Native exports are not FINAL acceptance. Native Android exports keep their own subject and all Media ancestors. GPU/Media/Android copies carry `stage_handoff_profile.py` and the recursive parent companions.
+- - Ordinary local runtime launches retain the verified native Android layout, exact app commit, all three fresh canonical image names and default image wheel transport. Create the immutable local alias from the verified source tag and independently inspect its bare manifest/config. Preserve the post-tag identity checks. Carry `owned-nerdctl.py`, `owned_nerdctl_args.py`, `owned_containers.py`, `host_commands.py` and the cleanup entry together. Install the same fresh ownership token, required cleanup CID-file argument and ExecStopPost before launch, then require cleanup and an independent absence query before acceptance. Runtime command success is not FINAL consumer acceptance.
+- - The alternate ROCm runtime selector requires the exact reviewed wheel-context/smoke-export source with context-valid exporter controls and its own complete current preflight before any tags or units. An older source receipt cannot qualify the repair. Preserve the original Android/native parent, shared admission minimum, app commit and invocation cleanup bindings. Ordinary ROCm runtime launches additionally require at least 300 GiB before allocating outputs, aliases or units.
+- - A bounded local FINAL run keeps the complete canonical consumer plan, committed tooling and successful runtime binding. Install fresh UUID-labelled container cleanup before any consumer work and require actual terminal unit status, receipt validation, canonical cleanup and an independent empty label query before the stopped proof. Failed outer status cannot become acceptance through an inner receipt. An unloaded successful runtime requires the sealed canonical guardian plus freshly queried trusted same-boot lifecycle records. Preserve actual exit time and explicit observation provenance, and never infer success from not-found defaults. Copied acceptance/guardian workers carry `runtime_terminal_evidence.py`.
+- - A runtime storage guardian binds one already live ordinary runtime by invocation hash, unit, PID and start ticks. Commit its source and worker closure before launch. Reuse the canonical regular-layer worker synchronously in its bounded control group, retaining at least 100 GB while the outer producer is live even if BuildKit reports zero in-use records. Never restart, stop or accept the producer from storage observation. Retain failed producer status in the stopped receipt. A stopped failed unit may retain systemd's failed state with PID 0. A successful guardian still requires an inactive stopped state.
+- - The explicit ordinary-runtime `--serial-smoke` host option sets only `RUNTIME_SMOKE_OVERLAP=0`. Keep the same required smoke, raw failure, production source proof, app, native parent and cleanup bindings. Ordinary overlap remains the default.
+- - Automatic local image cleanup selects explicit obsolete published tags, verifies their immutable registry manifests/configs and waits for an idle engine. Preserve current build parents, E30/receipts, all cachemounts and every unselected image identity. Keep before/after evidence and recheck the ordinary reserve ([host cleanup](linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches)).
+- - Native ORT, OpenCV and app-wheelhouse Media cache readers require the outer RUN and the Media unit family. For OpenCV, require the final drain after the build command. Retain mandatory worker/profile hashes and explicit partial-timeout scope. IREE configure snapshots require the selected target build tree and the same live process identity.
+- Diagnostic compiler prefixes remain explicitly unverified and cannot qualify an SDK parent. Retain the failed producer and mandatory source smoke.
+- Keep run-specific inputs, extracted code and reports under `logs/`.
+- Add missing recurring functionality to Git before its next use.
+- Local BuildKit cache transfers use `local-proof/seed-buildkit-cache.py` with its stopped-producer proof. Preserve separate mutable metadata and verify the actual next command's cache import before launch.
+- A transport receipt does not prove cache hits.
+- Current compiler plans with `source_proofs` require `image_qualification_profile=compiler-cross-cpu`. Retain both shell modes, all six wrappers and the OCI parent refusals.
+- Its subject and OCI modules stay in strict ty and ANN001/ANN201 scopes. Retain their sibling module search roots.
+- Direct-suite failures retain raw failed status and assertion logs. A missing mutator log cannot become passing mutation evidence.
+- The permanent isolated preflight, unit watcher and native plugin probe are documented in [quality tooling](code-quality-tooling.md#preserved-local-proof-workflows).
+- Isolated preflight keeps the mounted worker transcript separately from engine attach output. A missing or linked transcript cannot pass, and complete source acceptance still requires every normal group and mutation.
+- Complete-preflight cleanup readers accept joined and separated systemd property arguments, require exactly one ExecStopPost, and retain the original argv and all cleanup/owner checks.
+- Isolated preflight requires the engine init to reap orphaned test children. Group-disappearance checks stay strict.
+- Cached-image replays use its explicit image and read-only native-tools-cache options. Retain report writability and record the altered environment scope.
+- Long isolated-preflight units pass one fresh run-id to both the driver and independent cleanup hook before launch.
+- Container cleanup tools also carry `owned_containers.py`. Long container units require its `cleanup-owned-containers.py` ExecStopPost hook with the same fresh label/token and CID file.
+- Source CI dispatch, retrieval and audits use `source-ci.py` with its `source_ci/` and `host_commands.py` companions.
+- Mutation seals require a loaded, terminal successful unit before stopping. Cached default success is insufficient.
+- Direct-wrapper complete receipts use the original closed evidence and unchanged canonical suite discovery. Never synthesize driver run.json, re-seal or repeat exclusive cleanup.
+- Native worker source tests require Dart, C/C++, Rust and sccache. Use `ensure-native-worker-test-tools.sh` and preserve mandatory VM coverage.
+- Flutter `--keep-cache` is a test-runner opt-in. Fresh image installs retain their default bare-SDK policy.
+- Check the [fallback-font lock](../linux/webserver/README.md#fallback-fonts-from-the-site) against the exact pinned Flutter SDK when its engine changes.
+- Parity CLI copies carry `lib/cli-value-options.sh` and logging companions. Retain usage alias binding and complete remaining arguments.
+- `+CALLBACK` CLI dispatch uses an output count and an unconditional invocation. Do not swallow the caller's active errexit policy.
+- Container transport fixtures accept the shared runner security and value flags before parsing the image and command. Preserve the production AppArmor setting.
+- QAIRT endpoint exchange uses `qairt-key-handoff.py`. Private keys and decrypted endpoints stay outside every Git checkout, and issue comments carry only public SPKI keys, fingerprints or ciphertext.
+- Private SDK delivery uses `qairt-private-transfer.py` beside the key helper. Retain exact source/remote hashes, conditional no-replace, bounded execution and redacted receipts.
+- Receiver cache/hash gates stay mandatory.
+- An alternate runtime source requires its own complete source proof and explicit reviewed selection. Preserve the original Android source, invocation and native ancestry separately. A host-tools commit or the parent's source proof cannot qualify changed runtime code. A later runtime source on a newer Android parent may differ only in host-only runtime files ([runtime source](#a-runtime-source-newer-than-its-android-parent)).
+- Literal shell expressions in unit argv require `--expand-environment=no`. Host-shell quoting does not disable systemd expansion.
+- Container engines may keep their payload outside the starter unit. Use the versioned owned-container ExecStopPost hook and verify cleanup separately before handoff. Command success without stopped/PID0 or absence is insufficient. Retained failed containers stay stopped.
+- User units retain system utility directories in PATH, including `/usr/sbin` and `/sbin`, for probes such as `ldconfig`.

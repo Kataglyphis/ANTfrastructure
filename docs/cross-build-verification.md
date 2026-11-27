@@ -2234,26 +2234,24 @@ The runtime smoke sources the ISA and Intel gate modules before calling the plat
 
 ## Compiler and SDK proof invariants
 
-Rules for the cross compilers, the SDK proofs and the cross CMake helpers. Each row is one rule.
+Rules for the cross compilers, the SDK proofs and the cross CMake helpers. Each item is one rule.
 
-| Rule |
-|---|
-| SDK LLVM materialization restores the selected architecture prefix as an alias and retains the native host tree for foreign targets; existing PATH, alternatives, loader and CMake references must keep resolving. |
-| Cross-Clang wrappers bind after the source build, prefer the existing native source prefix and refuse incomplete source installs. The native LLVM build includes the host and configured cross backends; both wrapper drivers receive exact-version and real target compiler smokes, including the build-host architecture outside the foreign-target loop. |
-| Cross-Clang wrappers use the filesystem-root sysroot with Debian's absolute target linker scripts; foreign target trees remain mandatory. Independent image probes require that same root and reject the old double-root wrappers. |
-| Foreign SDK proofs keep the Linux amd64 build image, both target driver ELF checks and both target QEMU executions in each shell mode. |
-| Isolated native workers preserve nonzero clock errors before launch and during supervision; absent errno becomes EIO. Keep optimized fatal-warning compilation and actual killed/reaped child controls. |
-| SDK and AMD share their core manifest and consume a host-prepared named build context under the full receipt SHA256 and files leaf; retain the validated HUB_SCRIPTS_KEY argument and exact COPY/mount selectors so an empty key cannot select the flat root. Bundles reject missing, foreign, duplicate and recursive inputs, preserve exact selected bytes and normalize modes/timestamps. Measure actual BuildKit reuse before claiming cache isolation. |
-| Selected-context cache claims require the permanent probe with actual cold, unselected-change and selected-change solves for both SDK and AMD; retain exact step/byte/input verdicts and never count fake-engine fixtures as cache evidence. |
-| Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples. |
-| ROCm pin defaults come from the compiling stage; shared module-closure checks tolerate intervening ARGs and retain portable mutation coverage. |
-| Cross-verification shares target selection without merging caller fallback, skip-diagnostic or architecture-restoration policies. |
-| Native and cross LLVM builds share source-cache validation and eviction in `common.sh`; retain their distinct fetch and build-directory policies. |
-| Cross and Canadian GCC share builder invocation; both callers raise builder failures explicitly, even when installed tools already exist. |
-| Android CMake consumers use `android_cmake_target_args` for NDK, ABI and API selection; keep their project options in the caller. |
-| Cross CMake source builds pass `CMAKE_POLICY_VERSION_MINIMUM` as one argument, including operator-provided values with spaces; preserve caller option boundaries. |
-| Libstdc++ repair and pinning share the foreign-target predicate; keep raw arch comparison, probe fallback and unconditional target resolution. |
-| Cross-Python path helpers share context and directory lookup; preserve staged precedence, argument forwarding and failure short circuits. |
-| Vulkan target components share launcher and accounting; preserve required-component verdicts, WSI checks and glslang pass order. |
-| TVM compiler validation and selection share GCC-name resolution; keep override validation and wrapper argument order. |
-| Compiler-rt consumers share verified extraction and library discovery; keep base-stage advisory and source-build fatal policies distinct. |
+- SDK LLVM materialization restores the selected architecture prefix as an alias and retains the native host tree for foreign targets. Existing PATH, alternatives, loader and CMake references must keep resolving.
+- Cross-Clang wrappers bind after the source build, prefer the existing native source prefix and refuse incomplete source installs. The native LLVM build includes the host and configured cross backends. Both wrapper drivers receive exact-version and real target compiler smokes, including the build-host architecture outside the foreign-target loop.
+- Cross-Clang wrappers use the filesystem-root sysroot with Debian's absolute target linker scripts. Foreign target trees remain mandatory. Independent image probes require that same root and reject the old double-root wrappers.
+- Foreign SDK proofs keep the Linux amd64 build image, both target driver ELF checks and both target QEMU executions in each shell mode.
+- Isolated native workers preserve nonzero clock errors before launch and during supervision. Absent errno becomes EIO. Keep optimized fatal-warning compilation and actual killed/reaped child controls.
+- SDK and AMD share their core manifest and consume a host-prepared named build context under the full receipt SHA256 and files leaf. Retain the validated HUB_SCRIPTS_KEY argument and exact COPY/mount selectors so an empty key cannot select the flat root. Bundles reject missing, foreign, duplicate and recursive inputs, preserve exact selected bytes and normalize modes/timestamps. Measure actual BuildKit reuse before claiming cache isolation.
+- Selected-context cache claims require the permanent probe with actual cold, unselected-change and selected-change solves for both SDK and AMD. Retain exact step/byte/input verdicts and never count fake-engine fixtures as cache evidence.
+- Architecture and UV test suites carry their shared fixture companions. Use harness PE and wheel constructors for valid samples.
+- ROCm pin defaults come from the compiling stage. Shared module-closure checks tolerate intervening ARGs and retain portable mutation coverage.
+- Cross-verification shares target selection without merging caller fallback, skip-diagnostic or architecture-restoration policies.
+- Native and cross LLVM builds share source-cache validation and eviction in `common.sh`. Retain their distinct fetch and build-directory policies.
+- Cross and Canadian GCC share builder invocation. Both callers raise builder failures explicitly, even when installed tools already exist.
+- Android CMake consumers use `android_cmake_target_args` for NDK, ABI and API selection. Keep their project options in the caller.
+- Cross CMake source builds pass `CMAKE_POLICY_VERSION_MINIMUM` as one argument, including operator-provided values with spaces. Preserve caller option boundaries.
+- Libstdc++ repair and pinning share the foreign-target predicate. Keep raw arch comparison, probe fallback and unconditional target resolution.
+- Cross-Python path helpers share context and directory lookup. Preserve staged precedence, argument forwarding and failure short circuits.
+- Vulkan target components share launcher and accounting. Preserve required-component verdicts, WSI checks and glslang pass order.
+- TVM compiler validation and selection share GCC-name resolution. Keep override validation and wrapper argument order.
+- Compiler-rt consumers share verified extraction and library discovery. Keep base-stage advisory and source-build fatal policies distinct.
