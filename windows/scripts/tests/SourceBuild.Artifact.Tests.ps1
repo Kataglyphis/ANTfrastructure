@@ -164,6 +164,72 @@ Cflags: -I`${includedir}
     }
 }
 
+Describe 'Assert-FfmpegTarballStream / Get-FfmpegSourceTree (the FFMPEG_SHA256 pin)' {
+
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-FfmpegFromSource.ps1' -FunctionName 'Assert-FfmpegTarballStream', 'Get-FfmpegSourceTree')
+
+    $script:ffPayload = [Text.Encoding]::ASCII.GetBytes('ffmpeg-n9.0.2/configure' * 512)
+    $script:ffStreamSha = (Get-FileHash -InputStream ([IO.MemoryStream]::new($script:ffPayload)) -Algorithm SHA256).Hash.ToLowerInvariant()
+
+    function New-FfTestGzip([string]$Path, [string]$Level = 'Optimal') {
+        $gz = [IO.Compression.GZipStream]::new([IO.File]::Create($Path), [IO.Compression.CompressionLevel]$Level)
+        try { [IO.MemoryStream]::new($script:ffPayload).CopyTo($gz) } finally { $gz.Dispose() }
+    }
+
+    # Stubs record the order, so a refused archive is seen never to reach the extract.
+    function Invoke-FfSourceTreeFixture([string]$Version, [string]$Sha256) {
+        Invoke-InTestDir { param($dir)
+            $script:ffCalls = [Collections.Generic.List[string]]::new()
+            function Switch-BuildPhase { }
+            function Invoke-DownloadWithRetry([string]$Url, [string]$DestinationPath) { $script:ffCalls.Add("download $Url"); New-FfTestGzip $DestinationPath }
+            function Expand-SourceTarball([string]$Archive, [string]$Destination) { $script:ffCalls.Add('extract'); $Destination }
+            function Initialize-ExtractedGitRepo { }
+            $failure = $null
+            try { $null = Get-FfmpegSourceTree -FfmpegVersion $Version -SourceDir $dir -tarballPath (Join-Path $dir 'ffmpeg.tar.gz') -Sha256 $Sha256 }
+            catch { $failure = $_.Exception.Message }
+            [pscustomobject]@{ Calls = @($script:ffCalls); Failure = $failure }
+        }
+    }
+
+    It 'hashes the decompressed stream, so a re-gzipped archive of the same tar still matches' {
+        Invoke-InTestDir { param($dir)
+            foreach ($level in 'Optimal', 'Fastest', 'NoCompression') {
+                $path = Join-Path $dir "$level.tar.gz"
+                New-FfTestGzip $path $level
+                Assert-FfmpegTarballStream -Path $path -Expected $script:ffStreamSha -Tag 'n9.0.2' | Out-Null
+            }
+            $fileSha = (Get-FileHash -Algorithm SHA256 (Join-Path $dir 'Optimal.tar.gz')).Hash.ToLowerInvariant()
+            Assert-Throws { Assert-FfmpegTarballStream -Path (Join-Path $dir 'Optimal.tar.gz') -Expected $fileSha -Tag 'n9.0.2' } `
+                -MessagePattern 'is not the pinned one' -Message 'the file hash is not the pin'
+        }
+    }
+
+    It 'refuses a pin that is empty, short or not lowercase hex' {
+        Invoke-InTestDir { param($dir)
+            $path = Join-Path $dir 'a.tar.gz'
+            New-FfTestGzip $path
+            foreach ($bad in '', 'abc', $script:ffStreamSha.ToUpperInvariant()) {
+                Assert-Throws { Assert-FfmpegTarballStream -Path $path -Expected $bad -Tag 'n9.0.2' } -MessagePattern 'must name its archive''s stream hash'
+            }
+        }
+    }
+
+    It 'checks a tag''s archive before extracting it, and stops on a mismatch' {
+        $ok = Invoke-FfSourceTreeFixture -Version 'n9.0.2' -Sha256 $script:ffStreamSha
+        Assert-Null $ok.Failure 'the pinned archive is accepted'
+        Assert-Equal 'download https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n9.0.2.tar.gz|extract' ($ok.Calls -join '|') 'download, then extract'
+        $bad = Invoke-FfSourceTreeFixture -Version 'n9.0.2' -Sha256 ('0' * 64)
+        Assert-Match 'is not the pinned one' $bad.Failure
+        Assert-False ($bad.Calls -contains 'extract') 'a refused archive is never extracted'
+    }
+
+    It 'builds a branch unpinned, as Linux does' {
+        $branch = Invoke-FfSourceTreeFixture -Version 'master' -Sha256 ''
+        Assert-Null $branch.Failure 'a branch needs no hash'
+        Assert-True ($branch.Calls -contains 'extract') 'the branch tree is extracted'
+    }
+}
+
 Describe 'Get-SourceBuildVersion -StripVPrefix' {
 
     It 'strips a leading v only when the switch is set' {

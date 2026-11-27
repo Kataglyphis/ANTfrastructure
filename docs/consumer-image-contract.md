@@ -1092,6 +1092,10 @@ BSD dav1d) statically. Its build ships what a package needs to carry it (owner d
 x264 is a clone, so its archive is `git archive` of the pinned commit. `Publish-NativeSourceOffer`
 (`WindowsSourceOffer.Build.psm1`) writes it; `Get-NativeSourceOfferFinding` checks it, and the smoke gate runs that
 check. The prebuilt BtbN fallback (`FFMPEG_ALLOW_PREBUILT=1`) writes no offer, so the gate refuses that image.
+FFmpeg's archive is pinned on both lanes. Each hashes the tag's GitHub archive by its decompressed stream against
+`FFMPEG_SHA256`, because GitHub may re-gzip the same tar. Linux's git fallback must land on `FFMPEG_TAG_COMMIT`.
+Renovate moves the tag and `spec_ffmpeg_tag_commit` the other two
+([what one call moves](dependency-updates.md#what-one-call-does-not-move)).
 Whether GPL parts may sit beside the MSVC runtime is still open.
 
 A package that carries the DLLs carries the texts and the offer, and its release the archives.

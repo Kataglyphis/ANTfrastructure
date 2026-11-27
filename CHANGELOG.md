@@ -19,6 +19,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — FFmpeg's tag archive is pinned on both lanes (CON227)
+
+- `versions.env` pins `FFMPEG_SHA256`, the tag archive's decompressed-stream hash, and `FFMPEG_TAG_COMMIT`. Linux's
+  new `fetch-ffmpeg.sh` checks the archive and refuses a git fallback off that commit; Windows'
+  `Assert-FfmpegTarballStream` checks the archive before it is extracted.
+- `spec_ffmpeg_tag_commit` moves both after Renovate moves the tag. The Windows driver forwards `FFMPEG_SHA256` to
+  the FFmpeg stage only.
+- It re-keys the Linux compiler image and the Windows FFmpeg stage, so it lands with a rebuild. Twelve new recipes.
+
 ## 2026-11-27 — a failure mode for a download right after its upload; CON302 pilot and FFmpeg pin status
 
 - `failure-modes.md` names `None of the provided artifact IDs were found` after a fresh upload: the run's listing

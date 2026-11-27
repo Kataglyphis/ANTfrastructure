@@ -22,6 +22,7 @@ Import-Module (Resolve-SourceBuildLeafModule -AssetRoot $scriptAssetRoot -Name '
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
 $FfmpegVersion = Get-SourceBuildVersion -Value $FfmpegVersion -EnvironmentVariables @('FFMPEG_VERSION') -DefaultValue 'n9.0.2'
+$ffmpegSha256 = Get-SourceBuildVersion -EnvironmentVariables @('FFMPEG_SHA256') -DefaultValue 'cb3432eba99ce67f4ef6381c2fdbc0483d796f9e36d16c2b0cc0b7f9a71b46e8'
 $prefix = Join-Path $InstallDir 'ffmpeg'
 $ffmpegDir = Join-Path $prefix 'bin'
 
@@ -257,8 +258,20 @@ function Install-FfmpegAmfHeader {
     return $headerDir
 }
 
+# A tag's archive by its decompressed tar stream, the hash Linux checks too: GitHub may re-gzip the same tar.
+function Assert-FfmpegTarballStream {
+    param([string]$Path, [string]$Expected, [string]$Tag)
+    if ($Expected -cnotmatch '^[0-9a-f]{64}$') { throw "FFmpeg $Tag is a pinned tag: FFMPEG_SHA256 in versions.env must name its archive's stream hash" }
+    $file = [IO.File]::OpenRead($Path)
+    $stream = [IO.Compression.GZipStream]::new($file, [IO.Compression.CompressionMode]::Decompress)
+    try { $actual = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stream)).ToLowerInvariant() }
+    finally { $stream.Dispose(); $file.Dispose() }
+    if ($actual -cne $Expected) { throw "FFmpeg $Tag archive is not the pinned one: its stream sha256 is $actual, FFMPEG_SHA256 is $Expected" }
+    Write-Host "FFmpeg $Tag archive matches FFMPEG_SHA256 (stream $actual)"
+}
+
 function Get-FfmpegSourceTree {
-    param([string]$FfmpegVersion, [string]$SourceDir, [string]$tarballPath)
+    param([string]$FfmpegVersion, [string]$SourceDir, [string]$tarballPath, [string]$Sha256)
     Switch-BuildPhase '1. download + extract'
     Write-Host "Downloading FFmpeg $FfmpegVersion..."
     $url = "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/$FfmpegVersion.tar.gz"
@@ -275,6 +288,7 @@ function Get-FfmpegSourceTree {
         }
     } else {
         Invoke-DownloadWithRetry -Url $url -DestinationPath $tarballPath -Description "FFmpeg $FfmpegVersion tarball"
+        Assert-FfmpegTarballStream -Path $tarballPath -Expected $Sha256 -Tag $FfmpegVersion
     }
     Write-Host "Extracting tarball..."
     $srcDir = Expand-SourceTarball -Archive $tarballPath -Destination $SourceDir
@@ -878,7 +892,7 @@ New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 # Phase brackets via trap, not a whole-body try/catch, so a failure names its phase.
 trap { Complete-SourceBuildFailure -Label 'ffmpeg' -ErrorRecord $_; break }
 
-$source = Get-FfmpegSourceTree -FfmpegVersion $FfmpegVersion -SourceDir $SourceDir -tarballPath $tarballPath
+$source = Get-FfmpegSourceTree -FfmpegVersion $FfmpegVersion -SourceDir $SourceDir -tarballPath $tarballPath -Sha256 $ffmpegSha256
 $srcDir = $source.SourceDir
 $FfmpegVersion = $source.Version
 

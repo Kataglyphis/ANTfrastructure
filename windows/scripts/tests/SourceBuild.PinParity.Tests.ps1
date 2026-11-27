@@ -216,6 +216,7 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
                 'Build-LitertLmFromSource.ps1|JRE_VERSION',
                 'Build-OpencvFromSource.ps1|OPENCV_VERSION',
                 'Build-FfmpegFromSource.ps1|FFMPEG_VERSION',
+                'Build-FfmpegFromSource.ps1|FFMPEG_SHA256',
                 'Build-FfmpegFromSource.ps1|PYAV_VERSION',
                 'Build-GstreamerFromSource.ps1|GSTREAMER_VERSION',
                 # The .pc writer's ORT pin must stay a W1 site: W1c cannot see a variable-indirected fallback.

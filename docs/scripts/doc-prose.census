@@ -68,8 +68,8 @@ docs/code-quality-tooling.md | avg-sentence | 21.3
 docs/code-quality-tooling.md | long-share | 18.9
 docs/code-quality-tooling.md | ids-per-k | 2.9
 docs/code-quality-tooling.md | bold-per-k | 6.3
-docs/consumer-image-contract.md | avg-sentence | 19.9
-docs/consumer-image-contract.md | long-share | 15.8
+docs/consumer-image-contract.md | avg-sentence | 19.8
+docs/consumer-image-contract.md | long-share | 15.7
 docs/consumer-image-contract.md | ids-per-k | 6.6
 docs/consumer-image-contract.md | bold-per-k | 7.1
 docs/consumer-inventory.md | avg-sentence | 17.3

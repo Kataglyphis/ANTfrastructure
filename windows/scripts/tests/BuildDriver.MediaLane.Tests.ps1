@@ -1,8 +1,9 @@
 #requires -Version 7.0
 # Both drivers consume these media helpers: a drifting key rebuilds hours of cached layers or starves the merge of a pin.
 
-# FFmpeg's static codec pins: media-core keys, never the merge's.
+# FFmpeg's archive and static codec pins: media-core keys, never the merge's.
 $script:WbtCodecPins = @{
+    FFMPEG_SHA256 = 'ffsha-19'
     DAV1D_VERSION = 'dav1d-20'; DAV1D_SHA256 = 'dav1dsha-21'; X264_MESON_BRANCH = 'x264b-22'
     X264_MESON_COMMIT = 'x264c-23'; X265_VERSION = 'x265-24'; X265_SHA256 = 'x265sha-25'
 }
@@ -216,7 +217,10 @@ Describe 'Assert-SccacheEndpoint' {
 
 Describe 'Get-MediaMemoryBudget' {
 
-    # Host RAM comes from CIM inside the function, so these cases read the same value: deterministic, not faked.
+    # Host RAM comes from CIM inside the function, so these cases read the same value; a Linux pwsh has none, so it reads a fixed 32 GB.
+    if (-not (Get-Command Get-CimInstance -ErrorAction SilentlyContinue)) {
+        function global:Get-CimInstance { param($ClassName) [pscustomobject]@{ TotalPhysicalMemory = 32GB } }
+    }
 
     It 'an explicit -RequestedGb always wins' {
         Assert-Equal 12 (Get-MediaMemoryBudget -RequestedGb 12) 'explicit request bypasses auto-detect'

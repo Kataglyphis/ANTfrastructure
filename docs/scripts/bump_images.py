@@ -340,6 +340,16 @@ def spec_libvpx_meson_commit(cur: str) -> SpecResult:
     return commit, extras
 
 
+def spec_ffmpeg_tag_commit(cur: str) -> SpecResult:
+    """The commit FFMPEG_VERSION's tag names and its archive's stream hash, read after Renovate moved the tag."""
+    tag = bv.read_env()["FFMPEG_VERSION"]
+    commit = bv.ls_remote_tag_commit("FFmpeg/FFmpeg", tag)
+    extras = {}
+    if commit != cur and bv.WRITE_MODE:
+        extras["FFMPEG_SHA256"] = bv.sha256_of_gz_stream(f"https://github.com/FFmpeg/FFmpeg/archive/refs/tags/{tag}.tar.gz")
+    return commit, extras
+
+
 def spec_webdavclient(cur: str) -> SpecResult:
     """The owner's WebDavClient has no releases; report its default branch's head against the pinned commit."""
     out = subprocess.run(["git", "ls-remote", "https://github.com/Kataglyphis/WebDavClient.git", "HEAD"],

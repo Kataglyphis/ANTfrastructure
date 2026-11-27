@@ -138,7 +138,7 @@ Describe 'Get-MediaBranchVersionArg completeness (versions.env COPY removed 2026
     $branchPinCases = @(
         @{ Name = 'passes every key the media-core scripts consume'; Branch = 'media-core'; Keys = @(
             'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_SOURCE_VERSION', 'OPENCV_VERSION',
-            'FFMPEG_VERSION', 'PYAV_VERSION', 'NV_CODEC_HEADERS_REF', 'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',
+            'FFMPEG_VERSION', 'FFMPEG_SHA256', 'PYAV_VERSION', 'NV_CODEC_HEADERS_REF', 'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',
             'CUDA_ARCHITECTURES', 'PYTHON_VERSION') },
         @{ Name = 'passes the litert keys INCLUDING the protoc/JRE pins'; Branch = 'media-litert'; Keys = @(
             'LITERT_VERSION', 'LITERT_LM_VERSION', 'PROTOC_VERSION', 'JRE_VERSION') }

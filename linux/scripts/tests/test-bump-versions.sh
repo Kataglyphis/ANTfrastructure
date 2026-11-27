@@ -742,9 +742,9 @@ t_assert_contains "${_out}" "same ('3.14', {})" "an up-to-date pin drags no SHA"
 t_assert_contains "${_out}" "raised nsis-3.14.zip does not match SourceForge's SHA1" "a zip that differs from SourceForge's SHA1 raises instead of pinning its hash"
 t_assert_contains "${_out}" "raised nsis-dev/nsis has no v<major><minor> release tag" "no release tag raises"
 
-t_case "LLVM_COMMIT and TVM_COMMIT follow the tags Renovate wrote earlier in the same call (offline)"
+t_case "LLVM_COMMIT, TVM_COMMIT and FFMPEG_TAG_COMMIT follow the tags Renovate wrote earlier in the same call (offline)"
 _out="$(_bv_offline <<'PY'
-bv.read_env = lambda: {"LLVM_RELEASE": "23.2.0", "TVM_REF": "v0.28.0"}
+bv.read_env = lambda: {"LLVM_RELEASE": "23.2.0", "TVM_REF": "v0.28.0", "FFMPEG_VERSION": "n9.1"}
 asked = []
 def tag_commit(repo, tag):
     asked.append((repo, tag))
@@ -752,12 +752,22 @@ def tag_commit(repo, tag):
 bv.ls_remote_tag_commit = tag_commit
 print("llvm", bv.spec_llvm_commit("a" * 40))
 print("tvm", bv.spec_tvm_commit("b" * 40))
+bv.sha256_of_gz_stream = lambda url: "stream:" + url
+print("ffmpeg report", bv.spec_ffmpeg_tag_commit("a" * 40))
+bv.WRITE_MODE = True
+print("ffmpeg bump", bv.spec_ffmpeg_tag_commit("a" * 40))
+print("ffmpeg same", bv.spec_ffmpeg_tag_commit("c" * 40))
 print("asked", asked)
 PY
 )"
 t_assert_contains "${_out}" "llvm ('$(printf 'c%.0s' {1..40})', {})" "the release's tag commit is LLVM_COMMIT"
 t_assert_contains "${_out}" "('llvm/llvm-project', 'llvmorg-23.2.0')" "read from the llvmorg tag of the current LLVM_RELEASE"
 t_assert_contains "${_out}" "('apache/tvm', 'v0.28.0')" "and TVM_COMMIT from the current TVM_REF tag"
+_c40="$(printf 'c%.0s' {1..40})"
+t_assert_contains "${_out}" "ffmpeg report ('${_c40}', {})" "a report run hashes no FFmpeg archive"
+t_assert_contains "${_out}" "ffmpeg bump ('${_c40}', {'FFMPEG_SHA256': 'stream:https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n9.1.tar.gz'})" "--write pins the tag archive's stream hash, the one both lanes check"
+t_assert_contains "${_out}" "ffmpeg same ('${_c40}', {})" "an unmoved FFmpeg tag drags no hash"
+t_assert_contains "${_out}" "('FFmpeg/FFmpeg', 'n9.1')" "and FFMPEG_TAG_COMMIT from the current FFMPEG_VERSION tag"
 
 t_case "LIBVPX_MESON_COMMIT moves once per GStreamer version, with its archive SHA256 (offline)"
 _out="$(_bv_offline <<'PY'

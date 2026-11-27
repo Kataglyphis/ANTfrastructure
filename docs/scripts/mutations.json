@@ -23555,6 +23555,46 @@
   "why": "Runtime roots retain regular-library-only traversal: symlinks must not introduce an otherwise excluded dependency."
  },
  {
+  "id": "lib.ffmpeg-pin-tarball-unverified",
+  "target": "linux/scripts/03-media/build/ffmpeg/fetch-ffmpeg.sh",
+  "find": "    if ! _ffmpeg_pinned_tag \"${ref}\"; then\n        download_and_extract",
+  "replace": "    if true; then\n        download_and_extract",
+  "test": "bash linux/scripts/tests/test-ffmpeg-fetch.sh",
+  "why": "the pinned tag unpacked unhashed is an unverified download that still looks pinned"
+ },
+ {
+  "id": "lib.ffmpeg-pin-file-hash",
+  "target": "linux/scripts/03-media/build/ffmpeg/fetch-ffmpeg.sh",
+  "find": "\"${archive}\" stream; then",
+  "replace": "\"${archive}\"; then",
+  "test": "bash linux/scripts/tests/test-ffmpeg-fetch.sh",
+  "why": "GitHub may re-gzip the same tar, so only the stream hash is stable"
+ },
+ {
+  "id": "lib.ffmpeg-pin-clone-commit-unchecked",
+  "target": "linux/scripts/03-media/build/ffmpeg/fetch-ffmpeg.sh",
+  "find": "    if [[ \"${head}\" != \"${FFMPEG_TAG_COMMIT}\" ]]; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-ffmpeg-fetch.sh",
+  "why": "a tag moved on a git remote would build other sources under the pinned name"
+ },
+ {
+  "id": "lib.ffmpeg-pin-empty-commit-allowed",
+  "target": "linux/scripts/03-media/build/ffmpeg/fetch-ffmpeg.sh",
+  "find": "[[ -z \"${FFMPEG_SHA256:-}\" || -z \"${FFMPEG_TAG_COMMIT:-}\" ]]",
+  "replace": "[[ -z \"${FFMPEG_SHA256:-}\" ]]",
+  "test": "bash linux/scripts/tests/test-ffmpeg-fetch.sh",
+  "why": "an empty commit pin would wave every clone fallback through"
+ },
+ {
+  "id": "lib.ffmpeg-pin-mirror-skipped",
+  "target": "linux/scripts/03-media/build/ffmpeg/fetch-ffmpeg.sh",
+  "find": "            _ffmpeg_clone \"${FFMPEG_GIT_MIRROR}\" \"${ref}\" || die",
+  "replace": "            false || die",
+  "test": "bash linux/scripts/tests/test-ffmpeg-fetch.sh",
+  "why": "the mirror is the last source when the canonical remote is down or its tag moved"
+ },
+ {
   "id": "lib.runtime-flow-help-base-step",
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
   "find": "1. clean per-architecture base images",
@@ -65192,6 +65232,46 @@
   "id": "windows-lane.tvm-cross-wheel-pin-packaging"
  },
  {
+  "id": "windows-lane.ffmpeg-pin-tarball-unchecked",
+  "target": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+  "find": "        Assert-FfmpegTarballStream -Path $tarballPath -Expected $Sha256 -Tag $FfmpegVersion\n",
+  "replace": "",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Artifact.Tests.ps1 -ResultFile logs/code-quality/ffmpeg-pin-mutation.json",
+  "why": "the pinned tag extracted unhashed is an unverified download that still looks pinned"
+ },
+ {
+  "id": "windows-lane.ffmpeg-pin-file-hash",
+  "target": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+  "find": "HashData($stream)",
+  "replace": "HashData($file)",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Artifact.Tests.ps1 -ResultFile logs/code-quality/ffmpeg-pin-mutation.json",
+  "why": "GitHub may re-gzip the same tar, so only the stream hash is stable"
+ },
+ {
+  "id": "windows-lane.ffmpeg-pin-shape-unchecked",
+  "target": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+  "find": "if ($Expected -cnotmatch '^[0-9a-f]{64}$') {",
+  "replace": "if ($false) {",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Artifact.Tests.ps1 -ResultFile logs/code-quality/ffmpeg-pin-mutation.json",
+  "why": "an empty pin must name the missing versions.env key, not read as a corrupt archive"
+ },
+ {
+  "id": "windows-lane.ffmpeg-pin-not-forwarded",
+  "target": "windows/scripts/modules/WindowsBuildDriver.Common.psm1",
+  "find": "'FFMPEG_VERSION', 'FFMPEG_SHA256', 'PYAV_VERSION',",
+  "replace": "'FFMPEG_VERSION', 'PYAV_VERSION',",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildDriver.MediaLane.Tests.ps1 -ResultFile logs/code-quality/ffmpeg-pin-forward-mutation.json",
+  "why": "an unforwarded pin falls back to the script default, which a versions.env bump never moves"
+ },
+ {
+  "id": "windows-lane.ffmpeg-pin-env-dropped",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "    FFMPEG_SHA256=\"${FFMPEG_SHA256}\" `\n",
+  "replace": "",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.TwinParity.Tests.ps1 -ResultFile logs/code-quality/ffmpeg-pin-env-mutation.json",
+  "why": "an ARG the RUN cannot read as ENV leaves the script on its baked default"
+ },
+ {
   "id": "image-acceptance.arm64-closure-windows-prefix",
   "target": "linux/scripts/local-proof/windows-arm64-acceptance.py",
   "find": "return '*' in inputs or path.startswith('windows/') or path in HOST_INPUTS",
@@ -66462,6 +66542,22 @@
   "replace": "    if False:",
   "test": "bash linux/scripts/tests/test-bump-versions.sh",
   "why": "A wrap that names another repository must refuse, since the Windows build fetches the fixed meson-ports URL."
+ },
+ {
+  "id": "lib.bump-ffmpeg-stream-hash",
+  "target": "docs/scripts/bump_images.py",
+  "find": "extras[\"FFMPEG_SHA256\"] = bv.sha256_of_gz_stream(",
+  "replace": "extras[\"FFMPEG_SHA256\"] = bv.sha256_of_url(",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "both lanes check the stream hash, so a file hash would fail the next FFmpeg build"
+ },
+ {
+  "id": "lib.bump-ffmpeg-sha-with-commit",
+  "target": "docs/scripts/bump_images.py",
+  "find": "    if commit != cur and bv.WRITE_MODE:\n        extras[\"FFMPEG_SHA256\"]",
+  "replace": "    if False:\n        extras[\"FFMPEG_SHA256\"]",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "a moved FFmpeg tag must carry its archive hash, or both lanes refuse the download"
  },
  {
   "id": "docs-site.cdp-caller-bound",

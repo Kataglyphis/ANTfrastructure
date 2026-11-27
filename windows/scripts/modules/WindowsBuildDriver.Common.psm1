@@ -95,7 +95,7 @@ function Get-MediaCoreVersionArg {
     # Every pin a media-core script reads: a missing key silently falls back to the base image's baked value.
     param([Parameter(Mandatory)][hashtable]$VersionTable)
     $keys = @(
-        'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT', 'ONNXRUNTIME_GENAI_VERSION', 'ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT', 'OPENCV_VERSION', 'FFMPEG_VERSION', 'PYAV_VERSION',
+        'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_WINDOWS_SOURCE_COMMIT', 'ONNXRUNTIME_GENAI_VERSION', 'ONNXRUNTIME_GENAI_WINDOWS_SOURCE_COMMIT', 'OPENCV_VERSION', 'FFMPEG_VERSION', 'FFMPEG_SHA256', 'PYAV_VERSION',
         # PyAV's Cython; media-tvm installs the same one, as the fan-in refuses two versions.
         'PY_CYTHON_VERSION',
         # The QAIRT Community zip Resolve-QnnSdk fetches (or the staged zip must match); both keys travel together.
@@ -185,6 +185,7 @@ function Get-MediaMergeVersionArg {
         'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',   # media-core: FFmpeg AMF headers
         'DAV1D_VERSION', 'DAV1D_SHA256', 'X264_MESON_BRANCH', 'X264_MESON_COMMIT',
         'X265_VERSION', 'X265_SHA256',        # media-core: FFmpeg's static software codecs
+        'FFMPEG_SHA256',                      # media-core: the FFmpeg tag's archive pin
         'PYTHON_VERSION', 'OPENCV_VERSION',   # media-core: OpenCV bindings target
         'PY_CYTHON_VERSION',                  # media-core + media-tvm: the Cython both branches install
         'QNN_SDK_ZIP_SHA256', 'QNN_SDK_VERSION', # QAIRT zip pin (#121/#154): every stage that mounts windows/qnn-sdk

@@ -2934,11 +2934,12 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       `ffmpeg-sources.json` to `packages/source-offer/`, which OrchestrANT's `*/packages/*` already collects. The
       collector ships a byte-identical copy from several lanes once and proves each index complete with
       `check-source-offer.py`; `Publish-NativeSourceOffer` refuses one name twice. No consumer change. Not run: a real
-      release. CON227 stays open for the legal question beside the MSVC runtime and the unpinned FFmpeg tarball.
-      **FFmpeg pin prepared 2026-11-27, held for a rebuild:** `FFMPEG_SHA256` (the tag archive's decompressed
-      stream) and `FFMPEG_TAG_COMMIT` in `versions.env`, Linux's `fetch-ffmpeg.sh`, the Windows stream check and
-      `spec_ffmpeg_tag_commit`. It re-keys the Linux compiler image and the Windows FFmpeg stage, so it lands with the
-      next rebuild the owner releases.
+      release.
+      **FFmpeg pin in source 2026-11-27:** `FFMPEG_SHA256` (the tag archive's stream hash) and `FFMPEG_TAG_COMMIT`
+      in `versions.env`. Linux's `fetch-ffmpeg.sh` and Windows' `Assert-FfmpegTarballStream` check the archive, and
+      Linux's git fallback must land on the commit; `spec_ffmpeg_tag_commit` moves both after Renovate. It re-keys
+      the Linux compiler image and the Windows FFmpeg stage, so it landed with a rebuild. Not run: a real FFmpeg build
+      on either lane. CON227 stays open for the legal question beside the MSVC runtime.
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
   Later measurement, 2026-11-15: the complete `d9f129af` CUDA repeat has 6,304
   primary hits, including 605 NVCC hits, zero misses/cache errors/compiler failures

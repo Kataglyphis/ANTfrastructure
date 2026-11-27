@@ -1487,9 +1487,10 @@ call. So `spec_llvm_commit` and `spec_tvm_commit` read the tag Renovate just wro
 `LLVM_COMMIT` and `TVM_COMMIT` move with it. `spec_libvpx_meson_commit` takes the head of
 the branch the new GStreamer's `vpx.wrap` names, and hashes its archive. It runs once per
 GStreamer version: `LIBVPX_MESON_GSTREAMER_VERSION` records the last one, so a moving branch
-alone never re-keys the Windows media build. The ORT and GenAI rows of `source-pins.txt`
-take their tag and commit from `versions.env` through `sync_versions.py`, which the same call
-runs. The full report also lists every version one call does not move.
+alone never re-keys the Windows media build. `spec_ffmpeg_tag_commit` reads the FFmpeg tag
+and moves `FFMPEG_TAG_COMMIT` with its archive's stream hash, `FFMPEG_SHA256`. The ORT and
+GenAI rows of `source-pins.txt` take their tag and commit from `versions.env` through
+`sync_versions.py`, which the same call runs. The full report also lists every version one call does not move.
 
 A key in no class fails the audit, and so does a stale `FOLLOWS` or `STANDALONE` row. The
 Renovate run then exits 2. `--audit-unclassified` uses the same classes, so a new `_COMMIT`,

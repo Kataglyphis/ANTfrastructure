@@ -23,6 +23,8 @@ source "${SCRIPT_DIR}/ffmpeg-probe-framework.sh"
 source "${SCRIPT_DIR}/ffmpeg-probes-codecs.sh"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/ffmpeg-dnn-backends.sh"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/fetch-ffmpeg.sh"
 # G2 lives beside 03-media/, mounted per file (never inside the ffmpeg dir mount).
 # shellcheck source=../../ort-provenance.sh
 source "${SCRIPT_DIR}/../../ort-provenance.sh"
@@ -52,42 +54,6 @@ NPROC="$(media_jobs)"
 : "${BUILD_TYPE:=release}"
 
 echo "build-ffmpeg: src=${FFMPEG_SRC} prefix=${FFMPEG_PREFIX} buildtype=${BUILD_TYPE}"
-
-# Fetch (a tarball, which is reliable in BuildKit)
-fetch_ffmpeg() {
-    echo "Fetching FFmpeg source from GitHub releases..."
-    rm -rf "${FFMPEG_SRC}"
-    mkdir -p "${FFMPEG_SRC}"
-
-    # FFMPEG_COMMIT (40-hex SHA) wins over FFMPEG_VERSION (a tag); unset, this tracks master.
-    local release_ref="${FFMPEG_COMMIT:-${FFMPEG_VERSION:-master}}"
-
-    local tarball_url
-    case "${release_ref}" in
-      main|master|develop) tarball_url="https://github.com/FFmpeg/FFmpeg/archive/refs/heads/${release_ref}.tar.gz" ;;
-      *)
-        if [[ "${release_ref}" =~ ^[0-9a-f]{40}$ ]]; then
-          # Immutable commit archive (codeload) -> reproducible.
-          tarball_url="https://github.com/FFmpeg/FFmpeg/archive/${release_ref}.tar.gz"
-        else
-          tarball_url="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/${release_ref}.tar.gz"
-        fi
-        ;;
-    esac
-    echo "Downloading FFmpeg ${release_ref} from ${tarball_url}..."
-    # The tarball alone is a single point of failure, so fall back to both git remotes.
-    download_and_extract "${tarball_url}" "${FFMPEG_SRC}" 1 || {
-        echo "Tarball download failed; falling back to git clone (${FFMPEG_GIT})..." >&2
-        rm -rf "${FFMPEG_SRC}"; mkdir -p "${FFMPEG_SRC}"
-        git clone --depth 1 --branch "${release_ref}" "${FFMPEG_GIT}" "${FFMPEG_SRC}" \
-          || { echo "Canonical clone failed; trying mirror (${FFMPEG_GIT_MIRROR})..." >&2
-               rm -rf "${FFMPEG_SRC}"; mkdir -p "${FFMPEG_SRC}"
-               git clone --depth 1 --branch "${release_ref}" "${FFMPEG_GIT_MIRROR}" "${FFMPEG_SRC}"; } \
-          || die "All FFmpeg sources failed: tarball, ${FFMPEG_GIT}, ${FFMPEG_GIT_MIRROR}"
-    }
-    cd "${FFMPEG_SRC}"
-    echo "FFmpeg version: ${release_ref} (from tarball)"
-}
 
 # Configure
 
