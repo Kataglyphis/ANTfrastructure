@@ -367,111 +367,30 @@ local: [`overview.md`](docs/overview.md) and
 
 ## Repo Map
 
-One line per top-level directory, each linking what describes it. No counts: every count written
-here has gone stale, and `ls` answers faster.
+One line per top-level directory, each linking what describes it:
+[`overview.md` § Repo map](docs/overview.md#repo-map).
 
-| Directory | What lives there |
-|---|---|
-| `cmake/` | The shared CMake modules consumers `include()` — sanitizers, static analysers, cache, tests. |
-| `shared/config/` | The canonical `.clang-format`, `.clang-tidy`, `.cmake-format.yaml`, `gcovr.cfg`, `.pre-commit-config.yaml`, plus the sync tool and the manifest that says which of them a consumer takes. `analysis_options.yaml` is the Dart analyzer config, which Dart consumers `include:` by reference instead. [README](shared/config/README.md) |
-| `shared/linux/templates/` | Copy-and-edit bash: the `antfrastructure.sh` bootstrap, the `renovate-local.sh` wrapper, the consumer `git-hooks/`. [README](shared/linux/templates/README.md) |
-| `shared/windows/` | The `Resolve-BuildModule.ps1` bootstrap template and the shared Pester suites consumers run (`Submodule.Pins.Tests.ps1`). [README](shared/windows/templates/README.md) |
-| `shared/templates/` | The consumer `AGENTS.md` skeleton. [README](shared/templates/README.md) |
-| `shared/agentic-loop/` | Cross-platform loop data: the planner/refactor/executor task prompts and the role system prompts both lane implementations read, plus the copy-and-edit consumer templates. [Templates](shared/agentic-loop/templates/README.md) |
-| `docs/scripts/` | The docs gates and version tooling — `verify_doc_links.py`, `verify_doc_dupes.py`, `verify_code_dupes.py`, `sync_versions.py`, `bump_versions.py`, the SBOM pair, `mutations.json`. [Gate registry](docs/code-quality-gates.md) |
-| `.github/actions/` | The composite actions consumers call `@develop`. [README](.github/actions/README.md) |
-| `.github/workflows/` | This repo's own lanes plus the `workflow_call` ones consumers reuse (`python-ci-*`, `python-static`, `python-refactor`, `powershell-quality`, `code-quality-report`, `mutation-gates`, `container-ci-windows`, `lint-gates`, `submodule-pins`, `build-docs`, which builds, checks and publishes every docs site: [`docs-sites.md`](docs/docs-sites.md), and `release-publish`, every `release.yml`'s version check and publish: [`branch-and-release-strategy.md`](docs/branch-and-release-strategy.md#the-reusable-release-workflow)). [Triggers](docs/ci-build-triggers.md) |
-| `linux/scripts/` | The Linux build system: `01-core` (shared utilities), `02-toolchain` (GCC/LLVM/Rust/Python/CMake/Vulkan), `03-media` (per-library builds), `04-runtime` (entrypoint + env), `05-frameworks` (TVM, Torch, Flutter), `06-packaging` (assembly + smoke), plus the orchestrators and gates at its root. [Libraries](docs/shared-script-libraries.md) |
-| `linux/llm-stack/` | The Ollama + Open WebUI serving stack. [README](linux/llm-stack/README.md) |
-| `linux/jetson-webcam/` | A USB-camera object-detection PoC on a Jetson GPU, run in the arm64 GPU wrapper image. [README](linux/jetson-webcam/README.md) |
-| `linux/webserver/` | The slim nginx image and the reusable Flutter-web helpers. [README](linux/webserver/README.md) |
-| `linux/host-config/` | Host configuration as code: `buildkitd.toml`, the systemd drop-in, the apply/verify pair, the ghcr tools, and this repo's OWN git hooks (not the consumer ones). [Host setup](docs/linux-host-setup.md) |
-| `linux/homeassistant/`, `linux/nextcloud-aio/`, `linux/ansible/` | The owner's personal operations stacks, deliberately carried here ([`docs/overview.md` § Home-lab stacks](docs/overview.md#home-lab-stacks-deliberately-here)). [HA](linux/homeassistant/README.md) · [Nextcloud](linux/nextcloud-aio/README.md) · [Ansible](linux/ansible/README.md) |
-| `linux/vulkan/`, `linux/qnn-sdk/`, `linux/nvidia-local-debs/` | Staged SDK inputs. The QNN and NVIDIA trees are gitignored except their READMEs — login-gated, EULA-bound, never committed. |
-| `windows/scripts/` | The Windows lane, grouped into `build/`, `host/`, `diagnostics/`, with `modules/*.psm1` as the reusable surface and `tests/` as its Pester suites. [Windows builds](docs/windows-builds.md) |
-| `windows/upstream/` | Prepared upstream submissions, one directory per submission. NOT build inputs, and NOT to be posted without the owner saying so. [README](windows/upstream/README.md) |
-| `windows/qnn-sdk/` | As `linux/qnn-sdk/`: gitignored but for its README. |
-| `third_party/DocumANTation/` | The brand and style submodule every docs build reads. |
-| `out/` | Generated artifacts (OCI layouts, rootfs exports). Gitignored and excluded from every build context. |
-
-**Before deleting anything under `linux/scripts/lib/`, `02-toolchain/rust/`, `02-toolchain/python/`
-or `06-packaging/`, grade it with the consumer inventory.** Those four hold CONSUMER SURFACE this
-repo's own lanes barely or never call (in-repo, only `preflight.sh` and `flutter_checks.sh` source
-`lib/code-quality.sh`; `06-packaging/` also holds the images' own packaging and smoke scripts), and
-a 2026-08-08 sweep deleted `package_archive.sh` as "zero-reference" while a consumer's release job
-was calling it. The rule and the mechanism: § Contributing Reusable Work Here and
+Grade a deletion in `lib/`, `02-toolchain/rust/`, `02-toolchain/python/` or `06-packaging/` with
+the consumer inventory first; consumers call those trees more than this repo does: § Contributing Reusable Work Here and
 [`consumer-inventory.md`](docs/consumer-inventory.md).
 
 ## Shell safety conventions (five bug classes, all found live 2026-08-08)
 
-Each of these killed or falsified a real build before it was fixed. The full stories:
-[`changelog-archive-2026-08-13.md`](docs/changelog-archive-2026-08-13.md);
-`tests/test-ifs-safety.sh` lint-gates class 3. When writing or reviewing bash here:
-
-1. **No `trap … RETURN` inside functions**: the trap survives the function and fires again on the
-   CALLER's return, where the locals are gone (`set -u` abort AFTER a green run). Capture rc with
-   `|| rc=$?` and clean up explicitly.
-2. Guard every pipeline whose empty result is legitimate: `grep`/`find`/`ls`/`du`/`pgrep`/
-   `dpkg -S`/`readelf` in `$(...)` under `set -euo pipefail` needs `|| true` when the code below
-   handles the empty case. `find | head -1` also dies of SIGPIPE (rc 141) on multiple matches.
-   A large captured result must not flow through `printf | grep -q` under `pipefail`:
-   an early match can close the pipe and turn a valid marker into `UNKNOWN`.
-3. Split comma lists with `IFS=',' read -r -a arr <<< "$list"`, never `${list//,/ }` or
-   `$(... tr ',' ' ')`. Under a script's `IFS=$'\n\t'` those do not split, and the loop runs once
-   with the whole list as one bogus item. Sourced 01-core functions run under the CALLER's IFS.
-   The two list helpers (`arch_list_to_words`, `smoke_arch_words`) emit NEWLINE-separated words
-   since 2026-08-08 so `for x in $(...)` splits under any IFS; keep that if you touch them
-   (test-smoke-arch-parity.sh pins it).
-4. Source vendor scripts (SDK setup-env, venv activate) with nounset suspended:
-   `case $- in *u*) …; set +u;; esac` … `set -u` after. LunarG's setup-env.sh reads `$1`
-   unguarded.
-5. Never end a function with a bare `[ cond ] && action`. The false case becomes the
-   function's return value 1, and under `set -e` the HEALTHY path kills the caller. End with
-   `|| true`, `; return 0`, or an `if`. Shell test predicates with an intentional false
-   status use explicit `return 0` and `return 1` branches so the gate can distinguish intent.
-
-Host tool traps when you MEASURE a run. These falsify your AUDIT, not the build; each produced
-a wrong verdict on 2026-08-31, and none announces itself:
-
-- `grep` on this host is ugrep. A pattern beginning `--` parses as an OPTION and silently
-  matches nothing, so a fault-injection arm that never fires looks like a clean run. Always
-  `grep -e "$pat"`. Symptom entry:
-  [`docs/failure-modes.md`](docs/failure-modes.md#a-fault-injection-test-passes-and-proves-nothing-grep-is-ugrep).
-- `comm` needs `LC_ALL=C sort` on BOTH inputs. Any other collation reports a wrong set
-  difference that still looks like an answer. It turned "0 shared" into "36 shared" in one day's
-  audits, and had made a preflight assertion pass vacuously.
-- Never count warnings by grepping a BuildKit log. BuildKit echoes each RUN's command text, so
-  a warning string written INSIDE a Dockerfile command counts as if it had fired. Match real
-  output lines only.
+Write and review bash against the five bug classes, each of which broke a real build:
+no `trap … RETURN` in a function, `|| true` on a pipeline whose empty result is legitimate,
+comma lists split with `IFS=',' read -r -a`, vendor scripts sourced with nounset suspended, and
+no function that ends in a bare `[ cond ] && action`. When you measure a run, use `grep -e`,
+sort both `comm` inputs with `LC_ALL=C`, and never count warnings in a BuildKit log. Each class
+and trap, with its fix:
+[`shared-script-libraries.md` § Shell safety conventions](docs/shared-script-libraries.md#shell-safety-conventions).
 
 ## Background jobs and test processes (no ghosts)
 
-On 2026-10-21 the build host carried a test fixture spinning at 100 % for 2.8 days and 24 headless
-Chromes holding 22 GB, plus a watcher an agent had detached and another agent had to find in its
-transcript. Each was a child that outlived whatever started it. So:
-
-1. **An agent starts a background job as a named user unit**, never `setsid nohup … &`: `systemd-run
-   --user --unit=<name> -p RuntimeMaxSec=<bound> bash <script>`. Then `systemctl --user list-units
-   '<prefix>*'` shows what runs, `systemctl --user stop <name>` ends it with every child, and
-   nothing outlives its bound. A job meant to outlive the session (a chain, a watcher) says so in
-   its handoff, by unit name.
-2. A test fixture ends on its own. A spin or a sleep has a bound (`while [ "${SECONDS}" -lt 60 ]`,
-   `sleep 60`); a fixture that only a kill can end outlives every interrupted run.
-   `run-tests.sh` gives each suite its own `TMPDIR` and fails one that leaves an entry there: use
-   `t_mktemp`, or `t_private_tmpdir` when the code under test makes the trees.
-3. Tests run as process groups that are killed whole. `lib-ordered-jobs.sh` starts every job of
-   `run-tests.sh` and `preflight.sh` as its own process group and kills it when the job ends, after
-   `OJ_TIMEOUT` (`RUN_TESTS_SUITE_TIMEOUT`, 900 s per suite) and, through `oj_reap` in the runner's
-   EXIT trap, when the run is interrupted. The mutation gate ends each test's session after it, and
-   every live one when it is itself killed, SIGTERM first so a runner inside can reap its own. A new
-   runner that starts tests uses one of the two (`test-run-tests-reaping.sh`, the reaping cases of
-   `test-mutation-gate.sh`).
-4. A wait loop waits on a PID or a file, with a timeout. `until ! pgrep -f <pattern>` matches
-   its own `bash -c` and never ends; `pkill -f <pattern>` can kill the shell that runs it.
-
-`linux/host-config/ghost-watch.sh` is the net under all four: an hourly user timer that reports
-orphans heavy on CPU or memory or shaped like test leftovers
-([`linux-host-setup.md` § B10](docs/linux-host-setup.md#b10-ghost-watch)).
+No child may outlive what started it. Start a background job through `systemd-run --user` as a
+named unit with `RuntimeMaxSec`, never through `setsid nohup`.
+A test fixture ends on its own, tests run as process groups that are killed whole, and a wait
+loop waits on a PID or a file with a timeout. The four rules and the ghost-watch net:
+[`linux-host-setup.md` § B11](docs/linux-host-setup.md#b11-background-jobs-and-test-processes).
 
 ## Delegated Windows storage maintenance
 
@@ -481,67 +400,13 @@ policy. Every rule, and how a new host gets them:
 
 ## Caching discipline (do not regress)
 
-Map: [`linux-build-basics.md` § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where).
-Tiers, measurements and every failure class: [`build-cache-tiers.md`](docs/build-cache-tiers.md).
-Toggles: `USE_CCACHE`, `USE_SCCACHE`, `USE_LLD` accept `0/false/no/off`;
-`ENABLE_SCCACHE_RUST`/`ENABLE_SCCACHE_CUDA` are strict `0/1`.
-
-The Windows lane's compile cache has two levels: each host's WebDAV, then an S3
-bucket all hosts share, whose key travels only as BuildKit secrets
-([`windows-build-resources.md` § Two cache levels](docs/windows-build-resources.md#two-cache-levels);
-the server: [`linux/sccache-s3/README.md`](linux/sccache-s3/README.md)).
-
-The rules:
-
-1. **Freeze the closure.** A touched file inside it re-keys the compiler image, and everything
-   downstream of that image recompiles. `Dockerfile.base` mounts named files rather than
-   directories, so most edits are free; but a file a base RUN newly NEEDS (what it execs, not only
-   what it sources) has to join those lists. Batch such edits into one commit at a planned
-   rebuild boundary. Lists, costs and the one layer that still mounts whole directories:
-   [`build-cache-tiers.md` § 1](docs/build-cache-tiers.md#1-the-tiers).
-
-2. `~/.config/buildkit/buildkitd.toml` pins the GC budget (`gckeepstorage`) so the multi-hour
-   layers survive between runs. Do not delete it; restart buildkitd only BETWEEN runs
-   (`systemctl --user restart buildkit`), never while a build solves.
-   The chain's disk guard does this itself once when a stopped run's records block its prune and
-   no `buildctl` runs ([`build-cache-tiers.md`](docs/build-cache-tiers.md#a-stopped-chain-leaves-records-in-use)).
-
-3. One resolver decides which compiler cache runs: `compiler_cache_launcher()` in
-   `01-core/common.sh`, at RUNTIME, per call. Hence:
-   - Never spell a cache tool's name at a call site: a literal in the SHARED
-     `cmake-cache-linker.sh` decides for every consumer at once.
-   - Send a new call site through the resolver; never copy the decision. Copies shipped inert
-     twice, so `verify-critical-fixes.sh` refuses the shapes that did it.
-   - Keep BOTH mounts on every heavy RUN: the fallback has to land somewhere.
-   - Degrade, never disable: prefer `01-core/sccache-launcher.sh`, accept bare `sccache`, and
-     treat "uncached" as a bug. `RUSTC_WRAPPER=""` is the one documented opt-out.
-   - A build that runs its own compiles under `env -i` is out of the resolver's reach. HailoRT's
-     nested protobuf build is the known case: `hailo-build-lib.sh` carries the cache into it, and
-     a gate fails a build the cache did not reach.
-   - A CMake build passes `append_cmake_compiler_cache_pin`'s defines and is gated by
-     `cmake_assert_compiler_cache_pin`: pthreadpool and XNNPACK FORCE `CCACHE_BINARY` into the
-     launchers, which beats the environment and a `-D` launcher alike
-     ([`build-cache-tiers.md`](docs/build-cache-tiers.md#a-subproject-that-forces-its-own-launcher)).
-   - Every RUN that compiles carries both cache mounts; its closing drain prints
-     `sccache-stats|`, the number to read before calling a step cached.
-   - The launcher's compile governor caps host-wide compiles by `flock` slots in the sccache mount.
-     Keep its fd 9 off every child, and keep it on while `PAR_INTRA_STEP_BUDGET` is 2: it holds the peaks
-     ([`build-parallelism-memory-tuning.md`](docs/build-parallelism-memory-tuning.md#the-compile-governor)).
-   `--ccache` is a flag NAME, not a tool choice. Before a multi-hour run rides on a change here,
-   `bash linux/scripts/02-toolchain/probe-sccache.sh` inside the compiler image answers in seconds
-   whether a cache was actually consulted, which a successful compile does not.
-   [`build-cache-tiers.md` § 5](docs/build-cache-tiers.md#5-scc1--the-ccachesccache-hybrid).
-
-4. Never edit a running orchestrator's main script. bash reads it incrementally by byte
-   offset, so an edit can corrupt the in-flight process. Sourced libraries are safe to edit for
-   FUTURE runs, but see rule 1.
-
-5. Rules 1-4 are about the LINUX chain. Windows caches on other mechanisms: where a layer sits
-   relative to the Visual Studio install, how narrowly a module mount is scoped, and a GC floor
-   that silently evicts the expensive layers when set too low. A Dockerfile edit there must keep
-   the first two (a Pester suite refuses a whole-directory module mount). Check a cache miss that
-   looks like a bad key against that floor first. Tiers, figures and the two incidents:
-   [`windows-build-resources.md` § The Windows cache, tier by tier](docs/windows-build-resources.md#the-windows-cache-tier-by-tier).
+Freeze the base and toolchain closure between runs that should hit the cache, and keep
+`buildkitd.toml`'s GC budget. Restart buildkitd only between runs. One resolver,
+`compiler_cache_launcher()`, decides the compiler cache: never name a cache tool at a call site,
+never copy the decision, and keep both cache mounts on every RUN that compiles. Never edit a
+running orchestrator's main script. Windows caches on other mechanisms. The five rules:
+[`build-cache-tiers.md` § Caching discipline](docs/build-cache-tiers.md#caching-discipline);
+tiers and failure classes: [`build-cache-tiers.md`](docs/build-cache-tiers.md).
 
 ## Code Organization (key shared utilities)
 
@@ -655,43 +520,11 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 
 ## Push And Publish Rules
 
-- **A red `develop` is fixed before anything else lands on it**. Before every push in
-  any family repository, `gh issue list -R Kataglyphis/ANTfrastructure -l develop-red`: an open
-  issue names the repository, workflow and jobs that are red, with their runs. `develop-red.yml`
-  opens it within half an hour of the red run and closes it when the jobs pass again
-  ([`github-cli-pipeline-monitoring.md` § A red develop opens an issue](docs/github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue)).
-- `build-runtime-artifacts.sh --push` pushes only the final per-arch wrapper images.
-- `build-runtime-manifest.sh --push` pushes wrappers + the final manifest.
-- `--push-all` only when explicitly requested (it publishes the `base`/`package` intermediates).
-- Final cross release: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest` (the old
-  `:latest-cross` name is retired and its registry tags were deleted on 2026-09-29, § Image and
-  tag naming).
-- Before rebuilding expensive foreign-arch wrappers, inspect the remote tags with
-  `nerdctl manifest inspect`; if the wrappers exist remotely, recreate the manifest directly
-  instead of rebuilding.
-- The manifest lane REFUSES to shrink an already-published index.
-  `_manifest_completeness_gate` in `build-runtime-manifest.sh` compares the arch count of the live
-  tag with the arches this run carries and stops. The older coherence gate only asks whether the
-  arches AGREE on a generation, so a single-arch run assembled a coherent ONE-arch index and
-  published it. That is how `:latest` (then `:latest-cross`) was found reduced to riscv64 alone.
-  Recover by re-running the runtime lane for the missing arches. `--force` and
-  `RUNTIME_MANIFEST_COMPLETENESS=0` only bypass the early shell check: final promotion
-  still preserves the published runtime platforms. A partial-arch run completes the
-  published index only from children whose build key matches this run's, each gated and listed by
-  digest ([`linux-cross-builds.md`](docs/linux-cross-builds.md#a-failed-arch-re-runs-alone));
-  `RUNTIME_REUSE_CHILDREN=0` requires every arch in the run, and a different platform set gets its
-  own tag.
-- A published image's environment names nothing outside the container (2026-09-23, both
-  lanes). A build-host setting (the sccache endpoint, a LAN mirror, a proxy) reaches a RUN as an
-  ARG and never lands in an ENV: `:winamd64` shipped the owner's LAN WebDAV and broke every
-  consumer's sccache. Three gates hold it, none with a skip switch: the static pass in
-  `lint-dockerfiles.sh`; Windows' `Dockerfile.publish-gate`, solved on every parent a run inherits
-  but did not build, on the fresh toolchain, and on the final image before any export or push
-  (`-SkipSmokeGate` skips none of them); and `build-runtime-manifest.sh`'s image-env gate, first
-  in `create_manifest` on every path, `--manifest-only` included. Cross such a fix by restarting
-  a chain, never by resuming one: a driver started before it has no gate, and a parent built
-  before it still carries the leak. Why, and what the gates cannot see:
-  [`windows-build-resources.md` § What the published image carries](docs/windows-build-resources.md#what-the-published-image-carries).
+Fix a red `develop` first: before you push to any family repository, look for an open
+`develop-red` issue in the hub. Push only the final
+wrappers and manifest; `--push-all` only when asked. A manifest run never shrinks a published
+index, and a published image's environment names nothing outside the container. Every rule:
+[`linux-cross-builds.md` § Push and publish rules](docs/linux-cross-builds.md#push-and-publish-rules).
 
 ## Validation
 
@@ -834,22 +667,12 @@ breaks. The rules and templates: [`docs/writing-docs.md`](docs/writing-docs.md);
 gate holds each page to a census that may only fall.
 
 - [`docs/INDEX.md`](docs/INDEX.md) decides which page owns which topic. Add a row when you add
-  a page; the `doc-links` gate fails a page that no row and no toctree entry names.
-- The docs gates run over this tree, not over a guess. `doc-links` checks every
-  cross-reference and every `docs/*.md` pointer in code; `doc-dupes` catches a passage reworded
-  into a second page. Budgets live in `docs/scripts/*.allow` with a reason, and a stale row fails.
-- A consumer page that restates a hub page fails too, once the consumer seeds
-  `doc-dupes-hub.allow`: `doc-dupes --against-hub` in `run-lint-gates.sh --ratchets`
-  ([`code-quality-tooling.md`](docs/code-quality-tooling.md#consumer-pages-against-the-hub-doc-dupes---against-hub)).
+  a page.
 - A README is an overview, here and in every consumer: at most 100 lines, 700 words and 160
-  characters a line. Procedures go to `docs/`, family facts to this hub, and the README links to
-  both: [`docs/repository-family.md` § The README rule](docs/repository-family.md#the-readme-rule).
-  The `readme-length` gate checks it.
+  characters a line ([`docs/repository-family.md` § The README rule](docs/repository-family.md#the-readme-rule)).
 - The theme and the brand belong to DocumANTation. Change `custom.css` there, not here.
-- Keep the docs lock current. Local docs builds sync `docs/uv.lock` through Astral uv; the
-  image build checks it offline while using its shipped Sphinx stack. Change
-  `docs/pyproject.toml` and the lock together; see
-  [`docs/project-info.md`](docs/project-info.md#building-the-hubs-docs).
+- Change `docs/pyproject.toml` and `docs/uv.lock` together
+  ([`docs/project-info.md`](docs/project-info.md#building-the-hubs-docs)).
 
-How each gate decides, and what its allowlist means:
+How each docs gate decides, and what its allowlist means:
 [`code-quality-tooling.md`](docs/code-quality-tooling.md).

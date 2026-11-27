@@ -645,6 +645,48 @@ This helper uses `linux/Dockerfile.sdk` with `BUILD_MODE=cross` and the amd64-ho
 
 `linux/Dockerfile.sdk` also forwards the checked-in `LLVM_RELEASE` pin into the `target-clang` step, so rebuilding an SDK artifact from an older `cross-compiler-amd64` base still refreshes `/opt/llvm-target` to the repository pin instead of inheriting a stale base-image environment value.
 
+## Push and publish rules
+
+- A red `develop` is fixed before anything else lands on it. Before every push in
+  any family repository, `gh issue list -R Kataglyphis/ANTfrastructure -l develop-red`: an open
+  issue names the repository, workflow and jobs that are red, with their runs. `develop-red.yml`
+  opens it within half an hour of the red run and closes it when the jobs pass again
+  ([`github-cli-pipeline-monitoring.md` § A red develop opens an issue](github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue)).
+- `build-runtime-artifacts.sh --push` pushes only the final per-arch wrapper images.
+- `build-runtime-manifest.sh --push` pushes wrappers + the final manifest.
+- `--push-all` only when explicitly requested (it publishes the `base`/`package` intermediates).
+- Final cross release: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`. The old
+  `:latest-cross` name is retired and its registry tags were deleted.
+- Before rebuilding expensive foreign-arch wrappers, inspect the remote tags with
+  `nerdctl manifest inspect`; if the wrappers exist remotely, recreate the manifest directly
+  instead of rebuilding.
+- The manifest lane refuses to shrink an already-published index.
+  `_manifest_completeness_gate` in `build-runtime-manifest.sh` compares the arch count of the live
+  tag with the arches this run carries and stops. The older coherence gate only asks whether the
+  arches agree on a generation, so a single-arch run assembled a coherent one-arch index and
+  published it. That is how `:latest` (then `:latest-cross`) was found reduced to riscv64 alone.
+  Recover by re-running the runtime lane for the missing arches. `--force` and
+  `RUNTIME_MANIFEST_COMPLETENESS=0` only bypass the early shell check: final promotion
+  still preserves the published runtime platforms. A partial-arch run completes the
+  published index only from children whose build key matches this run's, each gated and listed by
+  digest ([A failed arch re-runs alone](#a-failed-arch-re-runs-alone));
+  `RUNTIME_REUSE_CHILDREN=0` requires every arch in the run, and a different platform set gets its
+  own tag.
+- A published image's environment names nothing outside the container, on both
+  lanes. A build-host setting (the sccache endpoint, a LAN mirror, a proxy) reaches a RUN as an
+  ARG and never lands in an ENV: `:winamd64` shipped the owner's LAN WebDAV and broke every
+  consumer's sccache. Three gates hold it, none with a skip switch:
+  - the static pass in `lint-dockerfiles.sh`;
+  - Windows' `Dockerfile.publish-gate`. It is solved on every parent a run inherits but did not
+    build, on the fresh toolchain, and on the final image before any export or push.
+    `-SkipSmokeGate` skips none of them.
+  - `build-runtime-manifest.sh`'s image-env gate. It runs first in `create_manifest` on every
+    path, `--manifest-only` included.
+
+  Cross such a fix by restarting a chain, never by resuming one: a driver started before it has
+  no gate, and a parent built before it still carries the leak. Why, and what the gates cannot see:
+  [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
+
 ## Cross packaging to multi-arch manifest
 
 ### Overview
@@ -1137,7 +1179,7 @@ build ran 2026-09-03 against a real v2.49.0.260730 staged on arm64 — see
 
 Because `versions.env` sits in the media build's cache-key closure, toggle
 flips re-run the affected media compiles — batch them with planned pin bumps
-(AGENTS.md § Caching discipline, rule 1). After a toggle flip, force
+([§ Caching discipline](build-cache-tiers.md#caching-discipline), rule 1). After a toggle flip, force
 a fresh runtime wrapper build with **`RUNTIME_NO_CACHE=1`** (scoped to the
 runtime package + wrapper; lighter than whole-chain `NO_CACHE=1`) so the shipped
 image actually reflects the new media. The shipped **bytes** are now checked

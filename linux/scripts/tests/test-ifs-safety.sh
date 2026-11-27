@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Under IFS=$'\n\t' a `${list//,/ }` loop runs once; see AGENTS.md § Shell safety conventions
+# Under IFS=$'\n\t' a `${list//,/ }` loop runs once; see docs/shared-script-libraries.md#shell-safety-conventions
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$(cd "${TESTS_DIR}/.." && pwd)"

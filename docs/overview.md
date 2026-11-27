@@ -13,11 +13,48 @@ projects build on:
 - the reusable workflows consumers call at `@develop` (`python-ci-*`, `build-docs`, `lint-gates`,
   `submodule-pins`, `container-ci-windows`)
 
-The AGENTS.md Repo Map is the authoritative index of that half of the repo.
+The [Repo map](#repo-map) below is the authoritative index of that half of the repo.
 
 Container registry: [ghcr.io/kataglyphis/kataglyphis_beschleuniger](https://github.com/Kataglyphis/ANTfrastructure/pkgs/container/kataglyphis_beschleuniger)
 — the multi-arch Linux `:latest`, the Windows build image `:winamd64` and the `:winarm64` bundle.
 Every tag: [Published Images and Tag Hints](#published-images-and-tag-hints).
+
+## Repo map
+
+One line per top-level directory, each linking what describes it. No counts: every count written
+here has gone stale, and `ls` answers faster.
+
+| Directory | What lives there |
+|---|---|
+| `cmake/` | The shared CMake modules consumers `include()` — sanitizers, static analysers, cache, tests. |
+| `shared/config/` | The canonical `.clang-format`, `.clang-tidy`, `.cmake-format.yaml`, `gcovr.cfg`, `.pre-commit-config.yaml`, plus the sync tool and the manifest that says which of them a consumer takes. `analysis_options.yaml` is the Dart analyzer config, which Dart consumers `include:` by reference instead. [README](../shared/config/README.md) |
+| `shared/linux/templates/` | Copy-and-edit bash: the `antfrastructure.sh` bootstrap, the `renovate-local.sh` wrapper, the consumer `git-hooks/`. [README](../shared/linux/templates/README.md) |
+| `shared/windows/` | The `Resolve-BuildModule.ps1` bootstrap template and the shared Pester suites consumers run (`Submodule.Pins.Tests.ps1`). [README](../shared/windows/templates/README.md) |
+| `shared/templates/` | The consumer `AGENTS.md` skeleton. [README](../shared/templates/README.md) |
+| `shared/agentic-loop/` | Cross-platform loop data: the planner/refactor/executor task prompts and the role system prompts both lane implementations read, plus the copy-and-edit consumer templates. [Templates](../shared/agentic-loop/templates/README.md) |
+| `docs/scripts/` | The docs gates and version tooling — `verify_doc_links.py`, `verify_doc_dupes.py`, `verify_code_dupes.py`, `sync_versions.py`, `bump_versions.py`, the SBOM pair, `mutations.json`. [Gate registry](code-quality-gates.md) |
+| `.github/actions/` | The composite actions consumers call `@develop`. [README](../.github/actions/README.md) |
+| `.github/workflows/` | This repo's own lanes plus the `workflow_call` ones consumers reuse (`python-ci-*`, `python-static`, `python-refactor`, `powershell-quality`, `code-quality-report`, `mutation-gates`, `container-ci-windows`, `lint-gates`, `submodule-pins`, `build-docs`, which builds, checks and publishes every docs site: [`docs-sites.md`](docs-sites.md), and `release-publish`, every `release.yml`'s version check and publish: [`branch-and-release-strategy.md`](branch-and-release-strategy.md#the-reusable-release-workflow)). [Triggers](ci-build-triggers.md) |
+| `linux/scripts/` | The Linux build system: `01-core` (shared utilities), `02-toolchain` (GCC/LLVM/Rust/Python/CMake/Vulkan), `03-media` (per-library builds), `04-runtime` (entrypoint + env), `05-frameworks` (TVM, Torch, Flutter), `06-packaging` (assembly + smoke), plus the orchestrators and gates at its root. [Libraries](shared-script-libraries.md) |
+| `linux/llm-stack/` | The Ollama + Open WebUI serving stack. [README](../linux/llm-stack/README.md) |
+| `linux/jetson-webcam/` | A USB-camera object-detection PoC on a Jetson GPU, run in the arm64 GPU wrapper image. [README](../linux/jetson-webcam/README.md) |
+| `linux/webserver/` | The slim nginx image and the reusable Flutter-web helpers. [README](../linux/webserver/README.md) |
+| `linux/host-config/` | Host configuration as code: `buildkitd.toml`, the systemd drop-in, the apply/verify pair, the ghcr tools, and this repo's OWN git hooks (not the consumer ones). [Host setup](linux-host-setup.md) |
+| `linux/homeassistant/`, `linux/nextcloud-aio/`, `linux/ansible/` | The owner's personal operations stacks, deliberately carried here ([`docs/overview.md` § Home-lab stacks](overview.md#home-lab-stacks-deliberately-here)). [HA](../linux/homeassistant/README.md) · [Nextcloud](../linux/nextcloud-aio/README.md) · [Ansible](../linux/ansible/README.md) |
+| `linux/vulkan/`, `linux/qnn-sdk/`, `linux/nvidia-local-debs/` | Staged SDK inputs. The QNN and NVIDIA trees are gitignored except their READMEs — login-gated, EULA-bound, never committed. |
+| `windows/scripts/` | The Windows lane, grouped into `build/`, `host/`, `diagnostics/`, with `modules/*.psm1` as the reusable surface and `tests/` as its Pester suites. [Windows builds](windows-builds.md) |
+| `windows/upstream/` | Prepared upstream submissions, one directory per submission. NOT build inputs, and NOT to be posted without the owner saying so. [README](../windows/upstream/README.md) |
+| `windows/qnn-sdk/` | As `linux/qnn-sdk/`: gitignored but for its README. |
+| `third_party/DocumANTation/` | The brand and style submodule every docs build reads. |
+| `out/` | Generated artifacts (OCI layouts, rootfs exports). Gitignored and excluded from every build context. |
+
+Before deleting anything under `linux/scripts/lib/`, `02-toolchain/rust/`, `02-toolchain/python/`
+or `06-packaging/`, grade it with the consumer inventory. Those four hold consumer surface this
+repo's own lanes barely or never call. In-repo, only `preflight.sh` and `flutter_checks.sh` source
+`lib/code-quality.sh`. `06-packaging/` also holds the images' own packaging and smoke scripts.
+A sweep once deleted `package_archive.sh` as "zero-reference" while a consumer's release job
+was calling it. The rule and the mechanism: `AGENTS.md` § Contributing Reusable Work Here and
+[`consumer-inventory.md`](consumer-inventory.md).
 
 ## The architecture summary AGENTS.md carried
 
@@ -223,7 +260,7 @@ linux/
 ├── Dockerfile.torch         final wrapper: entrypoint, labels, runtime scripts (FROM package)
 ├── Dockerfile.nvidia        optional CUDA/cuDNN/TensorRT layer (FROM sdk)
 ├── Dockerfile.amd           optional MIGraphX layer (FROM sdk)
-└── scripts/                 01-core … 06-packaging — see AGENTS.md § Repo Map
+└── scripts/                 01-core … 06-packaging — see § Repo map
 ```
 
 ```

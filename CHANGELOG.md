@@ -19,6 +19,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — the hub AGENTS.md is under its 6000-word target (CON303 phase 3)
+
+- `AGENTS.md` falls from 7,321 to 5,194 words. Six sections keep a short rule and a link; their full
+  text moved to the owner pages: Repo Map to `overview.md` § Repo map, Shell safety to
+  `shared-script-libraries.md` § Shell safety conventions, Background jobs to `linux-host-setup.md` § B11,
+  Caching discipline to `build-cache-tiers.md` § Caching discipline, Push and Publish to
+  `linux-cross-builds.md` § Push and publish rules, and Documentation Maintenance to `INDEX.md`. Every
+  heading stays; `docs/INDEX.md`, `adopting-in-a-new-project.md` and the `test-ifs-safety.sh` comment
+  point at the new owners. No rule changed; the doc-prose rows fall.
+- `BACKLOG.md` CON303 marks the word budget done.
+
 ## 2026-11-27 — the last four invariant tables read as rule lists (CON303 phase 2)
 
 - Script, test and packaging (Windows), shell helper, ONNX Runtime build and plugin, and test harness and lint

@@ -315,10 +315,53 @@ raw-status exit refuses a missing helper even when the parser runs conditionally
 otherwise help could repeat the argument loop or reach later work. Copied fixtures
 first prove complete help output, then exercise an older logging owner.
 
+## Shell safety conventions
+
+Five bash bug classes, all found live. Each of these killed or falsified a real build before it
+was fixed. The full stories:
+[`changelog-archive-2026-08-13.md`](changelog-archive-2026-08-13.md).
+`tests/test-ifs-safety.sh` lint-gates class 3. When writing or reviewing bash here:
+
+1. No `trap … RETURN` inside functions. The trap survives the function and fires again on the
+   caller's return, where the locals are gone (`set -u` abort after a green run). Capture rc with
+   `|| rc=$?` and clean up explicitly.
+2. Guard every pipeline whose empty result is legitimate. `grep`/`find`/`ls`/`du`/`pgrep`/
+   `dpkg -S`/`readelf` in `$(...)` under `set -euo pipefail` needs `|| true` when the code below
+   handles the empty case. `find | head -1` also dies of SIGPIPE (rc 141) on multiple matches.
+   A large captured result must not flow through `printf | grep -q` under `pipefail`.
+   An early match can close the pipe and turn a valid marker into `UNKNOWN`.
+3. Split comma lists with `IFS=',' read -r -a arr <<< "$list"`, never `${list//,/ }` or
+   `$(... tr ',' ' ')`. Under a script's `IFS=$'\n\t'` those do not split, and the loop runs once
+   with the whole list as one bogus item. Sourced 01-core functions run under the caller's IFS.
+   The two list helpers (`arch_list_to_words`, `smoke_arch_words`) emit newline-separated words,
+   so `for x in $(...)` splits under any IFS. Keep that if you touch them
+   (test-smoke-arch-parity.sh pins it).
+4. Source vendor scripts (SDK setup-env, venv activate) with nounset suspended.
+   `case $- in *u*) …; set +u;; esac` … `set -u` after. LunarG's setup-env.sh reads `$1`
+   unguarded.
+5. Never end a function with a bare `[ cond ] && action`. The false case becomes the
+   function's return value 1, and under `set -e` the healthy path kills the caller. End with
+   `|| true`, `; return 0`, or an `if`. Shell test predicates with an intentional false
+   status use explicit `return 0` and `return 1` branches so the gate can distinguish intent.
+
+Host tool traps when you measure a run. These falsify your audit, not the build. Each produced
+a wrong verdict once, and none announces itself:
+
+- `grep` on this host is ugrep. A pattern beginning `--` parses as an option and silently
+  matches nothing, so a fault-injection arm that never fires looks like a clean run. Always
+  `grep -e "$pat"`. Symptom entry:
+  [`failure-modes.md`](failure-modes.md#a-fault-injection-test-passes-and-proves-nothing-grep-is-ugrep).
+- `comm` needs `LC_ALL=C sort` on both inputs. Any other collation reports a wrong set
+  difference that still looks like an answer. It turned "0 shared" into "36 shared" in one day's
+  audits, and had made a preflight assertion pass vacuously.
+- Never count warnings by grepping a BuildKit log. BuildKit echoes each RUN's command text, so
+  a warning string written inside a Dockerfile command counts as if it had fired. Match real
+  output lines only.
+
 ## The tree, as AGENTS.md drew it
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), and edited since
-only to keep it current. AGENTS.md keeps one line per top-level directory; the
+only to keep it current. [`overview.md` § Repo map](overview.md#repo-map) keeps one line per top-level directory; the
 per-file detail, the deletion history and the consumer-surface notes are here.
 
 ```

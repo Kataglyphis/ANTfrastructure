@@ -773,8 +773,8 @@ A build host runs for days, and an orphaned process runs with it. On 2026-10-21 
 had a test fixture spinning at 100 % for 2.8 days and 24 headless Chromes holding 22 GB,
 all left behind by interrupted test runs. What stops new ones is in the repo: `run-tests.sh`
 and the mutation gate kill each test's process group when it ends, times out or the run is
-interrupted, and agents start background jobs as systemd units (`AGENTS.md` § *Background
-jobs and test processes*). Ghost-watch is the safety net for what still slips through.
+interrupted, and agents start background jobs as systemd units
+([B11](#b11-background-jobs-and-test-processes)). Ghost-watch is the safety net for what still slips through.
 Non-root:
 
 ```bash
@@ -794,6 +794,35 @@ linux/host-config/ghost-watch.sh --uninstall
   `~/.config/kataglyphis/ghost-watch.allow`, one extended regex per line.
 - **A find fails the timer's unit**, so `systemctl --user --failed` shows it too, and
   `journalctl --user -u ghost-watch` holds the listing.
+
+### B11. Background jobs and test processes
+
+This host once carried a test fixture spinning at 100 % for 2.8 days and 24 headless
+Chromes holding 22 GB, plus a watcher an agent had detached and another agent had to find in its
+transcript. Each was a child that outlived whatever started it. So:
+
+1. An agent starts a background job as a named user unit, never `setsid nohup … &`. Use `systemd-run
+   --user --unit=<name> -p RuntimeMaxSec=<bound> bash <script>`. Then `systemctl --user list-units
+   '<prefix>*'` shows what runs, `systemctl --user stop <name>` ends it with every child, and
+   nothing outlives its bound. A job meant to outlive the session (a chain, a watcher) says so in
+   its handoff, by unit name.
+2. A test fixture ends on its own. A spin or a sleep has a bound (`while [ "${SECONDS}" -lt 60 ]`,
+   `sleep 60`). A fixture that only a kill can end outlives every interrupted run.
+   `run-tests.sh` gives each suite its own `TMPDIR` and fails one that leaves an entry there. Use
+   `t_mktemp`, or `t_private_tmpdir` when the code under test makes the trees.
+3. Tests run as process groups that are killed whole. `lib-ordered-jobs.sh` starts every job of
+   `run-tests.sh` and `preflight.sh` as its own process group and kills it when the job ends, after
+   `OJ_TIMEOUT` (`RUN_TESTS_SUITE_TIMEOUT`, 900 s per suite) and, through `oj_reap` in the runner's
+   EXIT trap, when the run is interrupted.
+   The mutation gate ends each test's session after it, and
+   every live one when it is itself killed, SIGTERM first so a runner inside can reap its own. A new
+   runner that starts tests uses one of the two (`test-run-tests-reaping.sh`, the reaping cases of
+   `test-mutation-gate.sh`).
+4. A wait loop waits on a PID or a file, with a timeout. `until ! pgrep -f <pattern>` matches
+   its own `bash -c` and never ends; `pkill -f <pattern>` can kill the shell that runs it.
+
+`linux/host-config/ghost-watch.sh` is the net under all four
+([B10](#b10-ghost-watch)).
 
 ## Phase C — Performance mode
 

@@ -201,7 +201,7 @@ Wiring a new project: [Start here](#start-here).
 
 | Looking for | Where |
 |---|---|
-| The five shell-safety bug classes (all found live) | [`../AGENTS.md`](../AGENTS.md) § *Shell safety conventions* |
+| The five shell-safety bug classes (all found live) | [`shared-script-libraries.md` § Shell safety conventions](shared-script-libraries.md#shell-safety-conventions) |
 | Reusable PowerShell modules | `windows/scripts/modules/` — resolved via the consumer's `Resolve-BuildModule.ps1` |
 | Which hub function to call before writing your own helper: container, MSIX/MSI, config, build-step, logging, cargo, packaging, CI | [`adopting-in-a-new-project.md` § *Reach for these before writing a helper*](adopting-in-a-new-project.md#reach-for-these-before-writing-a-helper) |
 | **Reuse before adding functionality** — check the repo and its submodules; add shared behavior once and consume it | [`adopting-in-a-new-project.md` § Reuse before adding functionality](adopting-in-a-new-project.md#reuse-before-adding-functionality) |
@@ -355,6 +355,21 @@ them.
   `python3 docs/scripts/generate-website-licenses.py --write`.
 - The canonical `custom.css` lives in the DocumANTation submodule: change it there and commit in
   that repo, then `cd docs && make html` to verify.
+- Add a row here when you add a page; the `doc-links` gate fails a page that no row and no
+  toctree entry names.
+- The docs gates run over this tree, not over a guess. `doc-links` checks every cross-reference
+  and every `docs/*.md` pointer in code; `doc-dupes` catches a passage reworded into a second
+  page. Budgets live in `docs/scripts/*.allow` with a reason, and a stale row fails.
+- A consumer page that restates a hub page fails too, once the consumer seeds
+  `doc-dupes-hub.allow`: `doc-dupes --against-hub` in `run-lint-gates.sh --ratchets`
+  ([`code-quality-tooling.md`](code-quality-tooling.md#consumer-pages-against-the-hub-doc-dupes---against-hub)).
+- A README's procedures go to `docs/`, family facts to this hub, and the README links to both.
+  The `readme-length` gate checks it.
+- Keep the docs lock current. Local docs builds sync `docs/uv.lock` through Astral uv; the image
+  build checks it offline while using its shipped Sphinx stack. Change `docs/pyproject.toml` and
+  the lock together; see [`project-info.md`](project-info.md#building-the-hubs-docs).
+- How each gate decides, and what its allowlist means:
+  [`code-quality-tooling.md`](code-quality-tooling.md).
 
 ## If you are about to write a procedure in a consumer repo
 

@@ -1242,6 +1242,65 @@ per-language hit, noncacheable and error counters before claiming a useful cache
 
 ---
 
+## Caching discipline
+
+Map: [`linux-build-basics.md` § Caching Layers](linux-build-basics.md#caching-layers-what-is-cached-where).
+Toggles: `USE_CCACHE`, `USE_SCCACHE`, `USE_LLD` accept `0/false/no/off`;
+`ENABLE_SCCACHE_RUST`/`ENABLE_SCCACHE_CUDA` are strict `0/1`.
+
+The Windows lane's compile cache has two levels: each host's WebDAV, then an S3
+bucket all hosts share, whose key travels only as BuildKit secrets
+([`windows-build-resources.md` § Two cache levels](windows-build-resources.md#two-cache-levels);
+the server: [`linux/sccache-s3/README.md`](../linux/sccache-s3/README.md)).
+
+The rules:
+
+1. Freeze the closure. A touched file inside it re-keys the compiler image, and everything
+   downstream of that image recompiles. `Dockerfile.base` mounts named files rather than
+   directories, so most edits are free; but a file a base RUN newly needs (what it execs, not only
+   what it sources) has to join those lists. Batch such edits into one commit at a planned
+   rebuild boundary. Lists, costs and the one layer that still mounts whole directories:
+   [§ 1](#1-the-tiers).
+2. `~/.config/buildkit/buildkitd.toml` pins the GC budget (`gckeepstorage`) so the multi-hour
+   layers survive between runs. Do not delete it; restart buildkitd only between runs
+   (`systemctl --user restart buildkit`), never while a build solves.
+   The chain's disk guard does this itself once when a stopped run's records block its prune and
+   no `buildctl` runs ([A stopped chain leaves records in use](#a-stopped-chain-leaves-records-in-use)).
+3. One resolver decides which compiler cache runs: `compiler_cache_launcher()` in
+   `01-core/common.sh`, at runtime, per call. Hence:
+   - Never spell a cache tool's name at a call site: a literal in the shared
+     `cmake-cache-linker.sh` decides for every consumer at once.
+   - Send a new call site through the resolver; never copy the decision. Copies shipped inert
+     twice, so `verify-critical-fixes.sh` refuses the shapes that did it.
+   - Keep both mounts on every heavy RUN: the fallback has to land somewhere.
+   - Degrade, never disable: prefer `01-core/sccache-launcher.sh`, accept bare `sccache`, and
+     treat "uncached" as a bug. `RUSTC_WRAPPER=""` is the one documented opt-out.
+   - A build that runs its own compiles under `env -i` is out of the resolver's reach. HailoRT's
+     nested protobuf build is the known case: `hailo-build-lib.sh` carries the cache into it, and
+     a gate fails a build the cache did not reach.
+   - A CMake build passes `append_cmake_compiler_cache_pin`'s defines and is gated by
+     `cmake_assert_compiler_cache_pin`: pthreadpool and XNNPACK force `CCACHE_BINARY` into the
+     launchers, which beats the environment and a `-D` launcher alike
+     ([A subproject that forces its own launcher](#a-subproject-that-forces-its-own-launcher)).
+   - Every RUN that compiles carries both cache mounts; its closing drain prints
+     `sccache-stats|`, the number to read before calling a step cached.
+   - The launcher's compile governor caps host-wide compiles by `flock` slots in the sccache mount.
+     Keep its fd 9 off every child, and keep it on while `PAR_INTRA_STEP_BUDGET` is 2: it holds the peaks
+     ([`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md#the-compile-governor)).
+   - `--ccache` is a flag name, not a tool choice. Before a multi-hour run rides on a change here,
+     `bash linux/scripts/02-toolchain/probe-sccache.sh` inside the compiler image answers in seconds
+     whether a cache was actually consulted, which a successful compile does not
+     ([§ 5](#5-scc1--the-ccachesccache-hybrid)).
+4. Never edit a running orchestrator's main script. bash reads it incrementally by byte
+   offset, so an edit can corrupt the in-flight process. Sourced libraries are safe to edit for
+   future runs, but see rule 1.
+5. Rules 1-4 are about the Linux chain. Windows caches on other mechanisms: where a layer sits
+   relative to the Visual Studio install, how narrowly a module mount is scoped, and a GC floor
+   that silently evicts the expensive layers when set too low. A Dockerfile edit there must keep
+   the first two (a Pester suite refuses a whole-directory module mount). Check a cache miss that
+   looks like a bad key against that floor first. Tiers, figures and the two incidents:
+   [`windows-build-resources.md` § The Windows cache, tier by tier](windows-build-resources.md#the-windows-cache-tier-by-tier).
+
 ## The rules as AGENTS.md carried them, with their reasons
 
 Moved out of `AGENTS.md` on 2026-09-15. Apart from this heading, only its code

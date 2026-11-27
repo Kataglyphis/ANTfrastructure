@@ -629,7 +629,7 @@ Long flags are `--kebab-case value`. A wrapper around one of the `lib/*.sh` driv
 lines: source the library, set the project's defaults, call its `*_main`.
 `BeschleunigerBallett/scripts/linux/run-ctest.sh` is the canonical example.
 
-**Shell safety**: the five bug classes in this repo's `AGENTS.md` (§ *Shell safety conventions*)
+**Shell safety**: the five bug classes in [`shared-script-libraries.md` § Shell safety conventions](shared-script-libraries.md#shell-safety-conventions)
 apply to consumer scripts too. Each one falsified or killed a real build here; they are not style
 preferences.
 
