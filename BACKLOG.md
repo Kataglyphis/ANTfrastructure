@@ -1853,6 +1853,13 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       and, if the CUDA plugin is the only CUDA provider by then, `--use_cuda`. Consumers already register plugins
       after CON231 step 2.
 
+- [ ] **CON307 — GenAI's run path is relative** [S, ★★]. Seen 2026-11-27 in `:latest` `abb3030d` (arm64):
+      `/usr/local/lib/onnxruntime-genai/lib/libonnxruntime-genai.so` has `RUNPATH usr/local/lib/onnxruntime-cpu/lib:`.
+      The leading slash is missing and the list ends in an empty entry, so the loader searches the working directory
+      for its dependencies. Probes showed no crash from it (`OgaCreateConfig` on a missing directory returns a clean
+      error). Find where `60-build-genai.sh` or GenAI's CMake builds that value, make it absolute without an empty
+      entry, and have the runtime smoke refuse a relative or empty run path on any shipped ORT library. Re-keys the
+      media image.
 - [ ] **CON306 — receipts for the CPU and JSEP web builds** [M, ★★]. `ort-webgpu-wasm.json` proves only the
       two WebGPU flavors, so `stage-ort-web.py` hashes the CPU and JSEP bytes itself and writes `"receipt": null`.
       Record each core pass's product, loader and configured flags at build time, in a receipt the cache seal
