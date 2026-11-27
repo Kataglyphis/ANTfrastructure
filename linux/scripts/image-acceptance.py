@@ -57,6 +57,7 @@ class CheckArgs(EngineArgs, Protocol):
     workspace: str
     receipt: str
     replay: str | None
+    keep_build_outputs: bool
     local_runtime_invocation: str | None
 
 
@@ -318,6 +319,10 @@ def cleanup_consumer(args: EngineArgs, platform: str, checkout: Path, owner: str
             row["ownership_error"] = str(error)
 
 
+class ConsumerFailed(ValueError):
+    """The consumer command itself exited nonzero; nothing else about the run is in doubt."""
+
+
 def run_consumer(args: EngineArgs, plan: AcceptancePlan, work: Path, index: int, spec: ConsumerSpec,
                  row: dict[str, Any], expected: dict[str, Any] | None, rootless: bool) -> None:
     checkout = work / spec["name"]
@@ -359,11 +364,42 @@ def run_consumer(args: EngineArgs, plan: AcceptancePlan, work: Path, index: int,
     if expected and row["resolved_locks"] != expected["resolved_locks"]:
         raise ValueError(f"{spec['name']}: dependency resolution changed during replay")
     if row["exit_code"] != 0:
-        raise ValueError(f"{spec['name']}: consumer smoke failed; see {log}")
+        raise ConsumerFailed(f"{spec['name']}: consumer smoke failed; see {log}")
     changes = git(checkout, "status", "--porcelain", "--untracked-files=no", "--ignore-submodules=none")
     if changes:
         row["source_changes"] = changes
         raise ValueError(f"{spec['name']}: consumer modified tracked acceptance sources")
+
+
+def run_consumer_once_more(args: EngineArgs, plan: AcceptancePlan, work: Path, index: int, spec: ConsumerSpec,
+                           row: dict[str, Any], expected: dict[str, Any] | None, rootless: bool) -> None:
+    """A failed command runs once more without its build outputs, so a network blip upstream cannot fail the image; both attempts stay in the receipt."""
+    try:
+        run_consumer(args, plan, work, index, spec, row, expected, rootless)
+        return
+    except ConsumerFailed:
+        first = work / (spec["name"] + ".attempt-1.log")
+        (work / (spec["name"] + ".log")).replace(first)
+        attempt = {key: row[key] for key in ("exit_code", "seconds") if key in row}
+        attempt.update(log=str(first), log_sha256=fingerprint(first))
+        discard_build_outputs(work / spec["name"])
+        row.clear()
+        row.update(name=spec["name"], command=spec["command"], exit_code=None, first_attempt=attempt)
+    run_consumer(args, plan, work, index, spec, row, expected, rootless)
+
+
+def discard_build_outputs(checkout: Path) -> None:
+    """Untracked files only: the versioned sources and Git stores stay, as the acceptance invariants require."""
+    git(checkout, "clean", "-ffdxq")
+    git(checkout, "submodule", "foreach", "--quiet", "--recursive", "git clean -ffdxq")
+
+
+def discard_passed_build_outputs(work: Path, spec: ConsumerSpec, row: dict[str, Any]) -> None:
+    """A passed consumer's build output is tens of GB (OxidANT's target/ alone 49 GB)."""
+    try:
+        discard_build_outputs(work / spec["name"])
+    except (OSError, subprocess.SubprocessError) as error:
+        row["build_output_cleanup_error"] = str(error)
 
 
 def local_module() -> ModuleType:
@@ -435,7 +471,9 @@ def check(args: CheckArgs) -> None:
             row = {"name": spec["name"], "command": spec["command"], "exit_code": None}
             receipt["consumers"].append(row)
             expected = previous["consumers"][index] if previous else None
-            run_consumer(args, plan, work, index, spec, row, expected, rootless)
+            run_consumer_once_more(args, plan, work, index, spec, row, expected, rootless)
+            if not getattr(args, "keep_build_outputs", False):
+                discard_passed_build_outputs(work, spec, row)
         finish_acceptance_image(args, plan, receipt, local)
         receipt["status"] = "passed"
         validate_receipt(receipt, args.image, args.plan, allow_local=local)
@@ -547,6 +585,7 @@ def main() -> None:
     test.add_argument("--workspace", required=True)
     test.add_argument("--receipt", required=True)
     test.add_argument("--engine", default=os.environ.get("NERDCTL_BIN", "nerdctl"))
+    test.add_argument("--keep-build-outputs", action="store_true", help="keep each passed consumer's build outputs; a failed one keeps them anyway")
     test.add_argument("--replay", help="recheck the image, source SHAs and dependency locks in a passed receipt")
     test.add_argument("--local-runtime-invocation", help="bind an unpublished FINAL wrapper to its successful runtime; local receipts cannot promote")
     publish = commands.add_parser("promote")

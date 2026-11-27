@@ -407,6 +407,9 @@ _lane_local="ghcr.io/example/img:latest-amd64-tmp-reduced-platform"
 t_assert_eq "415" "$(_chain_runtime_lane_need_gb)" "only the wrapper tag itself earns the credit"
 _lane_local=""
 
+t_case "a GPU variant budgets 280G a runtime arch: its package, wrapper and smoke filled 225G"
+t_assert_contains "$(grep -e 'CROSS_RUNTIME_LANE_GB:=' "${TESTS_DIR}/../build-cross-chain.sh")" 'CROSS_GPU_VARIANT:-}" ] || : "${CROSS_RUNTIME_LANE_GB:=280}"'
+
 t_case "CROSS_RUNTIME_LANE_GB is one figure for every arch, and 0 disables the need"
 t_assert_eq "580" "$(CROSS_RUNTIME_LANE_GB=180 _chain_runtime_lane_need_gb)" "3 x 180 + 40"
 t_assert_eq "0" "$(CROSS_RUNTIME_LANE_GB=0 _chain_runtime_lane_need_gb)"

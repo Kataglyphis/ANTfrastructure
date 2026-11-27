@@ -61,10 +61,17 @@ python3 linux/scripts/image-acceptance.py check --image "$image" \
 ```
 
 The engine defaults to `NERDCTL_BIN` or `nerdctl`; `--engine` accepts another compatible
-executable. Logs contain the actual consumer output. A passed check removes the consumer
-checkouts under `--workspace` (28 GB a run on 2026-10-29) and keeps the logs beside the receipt;
-a failed check leaves them for inspection, and a replay re-clones them. A passed receipt is
-required for:
+executable. Logs contain the actual consumer output. Each consumer that passes loses its build
+outputs at once: a Git clean in its checkout and every submodule removes untracked files only.
+Its versioned sources, Git stores and log stay. OxidANT's build tree alone is 49 GB, and three
+runs that kept theirs filled the disk of the next one. A failed consumer keeps its build outputs
+for inspection, and `--keep-build-outputs` keeps the passed ones too.
+
+A consumer whose command exits nonzero runs once more without its build outputs. A GitHub 500
+during a dependency download had failed a whole acceptance. The receipt keeps the first attempt
+with its exit code, duration, log and hash. Changed tracked sources, cleanup errors and timeouts
+are not retried.
+A passed receipt is required for:
 
 ```bash
 python3 linux/scripts/image-acceptance.py promote \
@@ -122,8 +129,8 @@ The same consumer runner freezes sources, recursive submodules, data and
 dependency locks, preserves command statuses/logs and checks tracked-source
 cleanliness and container/ownership cleanup. Both registry and local runs retain
 every successful versioned checkout, recursive Git store and log; a passed receipt
-does not delete those sources. Build outputs are retained too; storage cleanup
-requires a separate scoped decision. It uses the checked local digest
+does not delete those sources. The owner decided the build outputs' cleanup on 2026-11-27:
+only untracked files go, after the consumer passed. It uses the checked local digest
 alias with pull disabled; it never invents a GHCR reference or intercepts a pull.
 Before alias preparation it verifies the original runtime unit, exact complete
 source proof, full host-worker closure and original Android receipt hashes,
@@ -332,7 +339,7 @@ Rules for consumer acceptance, promotion and the handoffs it checks. Each item i
 
 - Image publication also requires the digest-specific consumer receipt before a public tag moves. This page covers replay and its coverage limits.
 - Dispatch consumer lanes only after promotion succeeds. A refused post-publish dispatch remains advisory and preserves the completed promotion.
-- Successful consumers retain their versioned checkouts, recursive Git stores and logs. Safe layer cleanup must not delete them.
+- Successful consumers retain their versioned checkouts, recursive Git stores and logs. Safe layer cleanup must not delete them. Their untracked build outputs are removed after they pass.
 - Working-source copies retain the selected base and exact staged index, including staged gitlinks. An independently checked-out child must not replace that index. Bind actual child trees separately, and keep committed-tree acceptance strict.
 - Independent Git copies retain configured origin URLs and their order. Local cloning must not replace repository identity. Origin metadata does not authenticate sources or qualify workflows.
 - Independent source copies wait for the consumer log and recheck clean bytes and independent objects on reuse. Manual promotion also preserves the target's runtime platforms. An early shell-gate override cannot bypass acceptance.

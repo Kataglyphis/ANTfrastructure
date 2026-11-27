@@ -14,8 +14,8 @@ FINAL_IMAGE="${FINAL_IMAGE:-$(cross_final_image_tag)}"
 FINAL_IMAGE_SET=0
 TARGET_ARCHES="$(resolve_arch_list "$(cross_variant_default_arches)")"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
-# A GPU wrapper carries the CUDA/ROCm runtime and GPU torch wheels, so budget more than the CPU amd64 165G.
-[ -z "${CROSS_GPU_VARIANT:-}" ] || : "${CROSS_RUNTIME_LANE_GB:=180}"
+# A GPU package rebuild, its ~100G wrapper and the smoke unpacked beside it filled 225G free: docs/linux-accelerator-images.md
+[ -z "${CROSS_GPU_VARIANT:-}" ] || : "${CROSS_RUNTIME_LANE_GB:=280}"
 # A variant logs apart: stage log names repeat across chains, and archiving would move the default's history.
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/logs/build-logs${CROSS_GPU_VARIANT:+/${CROSS_GPU_VARIANT}}}"
 

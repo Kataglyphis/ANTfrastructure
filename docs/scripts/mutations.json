@@ -67110,5 +67110,53 @@
   "replace": "    RUST_INSTALL_CARGO_C=0 BUILD_MODE=native bash",
   "test": "bash linux/scripts/tests/test-setup-package-image.sh",
   "why": "rustup 1.29's default TLS download aborts with SIGABRT under qemu-user, and the arm64 package then fails in rustup component add"
+ },
+ {
+  "id": "image-acceptance.retries-a-failed-command",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "            run_consumer_once_more(args, plan, work, index, spec, row, expected, rootless)",
+  "replace": "            run_consumer(args, plan, work, index, spec, row, expected, rootless)",
+  "test": "python3 linux/scripts/tests/test-image-acceptance.py",
+  "why": "a GitHub 500 during a consumer's dependency download failed the whole image acceptance without a second try"
+ },
+ {
+  "id": "image-acceptance.retry-only-on-nonzero-exit",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        raise ConsumerFailed(f\"{spec['name']}: consumer smoke failed; see {log}\")",
+  "replace": "        raise ValueError(f\"{spec['name']}: consumer smoke failed; see {log}\")",
+  "test": "python3 linux/scripts/tests/test-image-acceptance.py",
+  "why": "only the consumer command's own failure is retried; dirty sources and cleanup errors must still fail at once"
+ },
+ {
+  "id": "image-acceptance.retry-records-first-attempt",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        row.update(name=spec[\"name\"], command=spec[\"command\"], exit_code=None, first_attempt=attempt)",
+  "replace": "        row.update(name=spec[\"name\"], command=spec[\"command\"], exit_code=None)",
+  "test": "python3 linux/scripts/tests/test-image-acceptance.py",
+  "why": "a retried pass must show its first failure in the receipt, or the retry hides a flaky consumer"
+ },
+ {
+  "id": "image-acceptance.passed-checkout-removed",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    git(checkout, \"clean\", \"-ffdxq\")\n",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/test-image-acceptance.py",
+  "why": "a passed consumer's build outputs stay behind otherwise; three runs left 133 GB and the next acceptance filled the disk"
+ },
+ {
+  "id": "disk-guard.gpu-variant-lane-budget",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "[ -z \"${CROSS_GPU_VARIANT:-}\" ] || : \"${CROSS_RUNTIME_LANE_GB:=280}\"",
+  "replace": "[ -z \"${CROSS_GPU_VARIANT:-}\" ] || : \"${CROSS_RUNTIME_LANE_GB:=180}\"",
+  "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+  "why": "a rocm runtime lane with 225 GB free filled the disk; 180 GB lets it start into that failure"
+ },
+ {
+  "id": "image-acceptance.cleanup-reaches-submodules",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    git(checkout, \"submodule\", \"foreach\", \"--quiet\", \"--recursive\", \"git clean -ffdxq\")\n",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/test-image-acceptance.py",
+  "why": "submodule build trees are part of the consumer's build output and would stay"
  }
 ]

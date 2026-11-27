@@ -134,6 +134,21 @@
   stage keeps its cache key. Not in an image yet: the owner holds the Windows rebuild.
 - `SourceOffer.Build.Tests.ps1` and six recipes; nine FFmpeg-RUN mount recipes re-anchored on the two new mounts.
 
+## 2026-11-27 — the acceptance retries a failed consumer once and cleans up as it goes
+
+- The `:latest` acceptance failed once on jotrockenmitlocken: `sqlite3`'s build hook saved GitHub's
+  500 page as `libsqlite3.so` and refused its hash. A consumer whose command exits nonzero now runs
+  once more without its build outputs, and the receipt keeps the first attempt and its log.
+- The rocm acceptance failed `No space left on device` in OxidANT's tests: three runs that day had
+  kept 133 GB of consumer checkouts. Each passed consumer now loses its untracked build outputs at
+  once (`git clean -ffdx`, submodules included); its versioned sources and Git stores stay, as the
+  acceptance invariants require. `--keep-build-outputs` keeps them.
+- A GPU variant's runtime lane budgets 280 GB per arch instead of 180: a rocm lane that rebuilt its
+  package filled 225 GB free, its wrapper and the smoke beside it about 100 GB each.
+- `image-acceptance.retries-a-failed-command`, `.retry-only-on-nonzero-exit`,
+  `.retry-records-first-attempt`, `.passed-checkout-removed`, `.cleanup-reaches-submodules` and
+  `disk-guard.gpu-variant-lane-budget`.
+
 ## 2026-11-27 — rustup downloads through curl on the emulated package stages
 
 - The arm64 package stage failed twice in four runs: rustup 1.29.3 aborted under qemu-aarch64 while downloading,
