@@ -2602,7 +2602,10 @@ and mutation recipes cover lost counts, values, selected arguments, order and un
 
 `TestHarness.psm1` owns file/snippet parsing, exact command-name queries and static
 parameter binding. `Get-TestAstCommands` includes nested scopes; callers retain
-their lane/ancestor checks. `Get-TestScriptCommands` combines file loading and a
+their lane/ancestor checks. `Get-TestAstFunction -Name` and `Get-TestAstAssignment -Left`
+select definitions by name and assignments by their left-hand text, such as `'$script:x'`,
+nested scopes included. `Get-ScriptFunctionDefinition` lifts the first such definition.
+`Get-TestScriptCommands` combines file loading and a
 command query. `Get-TestCommandArguments` returns the original argument source,
 including quotes, rather than evaluating it. `ConvertTo-TestScriptParseResult`
 returns the validated AST and lexer tokens from one parse, so comment-aware scans

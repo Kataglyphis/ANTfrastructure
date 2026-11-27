@@ -19,6 +19,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — shared helpers for three checks the consumers hand-roll (fleet-health #364)
+
+- `Assert-PackageOrtProviderSet` in `WindowsPackageBinary.Common` compares one package directory's
+  ORT providers with a proven list, in any order. A difference fails and names both sets. It
+  replaces the `-join` and `-cne` comparison four consumers write after `Get-PackageOrtProviderNames`.
+  `PackageBinary.ProviderSet.Tests.ps1` covers it, and `Msi.InstalledPath.Tests.ps1` adds a real MSI.
+- `linux/scripts/lib/app-packaging-artifacts.sh` is new. `app_packaging_single_artifact` selects
+  exactly one artifact of a suffix, and `app_packaging_linux_artifacts` the `.deb`, `.tar.gz` and
+  `.AppImage` together. Neither changes the caller's glob options. `test-app-packaging-artifacts.sh`
+  covers none, one and two of each format.
+- `TestHarness.psm1` gains `Get-TestAstFunction` and `Get-TestAstAssignment` beside
+  `Get-TestAstCommands`. `Get-ScriptFunctionDefinition` now uses the function query and still lifts
+  the first definition.
+- 20 mutation recipes guard the three. The consumers switch after their hub pin moves.
+
 ## 2026-11-27 — the duplicate-code gate reads PowerShell param blocks as idiom (owner decision)
 
 - Owner decision of 2026-11-27: `verify_code_dupes.py` no longer counts a shingle that reaches into a

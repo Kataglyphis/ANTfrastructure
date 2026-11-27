@@ -104,6 +104,34 @@ Describe 'Get-TestScriptAst' {
     }
 }
 
+Describe 'Function and assignment queries' {
+    $text = "function Get-Outer { function Get-Inner { `$setup = 1 }; `$script:setup = 2 }`nfunction Get-Inner { 'second' }`n`$setup = 3"
+    It 'selects every definition of one name, nested ones included' {
+        $ast = ConvertTo-TestScriptAst -Text $text
+        $inner = @(Get-TestAstFunction -Ast $ast -Name Get-Inner)
+        Assert-Equal 2 $inner.Count
+        Assert-Equal 'function Get-Inner { $setup = 1 }' $inner[0].Extent.Text
+        Assert-Equal 1 @(Get-TestAstFunction -Ast $ast -Name get-outer).Count
+        Assert-Equal 0 @(Get-TestAstFunction -Ast $ast -Name Get-Setup).Count
+    }
+    It 'selects assignments by their exact left-hand text' {
+        $ast = ConvertTo-TestScriptAst -Text $text
+        Assert-Equal '$setup = 1,$setup = 3' ((@(Get-TestAstAssignment -Ast $ast -Left '$setup') | ForEach-Object { $_.Extent.Text }) -join ',')
+        Assert-Equal '$script:setup = 2' (@(Get-TestAstAssignment -Ast $ast -Left '$script:setup'))[0].Extent.Text
+        Assert-Equal 0 @(Get-TestAstAssignment -Ast $ast -Left 'setup').Count
+    }
+    It 'lifts the first definition of each requested function, in request order' {
+        Invoke-InTestDir { param($dir)
+            $path = Join-Path $dir 'functions.ps1'
+            [IO.File]::WriteAllText($path, $text)
+            $lifted = (Get-ScriptFunctionDefinition -ScriptPath $path -FunctionName Get-Inner, Get-Outer).ToString()
+            Assert-True ($lifted.StartsWith('function Get-Inner { $setup = 1 }')) "the first Get-Inner comes first: $lifted"
+            Assert-True ($lifted.Contains("`nfunction Get-Outer {")) 'Get-Outer follows on its own line'
+            Assert-Throws { Get-ScriptFunctionDefinition -ScriptPath $path -FunctionName Get-Setup } -MessagePattern 'Get-Setup not defined in'
+        }
+    }
+}
+
 Describe 'ConvertTo-TestScriptAst' {
     It 'parses snippets and reports malformed snippets without running them' {
         $ast = ConvertTo-TestScriptAst -Text "throw 'must not run'"

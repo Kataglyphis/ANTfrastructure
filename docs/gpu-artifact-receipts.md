@@ -123,6 +123,14 @@ the installed file table and root-relative paths; an NSIS setup its `$INSTDIR`-r
 the files' bytes: use `Assert-PackageBinary` against wheel-proven inputs and
 verify their notices separately.
 
+`Assert-PackageOrtProviderSet -Path <package> -Directory <dir> -Expected <names> -Label <name>`
+compares one package directory's ORT provider DLLs with a proven list. It reads the package
+through `Get-PackageOrtProviderNames`, with the same MSI root parameters. `-Expected` may hold the
+whole proven family: only `onnxruntime_providers_*.dll` names count, and order does not. A missing
+or an extra provider fails, and the message names both sets after the label. A proven list
+without a provider, a duplicate or a miscased provider name fails too. It does not verify the
+providers' bytes.
+
 ## Stage checked bytes for a release
 
 `shared/python/stage_gpu_artifact.py` accepts the raw, flat ZIP of a single

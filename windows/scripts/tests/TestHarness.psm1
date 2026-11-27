@@ -586,6 +586,22 @@ function Get-TestAstCommands {
     }, $true)
 }
 
+function Get-TestAstFunction {
+    param([Parameter(Mandatory)][System.Management.Automation.Language.Ast]$Ast, [Parameter(Mandatory)][string]$Name)
+    $Ast.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $Name
+    }, $true)
+}
+
+function Get-TestAstAssignment {
+    param([Parameter(Mandatory)][System.Management.Automation.Language.Ast]$Ast, [Parameter(Mandatory)][string]$Left)
+    $Ast.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq $Left
+    }, $true)
+}
+
+Export-ModuleMember -Function Get-TestAstFunction, Get-TestAstAssignment
+
 function Get-TestScriptCommands {
     param([string]$ScriptPath, [string]$Name)
     Get-TestAstCommands -Ast (Get-TestScriptAst -ScriptPath $ScriptPath) -Name $Name
@@ -723,8 +739,7 @@ function Get-ScriptFunctionDefinition {
     $full = if ([IO.Path]::IsPathRooted($ScriptPath)) { $ScriptPath } else { Join-Path (Get-RepoRoot) $ScriptPath }
     $ast = Get-TestScriptAst -ScriptPath $full -ErrorLabel 'Get-ScriptFunctionDefinition'
     $bodies = foreach ($name in $FunctionName) {
-        $fn = @($ast.FindAll({ param($n)
-            $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true)) | Select-Object -First 1
+        $fn = @(Get-TestAstFunction -Ast $ast -Name $name) | Select-Object -First 1
         if (-not $fn) { throw "Get-ScriptFunctionDefinition: $name not defined in $full (renamed, or moved into a module?)" }
         $fn.Extent.Text
     }

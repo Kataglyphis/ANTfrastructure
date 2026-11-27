@@ -104,6 +104,25 @@ function Get-PackageOrtProviderNames {
     return @(Get-ValidatedOrtProviderNames -Names $names)
 }
 
+function Assert-PackageOrtProviderSet {
+    <#
+    .SYNOPSIS
+        Requires one package directory's ORT provider DLLs to equal the providers among the proven names, in any order.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path, [AllowEmptyString()][string]$Directory = '',
+        [Parameter(Mandatory)][string[]]$Expected, [Parameter(Mandatory)][string]$Label,
+        [string]$RootDirectoryId = '', [string]$RootDirectoryName = '')
+    $want = @(Get-ValidatedOrtProviderNames -Names $Expected)
+    if ($want.Count -eq 0) { throw "$Label proven names carry no ORT provider" }
+    $have = @(Get-PackageOrtProviderNames -Path $Path -Directory $Directory -RootDirectoryId $RootDirectoryId -RootDirectoryName $RootDirectoryName)
+    # Both sides leave the same validator sorted, so the joined text compares sets.
+    if (($want -join "`n") -cne ($have -join "`n")) {
+        $found = if ($have.Count) { $have -join ', ' } else { '(none)' }
+        throw "$Label ORT providers differ from the proven set in ${Path}: expected $($want -join ', '); found $found"
+    }
+}
+
 function Test-PackageOrtFamilyName {
     param([string]$Name)
     return $Name.TrimEnd(' ', '.') -imatch '^(onnxruntime.*\.dll|directml\.dll)$'
@@ -191,4 +210,4 @@ function Assert-PackageOrtFamily {
     if ($seen.Count -ne $allowed.Count) { throw 'package is missing a required ORT family file' }
 }
 
-Export-ModuleMember -Function Assert-PackageBinary, Get-PackageOrtProviderNames, Assert-PackageOrtFamily
+Export-ModuleMember -Function Assert-PackageBinary, Get-PackageOrtProviderNames, Assert-PackageOrtProviderSet, Assert-PackageOrtFamily

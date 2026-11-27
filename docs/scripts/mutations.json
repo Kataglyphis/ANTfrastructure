@@ -38577,6 +38577,54 @@
   "why": "Bracketed fixture names identify literal files; an unchanged wildcard sibling cannot mask changed bytes."
  },
  {
+  "id": "lib.harness-ast-function-name",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "FunctionDefinitionAst] -and $node.Name -eq $Name",
+  "replace": "FunctionDefinitionAst]",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.Ast.Tests.ps1",
+  "why": "The function query selects one name; every definition must not pass for it."
+ },
+ {
+  "id": "lib.harness-ast-function-nested",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "$node.Name -eq $Name\n    }, $true)",
+  "replace": "$node.Name -eq $Name\n    }, $false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.Ast.Tests.ps1",
+  "why": "A function defined inside another one is still a definition of that name."
+ },
+ {
+  "id": "lib.harness-ast-assignment-left",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "AssignmentStatementAst] -and $node.Left.Extent.Text -eq $Left",
+  "replace": "AssignmentStatementAst]",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.Ast.Tests.ps1",
+  "why": "The assignment query selects one left-hand side, scope prefix included."
+ },
+ {
+  "id": "lib.harness-ast-assignment-nested",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "$node.Left.Extent.Text -eq $Left\n    }, $true)",
+  "replace": "$node.Left.Extent.Text -eq $Left\n    }, $false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.Ast.Tests.ps1",
+  "why": "An assignment inside a function body still assigns that variable."
+ },
+ {
+  "id": "lib.harness-ast-query-export",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "Export-ModuleMember -Function Get-TestAstFunction, Get-TestAstAssignment",
+  "replace": "Export-ModuleMember -Function Get-TestAstFunction",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.Ast.Tests.ps1",
+  "why": "Consumer suites import both queries by name."
+ },
+ {
+  "id": "lib.harness-function-definition-first",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "@(Get-TestAstFunction -Ast $ast -Name $name) | Select-Object -First 1",
+  "replace": "@(Get-TestAstFunction -Ast $ast -Name $name) | Select-Object -Last 1",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.Ast.Tests.ps1",
+  "why": "Get-ScriptFunctionDefinition lifts the first definition of a name, as it did before it shared the query."
+ },
+ {
   "id": "lib.trt-ep-cross-cxx-before-cuda",
   "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
   "find": "  setup_linux_cross_env || return $?\n  cuda_cross_load || err \"cuda_cross_load failed\"",
@@ -56502,6 +56550,62 @@
   "why": "The declared-entrypoint selector must import canonical logging when sourced standalone; a caller already loading logging cannot satisfy that library contract. This does not prove a real package or GPU execution."
  },
  {
+  "id": "lib.app-packaging-artifacts-logging-import",
+  "target": "linux/scripts/lib/app-packaging-artifacts.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/log-bootstrap.sh\" || return $?",
+  "replace": ": \"missing canonical logging import\"",
+  "test": "bash linux/scripts/tests/test-lib-modules.sh",
+  "why": "The artifact selector must import canonical logging when sourced standalone."
+ },
+ {
+  "id": "lib.app-packaging-single-artifact-count",
+  "target": "linux/scripts/lib/app-packaging-artifacts.sh",
+  "find": "\"${#found[@]}\" -eq 1 &&",
+  "replace": "\"${#found[@]}\" -ge 1 &&",
+  "test": "bash linux/scripts/tests/test-app-packaging-artifacts.sh",
+  "why": "A second artifact of one kind must fail rather than be picked."
+ },
+ {
+  "id": "lib.app-packaging-single-artifact-unmatched",
+  "target": "linux/scripts/lib/app-packaging-artifacts.sh",
+  "find": "    if [[ -e \"$path\" || -L \"$path\" ]]; then found+=(\"$path\"); fi",
+  "replace": "    found+=(\"$path\")",
+  "test": "bash linux/scripts/tests/test-app-packaging-artifacts.sh",
+  "why": "An unmatched pattern is no artifact, so an empty or missing directory reports found 0 without nullglob."
+ },
+ {
+  "id": "lib.app-packaging-single-artifact-regular",
+  "target": "linux/scripts/lib/app-packaging-artifacts.sh",
+  "find": " && -f \"${found[0]}\" && ! -L \"${found[0]}\" ]]",
+  "replace": " && -e \"${found[0]}\" && ! -L \"${found[0]}\" ]]",
+  "test": "bash linux/scripts/tests/test-app-packaging-artifacts.sh",
+  "why": "A directory that matches the suffix is not a package artifact."
+ },
+ {
+  "id": "lib.app-packaging-single-artifact-link",
+  "target": "linux/scripts/lib/app-packaging-artifacts.sh",
+  "find": " && ! -L \"${found[0]}\" ]]",
+  "replace": " ]]",
+  "test": "bash linux/scripts/tests/test-app-packaging-artifacts.sh",
+  "why": "A link that matches the suffix is not a package artifact; it can point outside the package directory."
+ },
+ {
+  "id": "lib.app-packaging-linux-artifacts-all-reported",
+  "target": "linux/scripts/lib/app-packaging-artifacts.sh",
+  "find": "  _ala_deb=\"$(app_packaging_single_artifact \"$_ala_dir\" .deb)\" || _ala_rc=1",
+  "replace": "  _ala_deb=\"$(app_packaging_single_artifact \"$_ala_dir\" .deb)\" || return 1",
+  "test": "bash linux/scripts/tests/test-app-packaging-artifacts.sh",
+  "why": "One run reports every miscounted format, not only the first."
+ },
+ {
+  "id": "lib.app-packaging-linux-artifacts-verdict",
+  "target": "linux/scripts/lib/app-packaging-artifacts.sh",
+  "find": "  if [[ \"$_ala_rc\" -ne 0 ]]; then return 1; fi\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-app-packaging-artifacts.sh",
+  "why": "A miscounted format fails the set and leaves the caller's variables unset."
+ },
+ {
   "id": "python.compile-cache.command-required",
   "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
   "find": "[[ $# -gt 0 ]]",
@@ -66958,6 +67062,62 @@
   "replace": "GetExtension($resolved) -in @('.zip', '.msix')",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Nsis.PackageGates.Tests.ps1",
   "why": "The ORT family gate reads an NSIS setup."
+ },
+ {
+  "id": "windows-lane.package-ort-provider-set-verdict",
+  "target": "windows/scripts/modules/WindowsPackageBinary.Common.psm1",
+  "find": "    if (($want -join \"`n\") -cne ($have -join \"`n\")) {",
+  "replace": "    if ($false) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PackageBinary.ProviderSet.Tests.ps1",
+  "why": "A finished package whose ORT providers differ from the proven set, by a missing or an extra provider, must fail."
+ },
+ {
+  "id": "windows-lane.package-ort-provider-set-no-provider",
+  "target": "windows/scripts/modules/WindowsPackageBinary.Common.psm1",
+  "find": "    if ($want.Count -eq 0) { throw \"$Label proven names carry no ORT provider\" }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PackageBinary.ProviderSet.Tests.ps1",
+  "why": "A proven list that names no provider must fail, or a package without providers passes against it."
+ },
+ {
+  "id": "windows-lane.package-ort-provider-set-order",
+  "target": "windows/scripts/modules/WindowsPackageBinary.Common.psm1",
+  "find": "$want = @(Get-ValidatedOrtProviderNames -Names $Expected)",
+  "replace": "$want = @($Expected | Where-Object { $_ -clike 'onnxruntime_providers_*.dll' })",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PackageBinary.ProviderSet.Tests.ps1",
+  "why": "The proven list's order must not decide the verdict; both sides leave the same validator sorted."
+ },
+ {
+  "id": "windows-lane.package-ort-provider-set-directory",
+  "target": "windows/scripts/modules/WindowsPackageBinary.Common.psm1",
+  "find": "-Path $Path -Directory $Directory -RootDirectoryId $RootDirectoryId",
+  "replace": "-Path $Path -Directory '' -RootDirectoryId $RootDirectoryId",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PackageBinary.ProviderSet.Tests.ps1",
+  "why": "The census reads the caller's package directory, not the package root."
+ },
+ {
+  "id": "windows-lane.package-ort-provider-set-msi-root",
+  "target": "windows/scripts/modules/WindowsPackageBinary.Common.psm1",
+  "find": "-Path $Path -Directory $Directory -RootDirectoryId $RootDirectoryId -RootDirectoryName $RootDirectoryName)",
+  "replace": "-Path $Path -Directory $Directory -RootDirectoryName $RootDirectoryName)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PackageBinary.ProviderSet.Tests.ps1",
+  "why": "An MSI census needs the caller's install root; a dropped root must not reach the reader as empty."
+ },
+ {
+  "id": "windows-lane.package-ort-provider-set-names-both",
+  "target": "windows/scripts/modules/WindowsPackageBinary.Common.psm1",
+  "find": "expected $($want -join ', '); found $found\"",
+  "replace": "expected $($want -join ', ')\"",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PackageBinary.ProviderSet.Tests.ps1",
+  "why": "The refusal names the proven and the found set, so a red log says which provider moved."
+ },
+ {
+  "id": "windows-lane.package-ort-provider-set-export",
+  "target": "windows/scripts/modules/WindowsPackageBinary.Common.psm1",
+  "find": "Get-PackageOrtProviderNames, Assert-PackageOrtProviderSet, Assert-PackageOrtFamily",
+  "replace": "Get-PackageOrtProviderNames, Assert-PackageOrtFamily",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PackageBinary.ProviderSet.Tests.ps1",
+  "why": "Consumers call the assertion by name across the module boundary, so the module must export it."
  },
  {
   "id": "windows-lane.nsis-bundle-setup",

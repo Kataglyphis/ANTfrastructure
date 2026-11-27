@@ -734,6 +734,21 @@ flatpak/flatpak-builder/ostree/cmake, including the two cases the exit code
 cannot see: a non-zero `flatpak-builder` whose app **is** committed still ships,
 and a zero exit with an empty repo fails.
 
+## `app-packaging-artifacts.sh` — one finished artifact per format
+
+A package check sources this file to find the artifacts it verifies. It needs only
+`log-bootstrap.sh` beside it, not the rest of `app-packaging.sh`.
+
+* `app_packaging_single_artifact DIR SUFFIX` prints the one `DIR/*SUFFIX`. None or two fail,
+  and the message names the count. A match that is a directory or a link fails too.
+* `app_packaging_linux_artifacts DIR DEB_VAR TARBALL_VAR APPIMAGE_VAR` sets the three named
+  variables to the one `.deb`, `.tar.gz` and `.AppImage`. It reports every miscounted format
+  before it fails, and then sets none of them.
+
+It expands the caller's glob and changes no shell option, so hidden files count only under
+`dotglob`. It proves that one artifact was selected, not that the package is valid.
+`tests/test-app-packaging-artifacts.sh` covers none, one and two of each format.
+
 ## `06-packaging/package_archive.sh` — one binary, four formats
 
 One release binary, a tar always, and by `--package-types` a deb, an AppImage and

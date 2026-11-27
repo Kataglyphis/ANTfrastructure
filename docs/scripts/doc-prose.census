@@ -116,8 +116,8 @@ docs/github-cli-pipeline-monitoring.md | avg-sentence | 17.6
 docs/github-cli-pipeline-monitoring.md | long-share | 12.4
 docs/github-cli-pipeline-monitoring.md | ids-per-k | 2.6
 docs/github-cli-pipeline-monitoring.md | bold-per-k | 5.7
-docs/gpu-artifact-receipts.md | avg-sentence | 17.0
-docs/gpu-artifact-receipts.md | long-share | 7.5
+docs/gpu-artifact-receipts.md | avg-sentence | 16.9
+docs/gpu-artifact-receipts.md | long-share | 7.3
 docs/gpu-artifact-receipts.md | ids-per-k | 0.9
 docs/gpu-artifact-receipts.md | bold-per-k | 0.5
 docs/hailo-support.md | avg-sentence | 18.9

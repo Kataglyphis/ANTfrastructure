@@ -107,6 +107,8 @@ Describe 'MSI installed-path mapping' {
                 Assert-Throws { Get-MsiInstalledFileId -Path $msi -RelativePath @('') -RootDirectoryId licenses }
                 Assert-Equal 'LICENSE,onnxruntime_providers_shared.dll' (@(Get-MsiDirectoryFileNames -Path $msi -Directory 'onnxruntime' -RootDirectoryId licenses -RootDirectoryName licenses) -join ',')
                 Assert-Equal 'onnxruntime_providers_shared.dll' (@(Get-PackageOrtProviderNames -Path $msi -Directory 'onnxruntime' -RootDirectoryId licenses -RootDirectoryName licenses) -join ',')
+                Assert-PackageOrtProviderSet -Path $msi -Directory 'onnxruntime' -RootDirectoryId licenses -RootDirectoryName licenses -Expected 'onnxruntime_providers_shared.dll' -Label MSI
+                Assert-Throws { Assert-PackageOrtProviderSet -Path $msi -Directory 'onnxruntime' -RootDirectoryId licenses -RootDirectoryName Other -Expected 'onnxruntime_providers_shared.dll' -Label MSI } -MessagePattern 'expected'
                 Assert-PackageOrtFamily -Path $msi -Directory 'onnxruntime' -RootDirectoryId licenses -RootDirectoryName licenses -Name 'onnxruntime_providers_shared.dll'
                 Assert-Throws { Get-MsiInstalledFileId -Path $msi -RelativePath 'LICENSE' } -MessagePattern 'matched 2 rows'
                 & (Get-Module WindowsMsiLicense.Common) { param($path)
