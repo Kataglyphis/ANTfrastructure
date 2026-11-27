@@ -19,6 +19,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — Renovate's Node moves to 24.22.3
+
+- `RENOVATE_NODE_VERSION` 24.22.3 with both `.tar.xz` SHA-256s from nodejs.org's `SHASUMS256.txt`: renovate 45.1.2
+  and later declare `node ^24.22.3`, so `renovate-local.sh` stopped at `npm ci` (EBADENGINE) on 24.22.2.
+
 ## 2026-11-27 — FFmpeg's tag archive is pinned on both lanes (CON227)
 
 - `versions.env` pins `FFMPEG_SHA256`, the tag archive's decompressed-stream hash, and `FFMPEG_TAG_COMMIT`. Linux's
