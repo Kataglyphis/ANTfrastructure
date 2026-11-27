@@ -2468,10 +2468,10 @@ Written here once because three consumers each carried a 40-line copy of it in t
   So the lane needs a **Windows** runner, not one of the cheaper `ubuntu-26.04` ones the rest of the
   Linux jobs use.
 - **The suite is version-agnostic**: `shared/windows/tests/Submodule.Pins.Tests.ps1` asserts with
-  `throw` rather than `Should`, verified under both 3.4.0 and 6.1.0. The lane can move to a cheaper
-  runner the day the action's invocation survives a Core-compatible Pester. Today it does not: 5.x
-  loses the per-failure diagnostics and 6.x rejects `-Quiet` (measured 2026-09-07). The workflow's
-  `pester-version` and `runner` inputs are the switch; nothing else has to change.
+  `throw` rather than `Should`, verified under both 3.4.0 and 6.1.0. The action runs Pester 5.0.0 and
+  later through a Pester configuration, so a caller may pass `pester-version: '6.2.0'`. The lane can
+  then move to a cheaper runner; the workflow's `pester-version` and `runner` inputs are the switch,
+  and nothing else has to change.
 - **The label is `windows-2025`, pinned**, not `windows-latest`. The alias resolves to windows-2025
   today, so pinning is a no-op right now; a future repoint would swap the OS image, and with it the
   Windows PowerShell 5.1 that Pester 3.4.0 needs, under a green build with no commit to blame.

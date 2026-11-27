@@ -1,6 +1,6 @@
 # <page> | <metric> | <value>: a value may only fall. verify_doc_prose.py --write lowers the rows.
-.github/actions/README.md | avg-sentence | 22.1
-.github/actions/README.md | long-share | 22.4
+.github/actions/README.md | avg-sentence | 22.0
+.github/actions/README.md | long-share | 22.1
 .github/actions/README.md | ids-per-k | 2.4
 .github/actions/README.md | bold-per-k | 3.5
 AGENTS.md | avg-sentence | 16.2

@@ -30994,19 +30994,67 @@
  },
  {
   "id": "windows-lane.pester-action-requires-passing-test",
-  "target": ".github/actions/run-pester-suite/action.yml",
-  "find": "if ($r.PassedCount -lt 1) {",
-  "replace": "if ($false) {",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ci.PesterAction.Tests.ps1 -ResultFile logs/code-quality/pester-action-mutation.json",
+  "target": ".github/actions/run-pester-suite/Invoke-PesterSuite.ps1",
+  "find": "    if ($Result.Passed -lt 1) {",
+  "replace": "    if ($false) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
   "why": "a skipped or pending Pester suite cannot count as a passing test run"
  },
  {
   "id": "windows-lane.pester-action-ends-with-its-verdict",
-  "target": ".github/actions/run-pester-suite/action.yml",
-  "find": "        # GitHub's pwsh wrapper exits with $LASTEXITCODE, which a passing suite's own native calls can leave nonzero.\n        exit 0",
-  "replace": "        # GitHub's pwsh wrapper exits with $LASTEXITCODE, which a passing suite's own native calls can leave nonzero.",
+  "target": ".github/actions/run-pester-suite/Invoke-PesterSuite.ps1",
+  "find": "exit (Get-SuiteExitCode -Result $result -Path $Path)",
+  "replace": "$null = Get-SuiteExitCode -Result $result -Path $Path",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
   "why": "a passing suite whose own native calls left $LASTEXITCODE nonzero must not fail the step through GitHub's pwsh wrapper"
+ },
+ {
+  "id": "windows-lane.pester-action-modern-dialect",
+  "target": ".github/actions/run-pester-suite/Invoke-PesterSuite.ps1",
+  "find": "    return ([version]$Version).Major -ge 5",
+  "replace": "    return $false",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
+  "why": "Pester 5 and 6 reject -Quiet and drop TestResult, so the legacy call fails every modern suite"
+ },
+ {
+  "id": "windows-lane.pester-action-pester-never-exits",
+  "target": ".github/actions/run-pester-suite/Invoke-PesterSuite.ps1",
+  "find": "    $config.Run.Exit = $false\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
+  "why": "a Pester that ends the process itself skips the no-test and no-pass verdicts"
+ },
+ {
+  "id": "windows-lane.pester-action-failed-container-fails",
+  "target": ".github/actions/run-pester-suite/Invoke-PesterSuite.ps1",
+  "find": "    if ($Result.Failed -gt 0 -or $Result.FailedContainers -gt 0) {",
+  "replace": "    if ($Result.Failed -gt 0) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
+  "why": "a file that fails discovery reports no failed test, only a failed container, and its error must be printed"
+ },
+ {
+  "id": "windows-lane.pester-action-container-errors-printed",
+  "target": ".github/actions/run-pester-suite/Invoke-PesterSuite.ps1",
+  "find": "        $failures += @($Run.Containers | Where-Object { $_.Result -eq 'Failed' } | ForEach-Object {\n                Get-SuiteFailure -Item $_ -Name \"container $($_.Item)\"\n            })\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
+  "why": "without the container's error a discovery failure reads as a red step with no reason"
+ },
+ {
+  "id": "windows-lane.pester-action-broken-file-is-not-empty",
+  "target": ".github/actions/run-pester-suite/Invoke-PesterSuite.ps1",
+  "find": "($Result.Total -eq 0 -and $Result.FailedContainers -eq 0)",
+  "replace": "($Result.Total -eq 0)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
+  "why": "a file that broke before its tests ran must say so, not that the path matched nothing"
+ },
+ {
+  "id": "windows-lane.pester-action-inputs-through-env",
+  "target": ".github/actions/run-pester-suite/action.yml",
+  "find": "-Path $env:PESTER_SUITE_PATH",
+  "replace": "-Path '${{ inputs.path }}'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
+  "why": "an input expanded into the script text runs whatever a quote in the path closes"
  },
  {
   "id": "lib.wsl-quality-windows-test-exit-is-fatal",

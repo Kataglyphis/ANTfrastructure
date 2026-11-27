@@ -19,6 +19,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — run-pester-suite runs Pester 5 and 6, so a consumer can leave 3.4.0
+
+- AccelerANTgine's BACKLOG asks its 14 suites to move from Pester 3.4's `Should Be` to the dialect of the image's
+  Pester 6.2.0 (CON283). Its workflows could not follow: the action called `Invoke-Pester -PassThru -Quiet` and read
+  `TestResult`, which Pester 6 rejects and 5 no longer has. The logic moved into
+  `.github/actions/run-pester-suite/Invoke-PesterSuite.ps1`. Below 5.0.0 it makes the same call as before. From
+  5.0.0 on it runs a Pester configuration with `Run.Exit` off, prints each failed test's path, message and stack,
+  and fails a file that breaks in discovery or its top-level `BeforeAll`, which Pester reports as a failed
+  container with no failed test. The default stays `3.4.0`. `path` and `version` reach the script through the
+  environment instead of the script text.
+- `Ci.PesterActionExit.Tests.ps1` grades both dialects against stubbed Pester (9 cases). `Ci.PesterAction.Tests.ps1`
+  now runs genuine Pester: eight cases at versions.env's `PESTER_VERSION`, and the six 3.4.0 cases on Windows.
+  `actions-selftest.yml` runs a modern suite at that pin and asserts that a broken file fails the action. Two recipes
+  are retargeted to the script and six added; all eight go red.
+
 ## 2026-11-28 — the rustdoc site links its dependencies to docs.rs, and the link gate sees Rust paths
 
 - `cargo_build_doc.sh` runs `cargo +${RUST_NIGHTLY_TOOLCHAIN} doc -Zrustdoc-map` with crates.io mapped to docs.rs

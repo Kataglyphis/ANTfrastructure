@@ -209,14 +209,18 @@ The `submodules` modes match `actions/checkout`: `true` updates direct entries,
 `recursive` updates nested entries as well, and `false` leaves them uninitialized.
 
 ### `run-pester-suite`
-Installs a PINNED Pester and runs a suite, printing Describe/Name plus the
-assertion's `FailureMessage` and `StackTrace` for every failure - the test name
-alone costs a round trip to learn what was compared. Pinning matters because
-Pester 3.x and 5.x are different dialects: a 3.4 suite (`Should Be 0`) does not
-parse under the Pester 5 on the runner. A run whose `TotalCount` is 0 FAILS:
-a path that matches no suite (missing, renamed, or never checked out) would
-otherwise exit 0 with `FailedCount` 0 - green having run nothing. Inputs:
-`path` (required), `version`.
+Installs a PINNED Pester and runs a suite through `Invoke-PesterSuite.ps1`, printing
+each failed test's path, message and stack: the test name alone costs a round trip
+to learn what was compared. Pinning matters because Pester 3.x and 5.x are different
+dialects: a 3.4 suite (`Should Be 0`) does not parse under Pester 5 or 6. Below 5.0.0
+it calls `Invoke-Pester -PassThru -Quiet`; from 5.0.0 on it runs a Pester
+configuration with `Run.Exit` off, and a file that fails discovery or its top-level
+`BeforeAll` fails the step with that error. A run whose `TotalCount` is 0 FAILS: a
+path that matches no suite (missing, renamed, or never checked out) would otherwise
+exit 0 with `FailedCount` 0, green having run nothing. So does a run in which no test
+passed. Inputs: `path` (required), `version` (default `3.4.0`); both reach the script
+through the environment. Cases: `windows/scripts/tests/Ci.PesterActionExit.Tests.ps1`
+(stubbed) and `Ci.PesterAction.Tests.ps1` (genuine Pester).
 
 
 ### `requested-lanes`
