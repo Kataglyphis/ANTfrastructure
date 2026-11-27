@@ -78,7 +78,9 @@ What the variant changes, all in `build-cross-chain.sh` / `stage-defs.sh`:
 - **Its own state:** `chain-status-nvidia.json` and `logs/build-logs/nvidia/`.
   Chains run **strictly one at a time**: a second chain refuses to start while
   the pidfile names a live one.
-- **The runtime lane budgets 180 GB** (`CROSS_RUNTIME_LANE_GB`), not 120.
+- **The runtime lane budgets 280 GB per arch** (`CROSS_RUNTIME_LANE_GB`), not 165. A rocm lane
+  filled 225 GB free and failed `failed to extract layer`. Its wrapper is about 100 GB unpacked.
+  The smoke unpacks a second copy beside it.
 - The wrappers take `onnxruntime-gpu` + `pytorch-cu130` unless you pin
   `ONNX_PACKAGE` / `PYTORCH_EXTRA`, and only that one onnxruntime flavour: the
   amd64 CPU `onnxruntime_dnnl` wheel is pruned from a GPU venv. Both flavours' `cp3XYt`

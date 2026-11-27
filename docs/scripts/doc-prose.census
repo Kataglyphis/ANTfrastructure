@@ -124,9 +124,9 @@ docs/hailo-support.md | avg-sentence | 18.9
 docs/hailo-support.md | long-share | 14.0
 docs/hailo-support.md | ids-per-k | 6.8
 docs/hailo-support.md | bold-per-k | 10.1
-docs/image-acceptance.md | avg-sentence | 15.1
-docs/image-acceptance.md | long-share | 3.1
-docs/image-acceptance.md | ids-per-k | 1.5
+docs/image-acceptance.md | avg-sentence | 15.0
+docs/image-acceptance.md | long-share | 2.6
+docs/image-acceptance.md | ids-per-k | 1.4
 docs/image-acceptance.md | bold-per-k | 0.0
 docs/image-decisions.md | avg-sentence | 18.9
 docs/image-decisions.md | long-share | 12.1

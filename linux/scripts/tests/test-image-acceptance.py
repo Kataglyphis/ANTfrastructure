@@ -218,18 +218,22 @@ class ReceiptTests(unittest.TestCase):
     def run_check(
         self, exit_code: int = 0, timeout: bool = False, dirty_after: bool = False,
         cleanup_error: bool = False,
-        cleanup_result: tuple[int, bool] | None = None,
+        cleanup_result: tuple[int, bool] | None = None, consumer_codes: Sequence[int] | None = None, keep_build_outputs: bool = False,
     ) -> tuple[dict[str, Any], list[Any]]:
         root = Path(self.directory.name)
         args = types.SimpleNamespace(image=IMAGE, plan=self.plan, workspace=root / "sources",
-                                     receipt=root / "result.json", engine="engine", replay=None)
+                                     receipt=root / "result.json", engine="engine", replay=None,
+                                     keep_build_outputs=keep_build_outputs)
         snapshot = {"repository": "owner/first", "revision": "c" * 40, "submodules": "", "data_locks": {}}
         cleanup_failed = False
+        codes = list(consumer_codes or [])
         def fake_run(command: Sequence[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
             nonlocal cleanup_failed
             if command[1] == "run":
                 if timeout:
                     raise subprocess.TimeoutExpired(command, 30)
+                if codes:
+                    return subprocess.CompletedProcess(command, 0 if "--entrypoint" in command else codes.pop(0))
                 return subprocess.CompletedProcess(command, exit_code)
             if command[1] == "rm" and cleanup_error and not cleanup_failed:
                 cleanup_failed = True
@@ -246,7 +250,9 @@ class ReceiptTests(unittest.TestCase):
             checkout.mkdir(parents=True, exist_ok=True)
             (checkout / "source.txt").write_text(spec["name"] + " versioned fixture\n")
             return dict(snapshot, repository=spec["repository"])
+        self.git_calls: list[tuple[str, ...]] = []
         def fake_git(checkout: Path, *command: str) -> str:
+            self.git_calls.append((Path(checkout).name, *command))
             if command[0] == "status":
                 return " M Cargo.lock" if dirty_after and Path(checkout) != module.ROOT else ""
             return "b" * 40
@@ -255,19 +261,67 @@ class ReceiptTests(unittest.TestCase):
              patch.object(module, "collect_locks", return_value={}), \
              patch.object(module.subprocess, "run", side_effect=fake_run) as run:
             cleanup_present = bool(cleanup_result and cleanup_result[1])
-            if exit_code or timeout or dirty_after or cleanup_error or cleanup_present:
+            if exit_code or timeout or dirty_after or cleanup_error or cleanup_present or (consumer_codes and consumer_codes[-1]):
                 with self.assertRaises(ValueError):
                     module.check(args)
             else:
                 module.check(args)
         return json.loads(args.receipt.read_text()), run.call_args_list
 
-    def test_passed_receipt_keeps_versioned_consumer_sources_and_logs(self) -> None:
+    def test_passed_consumer_keeps_its_sources_and_loses_its_build_outputs(self) -> None:
         receipt, _ = self.run_check()
         self.assertEqual(receipt["status"], "passed")
         sources = Path(self.directory.name) / "sources"
-        self.assertEqual((sources / "first/source.txt").read_text(), "first versioned fixture\n")
+        self.assertEqual((sources / "first/source.txt").read_text(), "first versioned fixture\n", "versioned sources stay")
         self.assertTrue((sources / "first.log").exists(), "its log stays with the receipt")
+        self.assertIn(("first", "clean", "-ffdxq"), self.git_calls, "untracked build outputs go")
+        self.assertIn(("first", "submodule", "foreach", "--quiet", "--recursive", "git clean -ffdxq"), self.git_calls)
+        self.assertNotIn("first_attempt", receipt["consumers"][0])
+
+    def test_real_git_cleanup_keeps_versioned_sources_and_git_store(self) -> None:
+        checkout = Path(self.directory.name) / "real"
+        checkout.mkdir()
+        for command in (["init", "-q"], ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base"]):
+            subprocess.run(["git", "-C", str(checkout), *command], check=True)
+        (checkout / "src.rs").write_text("fn main() {}\n")
+        subprocess.run(["git", "-C", str(checkout), "add", "src.rs"], check=True)
+        subprocess.run(["git", "-C", str(checkout), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "src"], check=True)
+        (checkout / "target/debug").mkdir(parents=True)
+        (checkout / "target/debug/big.rlib").write_bytes(b"x" * 1024)
+        module.discard_build_outputs(checkout)
+        self.assertEqual((checkout / "src.rs").read_text(), "fn main() {}\n")
+        self.assertTrue((checkout / ".git").is_dir())
+        self.assertFalse((checkout / "target").exists())
+
+    def test_keep_build_outputs_cleans_nothing(self) -> None:
+        self.run_check(keep_build_outputs=True)
+        self.assertFalse(any(call[1] == "clean" for call in self.git_calls))
+
+    def test_a_failed_command_runs_once_more_on_a_fresh_checkout(self) -> None:
+        receipt, calls = self.run_check(consumer_codes=[1, 0])
+        self.assertEqual(receipt["status"], "passed")
+        row = receipt["consumers"][0]
+        self.assertEqual(row["exit_code"], 0)
+        self.assertEqual(row["first_attempt"]["exit_code"], 1, "the first failure stays in the receipt")
+        sources = Path(self.directory.name) / "sources"
+        self.assertTrue((sources / "first.attempt-1.log").exists())
+        self.assertEqual((sources / "first/source.txt").read_text(), "first versioned fixture\n", "the retry keeps the sources")
+        self.assertEqual(row["first_attempt"]["log_sha256"], module.fingerprint(sources / "first.attempt-1.log"))
+        first_runs = [c for c in calls if c.args[0][1] == "run" and "--entrypoint" not in c.args[0]
+                      and any(str(a).endswith("/first:/workspace") for a in c.args[0])]
+        self.assertEqual(len(first_runs), 2)
+
+    def test_a_second_failure_fails_and_keeps_the_checkout(self) -> None:
+        receipt, _ = self.run_check(consumer_codes=[1, 1])
+        self.assertEqual(receipt["status"], "failed")
+        self.assertEqual(receipt["consumers"][0]["first_attempt"]["exit_code"], 1)
+        self.assertTrue((Path(self.directory.name) / "sources" / "first").exists(), "the failed checkout stays for inspection")
+
+    def test_changed_sources_are_not_retried(self) -> None:
+        _, calls = self.run_check(dirty_after=True)
+        first_runs = [c for c in calls if c.args[0][1] == "run" and "--entrypoint" not in c.args[0]
+                      and any(str(a).endswith("/first:/workspace") for a in c.args[0])]
+        self.assertEqual(len(first_runs), 1, "only a nonzero exit is retried")
 
     def test_failed_receipt_keeps_the_consumer_checkout_for_inspection(self) -> None:
         self.run_check(exit_code=1)
