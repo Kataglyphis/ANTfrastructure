@@ -475,9 +475,8 @@ orphans heavy on CPU or memory or shaped like test leftovers
 
 ## Delegated Windows storage maintenance
 
-Use only the installed delegated maintenance tasks and their fixed preview and reclaim policy. Use the
-canonical selectors with full expected IDs; never force removal, lower a disk floor, terminate a build or
-restart containerd. Every rule, and how a new host gets them:
+Reclaim Windows storage only through the installed delegated maintenance tasks and their fixed
+policy. Every rule, and how a new host gets them:
 [`windows-stevedore-and-docker.md` § Delegated maintenance invariants](docs/windows-stevedore-and-docker.md#delegated-maintenance-invariants).
 
 ## Caching discipline (do not regress)

@@ -1053,11 +1053,9 @@ are met. Name `:latest`:
 
 ## uv and free-threaded invariants
 
-Rules for uv installs and the free-threaded smoke pool. Each row is one rule.
+Rules for uv installs and the free-threaded smoke pool. Each item is one rule.
 
-| Rule |
-|---|
-| Locked tool installs also require `uv-image-overlay.sh` beside `python_uv.sh`; copied code-quality libraries carry `quality/cmake-format/{pyproject.toml,uv.lock}` and retain the Python 3.15 lexer patch. |
-| Image-backed uv overlays validate the complete active lock and isolated install plan against image packages before installation; preserve pinned runtime provenance and reject non-venv targets. Overlay and locked-tool uv calls ignore inherited project and working-directory overrides so relative paths retain their caller meaning. |
-| Consumer pin checks parse pyproject TOML and ignore only uv's exclusion list; genuine dependency pins, overrides and malformed manifests retain their fatal verdicts. |
-| `uv_sync_project --only-group` excludes the project, default groups and extras; when the chain store is active, reject an unreadable lock or any ORT in it before syncing. |
+- Locked tool installs also require `uv-image-overlay.sh` beside `python_uv.sh`. Copied code-quality libraries carry `quality/cmake-format/{pyproject.toml,uv.lock}` and retain the Python 3.15 lexer patch.
+- Image-backed uv overlays validate the complete active lock and isolated install plan against image packages before installation. Preserve pinned runtime provenance and reject non-venv targets. Overlay and locked-tool uv calls ignore inherited project and working-directory overrides so relative paths retain their caller meaning.
+- Consumer pin checks parse pyproject TOML and ignore only uv's exclusion list. Genuine dependency pins, overrides and malformed manifests retain their fatal verdicts.
+- `uv_sync_project --only-group` excludes the project, default groups and extras. When the chain store is active, reject an unreadable lock or any ORT in it before syncing.

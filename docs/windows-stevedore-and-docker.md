@@ -399,17 +399,15 @@ installer accepts an explicit downgrade:
 
 ## Delegated maintenance invariants
 
-Rules for the installed delegated maintenance tasks on a Windows build host. Each row is one rule.
+Rules for the installed delegated maintenance tasks on a Windows build host. Each item is one rule.
 
-| Rule |
-|---|
-| Owner-approved v2 installation grants continuing permission to invoke its fixed preview and reclaim tasks without per-tag confirmation. |
-| Keep its exact policy: seven completed media-branch tag families require a merged Media image and no retained container reference; only stopped explicitly disposable containers may retire. |
-| Preserve Final/Torch/Media, SDK/toolchain/base, unrelated tags, volumes and compiler caches. |
-| Use the canonical selectors with full expected IDs; never force removal, lower a disk floor, terminate a build or restart containerd. |
-| Require real idle checks, fresh task/worker receipts, before/after preservation and measured headroom. |
-| Inventory keeps raw containerd names and binds each distinct manifest lookup to its configuration; native warnings refuse partial results. |
-| Resolve hidden task instances by exact task path and GUID; filtered instance enumeration alone never proves completion, overlap safety or revocation. |
-| An empty nerdctl container status requires all typed inactive flags, zero PID/exit status and empty error/timestamps; retain the raw fields and refuse native stderr. |
-| Never execute SYSTEM code from a writable checkout or accept writable task/configuration files. |
-| A new host needs its own administrator installation and non-admin acceptance; see [the runbook](#delegated-maintenance-and-new-hosts). |
+- Owner-approved v2 installation grants continuing permission to invoke its fixed preview and reclaim tasks without per-tag confirmation.
+- Keep its exact policy: seven completed media-branch tag families require a merged Media image and no retained container reference. Only stopped explicitly disposable containers may retire.
+- Preserve Final/Torch/Media, SDK/toolchain/base, unrelated tags, volumes and compiler caches.
+- Use the canonical selectors with full expected IDs. Never force removal, lower a disk floor, terminate a build or restart containerd.
+- Require real idle checks, fresh task/worker receipts, before/after preservation and measured headroom.
+- Inventory keeps raw containerd names and binds each distinct manifest lookup to its configuration. Native warnings refuse partial results.
+- Resolve hidden task instances by exact task path and GUID. Filtered instance enumeration alone never proves completion, overlap safety or revocation.
+- An empty nerdctl container status requires all typed inactive flags, zero PID/exit status and empty error/timestamps. Retain the raw fields and refuse native stderr.
+- Never execute SYSTEM code from a writable checkout or accept writable task/configuration files.
+- A new host needs its own administrator installation and non-admin acceptance. See [the runbook](#delegated-maintenance-and-new-hosts).

@@ -326,8 +326,6 @@ A calling job looks the same in both:
 
 ## Release invariants
 
-Rules for publishing release assets. Each row is one rule.
+Rules for publishing release assets. Each item is one rule.
 
-| Rule |
-|---|
-| Supplement an existing release only with `shared/python/attach_release_assets.py`: verify the tag's commit, reject name collisions and keep the original assets. |
+- Supplement an existing release only with `shared/python/attach_release_assets.py`: verify the tag's commit, reject name collisions and keep the original assets.

@@ -2040,15 +2040,13 @@ from their disk cache mounts. Tests: `linux/scripts/tests/test-sccache-s3-level.
 
 ## Cache probe invariants
 
-Rules for the compiler-cache launchers, probes and fixtures. Each row is one rule.
+Rules for the compiler-cache launchers, probes and fixtures. Each item is one rule.
 
-| Rule |
-|---|
-| Fake sccache server startup tests clear inherited cache-chain settings in their child environments; retain the explicit inherited-setting regression and original fallback assertions. |
-| Cache launcher sites initialize their parent environment directly before resolution; required callers propagate raw failure with an explicit guard and legacy callers retain their advisory fallback. Cache-policy scans canonicalize their root before excluding tests and prove a planted bare call is visible through tests/.. inputs. Isolated C/C++ fixture compilers require the canonical cache owner and both launcher APIs, keep optimized/ASAN flags and capture raw compiler/cache status; a cache infrastructure failure cannot bypass the guarded launcher. |
-| Cache diagnostic fixtures isolate automatic socket/port defaults in their child and prove explicit caller addresses survive; never unset the real capture environment. |
-| Compiler-cache activity probes count only aggregate integer counters; rates, timings, error rows and language subtotals must not manufacture or erase activity. Preserve raw stats failures and keep diagnostic evidence separate from full compiler/image acceptance. |
-| Standalone HailoRT starts its shared cache session before configure, prints stderr counters after compilation and drains before success cleanup; wiring tests do not prove hits. |
-| Torchvision ROCm wires only its build-venv host CXX through the reviewed PyTorch patch and an explicit launcher path. Keep CC/CXX as real compilers for ABI probes, leave the HIP compiler separate, and mount the patch only in the torchvision RUN. |
-| Retained cache-log exports never use `--no-cache`, including read-only mounts: BuildKit can reset their cache associations before the copy. Consume a per-run ARG nonce instead. The standalone OpenCV GStreamer plugin reports its own sccache counters and completes the server before deleting its source; do not start a truncating session over the preceding GStreamer log. |
-| OpenCV's classic FindCUDA uses `opencv-cuda-cache.sh` through its executable and environment APIs; keep the companion and reject a configured cache or generated CUDA object rule that bypasses it. Preserve toolkit-root invalidation, the target host compiler and the architecture list. |
+- Fake sccache server startup tests clear inherited cache-chain settings in their child environments. Retain the explicit inherited-setting regression and original fallback assertions.
+- Cache launcher sites initialize their parent environment directly before resolution. Required callers propagate raw failure with an explicit guard and legacy callers retain their advisory fallback. Cache-policy scans canonicalize their root before excluding tests and prove a planted bare call is visible through tests/.. inputs. Isolated C/C++ fixture compilers require the canonical cache owner and both launcher APIs, keep optimized/ASAN flags and capture raw compiler/cache status. A cache infrastructure failure cannot bypass the guarded launcher.
+- Cache diagnostic fixtures isolate automatic socket/port defaults in their child and prove explicit caller addresses survive. Never unset the real capture environment.
+- Compiler-cache activity probes count only aggregate integer counters. Rates, timings, error rows and language subtotals must not manufacture or erase activity. Preserve raw stats failures and keep diagnostic evidence separate from full compiler/image acceptance.
+- Standalone HailoRT starts its shared cache session before configure, prints stderr counters after compilation and drains before success cleanup. Wiring tests do not prove hits.
+- Torchvision ROCm wires only its build-venv host CXX through the reviewed PyTorch patch and an explicit launcher path. Keep CC/CXX as real compilers for ABI probes, leave the HIP compiler separate, and mount the patch only in the torchvision RUN.
+- Retained cache-log exports never use `--no-cache`, including read-only mounts: BuildKit can reset their cache associations before the copy. Consume a per-run ARG nonce instead. The standalone OpenCV GStreamer plugin reports its own sccache counters and completes the server before deleting its source. Do not start a truncating session over the preceding GStreamer log.
+- OpenCV's classic FindCUDA uses `opencv-cuda-cache.sh` through its executable and environment APIs. Keep the companion and reject a configured cache or generated CUDA object rule that bypasses it. Preserve toolkit-root invalidation, the target host compiler and the architecture list.

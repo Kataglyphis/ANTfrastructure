@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — six invariant tables read as rule lists (CON303 phase 2)
+
+- The one-column rule tables phase 1 moved out of `AGENTS.md` become bullet lists of short sentences, each
+  former clause its own sentence, on six pages: release, uv and free-threaded, source-original notice, cache
+  probe, reuse and delegated-maintenance invariants. No rule changed; the doc-prose rows of the six pages fall.
+- `AGENTS.md` § Delegated Windows storage maintenance keeps one rule and the link; its other two sentences
+  are items on the owner list.
+
 ## 2026-11-27 — AGENTS.md's Container Architecture, Quick Reference and Build Workflow keep only the rules (CON303 phase 2)
 
 - `AGENTS.md` falls from 9,526 to 7,342 words. Each section keeps its heading, so consumer links still land,
