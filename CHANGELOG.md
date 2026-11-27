@@ -19,6 +19,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — `Invoke-VulkanValidationRun -GpuAssisted`: GPU-assisted validation for a consumer's suite
+
+- `WindowsVulkanValidation.Common` gains `Get-VulkanGpuAvLayerSetting` (`gpuav_enable` and
+  `gpuav_safe_mode`, so a reported out-of-bounds access is skipped rather than faulting), and
+  `Copy-VulkanLayerSettings -AppendSetting` adds lines to the staged `vk_layer_settings.txt` only.
+  `Invoke-VulkanValidationRun -GpuAssisted` stages both, so GPU-AV checks every shader's
+  buffer-device-address and descriptor access for that run; a caller's own settings file stays as it is.
+- Two Pester cases: the staged copy carries the settings and the source does not, and a child sees
+  `gpuav_enable` with the switch and not without. Coverage 141/165 (85.5 %, floor 80 %). Dropping the
+  append fails both, not forwarding the switch fails the second. BeschleunigerBallett's
+  `Invoke-SyncValidation.ps1 -GpuAssisted` is the first caller.
+
 ## 2026-11-27 — the backlog reads the published images: CON283 done, CON238, CON264, CON79 and CON99 advanced
 
 - `:latest` `abb3030d…` and `:latest-rocm` `4de019ad…` replace the backlog's digest baseline; both passed all six

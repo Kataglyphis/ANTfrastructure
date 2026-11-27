@@ -13,13 +13,24 @@ function Get-VulkanLayerSettingsDefaultPath {
     return (Join-Path $PSScriptRoot 'vk_layer_settings.default.txt')
 }
 
+# Opt-in: instrumenting every pipeline about doubles a run (1.9x over eight goldens on llvmpipe).
+function Get-VulkanGpuAvLayerSetting {
+    return @(
+        'khronos_validation.gpuav_enable = true'
+        # A reported out-of-bounds access is then skipped, so the run goes on instead of faulting or losing the device.
+        'khronos_validation.gpuav_safe_mode = true'
+    )
+}
+
 # An existing vk_layer_settings.txt is moved aside, never destroyed; the handle goes to Restore-VulkanLayerSettings.
 function Copy-VulkanLayerSettings {
     param(
         [Parameter(Mandatory)]
         [string]$SettingsPath,
         [Parameter(Mandatory)]
-        [string]$TargetDirectory
+        [string]$TargetDirectory,
+        # Lines added to the staged copy only, never to the source file.
+        [string[]]$AppendSetting = @()
     )
 
     if (-not (Test-Path $SettingsPath)) {
@@ -37,6 +48,9 @@ function Copy-VulkanLayerSettings {
     }
 
     Copy-Item -LiteralPath (Resolve-Path $SettingsPath).Path -Destination $stagedPath -Force
+    if ($AppendSetting) {
+        Add-Content -LiteralPath $stagedPath -Value $AppendSetting
+    }
 
     return [pscustomobject]@{
         StagedPath = $stagedPath
@@ -119,7 +133,7 @@ function Test-VulkanValidationLog {
 
 function Initialize-VulkanValidationRun {
     param([string]$ExecutablePath, [string]$WorkingDirectory, [string]$LogPath,
-        [string]$LayerPath, [string]$SettingsPath)
+        [string]$LayerPath, [string]$SettingsPath, [switch]$GpuAssisted)
     if (-not (Test-Path $ExecutablePath)) {
         throw "Executable not found at '$ExecutablePath'."
     }
@@ -142,7 +156,10 @@ function Initialize-VulkanValidationRun {
     }
 
     # Next to the executable, not the CWD: the caller may run it from anywhere.
-    $staging = Copy-VulkanLayerSettings -SettingsPath $SettingsPath -TargetDirectory (Split-Path $ExecutablePath -Parent)
+    $appendSetting = @()
+    if ($GpuAssisted) { $appendSetting = @(Get-VulkanGpuAvLayerSetting) }
+    $staging = Copy-VulkanLayerSettings -SettingsPath $SettingsPath -TargetDirectory (Split-Path $ExecutablePath -Parent) `
+        -AppendSetting $appendSetting
     return [pscustomobject]@{ ExecutablePath = $ExecutablePath; Staging = $staging }
 }
 
@@ -161,11 +178,13 @@ function Invoke-VulkanValidationRun {
         # Defaults to the module's packaged minimal settings file.
         [string]$SettingsPath,
         # 0 streams live and waits forever; a positive value redirects to files and kills on overrun.
-        [int]$TimeoutSeconds = 0
+        [int]$TimeoutSeconds = 0,
+        # Adds Get-VulkanGpuAvLayerSetting to the staged settings.
+        [switch]$GpuAssisted
     )
 
     $prepared = Initialize-VulkanValidationRun -ExecutablePath $ExecutablePath -WorkingDirectory $WorkingDirectory `
-        -LogPath $LogPath -LayerPath $LayerPath -SettingsPath $SettingsPath
+        -LogPath $LogPath -LayerPath $LayerPath -SettingsPath $SettingsPath -GpuAssisted:$GpuAssisted
     $ExecutablePath = $prepared.ExecutablePath
     $staging = $prepared.Staging
 
@@ -180,7 +199,8 @@ function Invoke-VulkanValidationRun {
         Push-Location $WorkingDirectory
         try {
             $argumentText = if ($Arguments.Count -gt 0) { ' ' + ($Arguments -join ' ') } else { '' }
-            Write-Host "Running $ExecutablePath$argumentText with khronos_validation.validate_sync=true" -ForegroundColor Cyan
+            $settingText = if ($GpuAssisted) { 'validate_sync=true and gpuav_enable=true' } else { 'validate_sync=true' }
+            Write-Host "Running $ExecutablePath$argumentText with khronos_validation.$settingText" -ForegroundColor Cyan
 
             if ($TimeoutSeconds -gt 0) {
                 $exitCode = Invoke-VulkanValidationTimedProcess -ExecutablePath $ExecutablePath -Arguments $Arguments `
@@ -263,6 +283,6 @@ function Invoke-VulkanValidationTimedProcess {
     }
 }
 
-Export-ModuleMember -Function Get-VulkanLayerSettingsDefaultPath, Copy-VulkanLayerSettings,
+Export-ModuleMember -Function Get-VulkanLayerSettingsDefaultPath, Get-VulkanGpuAvLayerSetting, Copy-VulkanLayerSettings,
     Restore-VulkanLayerSettings, Get-VulkanValidationHazard, Write-VulkanValidationReport,
     Test-VulkanValidationLog, Invoke-VulkanValidationRun
