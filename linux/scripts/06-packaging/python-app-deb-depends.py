@@ -373,6 +373,29 @@ def elf_needs_launcher(path: Path, bundle: Path) -> bool:
         elf.stream.close()
 
 
+# bundle-loader.sh --library-path: the stated bundle directories, each relative to the launcher.
+LIBRARY_SUFFIX = r"(?::\$here/[A-Za-z0-9_.+/-]+)*"
+EXTERNAL_SETUP = ['external_library_path=""', 'IFS=: read -r -a external_library_dirs <<< "${LD_LIBRARY_PATH:-}"',
+                  'for external_library_dir in "${external_library_dirs[@]}"; do',
+                  '  [ -z "${external_library_dir}" ] || external_library_path="${external_library_path}:${external_library_dir}"',
+                  'done']
+
+
+def launcher_setup(lines: list[str], relative_lib: str) -> tuple[int, bool, str] | None:
+    """(tail offset, external, library suffix) of a bundle-loader.sh launcher's environment lines, or None."""
+    if len(lines) == 11:
+        return 3, False, ""
+    if len(lines) == 12:
+        exported = re.fullmatch(r'export LD_LIBRARY_PATH="(\$here/[A-Za-z0-9_.+/-]+' + LIBRARY_SUFFIX +
+                                r')\$\{LD_LIBRARY_PATH:\+:\$\{LD_LIBRARY_PATH\}\}"', lines[3])
+        return (4, False, ":" + exported.group(1)) if exported else None
+    if len(lines) == 17 and lines[3:8] == EXTERNAL_SETUP:
+        exported = re.fullmatch(rf'export LD_LIBRARY_PATH="\$here/{re.escape(relative_lib)}({LIBRARY_SUFFIX})'
+                                r'\$\{external_library_path\}"', lines[8])
+        return (9, True, exported.group(1)) if exported else None
+    return None
+
+
 def wrapped_executable(binary: Path, bundle: Path, require_external: bool) -> bool:
     if not binary.name.endswith(".bin") or not bundled_file(binary, bundle):
         return False
@@ -380,9 +403,7 @@ def wrapped_executable(binary: Path, bundle: Path, require_external: bool) -> bo
     if not real_bundled_file(launcher, bundle):
         return False
     lines = launcher.read_text(encoding="utf-8").splitlines()
-    if len(lines) not in (11, 17) or (require_external and len(lines) != 17):
-        return False
-    if lines[0] != "#!/bin/bash" or not lines[1].startswith("# Starts "):
+    if len(lines) < 11 or lines[0] != "#!/bin/bash" or not lines[1].startswith("# Starts "):
         return False
     if lines[2] != 'here="$(cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"':
         return False
@@ -390,14 +411,10 @@ def wrapped_executable(binary: Path, bundle: Path, require_external: bool) -> bo
     if loader is None or not bundled_file(binary.parent / loader.group(1), bundle):
         return False
     relative_lib = os.path.relpath(bundle / "runtime/lib", binary.parent)
-    if len(lines) == 17:
-        external = ['external_library_path=""', 'IFS=: read -r -a external_library_dirs <<< "${LD_LIBRARY_PATH:-}"',
-                    'for external_library_dir in "${external_library_dirs[@]}"; do',
-                    '  [ -z "${external_library_dir}" ] || external_library_path="${external_library_path}:${external_library_dir}"',
-                    'done', f'export LD_LIBRARY_PATH="$here/{relative_lib}${{external_library_path}}"']
-        if lines[3:9] != external:
-            return False
-    return interpreter_tail_ready(lines[9 if len(lines) == 17 else 3:], launcher.name, len(lines) == 17, relative_lib)
+    setup = launcher_setup(lines, relative_lib)
+    if setup is None or (require_external and not setup[1]):
+        return False
+    return interpreter_tail_ready(lines[setup[0]:], launcher.name, setup[1], relative_lib, setup[2])
 
 
 def all_executables_wrapped(bundle: Path, require_external: bool) -> bool:
@@ -452,7 +469,8 @@ def isolated_entry_ready(bundle: Path, name: str) -> bool:
     return re.fullmatch(command, lines[-1]) is not None
 
 
-def interpreter_tail_ready(tail: list[str], name: str, external: bool, relative_lib: str = "../lib") -> bool:
+def interpreter_tail_ready(tail: list[str], name: str, external: bool, relative_lib: str = "../lib",
+                           library_suffix: str = "") -> bool:
     if len(tail) != 8 or not tail[0].startswith("# Not read < <("):
         return False
     sed = r"'1s/.*release version \([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\1 \2/p'"
@@ -465,36 +483,50 @@ def interpreter_tail_ready(tail: list[str], name: str, external: bool, relative_
         return False
     if tail[5:7] != [f'  exec -a "$0" "$here/./{name}.bin" "$@"', 'fi']:
         return False
-    suffix = '${external_library_path}' if external else ''
+    suffix = library_suffix + ('${external_library_path}' if external else '')
     location = re.escape(relative_lib)
     return re.fullmatch(rf'exec "\$here/\./[A-Za-z0-9_.+-]+" --library-path "\$here/{location}/glibc:\$here/{location}{re.escape(suffix)}" --argv0 "\$0" "\$here/\./{re.escape(name)}\.bin" "\$@"', tail[7]) is not None
 
 
-def isolated_interpreter_ready(bundle: Path) -> bool:
+def interpreter_launcher(bundle: Path) -> tuple[Path, str] | None:
+    """(launcher, library suffix) of the bundle's interpreter when its launcher is bundle-loader.sh's, else None."""
     interpreter = bundle / "runtime/bin/python3"
     if not bundled_file(interpreter, bundle):
-        return False
+        return None
     interpreter = interpreter.resolve(strict=True)
     name = interpreter.name
     if interpreter.parent != (bundle / "runtime/bin").resolve(strict=True):
-        return False
+        return None
     if not re.fullmatch(r"python3(?:\.[0-9]+)?", name) or not bundled_file(interpreter.with_name(name + ".bin"), bundle):
-        return False
+        return None
     lines = interpreter.read_text(encoding="utf-8").splitlines()
-    if len(lines) not in (11, 17) or lines[0] != "#!/bin/bash" or not lines[1].startswith("# Starts "):
-        return False
+    if len(lines) < 11 or lines[0] != "#!/bin/bash" or not lines[1].startswith("# Starts "):
+        return None
     if lines[2] != 'here="$(cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"':
-        return False
-    offset = 3
-    if len(lines) == 17:
-        external = ['external_library_path=""', 'IFS=: read -r -a external_library_dirs <<< "${LD_LIBRARY_PATH:-}"',
-                    'for external_library_dir in "${external_library_dirs[@]}"; do',
-                    '  [ -z "${external_library_dir}" ] || external_library_path="${external_library_path}:${external_library_dir}"',
-                    'done', 'export LD_LIBRARY_PATH="$here/../lib${external_library_path}"']
-        if lines[3:9] != external:
-            return False
-        offset = 9
-    return interpreter_tail_ready(lines[offset:], name, len(lines) == 17)
+        return None
+    setup = launcher_setup(lines, "../lib")
+    if setup is None or not interpreter_tail_ready(lines[setup[0]:], name, setup[1], "../lib", setup[2]):
+        return None
+    return interpreter, setup[2]
+
+
+def isolated_interpreter_ready(bundle: Path) -> bool:
+    return interpreter_launcher(bundle) is not None
+
+
+@cache
+def launcher_library_dirs(bundle: Path) -> tuple[Path, ...]:
+    """The bundle directories the interpreter's launcher hands the loader on both glibc paths."""
+    launcher = interpreter_launcher(bundle)
+    if launcher is None or not all_executables_wrapped(bundle, False):
+        return ()
+    directories = []
+    for item in launcher[1].split(":")[1:]:
+        directory = (launcher[0].parent / item.removeprefix("$here/")).resolve()
+        if not directory.is_dir() or not directory.is_relative_to(bundle):
+            return ()
+        directories.append(directory)
+    return tuple(directories)
 
 
 def passive_pth(path: Path, bundle: Path) -> bool:
@@ -633,7 +665,8 @@ def bundled_import(bundle: Path, path: Path, name: str, search: list[str], gpu_h
     runtime_candidate = compatible_bundled_elf(runtime_lib, bundle, path)
     if runtime_candidate and name in preloads and python_preloads_active(bundle, path):
         return True
-    environment_candidate = gpu_host and uses_runtime_library_path(path, runtime) and runtime_candidate
+    stated = any(compatible_bundled_elf(directory / name, bundle, path) for directory in launcher_library_dirs(bundle))
+    environment_candidate = uses_runtime_library_path(path, runtime) and ((gpu_host and runtime_candidate) or stated)
     if environment_candidate and not rpath_before_environment:
         return True
     found, uncertain = ordered_bundled_search(bundle, path, name, search)

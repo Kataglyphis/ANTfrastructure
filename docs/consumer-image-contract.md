@@ -1432,8 +1432,8 @@ RUNPATH to one nor a stated launcher library path that holds one.
 
 **A Linux module you must not patch.** A package that carries AMD's plugin keeps
 `libmigraphx-ep.so` byte for byte the image's (`ort_assert_plugin_module`), so its closure
-`--protect`s the module, the module gets no RUNPATH, and the census alone calls its
-`libonnxruntime.so.1` import UNRESOLVED. Never patch the module and never exempt the finding.
+`--protect`s the module, the module gets no `$ORIGIN` RUNPATH (its own names image paths only), and
+the census alone calls its `libonnxruntime.so.1` import UNRESOLVED. Never patch the module and never exempt the finding.
 Where the package's launcher puts the chain core's directory on the loader's library path
 (`LD_LIBRARY_PATH`, or the bundled loader's `--library-path`), state that path, relative to the
 bundle and in the launcher's order, after the step that writes the launcher:
@@ -1447,8 +1447,11 @@ when it starts the program through the bundled loader; on a host whose glibc is 
 starts the program with no library path, unless `--external-library-path` or the consumer's own
 launcher line exports `LD_LIBRARY_PATH` with `<lib>` first. Without one, the module loads there
 only because the process already holds `libonnxruntime.so.1` (`ld.so` matches a loaded SONAME),
-which the census does not model and only a load of the module on such a host shows. A Python app
-bundle's builder does not pass the option yet (BACKLOG CON256). What the option refuses and how
+which the census does not model and only a load of the module on such a host shows.
+`bundle-loader.sh --library-path DIR[:DIR...]` writes stated directories into both paths, and the
+closure walker takes the same option. A Python app bundle's builder uses all three for its `capi`,
+where the chain core sits beside the module
+([python-app-bundles.md](python-app-bundles.md#linux-gpu-bundles)). What the option refuses and how
 the probe resolves it: [`cross-build-verification.md` § E](cross-build-verification.md#e-ort-single-source).
 
 ## GenAI's library and headers

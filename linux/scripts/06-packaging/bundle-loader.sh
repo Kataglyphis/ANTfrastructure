@@ -5,23 +5,27 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../01-core/logging.sh
 source "${SCRIPT_DIR}/../01-core/logging.sh"
+# shellcheck source=check-ort-provenance.sh
+source "${SCRIPT_DIR}/check-ort-provenance.sh"
 
 # --beside keeps the executable's directory (as <name>.bin): /proc/self/exe names the loader, and Flutter finds data/ there.
 BESIDE=false
 EXTERNAL_LIBRARY_PATH=false
 PRESERVE_BYTES=false
 GCC_UNWINDER=false
+LIBRARY_PATH=""
 while :; do
   case "${1:-}" in
     --beside) BESIDE=true; shift ;;
     --external-library-path) EXTERNAL_LIBRARY_PATH=true; shift ;;
     --preserve-bytes) PRESERVE_BYTES=true; shift ;;
     --gcc-unwinder) GCC_UNWINDER=true; shift ;;
+    --library-path) LIBRARY_PATH="${2:?--library-path needs DIR[:DIR...], relative to the bundle}"; shift 2 ;;
     *) break ;;
   esac
 done
 if [ $# -lt 3 ]; then
-  printf 'usage: %s [--beside] [--external-library-path] [--preserve-bytes] [--gcc-unwinder] BUNDLE LIB-DIR EXECUTABLE...\n' "$0" >&2
+  printf 'usage: %s [--beside] [--external-library-path] [--preserve-bytes] [--gcc-unwinder] [--library-path DIR[:DIR...]] BUNDLE LIB-DIR EXECUTABLE...\n' "$0" >&2
   exit 2
 fi
 BUNDLE="$(realpath -m "$1")"
@@ -29,6 +33,8 @@ LIB_DIR="$(realpath -m "$2")"
 shift 2
 EXES=("$@")
 [ -d "${BUNDLE}" ] || err "no bundle at ${BUNDLE}"
+# What G6 is told the launcher hands the loader cannot drift from what it writes.
+ort_bundle_library_dirs LIBRARY_DIRS "${BUNDLE}" "${LIBRARY_PATH}" || err "a launcher's --library-path must name directories inside ${BUNDLE}"
 if [ "${PRESERVE_BYTES}" = true ]; then
   [[ "${LIB_DIR}" == "${BUNDLE}/"* ]] || err "immutable helper libraries must stay inside the bundle"
 fi
@@ -65,11 +71,20 @@ move_runpath() {
 for rel in "${EXES[@]}"; do
   exe="${BUNDLE}/${rel}"
   [ -f "${exe}" ] || err "no executable at ${exe}"
+  exe_dir="$(dirname "${exe}")"
+  to_lib="$(realpath -m --relative-to="${exe_dir}" "${LIB_DIR}")"
+  library_suffix=""
+  for dir in "${LIBRARY_DIRS[@]}"; do library_suffix+=":\$here/$(realpath -m --relative-to="${exe_dir}" "${BUNDLE}${dir}")"; done
   # A second run finds the launcher it wrote: the program already sits beside its loader.
   if [ "$(head -c 2 -- "${exe}")" = '#!' ] && grep -q -- '--library-path' "${exe}"; then
     if [ "${EXTERNAL_LIBRARY_PATH}" = true ] && ! grep -q '^external_library_path=' "${exe}"; then
       err "${rel} is already a launcher without external library paths; restage the executable"
     fi
+    needle="--library-path \"\$here/${to_lib}/glibc:\$here/${to_lib}${library_suffix}"
+    case "$(tail -n 1 -- "${exe}")" in
+      *"${needle}\""* | *"${needle}\${external_library_path}\""*) ;;
+      *) err "${rel} has a different library path; restage the executable" ;;
+    esac
     preserved=false
     grep -q '^# Original executable bytes must survive package hash checks\.$' "${exe}" && preserved=true
     [ "${PRESERVE_BYTES}" = "${preserved}" ] || err "${rel} has a different byte-preservation policy; restage the executable"
@@ -91,8 +106,6 @@ for rel in "${EXES[@]}"; do
   [ -n "${interp}" ] || err "${rel} names no program interpreter"
   loader="$(basename "${interp}")"
   glibc_dir="$(dirname "$(realpath "${interp}")")"
-  exe_dir="$(dirname "${exe}")"
-  to_lib="$(realpath -m --relative-to="${exe_dir}" "${LIB_DIR}")"
   if [ "${BESIDE}" = true ]; then home="${exe_dir}"; to_home="."; else home="${LIB_DIR}"; to_home="${to_lib}"; fi
   name="$(basename "${exe}")"
   real="${name}"
@@ -135,12 +148,15 @@ IFS=: read -r -a external_library_dirs <<< "\${LD_LIBRARY_PATH:-}"
 for external_library_dir in "\${external_library_dirs[@]}"; do
   [ -z "\${external_library_dir}" ] || external_library_path="\${external_library_path}:\${external_library_dir}"
 done
-export LD_LIBRARY_PATH="\$here/${to_lib}\${external_library_path}"
+export LD_LIBRARY_PATH="\$here/${to_lib}${library_suffix}\${external_library_path}"
 EXTERNAL
 )"
     external_suffix="\${external_library_path}"
   elif [ "${PRESERVE_BYTES}" = true ]; then
-    external_setup="$(printf '\nexport LD_LIBRARY_PATH="$here/%s"' "${to_lib}")"
+    external_setup="$(printf '\nexport LD_LIBRARY_PATH="$here/%s%s"' "${to_lib}" "${library_suffix}")"
+  elif [ -n "${library_suffix}" ]; then
+    # The host-glibc exec takes no --library-path, so the stated directories reach its loader here.
+    external_setup="$(printf '\nexport LD_LIBRARY_PATH="%s${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"' "${library_suffix#:}")"
   fi
   # The host's own glibc when it is new enough: its GL drivers need it (a flatpak runtime's 2.44 under a 2.43 bundle).
   cat > "${exe}" <<LAUNCHER
@@ -154,7 +170,7 @@ if [ -z "\${KATAGLYPHIS_BUNDLED_GLIBC:-}" ] && [ -n "\${host_minor:-}" ] &&
   { [ "\$host_major" -gt ${major} ] || { [ "\$host_major" -eq ${major} ] && [ "\$host_minor" -ge ${minor} ]; }; }; then${host_preload}
   exec -a "\$0" "\$here/${to_home}/${real}" "\$@"
 fi
-exec "\$here/${to_home}/${loader}" --library-path "\$here/${to_lib}/glibc:\$here/${to_lib}${external_suffix}"${bundled_preload} --argv0 "\$0" "\$here/${to_home}/${real}" "\$@"
+exec "\$here/${to_home}/${loader}" --library-path "\$here/${to_lib}/glibc:\$here/${to_lib}${library_suffix}${external_suffix}"${bundled_preload} --argv0 "\$0" "\$here/${to_home}/${real}" "\$@"
 LAUNCHER
   chmod 0755 "${exe}"
   info "  ${rel}: launcher -> ${to_home}/${real}, through ${loader} and glibc ${major}.${minor} (${glibc_dir}) on an older host"

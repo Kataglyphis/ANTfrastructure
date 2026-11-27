@@ -259,6 +259,16 @@ _ort_census_library_path() {  # <bundle> <DIR[:DIR...]> : /DIR[:/DIR...], or 2 w
   printf '%s\n' "${out#:}"
 }
 
+# <array name> <bundle> [DIR[:DIR...]]: the closure walker and bundle-loader.sh read a launcher path as the census does.
+ort_bundle_library_dirs() {
+  local -n _ort_dirs="$1"
+  local _ort_path
+  _ort_dirs=()
+  [ -n "${3:-}" ] || return 0
+  _ort_path="$(_ort_census_library_path "$2" "$3")" || return 2
+  IFS=':' read -r -a _ort_dirs <<< "${_ort_path}"
+}
+
 # The probe arguments for one bundle (G6): its root, and by default the chain ORT of the image this runs in.
 _ort_census_tree_args() {  # <root> <refs, one per line> <manifests, one per line> [library path, as _ort_census_library_path prints it]
   local d refs="$2" manifests="$3"

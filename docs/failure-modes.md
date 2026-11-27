@@ -3908,6 +3908,24 @@ class 2, the `printf | grep -q` form).
 first export early and then writes 200 000 lines; the recipes `onnx-ep-amdgpu.exports-grep-reads-whole-table`
 and `onnx-ep-tensorrt.verify-exports-grep-reads-whole-table` prove the stand-in bites.
 
+### A ROCm Python bundle stops on `capi/libmigraphx-ep.so: libonnxruntime.so.1`
+
+**Symptom.** The `== ELF closure` step of `python-app-bundle.sh` in `:latest-rocm` ends with
+`ERROR: 1 library reference(s) resolve neither inside the bundle nor to the system allowlist:`
+and `runtime/lib/python3.15/site-packages/onnxruntime/capi/libmigraphx-ep.so: libonnxruntime.so.1`.
+Or G6 reports `UNRESOLVED … libmigraphx-ep.so -- no libonnxruntime.so.1 on its ld.so search path`.
+
+**Cause.** AMD's plugin names `libonnxruntime.so.1` in `DT_NEEDED`, but the wheel's core sits in
+`capi` under its full version. The module is `--protect`ed (byte for byte the image's), so the
+closure may not patch an `$ORIGIN` RUNPATH into it, and its own RUNPATH names image paths, which are
+dead on the target. Nothing in the bundle answered the name.
+
+**Fix.** The builder copies the chain's CPU core to `capi/libonnxruntime.so.1`, checks its sha256, and
+states `capi` as the launchers' library path to the closure, `bundle-loader.sh` and G6
+([python-app-bundles.md](python-app-bundles.md#linux-gpu-bundles)). Never patch the module, never
+`--allow-unresolved` the core, never exempt the census finding. A hub pin older than that fix
+keeps failing here; bump it.
+
 ### TVM imports but pip reports apache-tvm-ffi 0.1.dev1 below its requirement
 
 A tagless vendored checkout can make setuptools-scm label the pinned release as

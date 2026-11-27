@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../01-core/logging.sh"
 # shellcheck source=elf-needed.sh
 source "${SCRIPT_DIR}/elf-needed.sh"
+# shellcheck source=check-ort-provenance.sh
+source "${SCRIPT_DIR}/check-ort-provenance.sh"
 
 usage() {
   cat <<'USAGE'
@@ -21,6 +23,7 @@ usage: elf-closure.sh --bundle DIR --lib-dir DIR [options]
   --exclude SONAME-GLOB      never bundled: the target's own copy is the one to load (libcamera)
   --no-default-system        drop the built-in glibc and desktop graphics list, for a bundle that carries its C runtime
   --relocatable              a RUNPATH entry outside the bundle resolves nothing: it is dead on the target
+  --library-path DIR[:DIR...] bundle-relative directories every launcher hands the loader; a library there resolves
   --no-runpath               copy only; the caller sets the RUNPATHs or the loader's --library-path
   --protect GLOB             never patch such a file; its libraries are preloaded instead (preload.list)
   --allow-unresolved SONAME  a library that may stay missing
@@ -42,6 +45,7 @@ PROTECT=()
 DIRECT_ONLY=()
 REJECT_SOURCE_ROOTS=()
 EXTRA_SYSTEM=()
+LIBRARY_PATH=""
 declare -A ALLOWED_UNRESOLVED=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -58,6 +62,7 @@ while [ $# -gt 0 ]; do
     --system | --exclude) EXTRA_SYSTEM+=("${2:?}"); shift 2 ;;
     --no-default-system) DEFAULT_SYSTEM=false; shift ;;
     --relocatable) RELOCATABLE=true; shift ;;
+    --library-path) LIBRARY_PATH="${2:?}"; shift 2 ;;
     --no-runpath) RUNPATH=false; shift ;;
     --check) CHECK_ONLY=true; shift ;;
     -h | --help) usage; exit 0 ;;
@@ -66,6 +71,7 @@ while [ $# -gt 0 ]; do
 done
 [ -d "${BUNDLE}" ] || err "no bundle at ${BUNDLE}"
 [ -n "${LIB_DIR}" ] || err "--lib-dir is required"
+ort_bundle_library_dirs LIBRARY_DIRS "${BUNDLE}" "${LIBRARY_PATH}" || err "the closure's --library-path must name directories inside ${BUNDLE}"
 for rule in "${FROM[@]}"; do
   case "${rule}" in ?*=?*) ;; *) err "--from needs SONAME-GLOB=DIR: ${rule}" ;; esac
 done
@@ -284,11 +290,29 @@ already_in_lib_dir() {
   add_origin_runpath "${file}"
 }
 
+# ld.so searches the launcher's library path before any RUNPATH; a link out of the bundle is dead on the target.
+on_library_path() {
+  local dir
+  for dir in "${LIBRARY_DIRS[@]}"; do
+    if [ -e "${BUNDLE}${dir%/}/$1" ] && in_bundle "${BUNDLE}${dir%/}/$1"; then return 0; fi
+  done
+  return 1
+}
+
 is_loader_self_alias() {
   if [[ "$2" == /* ]] && [[ "${3##*/}" == ld-linux*.so* ]] && [ "$(realpath -m "$2")" = "$(realpath -m "$1")" ]; then
     return 0
   fi
   return 1
+}
+
+# A pathname NEEDED cannot be redirected by a RUNPATH; copying its basename would leave it pointing at the image.
+record_pathname_dependency() {
+  local file="$1" soname="$2" resolved="$3"
+  if [ "${resolved}" != - ] && [ "${resolved}" != '?' ] && in_bundle "${resolved}"; then return 0; fi
+  if [ "${resolved}" = - ] && resolvable "${file}" "${soname}"; then return 0; fi
+  unresolved+=("${file#"${BUNDLE}"/}: non-relocatable dependency ${soname}")
+  return 0
 }
 
 # An already resolved dependency needs no copy; a non-relocatable path is recorded here too.
@@ -297,11 +321,9 @@ handle_existing_dependency() {
   if is_system "${soname}"; then return 0; fi
   # ldd can label the loader with the inspected library's own absolute path; it is not a dependency on itself.
   if is_loader_self_alias "$@"; then return 0; fi
-  # A pathname NEEDED cannot be redirected by a RUNPATH; copying its basename would leave it pointing at the image.
+  if [[ "${soname}" != */* ]] && on_library_path "${soname}"; then return 0; fi
   if [[ "${soname}" == */* ]] && [ "${RELOCATABLE}" = true ]; then
-    if [ "$3" != - ] && [ "$3" != '?' ] && in_bundle "$3"; then return 0; fi
-    if [ "$3" = - ] && resolvable "${file}" "${soname}"; then return 0; fi
-    unresolved+=("${file#"${BUNDLE}"/}: non-relocatable dependency ${soname}")
+    record_pathname_dependency "${file}" "${soname}" "$3"
     return 0
   fi
   case "$3" in

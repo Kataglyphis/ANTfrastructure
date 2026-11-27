@@ -362,6 +362,11 @@ for, and by default an `$ORIGIN` RUNPATH to them.
 - **`--relocatable`** counts a RUNPATH entry only inside the bundle: an image path such as
   `/opt/gstreamer/lib` resolves in the image and is dead on the target. **`--no-runpath`** copies
   and patches nothing else; **`--check`** copies nothing and fails on what a finished bundle lacks.
+- **`--library-path DIR[:DIR...]`** names bundle directories that every launcher hands the loader.
+  A library there resolves ahead of any RUNPATH, as `ld.so` searches it; a link out of the bundle
+  does not count. The entries follow the census's rules: relative, physical, inside the bundle.
+  A ROCm Python bundle states its `capi` this way, because the plugin MIGraphX EP there must stay
+  unpatched ([python-app-bundles.md](python-app-bundles.md#linux-gpu-bundles)).
 
 | Bundle | Options |
 | --- | --- |
@@ -460,8 +465,8 @@ MIGraphX provider. It checks all requested inputs before writing and copies thei
 The caller must prove provenance, match all staged ORT files to their wheel, and carry its license
 texts. Staging does not test a GPU or make vendor runtime libraries available.
 An AMD package `--protect`s the staged plugin module in its closure, because its checks compare
-the module with the image's byte for byte; the module then has no RUNPATH, and the package's G6 call
-states the launcher's library path instead
+the module with the image's byte for byte; the closure then gives it no `$ORIGIN` RUNPATH (its own
+names image paths only), and the package's G6 call states the launcher's library path instead
 ([`consumer-image-contract.md`](consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime)).
 
 `bundle-loader.sh --external-library-path` preserves nonempty `LD_LIBRARY_PATH` entries for host
@@ -471,6 +476,12 @@ normal layout or `--beside`, on both host and bundled glibc paths. CMake callers
 without the option must be restaged. Specify the vendor libraries separately as host dependencies;
 an empty path element never adds the current directory to the loader search. The staging and closure
 suites exercise these behaviors, but do not establish GPU compatibility or runtime redistribution.
+
+`bundle-loader.sh --library-path DIR[:DIR...]` puts bundle directories on both glibc paths of the
+launcher: after `<lib>` in the bundled loader's `--library-path`, and in an exported
+`LD_LIBRARY_PATH` for the host-glibc `exec`, which takes no option. With `--external-library-path`
+they sit between `<lib>` and the host's entries. The entries follow the census's rules, so the path
+the closure and G6 are told is the one the launcher writes. A rerun with another path is refused.
 
 `bundle-loader.sh --gcc-unwinder` preloads the bundle's `libgcc_s.so.1` so GCC's unwinder owns
 `_Unwind_*` ahead of a Flutter engine's own; an AMD bundle needs it

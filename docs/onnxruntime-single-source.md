@@ -59,6 +59,10 @@ GPU variants, and its wheel.
   `check-ort-provenance.sh --library-path DIR[:DIR...] <bundle>`, entries relative to the bundle.
   Never patch a RUNPATH into the module, exempt the finding or hand the probe a host path
   ([contract](consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime)).
+- A Python bundle carries the chain core that AMD's module names, `capi/libonnxruntime.so.1`, as a
+  byte-for-byte copy of the CPU prefix's. Its sha256 is checked against the chain's, so it is no second
+  source. It is never a wheel member and never replaces one
+  ([python-app-bundles.md](python-app-bundles.md#linux-gpu-bundles)).
 - Linux ORT, GenAI and onnxruntime-extensions sources come through `source-fetch.sh` and its
   `source-pins.txt`. Every checkout must match its pinned commit, a moved upstream tag never falls
   back to a fork, and a version bump needs a new pin

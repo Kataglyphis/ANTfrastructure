@@ -61474,7 +61474,7 @@
  {
   "id": "packaging.immutable-helper-host-private-path",
   "target": "linux/scripts/06-packaging/bundle-loader.sh",
-  "find": "external_setup=\"$(printf '\\nexport LD_LIBRARY_PATH=\"$here/%s\"' \"${to_lib}\")\"",
+  "find": "external_setup=\"$(printf '\\nexport LD_LIBRARY_PATH=\"$here/%s%s\"' \"${to_lib}\" \"${library_suffix}\")\"",
   "replace": "external_setup=\"\"",
   "test": "bash linux/scripts/tests/test-linux-immutable-helpers.sh",
   "why": "The host loader must find the private dependencies of an unchanged helper."
@@ -67566,5 +67566,181 @@
   "replace": "     \"Linux\")\n",
   "test": "bash linux/scripts/tests/test-cmake-flutter-unwinder.sh",
   "why": "a Windows or macOS runner has no libgcc_s and must keep its link line"
+ },
+ {
+  "id": "packaging.plugin-core-copy-dropped",
+  "target": "linux/scripts/06-packaging/ort-runtime-bundle.sh",
+  "find": "  cp -L \"$(ort_chain_core_file)\" \"${ort_dest}\" || return 1\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-ort-runtime-bundle.sh",
+  "why": "the plugin MIGraphX EP names libonnxruntime.so.1 in DT_NEEDED; without the chain core beside it a clean host cannot load the module"
+ },
+ {
+  "id": "packaging.plugin-core-not-identical",
+  "target": "linux/scripts/06-packaging/ort-runtime-bundle.sh",
+  "find": "  cp -L \"$(ort_chain_core_file)\" \"${ort_dest}\" || return 1\n",
+  "replace": "  { cp -L \"$(ort_chain_core_file)\" \"${ort_dest}\" && printf 'x' >> \"${ort_dest}\"; } || return 1\n",
+  "test": "bash linux/scripts/tests/test-ort-runtime-bundle.sh",
+  "why": "a core whose bytes are not the chain's is a second ORT source; staging must refuse it"
+ },
+ {
+  "id": "packaging.plugin-core-sha-unchecked",
+  "target": "linux/scripts/06-packaging/ort-runtime-bundle.sh",
+  "find": "  if [ \"${ort_have%% *}\" = \"${ort_want%% *}\" ]; then return 0; fi\n",
+  "replace": "  return 0\n",
+  "test": "bash linux/scripts/tests/test-ort-runtime-bundle.sh",
+  "why": "the sha256 comparison is the only proof the bundled core is the chain's"
+ },
+ {
+  "id": "packaging.plugin-core-never-replaces-wheel",
+  "target": "linux/scripts/06-packaging/ort-runtime-bundle.sh",
+  "find": "  if [ -e \"${ort_dest}\" ] || [ -L \"${ort_dest}\" ]; then printf ",
+  "replace": "  if false; then printf ",
+  "test": "bash linux/scripts/tests/test-ort-runtime-bundle.sh",
+  "why": "a wheel that ships its own libonnxruntime.so.1 keeps it; overwriting it would break the wheel proof"
+ },
+ {
+  "id": "packaging.plugin-core-left-out-of-wheel-proof",
+  "target": "linux/scripts/06-packaging/ort-runtime-bundle.sh",
+  "find": "    [ \"${ort_kind}:${ort_core##*/}\" = \"migraphx:${ORT_PLUGIN_CORE}\" ] || ort_cores+=(\"${ort_core}\")\n",
+  "replace": "    ort_cores+=(\"${ort_core}\")\n",
+  "test": "bash linux/scripts/tests/test-ort-runtime-bundle.sh",
+  "why": "the chain prefix's stripped core is no wheel member; counted as the wheel's core it fails every AMD bundle"
+ },
+ {
+  "id": "packaging.python-host-plugin-core-proof",
+  "target": "linux/scripts/06-packaging/ort-runtime-bundle.sh",
+  "find": "  ort_assert_plugin_core \"$1/${ORT_PLUGIN_CORE}\"\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-ort-host-runtime.sh",
+  "why": "the host-runtime proof of a Python AMD bundle covers the module's core as well as the module"
+ },
+ {
+  "id": "packaging.python-bundle-stages-plugin-core",
+  "target": "linux/scripts/06-packaging/python-app-bundle.sh",
+  "find": "  ort_stage_plugin_core \"${site_packages}/onnxruntime/capi\" || err \"could not stage the chain ORT core the plugin MIGraphX EP links\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-app-bundle-license.sh",
+  "why": "OrchestrANT's AMD inventory stopped on capi/libmigraphx-ep.so -> libonnxruntime.so.1 unresolved (#276)"
+ },
+ {
+  "id": "packaging.python-bundle-closure-library-path",
+  "target": "linux/scripts/06-packaging/python-app-bundle.sh",
+  "find": "  closure_args+=(--library-path \"${ort_library_path}\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-app-bundle-license.sh",
+  "why": "the closure must take the launchers' library path, or the unpatched module's core reads as unresolved"
+ },
+ {
+  "id": "packaging.python-bundle-loader-library-path",
+  "target": "linux/scripts/06-packaging/python-app-bundle.sh",
+  "find": "if [ -n \"${ort_library_path}\" ]; then loader_args+=(--library-path \"${ort_library_path}\"); fi\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-app-bundle-license.sh",
+  "why": "the closure and G6 trust the stated path; a launcher without it leaves the module unloadable on a clean host"
+ },
+ {
+  "id": "packaging.python-bundle-census-library-path",
+  "target": "linux/scripts/06-packaging/python-app-bundle.sh",
+  "find": "if [ -n \"${ort_library_path}\" ]; then census_args+=(--library-path \"${ort_library_path}\"); fi\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-app-bundle-license.sh",
+  "why": "G6 must model the path the launcher hands the loader, or the module's import is UNRESOLVED"
+ },
+ {
+  "id": "packaging.loader-library-path-bundled",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "--library-path \"\\$here/${to_lib}/glibc:\\$here/${to_lib}${library_suffix}${external_suffix}\"",
+  "replace": "--library-path \"\\$here/${to_lib}/glibc:\\$here/${to_lib}${external_suffix}\"",
+  "test": "bash linux/scripts/tests/test-linux-closure-install.sh",
+  "why": "the bundled loader's --library-path replaces LD_LIBRARY_PATH, so the stated directories must be in it"
+ },
+ {
+  "id": "packaging.loader-library-path-host",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "    external_setup=\"$(printf '\\nexport LD_LIBRARY_PATH=\"%s${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}\"' \"${library_suffix#:}\")\"\n",
+  "replace": "    external_setup=\"\"\n",
+  "test": "bash linux/scripts/tests/test-linux-closure-install.sh",
+  "why": "the host-glibc exec takes no --library-path; without the export the stated directories never reach its loader"
+ },
+ {
+  "id": "packaging.loader-library-path-external-host",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "export LD_LIBRARY_PATH=\"\\$here/${to_lib}${library_suffix}\\${external_library_path}\"",
+  "replace": "export LD_LIBRARY_PATH=\"\\$here/${to_lib}\\${external_library_path}\"",
+  "test": "bash linux/scripts/tests/test-linux-closure-install.sh",
+  "why": "a host GPU runtime launcher keeps the stated directories ahead of the host's library path"
+ },
+ {
+  "id": "packaging.loader-library-path-rerun",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "      *) err \"${rel} has a different library path; restage the executable\" ;;\n",
+  "replace": "      *) ;;\n",
+  "test": "bash linux/scripts/tests/test-linux-closure-install.sh",
+  "why": "a rerun must not silently keep a launcher written for another library path"
+ },
+ {
+  "id": "packaging.elf-closure-library-path",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "  if [[ \"${soname}\" != */* ]] && on_library_path \"${soname}\"; then return 0; fi\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "a protected module's library on the launcher's library path resolves there; ignoring the option fails the rocm Python bundle"
+ },
+ {
+  "id": "packaging.elf-closure-library-path-in-bundle",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "    if [ -e \"${BUNDLE}${dir%/}/$1\" ] && in_bundle \"${BUNDLE}${dir%/}/$1\"; then return 0; fi\n",
+  "replace": "    if [ -e \"${BUNDLE}${dir%/}/$1\" ]; then return 0; fi\n",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "a link out of the bundle on the stated path is dead on the target"
+ },
+ {
+  "id": "packaging.bundle-library-path-validated",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": "  _ort_path=\"$(_ort_census_library_path \"$2\" \"$3\")\" || return 2\n",
+  "replace": "  _ort_path=\"$3\"\n",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "the walker and the launcher take a launcher path only as the census does: relative, physical, inside the bundle"
+ },
+ {
+  "id": "packaging.python-deb-stated-library-path",
+  "target": "linux/scripts/06-packaging/python-app-deb-depends.py",
+  "find": "    stated = any(compatible_bundled_elf(directory / name, bundle, path) for directory in launcher_library_dirs(bundle))\n",
+  "replace": "    stated = False\n",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "the unpatched module's core in capi is bundled, not a host package the DEB must depend on"
+ },
+ {
+  "id": "packaging.python-deb-stated-suffix-parsed",
+  "target": "linux/scripts/06-packaging/python-app-deb-depends.py",
+  "find": "    suffix = library_suffix + ('${external_library_path}' if external else '')\n",
+  "replace": "    suffix = '${external_library_path}' if external else ''\n",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "a launcher with a stated library path must still parse, on both glibc paths"
+ },
+ {
+  "id": "packaging.gpu-package-plugin-core-proof",
+  "target": "linux/scripts/06-packaging/verify-python-gpu-package.py",
+  "find": "            raise ValueError(f\"{capi / PLUGIN_CORE} is not the chain's {chain_core()}\")\n",
+  "replace": "            pass\n",
+  "test": "python3 -m unittest linux/scripts/tests/test-python-gpu-package.py",
+  "why": "no wheel carries the plugin's core; its only proof is the chain prefix's bytes"
+ },
+ {
+  "id": "packaging.gpu-package-plugin-core-not-a-wheel-core",
+  "target": "linux/scripts/06-packaging/verify-python-gpu-package.py",
+  "find": "    return sorted(p for p in capi.glob(\"libonnxruntime.so.*\") if not (plugin and p.name == PLUGIN_CORE))\n",
+  "replace": "    return sorted(capi.glob(\"libonnxruntime.so.*\"))\n",
+  "test": "python3 -m unittest linux/scripts/tests/test-python-gpu-package.py",
+  "why": "the chain core beside the plugin is not the wheel's, which must stay exactly one"
+ },
+ {
+  "id": "packaging.gpu-package-plugin-core-in-inventory",
+  "target": "linux/scripts/06-packaging/verify-python-gpu-package.py",
+  "find": "        cores.append(capi / PLUGIN_CORE)\n",
+  "replace": "        pass\n",
+  "test": "python3 -m unittest linux/scripts/tests/test-python-gpu-package.py",
+  "why": "a finished AMD package must carry the plugin's core byte for byte, like the module"
  }
 ]

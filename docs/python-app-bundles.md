@@ -153,6 +153,27 @@ packager to require the provider in the actual inference session. A CPU fallback
 session activation alone does not prove that any operator ran on the GPU. Profile an inference
 with a GPU-supported operator and confirm its placement before releasing the package.
 
+**The plugin's own core travels beside it.** AMD's module names `libonnxruntime.so.1` in
+`DT_NEEDED`. The wheel holds its core under the full version (`libonnxruntime.so.1.<minor>.<patch>`), and the
+module must stay the image's bytes, so no RUNPATH can be added to it. The builder therefore copies the
+chain's `${ONNXRUNTIME_OUTPUT_DIR:-/usr/local/lib/onnxruntime-cpu}/lib/libonnxruntime.so.1` byte for
+byte to `onnxruntime/capi/libonnxruntime.so.1` (`ort_stage_plugin_core`). It is the same build,
+stripped, so it is no second ORT source. The builder compares the copy's sha256 with the chain's, and it
+refuses to overwrite a file the wheel already ships under that name. Every launcher puts `capi` on
+the loader's library path on both glibc paths (`bundle-loader.sh --library-path`), and the
+closure and G6 take the same path (`elf-closure.sh --library-path`,
+`check-ort-provenance.sh --library-path`). The DEB dependency scan reads it from the interpreter's
+launcher. The finished-package check (`verify-python-gpu-package.py`) proves the copy against the
+chain core. It leaves the copy out of the wheel proof.
+
+The process then holds two ORT cores: the binding's static one and this copy. That is safe only while
+the module uses nothing but the `OrtApi` it is handed. The module AMD's source builds at
+`ORT_AMDGPU_EP_COMMIT` imports no symbol of `libonnxruntime.so.1`, not even `OrtGetApiBase`. Its
+undefined dynamic symbols are glibc, libstdc++, libgcc, HIP and the MIGraphX C API. This was
+checked with `readelf --dyn-syms` on the modules of two `:latest-rocm` builds. Recheck it when
+the pin moves: compare the module's `UND` symbols (`readelf --dyn-syms -W`) with the core's
+exports.
+
 By default the ELF walker resolves transitive dependencies from the image and refuses
 external absolute `NEEDED` paths. This static closure does not prove that dynamically loaded GPU
 assets travel with the package, nor does it cover third-party licence inventory. Verify those
@@ -164,7 +185,7 @@ The default CPU bundle path is unchanged.
 host. The option requires a GPU EP and a matching SDK tree in the build image. The builder matches
 the core (and, for CUDA, the shared bridge and the CUDA plugin EP) to one unstripped wheel, proves
 the MIGraphX plugin module against the image's copy, reads the EP's direct imports, refuses unknown
-imports (the MIGraphX plugin's `libonnxruntime.so.1` is the bundled core, not a host import),
+imports (the MIGraphX plugin's `libonnxruntime.so.1` is the chain core beside it, not a host import),
 records the exact vendor SONAMEs in `bundle.json` and `REQUIRES-GPU-RUNTIME.txt`, and rejects
 accidentally bundled SDK libraries. The TensorRT EP is no longer a venv provider: it is the image's
 plugin module under `ORT_TENSORRT_EP_ROOT`, which a bundle does not carry. It preserves nonempty `LD_LIBRARY_PATH` entries
