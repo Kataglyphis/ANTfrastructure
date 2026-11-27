@@ -341,6 +341,12 @@ deliberately reduced image, never to "get the build green":
 
 #### Verify the shipped BYTES, never the push
 
+Verify the shipped bytes, never the push. `:latest` (then `:latest-cross`) shipped stale five
+times with every static gate and every smoke green, because all of them checked the push, not the
+content. `verify-shipped-wrapper.sh` gates it in `build-runtime-manifest.sh`, over every arch,
+before the boot smokes and before the manifest is assembled. `WRAPPER_CONTENT_GATE=0` downgrades it
+to advisory, a decision and not a default.
+
 Backlog RTCACHE3; 2026-08-15 → 2026-08-16.
 The 2026-08-15 S2 saga shipped `:latest-cross` STALE five times
 with every static gate and all smokes GREEN — the manifest, smokes, and push

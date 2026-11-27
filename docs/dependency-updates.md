@@ -98,6 +98,11 @@ remote default tips and missing direct checkouts initialize during apply. Its se
 warning can still name an uninitialized nested checkout: recursive initialization is a manual
 way to make that ordering graph complete, outside the direct-submodule update scope.
 
+Pin a verified hub SHA in one consumer with the shared helper. Run
+`python3 linux/scripts/pin-antfrastructure-submodule.py --repo <consumer> --branch <branch> --sha <full-sha>`
+from this checkout; it stages only the initialized hub gitlink after checking both remotes. Commit
+and push the consumer separately, after the hub commit is published and green.
+
 For an ordered rollout of one already published direct gitlink, use
 `pin-antfrastructure-submodule.py --repo <consumer> --branch <consumer-branch> --path <direct-path> --sha <remote-default-tip>`.
 The path must appear in tracked `.gitmodules` and the index as a gitlink; the child must already

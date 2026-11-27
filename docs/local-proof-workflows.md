@@ -58,6 +58,23 @@ argument is an existing output directory. Copy the required sibling scripts and 
 together; the inventory lists the closure. The two `test-*.py` and two `mutate-*.py` drivers
 preserve independent refusal fixtures and actual parse-valid guard mutations.
 
+## Run artifacts and operational scripts
+
+Preserve recurring operational scripts in the repo. The canonical implementation must be
+Git-tracked; an ignored `logs/` copy is evidence only. Promote a recurring helper before its next
+use, retain its required companions and parameterize run-specific inputs. This page's toolkit owns
+the reusable proof, checkpoint and authorized cleanup drivers. Reuse and extend the canonical
+helper; do not regenerate regular preflight, monitoring or probe drivers in scratch space.
+
+Generated run artifacts belong under `logs/`, which Git ignores:
+
+- `logs/build-logs/` for Linux stage logs and resource metrics;
+- `logs/windows-build-logs/` for Windows BuildKit runs;
+- `logs/test-results/` for Python test reports;
+- `logs/code-quality/` for ty and annotation reports, mutation results and complexity metrics.
+
+Live `chain-status*.json` stays at the repo root.
+
 ## Unused QA environments
 
 The owner's standing authorization permits automatic removal of unused, reproducible QA virtualenvs and temporary test build directories. The helper below implements only ignored `quality/.venv` directories. Existing invocation-owned container cleanup handles its own temporary build outputs; this is no general directory deletion tool or recurring service.

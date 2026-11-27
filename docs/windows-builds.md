@@ -287,6 +287,11 @@ distribution for Windows Containers) and is split into staged images:
 
 ## The Windows lane as AGENTS.md carried it
 
+All stages use Ninja + clang-cl + lld-link on containerd + BuildKit + nerdctl, each tool where its
+pipe ACL allows. Build non-admin with `windows\Build-Buildkit.ps1`, inspect `bk-*` images from an
+admin shell. A fresh machine follows [`windows-host-setup.md`](windows-host-setup.md), not a
+reconstructed sequence.
+
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10). The RULES stayed there; this is the
 reference behind them.
 
@@ -968,6 +973,13 @@ Source build from the pinned release tag (`FFMPEG_VERSION` in `versions.env`; a 
 
 ## Prerequisites
 
+Stevedore (`winget install stevedore` or `choco install stevedore`) provides nerdctl + containerd
+for Windows Containers; reboot after installing it. Docker Desktop or Rancher Desktop work too,
+with `docker` commands. nerdctl needs the CNI nat conf (`docs/windows-build-lanes.md` § Getting it
+going, step 2) and runs from admin shells only; Stevedore's `docker.exe` stays the publish/inspect
+tool. Run with `--isolation process` for the host's full CPU count (Hyper-V isolation is capped at
+2 CPUs): § Running the Image.
+
 The full native Windows test runner also builds `CrashDump.Native.Tests.ps1`'s
 real x64 MSVC fixture. Run it with installed MSVC and a working Visual Studio
 CMake generator. A host with only Stevedore may default to NMake, reject the
@@ -1015,6 +1027,18 @@ subnet-drift trap), so containerd-side networking works too and `nerdctl` (admin
 | `nerdctl` (**admin shell only**) | ✅ Works (verified 2026-08-07) — but the chain still uses `buildctl` on purpose, see [`windows-build-lanes.md`](windows-build-lanes.md) § nerdctl lane | ✅ Works — needs the CNI nat **conflist**, see [`windows-build-lanes.md`](windows-build-lanes.md) § nerdctl lane |
 
 ## Build Commands
+
+The Windows lane is a separate staged build, `base → [nvidia|rocm] → toolchain → media →
+[migraphx → llama] → torch → final`. The bracketed rocm stages run on `-Variant rocm` only; torch
+assembles the OrchestrANT app env, `bk-windows-torch`, and final builds FROM it.
+`windows/Build-Buildkit.ps1` drives it, through Stevedore's `buildctl` against buildkitd. The
+docker-classic driver `windows/build.ps1` is deleted: the one-driver bullet in
+[§ The Windows lane as AGENTS.md carried it](#the-windows-lane-as-agentsmd-carried-it).
+`bk-windows-sdk` is either a plain re-tag of `bk-windows-base` (CPU lane, default) or the NVIDIA
+GPU stage `Dockerfile.nvidia` (`-Gpu` switch, same as `-Variant nvidia`) for a CUDA-enabled image.
+`-Variant rocm` (amd64 only) puts `Dockerfile.rocm` in that sdk slot, under `-rocm` tags that never
+overwrite the default ones. Every media feature it enables is gated on
+`(Get-GpuEnvironment).HasRocm` ([`windows-rocm.md`](windows-rocm.md)).
 
 **Use the BuildKit/containerd lane**, the only one since the docker-classic driver
 `windows/build.ps1` went (§ The Windows lane as AGENTS.md carried it).

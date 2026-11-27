@@ -916,6 +916,13 @@ runs under cp1252).
 
 ## Python refactor preview
 
+Preview Python refactors before accepting them. `bash linux/scripts/refactor-python.sh --check`
+reports formatter drift; `--apply -- <tracked.py>` makes pinned safe Ruff edits and saves a patch
+under ignored `logs/code-quality/`. The on-demand `python-refactor.yml` workflow uploads its patch
+with read-only repository permissions. Review the patch and run the relevant gates before
+committing it. The general agentic loop drains the whole backlog and may commit; do not use it as
+an unattended single-file refactor driver.
+
 `bash linux/scripts/refactor-python.sh --root <checkout> --check [-- <tracked.py> ...]`
 checks tracked Python files in the named Git checkout with the pinned Ruff version in
 `linux/scripts/01-core/tool-pins.env` and that checkout's Ruff configuration. Without

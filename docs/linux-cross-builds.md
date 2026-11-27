@@ -1423,6 +1423,14 @@ Build tools and lanes:
 - `build-cross-compiler.sh` builds one `linux/amd64` compiler image with cross toolchains for all
   arches, not a multi-arch compiler manifest.
 
+Running a chain:
+
+- Never `pkill` the orchestrator. `bash linux/scripts/stop-cross-chain.sh` finds the run by its
+  pidfile and reaps the orphaned nerdctl/buildctl subtree; a `pkill` orphans the children and
+  leaves the build solving.
+- Chains run strictly one at a time: the pidfile is claimed atomically at start, and a live one
+  makes a second chain refuse.
+
 Compilers:
 
 - Never remove LLVM/Clang features to make foreign-arch builds pass.
@@ -1952,6 +1960,31 @@ bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-di
 ```
 
 ### A variant chain starts at `gpu` — and inherits the shared `sdk`
+
+`CROSS_VARIANT=nvidia` / `rocm` (or `ENABLE_NVIDIA=true` / `ENABLE_AMD=true`, which imply it) is an
+environment knob, because `stage-defs.sh` builds the stage graph when it is sourced. A variant
+chain:
+
+- inserts the `gpu` stage, and suffixes every tag from there on with `-<variant>`
+  (`tag-naming.sh` `cross_variant_infix`);
+- pushes nvidia's stages to the private `<repo>-stages` package (`cross_stage_repo`);
+- starts at `gpu` and refuses the shared stages;
+- keeps its own `chain-status-<variant>.json` and `logs/build-logs/<variant>/`;
+- refuses what it cannot build (`stage-defs.sh` `cross_variant_refusal`, shared with
+  `build-cross-stage.sh`): rocm off amd64; any target that is not the build platform's arch, except
+  nvidia arm64; and a pushing run off `CROSS_BUILD_PLATFORM=linux/amd64` (the shared
+  `:cross-sdk-<arch>` is the amd64 lane's). CUDA/ROCm install for the build platform, so a cross
+  target would ship its GPU libraries.
+
+An nvidia chain on amd64 cross-builds arm64 (SBSA) by default: bare, it builds `amd64,arm64`;
+`CROSS_NVIDIA_SBSA=0` opts out. The runtime helpers refuse a default output tag under a variant.
+
+Stages 1-5 run on `linux/amd64`, or natively on an arm64 host with
+`CROSS_BUILD_PLATFORM=linux/arm64` (run end to end on a Jetson AGX Orin,
+[`linux-accelerator-images.md`](linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson)).
+Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches),
+delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the
+next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>`, against stale cache reuse.
 
 `CROSS_VARIANT=<variant>` refuses `--from-stage` before `gpu`: `base`, `compiler`
 and `sdk` are shared by every variant, so a variant run resumes at the first

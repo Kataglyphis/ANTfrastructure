@@ -138,6 +138,70 @@ Jonas Heinle: [jonasheinle.de](https://jonasheinle.de),
 Report a security problem to that address or through the repository's GitHub security advisory
 form, never in a public issue.
 
+## Contributing reusable work
+
+Consumers push reusable work upstream rather than keep local copies (BeschleunigerBallett's
+AGENTS.md states this as a rule). Wiring a new project to the hub (submodule, module resolver,
+Windows and Linux container builds, the agentic loop, launchers, CI actions) is a checklist in
+[`adopting-in-a-new-project.md`](adopting-in-a-new-project.md). Read it before hand-rolling any of
+that in a consumer. When adding to the hub:
+
+- Reuse before adding. Search the current repository and its submodules for an existing
+  implementation before creating functionality. Reuse or extend the canonical repo or submodule
+  surface; when none exists, add it once to a shared repo and wire consumers to it. Keep
+  consumer-specific values as parameters. If a hard technical boundary prevents reuse, record the
+  reason and keep the copy tied to its canonical source.
+- PowerShell 7 (pwsh) is the standard shell and the Windows containers' default SHELL. Every
+  `.ps1`/`.psm1` declares `#requires -Version 7.0` on line 1 (or directly under the SPDX header),
+  before any `param()`.
+- Two tracked files omit it on purpose, both pinned 5.1-parsable by a suite. They are the script
+  that installs pwsh and the delete guard, which must not fail open on a host without `pwsh`. The two
+  scripts in `linux/ansible/scripts/` omit it too: they can run under Windows PowerShell 5.1 on a
+  managed host. Two Pester suites also lack it: `HostMaintenance.ToolLookup.Tests.ps1` and
+  `StevedoreInventory.Tests.ps1`.
+- PowerShell file names have three shapes: PascalCase `Verb-Noun.ps1` with a `Get-Verb`-approved
+  verb for scripts, `Windows<Area>.<Facet>.psm1` for modules, `<Subject>.Tests.ps1` for suites.
+- Three tracked files sit outside all three on purpose. The delete guard is registered by that
+  exact string, so a rename silently unregisters it. The files in
+  `windows/scripts/build/rocm-checks/` are named after the component they check (`FFmpeg.ps1`). A
+  `verb-noun-name.ps1` spelling anywhere is stale, not a variant: the scripts were renamed.
+- PowerShell scripts go in `windows/scripts/modules/` with `Export-ModuleMember`; consumers resolve
+  them ANTfrastructure-first with a vendored fallback. The resolver is a copied template:
+  [`shared/windows/templates/Resolve-BuildModule.ps1`](../shared/windows/templates/README.md).
+- Exporting a function a build script calls directly is two edits: `Export-ModuleMember` in the
+  owning module, and the re-export list if the script reaches it through one. Module-internal use
+  needs neither, so an omission is invisible on a dev box and surfaces as `CommandNotFound` hours
+  into a container build. Two suites hold the two directions (every called name resolves; every
+  listed name exists); neither replaces the other.
+- The two-consumer test. What a second consumer needs belongs here, not vendored twice. Moving one
+  up, turn its project-specific values into parameters whose defaults keep the original behaviour,
+  so the vendoring consumer can delete its copy with no behaviour change.
+- Avoid mutual submodule links. This hub vendors DocumANTation; that consumer calls reusable
+  workflows with `hub-checkout: true` instead of linking this hub back into its Git tree.
+- Document the symptom, not just the fix: platform traps are found by recognising an error message,
+  not by reading code.
+- Keep functions free of consumer-specific paths, preset names and build directories; pass those
+  in as parameters.
+- Deleting is a consumer change. A hub file may be removed only when the consumer inventory
+  (`linux/scripts/verify_consumer_inventory.py`, over every repo in `.github/consumers.json`)
+  reports it named by nobody. The deleting commit names the consumer commits that dropped the
+  reference.
+- A "zero callers" grep of this tree is no evidence. Consumers pin a submodule commit and reach
+  modules by name or by backslash path, so they neither break at delete time nor appear in the
+  grep. Four sweeps made that mistake; the last deleted three live files, restored a week later.
+- Bash file names. New files are kebab-case. The snake_case names under `linux/scripts/`
+  (`02-toolchain/python/ci_*.sh` and `build_python.sh`, `02-toolchain/rust/cargo_*.sh`,
+  `_*_guard.sh` and `_cargo_wrapper.sh`, `version_util.sh`, `01-core/python_uv.sh`,
+  `05-frameworks/flutter/flutter_checks.sh`, `06-packaging/package_archive.sh`) and
+  `linux/webserver/scripts/flutter_integration_smoke_test.sh` are frozen. Consumer wrappers
+  resolve them by path, so a rename breaks consumers for no structural gain.
+- Workflow file names are kebab-case, fleet-wide, one file per platform and arch (`linux-x64.yml`,
+  `windows-x64.yml`), with display names `<Platform> <Arch> · <what>`. The hub's reusable workflows
+  (`python-ci-*`, `container-ci-windows`, `lint-gates`, `submodule-pins`, `build-docs`, the
+  docs-site lane, and `release-publish`) keep their file names for good. Consumers call them at
+  `@develop`, so a rename breaks the fleet in one push. Convention and the fleet's rename table:
+  [`adopting-in-a-new-project.md` § Workflow file names and display names](adopting-in-a-new-project.md#workflow-file-names-and-display-names).
+
 ## Reuse invariants
 
 Rules for reusing hub code and measuring reuse across the family. Each row is one rule.

@@ -39,7 +39,7 @@ Orientation. [Container architecture](#container-architecture) ·
 
 ## Project priorities (owner directive — optimize for all of them, always)
 
-1. **Fastest possible build.** Cache-first: narrow per-file closures, local cache exports, the
+1. Fastest possible build. Cache-first: narrow per-file closures, local cache exports, the
    compiler cache wired end to end AND measured (stats to stderr, the stream a clipped step log
    keeps), a pinned buildkitd GC budget, and the parallelism levers taken when proven safe. Idle
    cores are the standing wall-clock reserve. Re-measure before citing a number: a CPU figure
@@ -88,76 +88,23 @@ Stage graph, tags, platforms and what each stage contains: [`overview.md`](docs/
 
 ### Image and tag naming (published tags)
 
-**One published tag is one MANIFEST, carrying every architecture its variant supports** (owner directive), on both lanes. Both lanes publish into the SAME registry repo, so only one
-owns the bare `:latest`: Linux does, and Windows keeps its lane qualifier (owner directive).
+One published tag is one manifest, carrying every architecture its variant supports, on both lanes.
+Linux owns the bare `:latest`; Windows keeps its lane qualifier (`:winamd64`). The tag table and
+the reasons: [overview.md § Tag naming](docs/overview.md#tag-naming).
 
-| | Default manifest | Variant manifest | Per-arch wrapper (internal) | Cross bundle (NOT a platform) |
-| --- | --- | --- | --- | --- |
-| Linux | `:latest` | `:latest-<variant>` | `:latest-<arch>`, `:latest-<variant>-<arch>` | — |
-| Windows | `:winamd64` | `:winamd64-<variant>` | — (one platform) | `:winarm64` |
-
-- The grammar is `<version>[-<variant>][-<arch>]`. `latest` fills the version slot, so a
-  pinned release is `:2026.09` / `:2026.09-nvidia` with no new rule. Tags are parsed by position,
-  which makes the next bullet a hard rule.
-- `<variant>` names what makes the image different (`nvidia`, `rocm`), NEVER an architecture:
-  `:latest-amd64` must stay unambiguous, which is why `amd` is spelled `rocm`. A new architecture
-  adds an ENTRY to a variant's manifest; a new variant adds a TAG.
-- A variant exists only for a stack that cannot ship in `:latest` (owner directive): CUDA and ROCm are multi-GB, driver-bound and mutually exclusive. An accelerator
-  whose runtime fits is built INTO the default image: Hailo-10H (amd64/arm64, `Dockerfile.torch`)
-  and QNN (arm64, from the pinned public QAIRT Community zip — `docs/qnn-linux.md`). There is no `:latest-hailo`
-  or `:latest-qnn`; the standalone `:hailo` variant and `Dockerfile.hailo` were retired on
-  2026-09-22 as a duplicate of the standard build. A variant chain builds a variant (§ Build
-  Workflow), never `ENABLE_*` flipped on the default one: that pushed GPU bytes under the default
-  tags.
-- The per-arch images (`:latest-<arch>`, the stage tags `:latest-base-<arch>` /
-  `:latest-package-<arch>`) are the wrappers the manifest is assembled from: implementation
-  detail, consumers resolve the manifest.
-- nvidia's cross stages (`gpu`, `media`, `android`) push to a separate, private package,
-  `<repo>-stages` (owner decision). They carry TensorRT's SDK, which may ship only as
-  runtime files, and GHCR sets visibility per package. Everything else stays in `<repo>`
-  ([`linux-accelerator-images.md` § Stage images](docs/linux-accelerator-images.md#stage-images-a-private-package)).
-- `:latest-cross` is RETIRED (owner decision), the old name of `:latest`. Nothing
-  composes or pushes it, and `verify_ci_image_refs.py` rejects it under `.github/`. The registry
-  tags outlive the code, deliberately (owner decision): work stays on `develop`. Since
-  2026-09-25 the fleet calls this repo's composite actions and reusable workflows at `@develop`
-  (owner directive; 110 refs across eight repos, none passing an explicit `image:`), whose
-  `versions.env` names `:latest`; `main` still carries `CI_IMAGE_LINUX_TAG=latest-cross`, frozen
-  at the last release that published it. The registry tags are gone since 2026-09-29 (owner decision): republishing `:latest` left `:latest-cross` alone on the old index
-  `ec4bb68b`, and `ghcr-delete-tags.sh` deleted it and the three `:latest-cross-<arch>` wrappers.
-  A lane still at `@main` fails at `docker pull`; move it to `@develop`.
-- A new variant = a new manifest tag. The manifest lane REFUSES to shrink a published index
-  (§ Push and Publish Rules), so a partial run cannot drop an architecture from one.
-- Windows follows the variant rule for CUDA too (owner decision).
-  `Build-Buildkit.ps1 -Gpu` (`-Variant nvidia`) builds under `bk-*-nvidia` stage tags and
-  publishes `:winamd64-nvidia`, or `:winarm64-nvidia` for the cross bundle; `:winamd64` is CPU +
-  DirectML. Before that the nvidia build wrote the default tags, so the `:winamd64` published on
-  2026-09-22 carries CUDA until that tag's next publish. `Resolve-BkVariant` refuses a push to any
-  other tag.
-- Windows is the documented exception, a platform fact, not a convention: `windows/arm64` does
-  not exist as a platform — Microsoft publishes no arm64 `servercore`/`nanoserver` base and Windows
-  Server has no arm64 release
-  ([Windows-Containers#586](https://github.com/microsoft/Windows-Containers/issues/586)). The arm64
-  lane cross-compiles inside the `windows/amd64` container and emits an artifact bundle, so
-  BOTH Windows outputs are `windows/amd64` images. Two entries with the same platform cannot share
-  a manifest, and the bundle must never be published as `windows/arm64`, so it keeps its own tag
-  (`:winarm64`, documented as a bundle) and never joins `:winamd64`.
+- Tags are `<version>[-<variant>][-<arch>]`, parsed by position. A variant names a feature
+  (`nvidia`, `rocm`), never an architecture.
+- A variant exists only for a stack that cannot ship in `:latest`. Build it with a variant chain,
+  never by flipping `ENABLE_*` on the default chain.
+- `:latest-cross` is retired. Move a lane still at `@main` to `@develop`.
+- The Windows arm64 output is a bundle under its own `:winarm64` tag. Never publish it as
+  `windows/arm64` or add it to `:winamd64`.
 
 ### Windows-Specific Naming
 
-`Get-BkTag` (`windows/Build-Buildkit.ps1`) names the lane's local intermediate tags
-`docker.io/local/kataglyphis:bk-<name>[-<arch>]`: `bk-windows-base`, `bk-windows-sdk`,
-`bk-windows-toolchain`, the media fan-out branches `bk-windows-media-core` / `-media-litert` /
-`-media-tvm` (media-core itself splits into `bk-windows-media-core-onnx` / `-ffmpeg` / `-opencv` /
-`-hailo`), the merged `bk-windows-media`, and `bk-windows-torch` for the app stage. The arch
-suffix is omitted for `windows-base`/`-sdk`/`-toolchain` (shared by both lanes) and appended
-(`-arm64`) for everything downstream. A variant (`-Variant rocm`, or `nvidia` through `-Gpu`) adds
-a `-<variant>` infix to every tag after `bk-windows-base` (`bk-windows-sdk-rocm` …
-`bk-winamd64-rocm`), so a variant run never overwrites a default image. The final image is
-`ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` (`:winarm64` on the cross lane);
-§ Image and tag naming says what those two tags may be. The un-prefixed
-`local/kataglyphis:windows-*` names and `Get-MediaBranchTag` belonged to the classic driver
-`build.ps1`, deleted 2026-08-31: neither exists any more. Full build sequence:
-`docs/windows-builds.md` § Build Commands.
+Take every local Windows intermediate tag from `Get-BkTag` (`windows/Build-Buildkit.ps1`), and keep
+the `-<variant>` infix, so a variant run never overwrites a default image
+([windows-build-lanes.md](docs/windows-build-lanes.md#local-intermediate-tags)).
 
 ---
 
@@ -167,71 +114,42 @@ Commands, knob tables and per-stage recipes:
 [`linux-cross-builds.md` § The command reference AGENTS.md used to carry](docs/linux-cross-builds.md#the-command-reference-agentsmd-used-to-carry).
 The rules below stay here:
 
-- **Never `pkill` the orchestrator.** `bash linux/scripts/stop-cross-chain.sh` finds the run by
-  its pidfile and reaps the orphaned nerdctl/buildctl subtree; a `pkill` orphans the children and
-  leaves the build solving.
-
+- Stop a chain with `bash linux/scripts/stop-cross-chain.sh`, never `pkill`: a `pkill` orphans the
+  children and leaves the build solving.
 - Never edit a file in a running chain's closure, and never restart buildkitd while a build
   solves (§ Caching discipline, rules 1 and 4).
-
-- Verify the shipped BYTES, never the push. `:latest` (then `:latest-cross`) shipped STALE
-  five times with every static gate and every smoke GREEN, because all of them checked the push,
-  not the content. `verify-shipped-wrapper.sh` gates it in `build-runtime-manifest.sh`, over every
-  arch, BEFORE the boot smokes and before the manifest is assembled; `WRAPPER_CONTENT_GATE=0`
-  downgrades it to advisory, a decision and not a default. The saga and its root cause:
-  [`cross-build-verification.md`](docs/cross-build-verification.md#verify-the-shipped-bytes).
-
+- Verify the shipped bytes, never the push: keep `verify-shipped-wrapper.sh` gating
+  `build-runtime-manifest.sh`
+  ([§ Verify the shipped bytes](docs/cross-build-verification.md#verify-the-shipped-bytes)).
 - `--log-dir` is not universal. `build-cross-chain.sh` and `build-cross-stage.sh` tee each
   stage; the other three orchestrators do not take the flag, so pipe them through `tee` yourself.
-
-- Python packaging cache prefixes stay command-scoped. With `PYTHON_BUILD_COMPILER_CACHE=on`,
-  pass explicit single-executable `CC` and `CXX`, use the shared resolver and preserve callback
-  bindings and raw failures. Never export the cache-prefixed compiler strings into package assembly.
-
-- Preserve recurring operational scripts in the repo. The canonical implementation must be Git-tracked; an ignored `logs/` copy is evidence only. Promote a recurring helper before its next use, retain its required companions and parameterize run-specific inputs. The [operational toolkit](docs/local-proof-workflows.md) owns the reusable proof, checkpoint and authorized cleanup drivers. Reuse and extend the canonical helper; do not regenerate regular preflight, monitoring or probe drivers in scratch space.
-
-- Generated run artifacts belong under `logs/`. Use `logs/build-logs/` for Linux stage logs
-  and resource metrics, `logs/windows-build-logs/` for Windows BuildKit runs, and
-  `logs/test-results/` for Python test reports and `logs/code-quality/` for ty and annotation
-  reports, mutation results and complexity metrics. The directory is ignored by Git.
-  Live `chain-status*.json` stays at the repo root.
-
-- Pin a verified hub SHA in one consumer with the shared helper. Run
-  `python3 linux/scripts/pin-antfrastructure-submodule.py --repo <consumer> --branch <branch> --sha <full-sha>`
-  from this checkout; it stages only the initialized hub gitlink after checking both remotes.
-  Commit and push the consumer separately, after the hub commit is published and green.
-
+- Never export the cache-prefixed compiler strings into package assembly
+  ([python-ci.md](docs/python-ci.md)).
+- Keep a recurring operational script Git-tracked and reuse it; never regenerate a preflight,
+  monitoring or probe driver in scratch space
+  ([operational toolkit](docs/local-proof-workflows.md#run-artifacts-and-operational-scripts)).
+- Generated run artifacts belong under the ignored `logs/`; live `chain-status*.json` stays at the
+  repo root ([§ Run artifacts and operational scripts](docs/local-proof-workflows.md#run-artifacts-and-operational-scripts)).
+- Pin a verified hub SHA in a consumer with `linux/scripts/pin-antfrastructure-submodule.py`, after
+  the hub commit is published and green
+  ([dependency-updates.md](docs/dependency-updates.md)).
 - Measure before and after. `quality-report.sh` (with `--perf-host`), `fleet-health.py`, `security-audit.sh` and
   `bench-history`: [`fleet-health.md`](docs/fleet-health.md) and [`vulnerability-scanning.md`](docs/vulnerability-scanning.md).
-
-- Preview Python refactors before accepting them. `bash linux/scripts/refactor-python.sh --check`
-  reports formatter drift; `--apply -- <tracked.py>` makes pinned safe Ruff edits and saves a
-  patch under ignored `logs/code-quality/`. The on-demand `python-refactor.yml` workflow uploads
-  its patch with read-only repository permissions. Review the patch and run the relevant gates
-  before committing it. The general agentic loop drains the whole backlog and may commit; do not
-  use it as an unattended single-file refactor driver.
+- Review a Python refactor patch from `linux/scripts/refactor-python.sh` before committing it
+  ([code-quality-tooling.md](docs/code-quality-tooling.md)).
 
 ### Windows Container Build
 
-All stages use Ninja + clang-cl + lld-link on containerd + BuildKit + nerdctl, each tool where its
-pipe ACL allows. Build non-admin with `windows\Build-Buildkit.ps1`, inspect `bk-*` images from an
-ADMIN shell. A fresh machine follows [`windows-host-setup.md`](docs/windows-host-setup.md), not a
-reconstructed sequence. Role split, lane mechanics, isolation policy and recovery paths:
+Build non-admin with `windows\Build-Buildkit.ps1`, inspect `bk-*` images from an admin shell, and
+set up a fresh machine with [`windows-host-setup.md`](docs/windows-host-setup.md). The lane:
 [`windows-builds.md` § The Windows lane as AGENTS.md carried it](docs/windows-builds.md#the-windows-lane-as-agentsmd-carried-it)
 and [`windows-build-lanes.md`](docs/windows-build-lanes.md).
 
 ### Running Linux containers (Rancher Desktop)
 
-Use `nerdctl`, never `docker`, and check the image contract rather than assuming a host tool is in
-the image (`jq` and `python3` are in the current Linux image). A GPU container on a Jetson needs three extra flags
-under rootless nerdctl:
-[`linux-host-setup.md` § B2b](docs/linux-host-setup.md#b2b-a-gpu-container-on-a-jetson-with-rootless-nerdctl).
-Recipes, mount traps and the one driver that answers them (`run-in-ci-image.sh`):
-[`rancher-desktop-linux-containers.md`](docs/rancher-desktop-linux-containers.md).
-For repeatable Ubuntu WSL2 quality checks, run `bash linux/scripts/wsl-quality.sh setup`, then
-`bash linux/scripts/wsl-quality.sh check`; it installs pinned tools and writes reports below
-ignored `logs/code-quality/wsl/`. The Windows test leg uses native `pwsh.exe` through WSL interop;
-Linux PowerShell runs lint and complexity. `--jobs N` also bounds nested Bash suites and ShellCheck.
+Use `nerdctl`, never `docker`, and check the image contract rather than assume a host tool is in
+the image: [`rancher-desktop-linux-containers.md`](docs/rancher-desktop-linux-containers.md).
+WSL2 quality checks: [`windows-host-setup.md`](docs/windows-host-setup.md).
 
 ### LLM Stack (Ollama + Open WebUI)
 
@@ -256,16 +174,12 @@ matrix, measurements and the debugging trail:
 
 ### Branches, CI rounds and releases
 
-Owner rule for every repo of the family. `develop` is the default branch; every
-push to it runs the Linux x64 lane. Every other lane runs when a commit message asks for it
-(`[ci windows]`, `[ci arm64]`, `[ci all]`, …) or when started by hand; every lane workflow has
-`workflow_dispatch`. `main` moves only by a fast-forward to a `develop` commit whose full round is
-green, and only the owner moves it, or an agent the owner tells to in that turn. Every push to
-`main` runs every lane again and releases `v<version>` only when all are green. Tokens, merge
-steps, workflow shape: [`docs/branch-and-release-strategy.md`](docs/branch-and-release-strategy.md).
-The hub's Linux x64 and Windows x64 quality workflows expose manual dispatch.
-Which repo follows it yet, and this repo's own triggers:
-[`docs/ci-build-triggers.md`](docs/ci-build-triggers.md).
+Owner rule for every repo of the family. `develop` is the default branch, and every push to it
+runs the Linux x64 lane; every other lane runs when a commit message asks for it (`[ci windows]`,
+`[ci arm64]`, `[ci all]`, …) or when started by hand. `main` moves only by a fast-forward to a
+`develop` commit whose full round is green, and only the owner moves it, or an agent the owner
+tells to in that turn ([strategy](docs/branch-and-release-strategy.md),
+[triggers](docs/ci-build-triggers.md)).
 
 ### Reading CI status with the GitHub CLI
 
@@ -317,66 +231,20 @@ plain words.
 
 ### Contributing Reusable Work Here
 
-Consumers push reusable work upstream rather than keep local copies (BeschleunigerBallett's
-AGENTS.md states this as a rule). Wiring a NEW project to this repo (submodule, module resolver,
-Windows and Linux container builds, the agentic loop, launchers, CI actions) is a checklist in
-[`docs/adopting-in-a-new-project.md`](docs/adopting-in-a-new-project.md). Read it before
-hand-rolling any of that in a consumer.
+Consumers push reusable work upstream rather than keep local copies. Wire a new project with
+[`docs/adopting-in-a-new-project.md`](docs/adopting-in-a-new-project.md) before hand-rolling any
+of it in a consumer. When adding here
+([repository-family.md § Contributing reusable work](docs/repository-family.md#contributing-reusable-work)):
 
-When adding here:
-
-- Reuse before adding (owner directive for every owned repo). Search the current repository and its submodules for an existing implementation before creating functionality. Reuse or extend the canonical repo or submodule surface; when none exists, add it once to a shared repo and wire consumers to it. Keep consumer-specific values as parameters. If a hard technical boundary prevents reuse, record the reason and keep the copy tied to its canonical source.
-- PowerShell 7 (pwsh) is the standard shell and the Windows containers' default SHELL. Every
-  `.ps1`/`.psm1` declares `#requires -Version 7.0` on line 1 (or directly under the SPDX header),
-  before any `param()`. Two tracked files omit it on purpose, both pinned 5.1-parsable by a suite:
-  the script that INSTALLS pwsh, and the delete guard, which must not fail OPEN on a host without
-  `pwsh`. The two scripts in `linux/ansible/scripts/` omit it too: they can run under Windows
-  PowerShell 5.1 on a managed host. Two Pester suites also lack it:
-  `HostMaintenance.ToolLookup.Tests.ps1` and `StevedoreInventory.Tests.ps1`.
-- PowerShell file names. Three shapes: PascalCase `Verb-Noun.ps1` with a `Get-Verb`-approved
-  verb for scripts, `Windows<Area>.<Facet>.psm1` for modules, `<Subject>.Tests.ps1` for suites.
-  Three tracked files sit outside all three on purpose: the delete guard, registered by that exact
-  string, so a rename silently unregisters it, and `windows/scripts/build/rocm-checks/`, whose
-  files are named after the component they check (`FFmpeg.ps1`, 2026-09-23). A
-  `verb-noun-name.ps1` spelling anywhere is stale, not a variant: 101 scripts were renamed on
-  2026-09-06.
-- PowerShell scripts go in `windows/scripts/modules/` with `Export-ModuleMember`; consumers resolve
-  them ANTfrastructure-first with a vendored fallback. The resolver is a copied template:
-  [`shared/windows/templates/Resolve-BuildModule.ps1`](shared/windows/templates/README.md).
-- Exporting a function a build script calls directly is TWO edits: `Export-ModuleMember` in
-  the owning module, and the re-export list if the script reaches it through one. Module-INTERNAL
-  use needs neither, so an omission is invisible on a dev box and surfaces as `CommandNotFound`
-  hours into a container build. Two suites hold the two directions (every CALLED name resolves;
-  every LISTED name exists); neither replaces the other.
-- The two-consumer test. What a second consumer needs belongs here, not vendored twice. Moving
-  one up, turn its project-specific values into parameters whose DEFAULTS keep the original
-  behaviour, so the vendoring consumer can delete its copy with no behaviour change.
-- Avoid mutual submodule links. This hub vendors DocumANTation; that consumer calls reusable
-  workflows with `hub-checkout: true` instead of linking this hub back into its Git tree.
-- Document the symptom, not just the fix: platform traps are found by recognising an error
-  message, not by reading code.
-- Keep functions free of consumer-specific paths, preset names and build directories; pass those
-  in as parameters.
-- Deleting is a consumer change. A hub file may be removed only when the consumer inventory
-  (`linux/scripts/verify_consumer_inventory.py`, over every repo in `.github/consumers.json`)
-  reports it *named by nobody*, and the deleting commit names the consumer commits that dropped the
-  reference. A "zero callers" grep of THIS tree is no evidence. Consumers pin a submodule commit
-  and reach modules by NAME or by backslash path, so they neither break at delete time nor appear
-  in the grep. Four sweeps made that mistake; the last deleted three live files, restored a week
-  later.
-- Bash file names. New files are kebab-case. The snake_case names under `linux/scripts/`
-  (`02-toolchain/python/ci_*.sh` and `build_python.sh`, `02-toolchain/rust/cargo_*.sh`,
-  `_*_guard.sh` and `_cargo_wrapper.sh`, `version_util.sh`, `01-core/python_uv.sh`,
-  `05-frameworks/flutter/flutter_checks.sh`, `06-packaging/package_archive.sh`) and
-  `linux/webserver/scripts/flutter_integration_smoke_test.sh` are frozen. Consumer wrappers
-  resolve them by path, so a rename breaks consumers for no structural gain.
-- Workflow file names (owner decision, fleet-wide): kebab-case, one file per
-  platform and arch (`linux-x64.yml`, `windows-x64.yml`), display names
-  `<Platform> <Arch> · <what>`. The hub's REUSABLE workflows (`python-ci-*`,
-  `container-ci-windows`, `lint-gates`, `submodule-pins`, `build-docs`, the docs-site lane, and
-  `release-publish`) keep their file names for good. Consumers call them at `@develop`, so a
-  rename breaks the fleet in one push. Convention and the fleet's rename table:
-  [`adopting-in-a-new-project.md` § Workflow file names and display names](docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names).
+- Reuse before adding: extend the canonical implementation, and keep consumer-specific values as
+  parameters whose defaults keep the original behaviour.
+- PowerShell is pwsh 7: every `.ps1`/`.psm1` declares `#requires -Version 7.0`, and its file name
+  follows one of the three documented shapes.
+- Exporting a function a build script calls directly is two edits: `Export-ModuleMember` and the
+  re-export list.
+- Never rename a frozen snake_case Bash file or a reusable workflow file: consumers resolve them by
+  path.
+- Delete a hub file only when the consumer inventory reports it named by nobody.
 
 ### Reusable Module: WindowsContainerBuild.Reuse
 
@@ -447,58 +315,23 @@ need: [`linux-accelerator-images.md` § GPU architecture coverage](docs/linux-ac
 
 ## Build Workflow
 
-Windows can resume with `-Stages @('media-merge','torch','final')` after all three
-media branches complete. Reuse requires matching image-producing inputs and
-digest-bound branch evidence; publish-gate success alone is not that proof.
-Keep all three reused-parent publish gates, the merge disk/retry gates, compiler
-cache requirement and ROCm post-media closure. An explicit merge refuses a branch
-subset even without downstream stages; ordinary `media` still builds every branch.
-Each reused-parent gate needs its own phase/log label, distinct from final publication,
-so none of its receipts or timing rows can overwrite another. Retain ordinary
-publish-gate headroom for these parent probes.
-See [the merge boundary](docs/windows-build-lanes.md#resume-from-completed-media-branches).
+Resume Windows with `-Stages @('media-merge','torch','final')` only after all three media branches
+complete, and keep every reused-parent publish gate
+([the merge boundary](docs/windows-build-lanes.md#resume-from-completed-media-branches)).
 
 ```
 build-cross-chain.sh → base → compiler → sdk → media → android → runtime → manifest
 CROSS_VARIANT=nvidia|rocm       → (shared sdk) → gpu → media → android → runtime → manifest
 ```
 
-**A variant chain is the only way to build a GPU image**. `CROSS_VARIANT=nvidia` /
-`rocm` (or `ENABLE_NVIDIA=true` / `ENABLE_AMD=true`, which imply it) is an ENVIRONMENT knob,
-because `stage-defs.sh` builds the stage graph when it is sourced. It inserts the `gpu` stage,
-suffixes every tag from there on with `-<variant>` (`tag-naming.sh` `cross_variant_infix`), pushes
-nvidia's stages to the private `<repo>-stages` package (`cross_stage_repo`), starts
-at `gpu` and refuses the shared stages, keeps its own `chain-status-<variant>.json` and
-`logs/build-logs/<variant>/`, and refuses what it cannot build (`stage-defs.sh`
-`cross_variant_refusal`, shared with `build-cross-stage.sh`): rocm off amd64. Any target that is
-not the build platform's arch (CUDA/ROCm install for the BUILD platform, so a cross target would
-ship its GPU libraries), except nvidia arm64; and a PUSHING run off `CROSS_BUILD_PLATFORM=linux/amd64`
-(the shared `:cross-sdk-<arch>` is the amd64 lane's). An nvidia chain on amd64 cross-builds arm64
-(SBSA) by default (owner directive): bare, it builds `amd64,arm64`; `CROSS_NVIDIA_SBSA=0` opts out. The runtime helpers refuse a default output tag under a
-variant. Chains run strictly one at a time: the pidfile is claimed atomically at start, and a
-live one makes a second chain refuse. Commands:
-[`linux-accelerator-images.md`](docs/linux-accelerator-images.md).
+A variant chain is the only way to build a GPU image. Set `CROSS_VARIANT=nvidia` or `rocm` in the
+environment, and run chains strictly one at a time
+([§ A variant chain](docs/linux-cross-builds.md#a-variant-chain-starts-at-gpu--and-inherits-the-shared-sdk)).
+Each stage's registry digest is pinned into the next; the full pipeline is
+[`linux-cross-builds.md`](docs/linux-cross-builds.md).
 
-Stages 1-5 run on `linux/amd64`, or natively on an arm64 host with
-`CROSS_BUILD_PLATFORM=linux/arm64` (run end to end on a Jetson AGX Orin,
-[`linux-accelerator-images.md`](docs/linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson)).
-Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches),
-delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the
-next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>`, against stale cache reuse. The stage
-graph: `linux/scripts/01-core/stage-defs.sh`; full pipeline: `docs/linux-cross-builds.md`.
-
-The Windows lane is a separate staged build, `base → [nvidia|rocm] → toolchain → media →
-[migraphx → llama] → torch → final` (the bracketed rocm stages on `-Variant rocm` only; torch
-assembles the OrchestrANT app env, `bk-windows-torch`, and final builds FROM it), driven by
-`windows/Build-Buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver
-`windows/build.ps1` was retired 2026-08-26 and deleted 2026-08-31: the one-driver bullet in
-[`windows-builds.md` § The Windows lane as AGENTS.md carried it](docs/windows-builds.md#the-windows-lane-as-agentsmd-carried-it)).
-`bk-windows-sdk` is either a plain re-tag of `bk-windows-base` (CPU lane, default) or the NVIDIA
-GPU stage `Dockerfile.nvidia` (`-Gpu` switch, same as `-Variant nvidia`) for a CUDA-enabled image.
-`-Variant rocm` (amd64 only) puts `Dockerfile.rocm` in that sdk slot, under `-rocm` tags that never
-overwrite the default ones; every media feature it enables is gated on
-`(Get-GpuEnvironment).HasRocm` ([`windows-rocm.md`](docs/windows-rocm.md)). Full build sequence and
-prerequisites: `docs/windows-builds.md` § Build Commands.
+The Windows lane is a separate staged build driven by `windows/Build-Buildkit.ps1`:
+`docs/windows-builds.md` § Build Commands.
 
 ### Prerequisites
 
@@ -509,33 +342,15 @@ a containerd restart, or an emulated leg fails with `exec format error`.
 
 ### Windows Prerequisites (see `docs/windows-builds.md` § Prerequisites)
 
-Stevedore (`winget install stevedore` or `choco install stevedore`) provides nerdctl +
-containerd for Windows Containers; reboot after installing it. Docker Desktop or Rancher
-Desktop work too, with `docker` commands. nerdctl needs the CNI nat conf
-(`docs/windows-build-lanes.md` § Getting it going, step 2) and runs from admin shells only;
-Stevedore's `docker.exe` stays the publish/inspect tool. Run with `--isolation process` for the
-host's full CPU count (Hyper-V isolation is capped at 2 CPUs): `docs/windows-builds.md` § Running
-the Image. The 2026-08-03 history of the conf is on that page.
+Install Stevedore and reboot; run nerdctl from admin shells only, with the CNI nat conf, and run
+images with `--isolation process`: `docs/windows-builds.md` § Prerequisites.
 
 ### Stevedore Fixes After Install
 
-Apply the post-install fixes in `docs/windows-stevedore-and-docker.md` § Stevedore Setup Fixes
-(Defender exclusions, daemon.json cleanup, default runtime change, verification), the canonical
-source.
-
-Two host fixes keep the BK lane's RUN steps from idling. `Install-NewHost.ps1` (admin) sets
-both, `Test-HostSetup.ps1` checks both, and the from-base chain of 2026-10-14 measured both:
-
-- The patched runhcs shim
-  ([`windows-host-setup.md` § R1](docs/windows-host-setup.md#r1-rebuild--deploy-the-patched-shim)).
-  Every Stevedore update reverts it, and the driver's `Assert-ShimPatch` then refuses to build.
-  With it, a RUN reaches DONE 1 to 3 s after its last output line.
-- `TcpTimedWaitDelay` = 30 s
-  ([§ C6](docs/windows-host-setup.md#c6-tcptimedwaitdelay--30-s-required-for-a-chain-without-idle-tails)):
-  a RUN that started an sccache server reaches DONE ~30 s after its last line, not ~120 s (#179).
-
-A RUN's tail names the missing one: ~120 s after an sccache RUN is the TIME_WAIT; ~180, ~450 and
-~2841 s are the shim. `docs/failure-modes.md` § Every RUN step reports `DONE 2841.2s` decodes them.
+Apply the post-install fixes in `docs/windows-stevedore-and-docker.md` § Stevedore Setup Fixes.
+Keep the patched runhcs shim and `TcpTimedWaitDelay` = 30 s on every Windows build host
+([`windows-host-setup.md` § R1](docs/windows-host-setup.md#r1-rebuild--deploy-the-patched-shim),
+[§ C6](docs/windows-host-setup.md#c6-tcptimedwaitdelay--30-s-required-for-a-chain-without-idle-tails)).
 
 ### Supported Platforms
 
@@ -1015,7 +830,7 @@ The shared theme and its `conf.py` snippet:
 
 ## Documentation Maintenance
 
-**Write docs like a developer: short and precise.** Say what a thing does, how to run it and what
+Write docs like a developer: short and precise. Say what a thing does, how to run it and what
 breaks. The rules and templates: [`docs/writing-docs.md`](docs/writing-docs.md); the `doc-prose`
 gate holds each page to a census that may only fall.
 

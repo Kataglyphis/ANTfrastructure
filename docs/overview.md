@@ -71,7 +71,7 @@ Three build lanes ([Linux Image Chain](#linux-image-chain)).
 | `Dockerfile.package` | `:latest-base-<arch>` + `:cross-android-<arch>` | `:latest-package-<arch>` |
 | `Dockerfile.torch` | `:latest-package-<arch>` | `:latest-<arch>` (incl. the Hailo payload on amd64/arm64) |
 | `Dockerfile.nvidia` / `Dockerfile.amd` | `:cross-sdk-<arch>` | `:cross-toolchain-<variant>-<arch>`: a variant chain's `gpu` stage (CUDA or ROCm/MIGraphX); its media builds FROM it, and every later tag carries `-<variant>`. nvidia's stage tags live in the private `<repo>-stages` package |
-| `windows/Dockerfile.*` | `windows/servercore:ltsc2025` | `:winamd64` (a **manifest** over `windows/amd64`; variants as `:winamd64-<variant>`), or `:winarm64` under `-TargetArch arm64` — the arm64 **artifact bundle**, still a `windows/amd64` image, never a manifest entry ([`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags)) |
+| `windows/Dockerfile.*` | `windows/servercore:ltsc2025` | `:winamd64` (a **manifest** over `windows/amd64`; variants as `:winamd64-<variant>`), or `:winarm64` under `-TargetArch arm64` — the arm64 **artifact bundle**, still a `windows/amd64` image, never a manifest entry ([§ Tag naming](#tag-naming)) |
 
 ## Supported platforms, as AGENTS.md listed them
 
@@ -105,10 +105,10 @@ A variant chain (`CROSS_VARIANT=nvidia|rocm`) writes `:latest-<variant>-<arch>` 
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64 | `base`, `cross-compiler-amd64`, `cross-sdk-<arch>`, `cross-toolchain-rocm-<arch>`, `cross-media-[rocm-]<arch>`, `cross-android-[rocm-]<arch>` | Cross-lane intermediate images (amd64-hosted, cross-compiled for target arches; the `cross-toolchain-` tag is a variant chain's `gpu` stage). |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger-stages (**private**) | linux/amd64 | `cross-toolchain-nvidia-<arch>`, `cross-media-nvidia-<arch>`, `cross-android-nvidia-<arch>` | The nvidia chain's stages, which carry TensorRT's SDK (owner 2026-10-21, [accelerator images § Stage images](linux-accelerator-images.md#stage-images-a-private-package)). Pulling needs a login. |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | per-arch native | `latest-base-<arch>`, `latest-package-<arch>`, `latest-<arch>`, `latest-<variant>-<arch>` | Runtime lane per-arch **wrapper** images the manifests are assembled from (internal). The chain pushes `latest-<arch>`; `latest-base-`/`latest-package-` go out only with `--push-all`. |
-| ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest-cross`, `latest-cross-<arch>` | **Retired** old name of `latest`; the tags were deleted from the registry on 2026-09-29 ([`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags)). |
+| ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest-cross`, `latest-cross-<arch>` | **Retired** old name of `latest`; the tags were deleted from the registry on 2026-09-29 ([§ Tag naming](#tag-naming)). |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger:webserver | as built | `webserver` | Minimal nginx static webserver image, built by hand from a named build context ([`linux/webserver/README.md`](../linux/webserver/README.md)). No `webserver` tag is in the registry on 2026-09-25. |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | windows/amd64 | `winamd64` | Windows Server Core 2025 build image with MSVC, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX — a **manifest** over `windows/amd64`, CPU + DirectML; variants as `:winamd64-<variant>`: `:winamd64-nvidia` (CUDA), `:winamd64-rocm` (ROCm). |
-| ghcr.io/kataglyphis/kataglyphis_beschleuniger | windows/amd64 (arm64 **bundle**) | `winarm64` | The arm64 cross artifact bundle: a `windows/amd64` image carrying the aarch64 payload, its own tag. Not a platform, not a manifest entry, never `--platform windows/arm64` — see [`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags). `:winarm64-nvidia` carries the arm64 CUDA payload. |
+| ghcr.io/kataglyphis/kataglyphis_beschleuniger | windows/amd64 (arm64 **bundle**) | `winarm64` | The arm64 cross artifact bundle: a `windows/amd64` image carrying the aarch64 payload, its own tag. Not a platform, not a manifest entry, never `--platform windows/arm64` — see [§ Tag naming](#tag-naming). `:winarm64-nvidia` carries the arm64 CUDA payload. |
 
 **Check the live index before relying on its arch coverage**:
 `nerdctl manifest inspect ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`. On 2026-08-31 it
@@ -135,6 +135,61 @@ names and nothing else** (86, 87, 89 and 120; owner decision 2026-09-23). There 
 back on, so a card outside that list fails at session creation rather than running slowly. The
 hardware behind each number, what is left out, and how to change the set:
 [`AGENTS.md` § GPU architecture coverage](../AGENTS.md#gpu-architecture-coverage-how-to-turn-an-arch-on-or-off).
+
+## Tag naming
+
+One published tag is one manifest, carrying every architecture its variant supports, on both
+lanes. Both lanes publish into the same registry repo, so only one owns the bare `:latest`: Linux
+does, and Windows keeps its lane qualifier.
+
+| | Default manifest | Variant manifest | Per-arch wrapper (internal) | Cross bundle (NOT a platform) |
+| --- | --- | --- | --- | --- |
+| Linux | `:latest` | `:latest-<variant>` | `:latest-<arch>`, `:latest-<variant>-<arch>` | — |
+| Windows | `:winamd64` | `:winamd64-<variant>` | — (one platform) | `:winarm64` |
+
+- The grammar is `<version>[-<variant>][-<arch>]`. `latest` fills the version slot, so a pinned
+  release is `:2026.09` / `:2026.09-nvidia` with no new rule. Tags are parsed by position, which
+  makes the next bullet a hard rule.
+- `<variant>` names what makes the image different (`nvidia`, `rocm`), never an architecture.
+  `:latest-amd64` must stay unambiguous, which is why `amd` is spelled `rocm`. A new architecture
+  adds an entry to a variant's manifest; a new variant adds a tag.
+- A variant exists only for a stack that cannot ship in `:latest`. CUDA and ROCm are multi-GB,
+  driver-bound and mutually exclusive. An accelerator whose runtime fits is built into the default
+  image: Hailo-10H (amd64/arm64, `Dockerfile.torch`) and QNN (arm64, from the pinned public QAIRT
+  Community zip — [qnn-linux.md](qnn-linux.md)).
+- There is no `:latest-hailo` or `:latest-qnn`. The standalone `:hailo` variant and
+  `Dockerfile.hailo` were retired as a duplicate of the standard build.
+- A variant chain builds a variant (`AGENTS.md` § Build Workflow), never `ENABLE_*` flipped on the
+  default one: that pushed GPU bytes under the default tags.
+- The per-arch images (`:latest-<arch>`, the stage tags `:latest-base-<arch>` /
+  `:latest-package-<arch>`) are the wrappers the manifest is assembled from: implementation detail,
+  consumers resolve the manifest.
+- nvidia's cross stages (`gpu`, `media`, `android`) push to a separate, private package,
+  `<repo>-stages`. They carry TensorRT's SDK, which may ship only as runtime files, and GHCR sets
+  visibility per package. Everything else stays in `<repo>`
+  ([`linux-accelerator-images.md` § Stage images](linux-accelerator-images.md#stage-images-a-private-package)).
+- `:latest-cross` is retired, the old name of `:latest`. Nothing composes or pushes it, and
+  `verify_ci_image_refs.py` rejects it under `.github/`. The fleet calls this repo's composite
+  actions and reusable workflows at `@develop`, whose `versions.env` names `:latest`. `main` still
+  carries `CI_IMAGE_LINUX_TAG=latest-cross`, frozen at the last release that published it.
+- The `:latest-cross` registry tags are gone. Republishing `:latest` left `:latest-cross` alone on
+  the old index, and `ghcr-delete-tags.sh` deleted it and the three `:latest-cross-<arch>` wrappers.
+  A lane still at `@main` fails at `docker pull`; move it to `@develop`.
+- A new variant = a new manifest tag. The manifest lane refuses to shrink a published index
+  (`AGENTS.md` § Push and Publish Rules), so a partial run cannot drop an architecture from one.
+- Windows follows the variant rule for CUDA too. `Build-Buildkit.ps1 -Gpu` (`-Variant nvidia`)
+  builds under `bk-*-nvidia` stage tags and publishes `:winamd64-nvidia`, or `:winarm64-nvidia` for
+  the cross bundle; `:winamd64` is CPU + DirectML. `Resolve-BkVariant` refuses a push to any other
+  tag. Before that the nvidia build wrote the default tags, so a `:winamd64` published before the
+  variant rule carries CUDA until that tag's next publish.
+- Windows is the documented exception, a platform fact, not a convention. `windows/arm64` does not
+  exist as a platform. Microsoft publishes no arm64 `servercore`/`nanoserver` base and Windows
+  Server has no arm64 release
+  ([Windows-Containers#586](https://github.com/microsoft/Windows-Containers/issues/586)).
+- The arm64 lane cross-compiles inside the `windows/amd64` container and emits an artifact bundle,
+  so both Windows outputs are `windows/amd64` images. Two entries with the same platform cannot
+  share a manifest, and the bundle must never be published as `windows/arm64`. So it keeps its own
+  tag (`:winarm64`, documented as a bundle) and never joins `:winamd64`.
 
 ## Images in This Repository
 

@@ -315,6 +315,15 @@ $env:SCCACHE_WEBDAV_ENDPOINT = 'http://<host>:5000'
 
 ### Resume from completed media branches
 
+Windows can resume with `-Stages @('media-merge','torch','final')` after all three media branches
+complete. Reuse requires matching image-producing inputs and digest-bound branch evidence;
+publish-gate success alone is not that proof. Keep all three reused-parent publish gates, the merge
+disk/retry gates, compiler cache requirement and ROCm post-media closure. An explicit merge refuses
+a branch subset even without downstream stages; ordinary `media` still builds every branch. Each
+reused-parent gate needs its own phase/log label, distinct from final publication, so none of its
+receipts or timing rows can overwrite another. Retain ordinary publish-gate headroom for these
+parent probes.
+
 When media-core, LiteRT and TVM/IREE have all completed, a disk stop before the
 merge does not require rebuilding those branches. After the build has ended,
 use the canonical cleanup and retain the completed branches' immutable digests
@@ -1655,3 +1664,18 @@ driver-supported**: the stage's `BASE_IMAGE` is pinned to the local
 overriding it now needs a direct `buildctl` solve.
 
 See `docs/windows-builds.md` § Build Commands for the full Windows build sequence (base → [nvidia | rocm, tagged sdk] → toolchain → media → [migraphx → llama, rocm only] → torch → final) and `docs/windows-stevedore-and-docker.md` § Stevedore Setup Fixes for post-install fixes.
+
+### Local intermediate tags
+
+`Get-BkTag` (`windows/Build-Buildkit.ps1`) names the lane's local
+intermediate tags `docker.io/local/kataglyphis:bk-<name>[-<arch>]`: `bk-windows-base`,
+`bk-windows-sdk`, `bk-windows-toolchain`, the media fan-out branches `bk-windows-media-core` /
+`-media-litert` / `-media-tvm` (media-core itself splits into `bk-windows-media-core-onnx` /
+`-ffmpeg` / `-opencv` / `-hailo`), the merged `bk-windows-media`, and `bk-windows-torch` for the
+app stage. The arch suffix is omitted for `windows-base`/`-sdk`/`-toolchain` (shared by both lanes)
+and appended (`-arm64`) for everything downstream. A variant (`-Variant rocm`, or `nvidia` through
+`-Gpu`) adds a `-<variant>` infix to every tag after `bk-windows-base` (`bk-windows-sdk-rocm` …
+`bk-winamd64-rocm`), so a variant run never overwrites a default image. The final image is
+`ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` (`:winarm64` on the cross lane). The
+un-prefixed `local/kataglyphis:windows-*` names and `Get-MediaBranchTag` belonged to the deleted
+classic driver `build.ps1`: neither exists any more.

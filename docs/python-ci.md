@@ -58,6 +58,10 @@ an empty Python scope fails in either mode. Local entry point:
 
 ## Compiler caching during packaging
 
+Python packaging cache prefixes stay command-scoped. With `PYTHON_BUILD_COMPILER_CACHE=on`, pass
+explicit single-executable `CC` and `CXX`, use the shared resolver and preserve callback bindings
+and raw failures. Never export the cache-prefixed compiler strings into package assembly.
+
 `PYTHON_BUILD_COMPILER_CACHE=on` opts the Linux packaging driver into the shared
 `ci-compiler-cache.sh` command scope. Supply `CC` and `CXX` as single compiler executables,
 with flags in the normal flag variables. The canonical resolver selects the cache launcher;

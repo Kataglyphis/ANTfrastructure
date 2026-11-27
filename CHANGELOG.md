@@ -19,6 +19,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — AGENTS.md's Container Architecture, Quick Reference and Build Workflow keep only the rules (CON303 phase 2)
+
+- `AGENTS.md` falls from 9,526 to 7,342 words. Each section keeps its heading, so consumer links still land,
+  and states the rule with a link to the page that now holds the detail.
+- New owner sections: `overview.md` § Tag naming (the tag table and every naming rule),
+  `windows-build-lanes.md` § Local intermediate tags, `repository-family.md` § Contributing reusable work,
+  `local-proof-workflows.md` § Run artifacts and operational scripts. The variant-chain mechanics join
+  `linux-cross-builds.md` § A variant chain; the Windows lane, prerequisites, resume boundary and host fixes
+  join their `windows-builds.md`, `windows-build-lanes.md` and `windows-host-setup.md` sections.
+- Superseded history leaves the instructions: the `:latest-cross` tags are gone (decisions.md keeps both rows).
+  No test asserted a moved line; none changed.
+
 ## 2026-11-27 — AGENTS.md's Linux Build Rules and Validation keep only the rules (CON303 phase 2)
 
 - `AGENTS.md` falls from 12,299 to 9,526 words. Each Linux Build Rules and Validation bullet is now the one

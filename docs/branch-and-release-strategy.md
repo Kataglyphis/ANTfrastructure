@@ -19,6 +19,10 @@ today: [`ci-build-triggers.md`](ci-build-triggers.md).
 5. **Every push to `main` makes a release, if every lane is green.** `release.yml`
    runs all lanes once more on that commit and publishes `v<version>` only if all pass.
 
+Every lane workflow has `workflow_dispatch`, and the hub's Linux x64 and Windows x64 quality
+workflows expose manual dispatch. Every push to `main` runs every lane again and releases
+`v<version>` only when all are green.
+
 ## Asking for a lane in a commit message
 
 Write `[ci <word>]` anywhere in the message. A lane's name is its workflow file name

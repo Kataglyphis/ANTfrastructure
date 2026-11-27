@@ -544,6 +544,11 @@ drift; `tests/test-preflight-slugs.sh` keeps the array honest) — see
 
 ### B7. ripgrep, s5cmd and the Linux suites in WSL
 
+For repeatable Ubuntu WSL2 quality checks, run `bash linux/scripts/wsl-quality.sh setup`, then
+`bash linux/scripts/wsl-quality.sh check`; it installs pinned tools and writes reports below
+ignored `logs/code-quality/wsl/`. The Windows test leg uses native `pwsh.exe` through WSL interop;
+Linux PowerShell runs lint and complexity. `--jobs N` also bounds nested Bash suites and ShellCheck.
+
 ```pwsh
 winget install --id BurntSushi.ripgrep.MSVC -e --scope user   # the family's search tool (AGENTS.md)
 scoop install s5cmd                                            # C7 checks the S3 key with it
@@ -772,6 +777,20 @@ Verify:
 (Invoke-WebRequest http://<host-LAN-IP>:5000 -Method Head -UseBasicParsing).StatusCode   # 200
 [Environment]::GetEnvironmentVariable('SCCACHE_WEBDAV_ENDPOINT','Machine')               # set (new shells inherit)
 ```
+
+Apply the post-install fixes in `docs/windows-stevedore-and-docker.md` § Stevedore Setup Fixes
+(Defender exclusions, daemon.json cleanup, default runtime change, verification), the canonical
+source. Two host fixes keep the BK lane's RUN steps from idling. `Install-NewHost.ps1` (admin) sets
+both, `Test-HostSetup.ps1` checks both, and a from-base chain measured both:
+
+- The patched runhcs shim ([§ R1](#r1-rebuild--deploy-the-patched-shim)). Every Stevedore update
+  reverts it, and the driver's `Assert-ShimPatch` then refuses to build. With it, a RUN reaches
+  DONE 1 to 3 s after its last output line.
+- `TcpTimedWaitDelay` = 30 s ([§ C6](#c6-tcptimedwaitdelay--30-s-required-for-a-chain-without-idle-tails)):
+  a RUN that started an sccache server reaches DONE ~30 s after its last line, not ~120 s.
+
+A RUN's tail names the missing one: ~120 s after an sccache RUN is the TIME_WAIT; ~180, ~450 and
+~2841 s are the shim. `docs/failure-modes.md` § Every RUN step reports `DONE 2841.2s` decodes them.
 
 ### C6. `TcpTimedWaitDelay` = 30 s (REQUIRED for a chain without idle tails)
 

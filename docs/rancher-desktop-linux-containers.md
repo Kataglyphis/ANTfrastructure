@@ -27,6 +27,10 @@ is running. It provisions two WSL distros, `rancher-desktop` and
 
 ## Use `nerdctl`, not `docker`
 
+Check the image contract rather than assuming a host tool is in the image (`jq` and `python3` are
+in the current Linux image). A GPU container on a Jetson needs three extra flags under rootless
+nerdctl: [`linux-host-setup.md` § B2b](linux-host-setup.md#b2b-a-gpu-container-on-a-jetson-with-rootless-nerdctl).
+
 Rancher Desktop defaults its container engine to **containerd**, and the CLI for
 containerd is `nerdctl`. This is the single most common thing to get wrong here,
 because `docker.exe` also ships in the same directory and *appears* to work
