@@ -13836,6 +13836,38 @@
   "why": "a single-package manifest must build exactly as before, without a --workspace it never asked for"
  },
  {
+  "id": "rust.cargo-doc-nightly-toolchain",
+  "target": "linux/scripts/02-toolchain/rust/cargo_build_doc.sh",
+  "find": "cargo \"+${RUST_NIGHTLY_TOOLCHAIN}\" doc \"${DOC_MAP[@]}\" --no-deps",
+  "replace": "cargo doc \"${DOC_MAP[@]}\" --no-deps",
+  "test": "bash linux/scripts/tests/test-cargo-build-doc.sh",
+  "why": "-Zrustdoc-map is a nightly cargo flag; stable cargo refuses it and the site is never built"
+ },
+ {
+  "id": "rust.cargo-doc-rustdoc-map",
+  "target": "linux/scripts/02-toolchain/rust/cargo_build_doc.sh",
+  "find": "DOC_MAP=(-Zrustdoc-map --config 'doc.extern-map.registries.crates-io=\"https://docs.rs/\"')",
+  "replace": "DOC_MAP=()",
+  "test": "bash linux/scripts/tests/test-cargo-build-doc.sh",
+  "why": "without the map rustdoc leaves every link into a dependency as raw text, a dead link on every type page"
+ },
+ {
+  "id": "rust.cargo-doc-missing-nightly-refused",
+  "target": "linux/scripts/02-toolchain/rust/cargo_build_doc.sh",
+  "find": "if [ -z \"${RUST_NIGHTLY_TOOLCHAIN:-}\" ] || ! cargo \"+${RUST_NIGHTLY_TOOLCHAIN}\" --version >/dev/null 2>&1; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-cargo-build-doc.sh",
+  "why": "a host without the pinned nightly must hear which toolchain to install, not a bare cargo error"
+ },
+ {
+  "id": "rust.cargo-doc-nightly-from-versions-env",
+  "target": "linux/scripts/02-toolchain/rust/cargo_build_doc.sh",
+  "find": "load_raw_pin_if_empty RUST_NIGHTLY_TOOLCHAIN RUST_NIGHTLY_TOOLCHAIN \"$SCRIPT_DIR/../../01-core/versions.env\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-cargo-build-doc.sh",
+  "why": "the image carries no RUST_NIGHTLY_TOOLCHAIN variable, so the pin must come from versions.env"
+ },
+ {
   "id": "env-knobs.tool-pins-are-owners",
   "target": "linux/scripts/lint-env-knobs.sh",
   "find": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}/01-core/tool-pins.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env)",
@@ -15610,6 +15642,22 @@
   "replace": "        print(\"OK: every internal link and anchor resolves\")\n    return 0\n",
   "test": "bash linux/scripts/tests/test-site-links.sh",
   "why": "a gate that prints its findings and exits 0 publishes the broken site anyway"
+ },
+ {
+  "id": "site-links.rust-path-unresolved",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "        if RUST_PATH.match(link):\n            self.note(\"unresolved\\t\" + link, rel_page)\n            return\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "urljoin reads super::Subscriber as a URL with the scheme super: and skips it, so the dead link passes"
+ },
+ {
+  "id": "site-links.rust-path-not-a-scheme",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "RUST_PATH = re.compile(r\"^[A-Za-z_]\\w*::[A-Za-z_]\")",
+  "replace": "RUST_PATH = re.compile(r\"^[A-Za-z_]\\w*:\")",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "tel:, urn: and the like are URLs; only a double colon names a Rust path"
  },
  {
   "id": "docs-site.fileinfo-only",

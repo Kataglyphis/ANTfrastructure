@@ -47,11 +47,21 @@ cargo_doc_scope() {
     printf '%s\n' --workspace
 }
 
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/../../01-core/load-versions-env.sh"
+# Only a nightly cargo maps dependencies to docs.rs; stable rustdoc leaves every link into one as raw text. See docs/docs-sites.md#links-into-dependencies
+load_raw_pin_if_empty RUST_NIGHTLY_TOOLCHAIN RUST_NIGHTLY_TOOLCHAIN "$SCRIPT_DIR/../../01-core/versions.env"
+if [ -z "${RUST_NIGHTLY_TOOLCHAIN:-}" ] || ! cargo "+${RUST_NIGHTLY_TOOLCHAIN}" --version >/dev/null 2>&1; then
+    err "cargo doc needs the pinned nightly ${RUST_NIGHTLY_TOOLCHAIN:-(RUST_NIGHTLY_TOOLCHAIN unset)}: rustup toolchain install ${RUST_NIGHTLY_TOOLCHAIN:-<pin>} --profile minimal"
+    exit 1
+fi
+DOC_MAP=(-Zrustdoc-map --config 'doc.extern-map.registries.crates-io="https://docs.rs/"')
+
 # Without --workspace cargo doc documents the root package alone. See docs/shared-script-libraries.md#every-crate-of-a-workspace
 DOC_SCOPE="$(cargo_doc_scope "$@")"
-info "Generating rust documentation (cargo doc --no-deps ${DOC_SCOPE})..."
+info "Generating rust documentation (cargo +${RUST_NIGHTLY_TOOLCHAIN} doc ${DOC_MAP[*]} --no-deps ${DOC_SCOPE})..."
 # Forward args to cargo doc (e.g. --features <feature>)
-cargo doc --no-deps ${DOC_SCOPE:+"$DOC_SCOPE"} "$@"
+cargo "+${RUST_NIGHTLY_TOOLCHAIN}" doc "${DOC_MAP[@]}" --no-deps ${DOC_SCOPE:+"$DOC_SCOPE"} "$@"
 
 # Provide a redirect from the root doc directory to the crate's docs
 if [ -f "./resources/web/redirect/index.html" ]; then

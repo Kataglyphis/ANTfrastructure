@@ -25,6 +25,8 @@ SITE = "http://site.invalid/site/"
 SKIP_SCHEMES = ("mailto:", "javascript:", "data:", "tel:", "about:")
 REFRESH_URL = re.compile(r"url\s*=\s*['\"]?([^'\";]+)", re.IGNORECASE)
 LINE_RANGE = re.compile(r"^(\d+)-(\d+)$")
+# urljoin reads `super::Subscriber` as a URL with the scheme `super:`; it is an intra-doc link rustdoc could not resolve.
+RUST_PATH = re.compile(r"^[A-Za-z_]\w*::[A-Za-z_]")
 
 
 @dataclass(frozen=True)
@@ -153,6 +155,9 @@ class Site:
         self.findings.setdefault(key, set()).add(source)
 
     def check_link(self, rel_page: str, base: str, link: str) -> None:
+        if RUST_PATH.match(link):
+            self.note("unresolved\t" + link, rel_page)
+            return
         hit = site_target(base, link)
         if hit is None:
             return

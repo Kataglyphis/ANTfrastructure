@@ -49,6 +49,23 @@ t_assert_contains "${out}" "anchor  a.html#nosuch"
 t_assert_contains "${out}" "anchor  b.html#here" "a same-page anchor is checked too"
 t_assert_fails _gate "${SITE}"
 
+t_case "an intra-doc link rustdoc left as a Rust path fails, keyed by the path"
+_site rustpath
+_page b.html '<a href="super::Subscriber">s</a> <a href="crate::dispatcher#setting-the-default-subscriber">d</a>'
+_page c.html '<a href="super::Subscriber">s</a> <a href="https://docs.rs/tracing/0.1.44/tracing/index.html">r</a>'
+out="$(t_out _gate "${SITE}")"
+t_assert_contains "${out}" "unresolved  super::Subscriber   <- b.html, c.html" "one key per path, every page that carries it"
+t_assert_contains "${out}" "unresolved  crate::dispatcher#setting-the-default-subscriber"
+t_assert_eq 2 "$(t_out _gate "${SITE}" --print-keys | grep -c '^unresolved')" "the docs.rs link beside it is external, not a finding"
+t_assert_fails _gate "${SITE}"
+printf 'unresolved\tsuper::Subscriber\nunresolved\tcrate::dispatcher#setting-the-default-subscriber\n' > "${_WORK}/rustpath.allow"
+t_assert_ok _gate "${SITE}" --allow "${_WORK}/rustpath.allow"
+
+t_case "a URL scheme with one colon is not a Rust path"
+_site scheme
+_page b.html '<a href="tel:+49">t</a> <a href="urn:isbn:0451450523">u</a> <a href="std:x">s</a>'
+t_assert_ok _gate "${SITE}"
+
 t_case "an anchor matches the id as written (rustdoc's impl ids) or decoded"
 _site encoded
 _page b.html '<a href="a.html#impl-From%3CT%3E-for-X">x</a>'

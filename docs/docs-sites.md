@@ -131,7 +131,11 @@ What it checks, in every HTML document of the tree:
 - **every anchor** names an `id` or `<a name>` on its target page, as written or
   decoded (rustdoc writes `impl-From%3CT%3E-for-T`). `#top` always resolves, and a
   rustdoc source range (`lib.rs.html#22-31`) needs both ends;
-- **the root has an `index.html`.**
+- **the root has an `index.html`;**
+- **no link is a Rust path** (`super::Subscriber`, `crate::dispatcher#…`). An intra-doc link
+  rustdoc could not resolve keeps its text as the `href`. `urljoin` would read `super::` as a URL
+  scheme and skip it as external. So the gate reports it as `unresolved`, one key per path. A
+  scheme with one colon (`tel:`, `urn:`) is still a URL.
 
 A `<base href>` moves the links of its page, as in a browser. A root-absolute one (`/app/`, as
 Flutter's `--base-href` writes it) names the site's root, as an absolute link does. A file without
@@ -139,8 +143,8 @@ Flutter's `--base-href` writes it) names the site's root, as an absolute link do
 fragments are injected into other pages, so their links are relative to those.
 
 **Known exceptions** go into an allow file, one key per line, `#` comments allowed.
-The keys are what the gate prints: `missing<TAB><path>` and
-`anchor<TAB><page>#<fragment>`, paths relative to the site root. It follows the
+The keys are what the gate prints: `missing<TAB><path>`,
+`anchor<TAB><page>#<fragment>` and `unresolved<TAB><link>`, paths relative to the site root. It follows the
 two-way rule of [the allowlist contract](code-quality-tooling.md#the-allowlist-contract):
 a finding not frozen fails, and a frozen key that resolves now is STALE and fails.
 `--print-keys` prints the current findings in that shape, to seed the file. A
@@ -155,6 +159,30 @@ Measured 2026-10-19 in `:latest`:
 | ANThology through `builder: dartdoc` | 1070 | 0, once the builder copied `images/`: the README's `images/logo.png` was the one dead link |
 
 Suite `linux/scripts/tests/test-site-links.sh`; the `site-links.*` mutations prove it.
+
+## Links into dependencies
+
+`cargo_build_doc.sh` documents with the pinned nightly: `cargo +${RUST_NIGHTLY_TOOLCHAIN} doc
+-Zrustdoc-map`. It maps crates.io dependencies to docs.rs. A stable `cargo doc --no-deps` writes
+no page for a dependency. Rustdoc then cannot resolve a link into one, and keeps its text as the
+`href`. That text arrives through the blanket impls rustdoc copies onto every type page. tracing's
+`WithSubscriber` and `Instrument` link `dispatcher#…`, `super::Subscriber` and `crate::Span`.
+burn's `Module` links `ModuleMapper`. With the map, each goes to the dependency's page on docs.rs.
+
+- The pin is `RUST_NIGHTLY_TOOLCHAIN` in `versions.env`. The image already carries it for the web
+  lane, and a non-empty environment value wins. A host without it fails with the
+  `rustup toolchain install` line to run.
+- The gate does not check docs.rs links: they are external.
+- `--extern-html-root-url` does the same per crate. Stable rustdoc refuses it without
+  `-Z unstable-options`.
+- Documenting a dependency beside the workspace (`-p tracing`) does not help. The workspace's own
+  pages still carry the raw text. Only `cargo doc` without `--no-deps` resolves it locally. For
+  OxidANT that documents every crate it depends on.
+
+Measured in WSL against OxidANT's develop, on 18 of its 20 crates. The two that need GTK were left
+out. Stable `--no-deps` gives 69 findings: 63 `missing` and 6 `unresolved`. The nightly with the
+map gives none of them. The builds took 45 s and 48 s, with no rustdoc warning either way. Suite
+`linux/scripts/tests/test-cargo-build-doc.sh`; the `rust.cargo-doc-*` mutations prove it.
 
 ## The sidebar toggle check
 

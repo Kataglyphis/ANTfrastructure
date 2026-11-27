@@ -19,6 +19,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — the rustdoc site links its dependencies to docs.rs, and the link gate sees Rust paths
+
+- `cargo_build_doc.sh` runs `cargo +${RUST_NIGHTLY_TOOLCHAIN} doc -Zrustdoc-map` with crates.io mapped to docs.rs
+  (owner decision). Stable `--no-deps` gave rustdoc no page for a dependency, so every link into one stayed raw
+  text. tracing's blanket impls put `dispatcher#…` on every OxidANT type page, which OxidANT froze as 60
+  `missing <module>/dispatcher` rows. tracing 0.1.44 is correct: built with its dependencies, the same link
+  resolves, so no upstream fix is due. The pin comes from `versions.env`, and a host without that toolchain
+  fails with the install line.
+- `verify_site_links.py` reports a link that is a Rust path (`super::Subscriber`, `crate::Span`) as
+  `unresolved<TAB><link>`. `urljoin` read `super:` as a URL scheme and skipped those as external, four per
+  type page on rust.jonasheinle.de.
+- Measured in WSL on OxidANT's develop, 18 of 20 crates: 69 findings with stable (63 `missing`, 6
+  `unresolved`), none of them with the nightly. Six new recipes; nine builder and gate mutants go red. OxidANT
+  drops its frozen rows once this lands. docs/docs-sites.md § Links into dependencies.
+
 ## 2026-11-28 — an AMD bundle's self-test proves its own plugin module on a host without the GPU (develop-red #276)
 
 - OrchestrANT's `gpu-lin / inventory (amd, x64, latest-rocm)` got past the closure with 5f8bc07ae and stopped at
