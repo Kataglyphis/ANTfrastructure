@@ -2795,6 +2795,18 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
          is `$payloadFiles` plus the exe, the release pattern is `*/packages/*-setup.exe`. The Start-menu shortcut
          runs `gui`, so the MSI and MSIX shortcuts change in the same commit; no PATH entry. Install the x64 setup on
          the bare runner (`host-command`), because the image carries every DLL; then arm64 on the device.
+         **In OxidANT 2026-11-27 (4890c0a), its Windows round running:** `Build-Windows.ps1`'s NSIS Setup step
+         builds `kataglyphis_cli-<VERSION>-<arch>-setup.exe` into `dist/windows-<arch>/packages/`. The payload is the
+         verified portable bundle rather than `$payloadFiles`, so the setup installs what the zip ships. A per-build
+         `New-TestSigningCertificate` signs it, its random password only in `MSIX_PFX_PASSWORD`; the MSI guard reads
+         `wix/main.wxs`'s UpgradeCode; the MSI (`Arguments='gui'`) and MSIX (`uap10:Parameters="gui"`) shortcuts start
+         `gui` too. The bundle now ships `licenses/msvc-runtime/` (`Copy-MsvcRuntimeNotice`), and the licence page
+         appends its notice. The licence verifier, the ORT licence check and `Assert-PackageMsvcRuntimeNotice` grade the
+         written setup. OxidANT's `Test-NsisSetup.ps1` installs, upgrades, runs and uninstalls the x64 setup on the bare
+         runner; the hub's device job does the arm64 one through `installed-run-command`. The release collects
+         `*-setup.exe`. Left: the green Windows round; OxidANT's MSI and MSIX payloads still lack the MSVC notice; and
+         `Test-NsisSetup.ps1` and the device job's inline install are two copies of one check, which the second
+         consumer turns into one hub script.
       8. Then OrchestrANT (format `nsis` in the Python packager), OmniAccelerANT (the hub takes
          `WindowsAppInstallers.Common` with `Manufacturer` as a parameter, a runner action installs pinned WiX and
          NSIS, and ObservANT's hooks add a local-subnet firewall rule and an all-users Startup shortcut that the
@@ -2923,6 +2935,10 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       collector ships a byte-identical copy from several lanes once and proves each index complete with
       `check-source-offer.py`; `Publish-NativeSourceOffer` refuses one name twice. No consumer change. Not run: a real
       release. CON227 stays open for the legal question beside the MSVC runtime and the unpinned FFmpeg tarball.
+      **FFmpeg pin prepared 2026-11-27, held for a rebuild:** `FFMPEG_SHA256` (the tag archive's decompressed
+      stream) and `FFMPEG_TAG_COMMIT` in `versions.env`, Linux's `fetch-ffmpeg.sh`, the Windows stream check and
+      `spec_ffmpeg_tag_commit`. It re-keys the Linux compiler image and the Windows FFmpeg stage, so it lands with the
+      next rebuild the owner releases.
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
   Later measurement, 2026-11-15: the complete `d9f129af` CUDA repeat has 6,304
   primary hits, including 605 NVCC hits, zero misses/cache errors/compiler failures

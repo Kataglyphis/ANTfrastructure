@@ -5,6 +5,15 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## A download by artifact ID right after its upload finds the run's other artifacts
+
+`Unable to download artifact(s): None of the provided artifact IDs were found`, after `Found N artifact(s)`, in the
+`actions/download-artifact` step that follows the `upload-artifact` which produced the ID, means the run's artifact
+listing had not caught up with the finalized upload. A ~320 MB AccelerANTgine GPU archive missed it in two of three
+runs, so a job rerun helps only sometimes. Wait before such a download in the same job (AccelerANTgine's
+`linux-gpu-candidate.yml` waits 90 s), or download in a later job; the check after it must still fail on a missing
+archive, so never add `continue-on-error`.
+
 ## ONNX Runtime clone asks for a GitHub username
 
 `fatal: could not read Username for 'https://github.com': No such device or address` while

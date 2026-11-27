@@ -19,6 +19,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — a failure mode for a download right after its upload; CON302 pilot and FFmpeg pin status
+
+- `failure-modes.md` names `None of the provided artifact IDs were found` after a fresh upload: the run's listing
+  lags, so a job waits before the download or downloads in a later job (AccelerANTgine 71cbf1d).
+- `BACKLOG.md` records CON302 step 7 in OxidANT (4890c0a) and what it leaves, and the FFmpeg pin that waits for
+  the next rebuild.
+
 ## 2026-11-27 — the ORT Web stager for an app's site (OmniAccelerANT browser port step 1, CON233)
 
 - `linux/scripts/lib/stage-ort-web.py` stages the image's ORT Web builds, JSPI, Asyncify and CPU, and JSEP with
