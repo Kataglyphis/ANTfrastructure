@@ -44,4 +44,25 @@ t_assert_eq 2 "$(t_rc _parse bundle --no-test)"
 t_case "package rejects bundle-only options"
 t_assert_eq 2 "$(t_rc _parse package --wheel-dir dir)"
 t_assert_eq 2 "$(t_rc _parse package --python-version 3.14.0)"
+
+t_case "AMD's deviceless error stands in for a registration only where no ROCm device exists"
+_dev() { bash -c 'source "$1"; shift; python_app_deviceless_args "$@"' _ "${LIB}" "$@"; }
+_nokfd="$(mktemp -u)"
+t_assert_eq $'--deviceless-plugin-error\nHIP failure 100: no ROCm-capable device is detected' "$(_dev MIGraphX "${_nokfd}")"
+t_assert_eq '' "$(_dev MIGraphX /dev/null)" "a character device at the path is the GPU"
+t_assert_eq '' "$(_dev CUDAExecutionProvider "${_nokfd}")" "CUDA's EP registers on import and needs no stand-in"
+
+t_case "the self-test gets the provider's flags and never the image's AMD module root"
+# _st [args...]: python_app_selftest under a python3 that prints its arguments and what it sees of ORT_AMDGPU_EP_ROOT.
+_st() {
+  ORT_AMDGPU_EP_ROOT=/usr/local/lib/onnxruntime-ep-amdgpu bash -c 'source "$1"; shift
+    python3() { printf "<%s>" "$@"; printf " root=%s\n" "${ORT_AMDGPU_EP_ROOT-unset}"; }
+    python_app_deviceless_args() { if [ "$1" = MIGraphX ]; then printf "%s\n" --deviceless-plugin-error "no device"; fi; }
+    python_app_selftest "$@"' _ "${LIB}" "$@"
+}
+t_assert_eq '<checker><--root></b><--require-registered-plugin><MIGraphX><--deviceless-plugin-error><no device><--><app><--self-test> root=unset' \
+  "$(_st checker /b MIGraphX app --self-test)"
+t_assert_eq '<checker><--root></b><--require-available-provider><CUDAExecutionProvider><--><app> root=unset' "$(_st checker /b CUDAExecutionProvider app)"
+t_assert_eq '<checker><--root></b><--><app> root=unset' "$(_st checker /b '' app)" "a CPU bundle requires no provider"
+t_assert_contains "$(PYTHON_APP_REQUIRE_ACTIVE_PROVIDER=true _st checker /b MIGraphX app)" '<--require-provider><MIGraphX>'
 t_summary

@@ -70,6 +70,8 @@ eval "$(t_fn_src "$SUBJECT" prove)" || exit 1
 export SELFTEST=checker
 export RUN_TESTS=true
 eval "$(t_fn_src "${_T_SCRIPTS}/06-packaging/python-app-cli.sh" python_app_provider_requirement)" || exit 1
+eval "$(t_fn_src "${_T_SCRIPTS}/06-packaging/python-app-cli.sh" python_app_deviceless_args)" || exit 1
+eval "$(t_fn_src "${_T_SCRIPTS}/06-packaging/python-app-cli.sh" python_app_selftest)" || exit 1
 export required_provider=MIGraphX
 python3() { printf '%s\n' "$@" > "${work}/provider-args"; }
 info() { :; }

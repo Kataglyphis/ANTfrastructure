@@ -32226,8 +32226,8 @@
  },
  {
   "id": "package.python-gpu-hardware-option",
-  "target": "linux/scripts/06-packaging/python-app-package.sh",
-  "find": "if [ \"${PYTHON_APP_REQUIRE_ACTIVE_PROVIDER:-false}\" = true ]; then provider_args+=(--require-provider \"${required_provider}\"); fi",
+  "target": "linux/scripts/06-packaging/python-app-cli.sh",
+  "find": "if [ \"${PYTHON_APP_REQUIRE_ACTIVE_PROVIDER:-false}\" = true ]; then args+=(--require-provider \"${provider}\"); fi",
   "replace": ":",
   "test": "bash linux/scripts/tests/test-python-app-package-licenses.sh",
   "why": "The hardware validation option must reach the installed package self-test."
@@ -37539,10 +37539,58 @@
  {
   "id": "packaging.selftest-registered-plugin-required",
   "target": "linux/scripts/06-packaging/python-app-selftest.py",
-  "find": "    if args.require_registered_plugin and args.require_registered_plugin not in report.get(\"registered_plugin_eps\", []):\n",
-  "replace": "    if False:\n",
+  "find": "    if not name or name in registered:\n        return \"\"\n",
+  "replace": "    return \"\"\n",
   "test": "bash linux/scripts/tests/test-python-app-selftest.sh",
   "why": "a plugin EP is never in onnxruntime's available list; registration is the only fact the self-test can prove"
+ },
+ {
+  "id": "packaging.selftest-deviceless-bundle-module",
+  "target": "linux/scripts/06-packaging/python-app-selftest.py",
+  "find": "deviceless_error in error and root.rstrip(\"/\") + \"/\" in error",
+  "replace": "deviceless_error in error",
+  "test": "bash linux/scripts/tests/test-python-app-selftest.sh",
+  "why": "inside the ROCm image the image's module reaching HIP proves nothing about the bundle's copy"
+ },
+ {
+  "id": "packaging.selftest-deviceless-reason",
+  "target": "linux/scripts/06-packaging/python-app-selftest.py",
+  "find": "if deviceless_error and root and deviceless_error in error and ",
+  "replace": "if deviceless_error and root and ",
+  "test": "bash linux/scripts/tests/test-python-app-selftest.sh",
+  "why": "an undefined symbol or a missing file is a broken module, not a missing GPU"
+ },
+ {
+  "id": "packaging.selftest-deviceless-root",
+  "target": "linux/scripts/06-packaging/python-app-selftest.py",
+  "find": "if deviceless_error and root and ",
+  "replace": "if deviceless_error and ",
+  "test": "bash linux/scripts/tests/test-python-app-selftest.sh",
+  "why": "without --root any module path would pass as the bundle's"
+ },
+ {
+  "id": "packaging.deviceless-only-without-device",
+  "target": "linux/scripts/06-packaging/python-app-cli.sh",
+  "find": "  if [ \"${1:-}\" != MIGraphX ] || [ -c \"${2:-/dev/kfd}\" ]; then return 0; fi\n",
+  "replace": "  if [ \"${1:-}\" != MIGraphX ]; then return 0; fi\n",
+  "test": "bash linux/scripts/tests/test-python-app-cli.sh",
+  "why": "a host with the GPU must still register the EP; the stand-in is for hosts without one"
+ },
+ {
+  "id": "packaging.selftest-deviceless-args-passed",
+  "target": "linux/scripts/06-packaging/python-app-cli.sh",
+  "find": "    while IFS= read -r line; do args+=(\"${line}\"); done < <(python_app_deviceless_args \"${provider}\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-app-cli.sh",
+  "why": "without the flag a hosted AMD build fails at a registration no runner without a GPU can make"
+ },
+ {
+  "id": "packaging.selftest-bundle-amd-module",
+  "target": "linux/scripts/06-packaging/python-app-cli.sh",
+  "find": "  (unset ORT_AMDGPU_EP_ROOT; python3 \"${selftest}\" \"${args[@]}\" -- \"$@\")\n",
+  "replace": "  (python3 \"${selftest}\" \"${args[@]}\" -- \"$@\")\n",
+  "test": "bash linux/scripts/tests/test-python-app-cli.sh",
+  "why": "inside the ROCm image the variable names the image's module, so the self-test would prove that one instead"
  },
  {
   "id": "packaging.provider-requirement-flag",

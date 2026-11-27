@@ -184,8 +184,8 @@ docs/project-info.md | avg-sentence | 18.8
 docs/project-info.md | long-share | 12.2
 docs/project-info.md | ids-per-k | 4.1
 docs/project-info.md | bold-per-k | 9.2
-docs/python-app-bundles.md | avg-sentence | 16.7
-docs/python-app-bundles.md | long-share | 5.1
+docs/python-app-bundles.md | avg-sentence | 16.5
+docs/python-app-bundles.md | long-share | 4.9
 docs/python-app-bundles.md | ids-per-k | 3.2
 docs/python-app-bundles.md | bold-per-k | 6.8
 docs/python-ci.md | avg-sentence | 19.3

@@ -144,8 +144,18 @@ on import). A ROCm image requires the plugin MIGraphX EP, `MIGraphX`, in the rep
 `registered_plugin_eps`: ORT's available list never names a plugin, so the self-test registers
 `onnxruntime/capi/libmigraphx-ep.so` (the builder copies the image's module there, byte for byte
 `${ORT_AMDGPU_EP_ROOT}/lib/libmigraphx-ep.so`) and reports what it registered. Both hold for the
-packaged launchers too. This permits a build without GPU hardware; it does not prove GPU
-inference. `PYTHON_APP_REQUIRE_PROVIDER` (`CUDAExecutionProvider` or `MIGraphX`) can require the
+packaged launchers too. Neither proves GPU inference.
+
+**A host without the GPU.** AMD's module asks HIP for its devices while it registers. Where
+`/dev/kfd` is missing, it fails with `HIP failure 100: no ROCm-capable device is detected`. Only
+there does `python_app_selftest` (`python-app-cli.sh`) pass `--deviceless-plugin-error`. The
+report's `plugin_ep_errors["MIGraphX"]` then stands in for the registration. It must carry that
+reason and name a module under the bundle. That proves the bundled module loads, resolves its
+imports and reaches HIP. Any other reason fails, and so does the image's copy. The self-test runs
+with `ORT_AMDGPU_EP_ROOT` unset. Inside the ROCm image that variable names the image's module, and
+the app would register that one instead.
+
+`PYTHON_APP_REQUIRE_PROVIDER` (`CUDAExecutionProvider` or `MIGraphX`) can require the
 EP explicitly and must agree with the image variant. The bundle manifest records the
 requirement, and a package from that bundle cannot use `--no-test` to bypass it.
 On a host with a compatible GPU, set `PYTHON_APP_REQUIRE_ACTIVE_PROVIDER=true` while running the

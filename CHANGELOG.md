@@ -19,6 +19,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — an AMD bundle's self-test proves its own plugin module on a host without the GPU (develop-red #276)
+
+- OrchestrANT's `gpu-lin / inventory (amd, x64, latest-rocm)` got past the closure with 5f8bc07ae and stopped at
+  the self-test (run 46072754506): `the self-test did not register the plugin EP MIGraphX: []`. AMD's module
+  asks HIP for its devices while it registers, so the hosted runner answered `HIP failure 100: no ROCm-capable
+  device is detected`. The docs' "permits a build without GPU hardware" was never true. The report also named
+  the image's module, because `ORT_AMDGPU_EP_ROOT` pointed there.
+- `python_app_selftest` in `python-app-cli.sh` now runs the self-test for both drivers, with
+  `ORT_AMDGPU_EP_ROOT` unset, so the app registers the bundle's copy (owner decision). Where `/dev/kfd` is
+  missing, `python_app_deviceless_args` adds `--deviceless-plugin-error`. `python-app-selftest.py` then accepts
+  the registration's failure in place of the registration, and only when it carries HIP error 100 and names a
+  module under `--root`. Any other reason, an image path or a missing `--root` still fails, and a host with
+  the device still has to register.
+- Suites: 6 new self-test assertions, 7 for the CLI helpers. Six new recipes, two retargeted to the moved
+  lines; eleven mutants go red. docs/python-app-bundles.md § Linux GPU bundles.
+
 ## 2026-11-27 — a ROCm Python bundle carries the chain core its plugin MIGraphX EP links (develop-red #276)
 
 - OrchestrANT's `gpu-lin / inventory (amd, x64, latest-rocm)` (runs 43409294907, 45983749575) stopped in the
