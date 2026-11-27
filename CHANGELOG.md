@@ -92,6 +92,25 @@
   stage keeps its cache key. Not in an image yet: the owner holds the Windows rebuild.
 - `SourceOffer.Build.Tests.ps1` and six recipes; nine FFmpeg-RUN mount recipes re-anchored on the two new mounts.
 
+## 2026-11-27 — rustup downloads through curl on the emulated package stages
+
+- The arm64 package stage failed twice in four runs: rustup 1.29.3 aborted under qemu-aarch64 while downloading,
+  once in `rustup-init` and once in all three tries of `rustup component add rustfmt`.
+- In the arm64 wrapper under qemu, the rustls backend aborted 3 of 6 installs and the default 1 of 6, while
+  `RUSTUP_USE_CURL=1` passed 18 of 18. `RUSTUP_IO_THREADS=1` and `RUSTUP_CONCURRENT_DOWNLOADS=1` did not help.
+- `ensure_native_rust_toolchain` runs `install-rust.sh` with `RUSTUP_USE_CURL=1`. `install-rust.sh` stays untouched,
+  so the toolchain stage keeps its key; only the package stage re-keys. `rust.package-rustup-downloads-with-curl`
+  holds it.
+
+## 2026-11-27 — the free-threaded WebGPU proof reads stdout only
+
+- The first riscv64 runtime smoke since the WebGPU factory checks failed `no unique successful free-threaded WebGPU
+  factory proof`. ORT's `Unknown CPU vendor` warning under qemu-riscv64 went to stderr, which the probe had merged
+  into the proof row.
+- `check-free-threaded-wheels.sh` keeps the factory's stderr apart and adds it to the row only when the proof fails.
+  The transport test's stub warns on stderr, and `probe.ft-webgpu-proof-reads-stdout` holds it. The smoke runs on the
+  host, so no image re-keys.
+
 ## 2026-11-26 — the riscv64 NumPy probe wheel builds outside its pool
 
 - The riscv64 wrapper failed `FT-PROBE-DEPS FAIL: probe dependency pool has unexpected entries` after `uv build`

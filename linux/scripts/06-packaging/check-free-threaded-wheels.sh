@@ -47,11 +47,12 @@ for w in "${store}"/*.whl; do
     printf 'FTS UNPROVED %s %s\n' "${n%%-*}" "$(printf '%s' "${out}" | tr '\n' ' ')"
   fi
   if [ "$(ft_wheel_row "${n%%-*}" | cut -d'|' -f1)" = onnxruntime ]; then
+    # stdout alone is the proof: ORT's early warnings (Unknown CPU vendor under qemu-riscv64) would head the row.
     if out="$(cd / && "${work}/venv/bin/python" -I /opt/scripts/03-media/final/ort_webgpu_runtime.py \
-      --phase free-threaded --source-ref "${WEBGPU_EXPECT_REF:?missing ORT source pin}" 2>&1)"; then
+      --phase free-threaded --source-ref "${WEBGPU_EXPECT_REF:?missing ORT source pin}" 2>"${work}/webgpu.err")"; then
       printf 'FTS WEBGPU %s %s\n' "${n%%-*}" "$(printf '%s' "${out}" | tr '\n' ' ')"
     else
-      printf 'FTS WEBGPU-FAIL %s %s\n' "${n%%-*}" "$(printf '%s' "${out}" | tr '\n' ' ')"
+      printf 'FTS WEBGPU-FAIL %s %s\n' "${n%%-*}" "$({ printf '%s\n' "${out}"; cat "${work}/webgpu.err"; } | tr '\n' ' ')"
     fi
   fi
 done

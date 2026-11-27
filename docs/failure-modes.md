@@ -3757,6 +3757,21 @@ install copied `_runtime.cpython-315-<triple>.so`. It is the same CMake 4.4.5 ca
 kept the GIL pass's cached `NB_SUFFIX`. `_iree_free_threaded_rebuild` drops it, passes `SKBUILD_SOABI` and fails its
 rebuild when `build.ninja` builds no `nanobind-static-*-ft` library.
 
+### `qemu: uncaught target signal 6 (Aborted)` in rustup on the arm64 package stage
+
+The package stage reinstalls Rust natively for arm64 and riscv64 under qemu-user. rustup 1.29 aborts during a
+download, in `rustup-init` or in `rustup component add rustfmt`, and three retries can all abort. Its default TLS
+backend does it: in the arm64 wrapper, the rustls backend aborted 3 of 6 component installs and the curl backend
+none of 18. `ensure_native_rust_toolchain` runs the installer with `RUSTUP_USE_CURL=1`. rustup warns that the curl
+backend is deprecated; it still works in 1.29.3.
+
+### `no unique successful free-threaded WebGPU factory proof (riscv64)` on a proved factory
+
+The riscv64 runtime smoke passes the native and GIL WebGPU factories, then fails the free-threaded one. Under
+qemu-riscv64, ORT writes `Unknown CPU vendor` to stderr before the proof. The probe captured stderr with stdout, so
+the warning headed the `FTS WEBGPU` row, and the check wants the row to start with `WEBGPU-FACTORY OK:`. The probe
+now reads the proof from stdout alone and shows stderr only when the proof fails.
+
 ### `content digest sha256:…: not found` when the runtime lane pushes a wrapper
 
 The wrapper built and passed its smoke, and the push fails in 2 s right after `nerdctl image convert --zstd --oci`.

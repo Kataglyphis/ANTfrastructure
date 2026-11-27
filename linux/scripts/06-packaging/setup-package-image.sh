@@ -279,7 +279,8 @@ ensure_native_rust_toolchain() {
     if [ -d "${CARGO_HOME:?}" ]; then
         find "${CARGO_HOME}" -mindepth 1 -maxdepth 1 ! -name registry -exec rm -rf {} +
     fi
-    RUST_INSTALL_CARGO_C=0 BUILD_MODE=native bash /opt/scripts/toolchain/install-rust.sh
+    # rustup's default TLS download aborts under qemu-user; curl does not: docs/failure-modes.md
+    RUSTUP_USE_CURL=1 RUST_INSTALL_CARGO_C=0 BUILD_MODE=native bash /opt/scripts/toolchain/install-rust.sh
 }
 
 # Only what root owns: chown -R would copy whole trees up. See docs/artifact-copy-completeness.md § The rust toolchain must be writable by the runtime user
