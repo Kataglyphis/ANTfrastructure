@@ -19,6 +19,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — `prepare-linux-ci-host` takes the full cleanup below 100 GB free
+
+- `fast-floor-gb` defaults to 100, was 90. The larger x86-64-v3 `:latest` with Flutter 3.50 left
+  OxidANT's and OmniAccelerANT's Linux build jobs out of disk under the fast cleanup. OxidANT 93a2bad
+  passed `free-disk-space: 'true'` meanwhile; the hub default now covers it.
+- Its amd64 manifest (index `abb3030d`) holds 12.5 GB of zstd layers, summed from the registry
+  manifest, and 38.4 GB unpacked, counted from each layer's decompressed tar stream. The
+  2026-11-03 index `7d4d4129` measured 13.0 GB (gzip) and 36.6 GB the same way, so the action's
+  "about 72 GB unpacked" was never the unpacked size; that text goes.
+- A new last step prints `df -BG /` after the pull, so the next floor is sized from a measurement. It
+  cannot fail the job.
+- `test-select-disk-cleanup.sh` follows the new floor and pins the default and the report step.
+  `actions.disk-cleanup-floor-default` and `actions.free-disk-after-pull-reported` prove it bites.
+
 ## 2026-11-27 — shared helpers for three checks the consumers hand-roll (fleet-health #364)
 
 - `Assert-PackageOrtProviderSet` in `WindowsPackageBinary.Common` compares one package directory's

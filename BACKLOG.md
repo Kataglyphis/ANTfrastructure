@@ -3027,8 +3027,8 @@ moves its pin. The consumer steps are in the three repos' BACKLOGs.
       `install-lint-tools.sh` installs gitleaks at the pin on amd64 and arm64 (a real arm64 run reported 8.30.1 and
       found its planted token), the smoke's `FACT lint-tools` and the contract row carry it. Left: the next chain, then
       the secret-scan gate with networking off on amd64 and arm64.
-- [ ] **CON223 — a smaller Linux image for lanes that need no toolchain** [L, ★★]. Chain work. `:latest` takes about
-      72 GB unpacked, so a 72 GB `ubuntu-26.04` runner cannot hold it and a job: WebDavClient run 41731774668 and
+- [ ] **CON223 — a smaller Linux image for lanes that need no toolchain** [L, ★★]. Chain work. `:latest` is 38 GB unpacked
+      (12.5 GB of layers, measured 2026-11-27), and a pull takes about twice that on disk, so a 72 GB `ubuntu-26.04` runner cannot hold it and a job: WebDavClient run 41731774668 and
       OmniAccelerANT's docs run 41731757638 ran out of disk. Done when docs and pure-Python lanes pull an image that
       fits that runner with its job, gated like `:latest`.
 

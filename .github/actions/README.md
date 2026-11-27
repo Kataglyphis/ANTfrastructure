@@ -326,11 +326,13 @@ parallel layer downloads; a number is merged into `daemon.json` and the daemon r
 the pull, a measurement since 2026-10-17). Outputs: `pull-seconds`, `cleanup-seconds`.
 
 `pull-first` (default `'true'`) logs in and starts the pull in the background
-before the cleanup and the checkout, and waits for it as the last step. The pull
+before the cleanup and the checkout, and waits for it after them. The pull
 is mostly a serial unpack, so the cleanup no longer sits in front of it.
 `free-disk-space` defaults to `fast`, the quick part of the cleanup (.NET,
 Haskell, swap); `'true'` is the full set for a lane that needs the extra ~20 GB.
-A runner with less than `fast-floor-gb` (default 90) free before the pull gets the full set.
+A runner with less than `fast-floor-gb` (default 100) free before the pull gets the full set.
+The first x86-64-v3 amd64 `:latest` measured 12.5 GB compressed and 38.4 GB unpacked.
+The last step prints `df -BG /`, the free disk after the pull, and never fails the job.
 Together they took the x64 prologue from 444 to 311 s and the arm64 one from 323
 to 229 s, measured beside the Windows prologue in the page
 `prepare-windows-container-host` links above.

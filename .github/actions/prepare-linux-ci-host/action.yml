@@ -68,8 +68,8 @@ inputs:
   free-disk-space:
     description: >-
       Reclaim runner disk. 'fast' (the default) runs the quick part of the jlumbroso
-      set (.NET, Haskell, swap), which leaves 54 GB free on x64 and 93 GB on arm64
-      once the image is in; below fast-floor-gb free it runs the full set instead.
+      set (.NET, Haskell, swap), which left 54 GB free on x64 and 93 GB on arm64
+      once the smaller pre-x86-64-v3 image was in; below fast-floor-gb free it runs the full set instead.
       'true' runs the full set (tool cache, Android, large apt packages too: 75 and
       99 GB free, 2-3 min beside the pull on x64), for a lane whose build trees
       outgrow that. 'false' runs none.
@@ -77,10 +77,11 @@ inputs:
     default: 'fast'
   fast-floor-gb:
     description: >-
-      Free GB under which 'fast' becomes the full cleanup: the amd64 image takes about
-      72 GB unpacked, and a job needs room for its checkout and build trees.
+      Free GB under which 'fast' becomes the full cleanup: the amd64 image measured
+      12.5 GB compressed and 38.4 GB unpacked, and a job needs room for its checkout and
+      build trees. The last step prints the free disk after the pull.
     required: false
-    default: '90'
+    default: '100'
   min-free-gb:
     description: >-
       Free GB under which the job stops before the pull: a 72 GB runner starts near 19 GB and
@@ -91,7 +92,7 @@ inputs:
   pull-first:
     description: >-
       'true' (the default) logs in and starts the pull in the background before the
-      cleanup and the checkout, then waits for it as the last step, so the cleanup
+      cleanup and the checkout, then waits for it after them, so the cleanup
       no longer sits in front of the pull. 'false' keeps the old order: cleanup,
       checkout, login, pull.
     required: false
@@ -175,7 +176,7 @@ runs:
         nohup bash "${GITHUB_ACTION_PATH}/pull-image.sh" "${IMAGE}" "${ATTEMPTS}" "${TIMEOUT}" "${state}" \
           > "${state}.log" 2>&1 < /dev/null &
         echo "$!" > "${state}.pid"
-        echo "Pulling ${IMAGE} in the background (pid $!); the last step of this action waits for it."
+        echo "Pulling ${IMAGE} in the background (pid $!); a later step of this action waits for it."
 
     - name: Mark the cleanup start
       if: inputs.free-disk-space != 'false'
@@ -285,3 +286,9 @@ runs:
           echo "::error::the background pull of ${IMAGE} failed (exit ${rc}); its log is above"
           exit 1
         fi
+
+    # The next fast-floor-gb is sized from this figure, not from an estimate; a report never fails the job.
+    - name: Report the free disk after the pull
+      shell: bash
+      run: |
+        echo "free disk after the image pull (df -BG /): $(df -BG / | tail -n 1)" || true

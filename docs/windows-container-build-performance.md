@@ -468,9 +468,16 @@ background, runs the cleanup and the checkout beside it and waits for the pull l
 
 The image has grown since. Run 41715667182 (2026-11-03, `:latest` `7d4d4129`) on the 145 GB
 `ubuntu-26.04` and `ubuntu-26.04-arm` runners: the fast cleanup left 53.8 and 93.3 GB free after the
-pull, the full one 74.5 and 99.1 GB. x64 takes about 72 GB for the image, so a runner that starts
-below `fast-floor-gb` (default 90) free takes the full cleanup; the floor is a checked estimate and
-says nothing about what a job's own build trees need.
+pull, the full one 74.5 and 99.1 GB. x64 then took about 72 GB of disk for the image. Its amd64
+layers held 13.0 GB compressed, as gzip, and 36.6 GB unpacked, half of that.
+
+The first x86-64-v3 `:latest`, with Flutter 3.50, holds 12.5 GB compressed and 38.4 GB unpacked
+on amd64: 11.7 and 35.8 in the binary G that `df -BG` prints. The first figure sums the layer sizes
+in the registry manifest. The second counts each layer's tar stream after zstd. Under the fast
+cleanup it left OxidANT's and OmniAccelerANT's Linux build jobs out of disk. So a runner that starts
+below `fast-floor-gb` (default 100, was 90) free takes the full cleanup. The floor is a checked
+estimate and says nothing about what a job's own build trees need. The action's last step prints
+`df -BG /` after the pull, the figure the next floor is sized from.
 
 `ubuntu-26.04` also hands out a 72 GB root. Run 41731774668 drew one with 19 GB free at the start:
 the full cleanup ran and the pull finished, but a job then ran out of disk writing its venv. No

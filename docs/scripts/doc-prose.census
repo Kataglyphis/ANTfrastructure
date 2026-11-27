@@ -1,6 +1,6 @@
 # <page> | <metric> | <value>: a value may only fall. verify_doc_prose.py --write lowers the rows.
-.github/actions/README.md | avg-sentence | 22.2
-.github/actions/README.md | long-share | 22.7
+.github/actions/README.md | avg-sentence | 22.1
+.github/actions/README.md | long-share | 22.4
 .github/actions/README.md | ids-per-k | 2.4
 .github/actions/README.md | bold-per-k | 3.5
 AGENTS.md | avg-sentence | 16.2
@@ -280,10 +280,10 @@ docs/windows-clang-cl-sanitizers.md | avg-sentence | 20.4
 docs/windows-clang-cl-sanitizers.md | long-share | 16.7
 docs/windows-clang-cl-sanitizers.md | ids-per-k | 2.0
 docs/windows-clang-cl-sanitizers.md | bold-per-k | 6.0
-docs/windows-container-build-performance.md | avg-sentence | 19.9
-docs/windows-container-build-performance.md | long-share | 15.7
-docs/windows-container-build-performance.md | ids-per-k | 2.6
-docs/windows-container-build-performance.md | bold-per-k | 13.5
+docs/windows-container-build-performance.md | avg-sentence | 19.7
+docs/windows-container-build-performance.md | long-share | 15.2
+docs/windows-container-build-performance.md | ids-per-k | 2.5
+docs/windows-container-build-performance.md | bold-per-k | 13.2
 docs/windows-cross-builds.md | avg-sentence | 22.4
 docs/windows-cross-builds.md | long-share | 22.8
 docs/windows-cross-builds.md | ids-per-k | 7.9
