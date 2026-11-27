@@ -67,6 +67,15 @@
   stage keeps its cache key. Not in an image yet: the owner holds the Windows rebuild.
 - `SourceOffer.Build.Tests.ps1` and six recipes; nine FFmpeg-RUN mount recipes re-anchored on the two new mounts.
 
+## 2026-11-27 — the free-threaded WebGPU proof reads stdout only
+
+- The first riscv64 runtime smoke since the WebGPU factory checks failed `no unique successful free-threaded WebGPU
+  factory proof`. ORT's `Unknown CPU vendor` warning under qemu-riscv64 went to stderr, which the probe had merged
+  into the proof row.
+- `check-free-threaded-wheels.sh` keeps the factory's stderr apart and adds it to the row only when the proof fails.
+  The transport test's stub warns on stderr, and `probe.ft-webgpu-proof-reads-stdout` holds it. The smoke runs on the
+  host, so no image re-keys.
+
 ## 2026-11-26 — the riscv64 NumPy probe wheel builds outside its pool
 
 - The riscv64 wrapper failed `FT-PROBE-DEPS FAIL: probe dependency pool has unexpected entries` after `uv build`

@@ -31,6 +31,8 @@ case "$*" in
   *free-threaded-probe-deps.py*) printf '%s\n' "$0" "$@" > "${FT_DEPS_LOG}" ;;
   *ort_webgpu_runtime.py*)
     printf '%s\n' "$0" "$@" > "${FT_FACTORY_LOG}"
+    # ORT's early warning goes to stderr first, as under qemu-riscv64.
+    echo 'W:onnxruntime cpuid_info.cc:116 Unknown CPU vendor' >&2
     if [ "${FT_FACTORY_STATUS}" = 0 ]; then echo 'WEBGPU-FACTORY OK: actual-child-fixture'; else echo 'WEBGPU-FACTORY FAIL: child failed' >&2; fi
     exit "${FT_FACTORY_STATUS}" ;;
   *) echo 'compiled modules proved' ;;
@@ -63,8 +65,10 @@ for distribution in onnxruntime_dnnl onnxruntime_gpu onnxruntime onnxruntime_gen
       [[ "${interpreter}" == "${work}/fts."*/venv/bin/python ]] || _t_fail 'FT probe used a different interpreter'
       if [ "${child_status}" = 0 ]; then
         t_assert_contains "${output}" "FTS WEBGPU ${distribution} WEBGPU-FACTORY OK: actual-child-fixture"
+        t_assert_eq "FTS WEBGPU ${distribution} WEBGPU-FACTORY OK: actual-child-fixture" "$(grep -F -e "FTS WEBGPU ${distribution} " <<<"${output}")" "a stderr warning does not spoil the proof row"
       else
-        t_assert_contains "${output}" "FTS WEBGPU-FAIL ${distribution} WEBGPU-FACTORY FAIL: child failed"
+        t_assert_contains "${output}" "FTS WEBGPU-FAIL ${distribution}"
+        t_assert_contains "${output}" "WEBGPU-FACTORY FAIL: child failed" "a failed proof still shows the child's stderr"
       fi
     fi
     t_assert_contains "${output}" 'FTS DONE'
