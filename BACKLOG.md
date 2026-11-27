@@ -38,6 +38,9 @@ Decisions and checked closures live in [`docs/image-decisions.md`](docs/image-de
 **Windows GenAI source transport, 2026-11-18:** the full bd6 NVIDIA producer exported ONNX, FFmpeg, OpenCV and Hailo, then failed the original GenAI clone. A real CodeLinaro fetch verifies the original 0.19.0 commit/tree; the shared recovery path still requires complete final-source quality, producer, CUDA-repeat and hardware/CI acceptance. CON228 remains OPEN/DRAFT.
 
 **Windows ONNX source transport, 2026-11-18:** a primary-repository 404 prompted an identity-pinned fallback to the original 1.31.1 commit in the AMD-maintained fork. QNN header transport separately retains its original 1.29.0 commit and all six CMake patches. Sparse patch-drift CI shares the original source identity checks and fallback; its actual network result remains a separate requirement. Source transport checks do not complete the outstanding final-source producer, CUDA-repeat, hosted-CI or ARM64-device/publication requirements. CON228 remains OPEN/DRAFT.
+**Digests read 2026-11-27:** `:latest` is `abb3030d…` (amd64, arm64, riscv64; hub `98529b3e`, acceptance
+`20261127-084353-102a8abf`) and `:latest-rocm` `4de019ad…` (amd64; hub `872f7994`, acceptance of candidate
+`20261127-094807-0fe4e295` repeated after a full disk). Both passed all six consumers, and every layer is `tar+zstd`.
 **Digests read 2026-11-02:** `:latest-nvidia` is `70bc45db…`, `:latest-rocm` `05518138…` (created 2026-10-28),
 `:winamd64-nvidia` `b472f91b…` and `:winamd64-rocm` `774af209…`. Entries that cite the older Linux `a5d68fbe…` or
 `0e9dec34…` were not read again on the current digests.
@@ -366,6 +369,9 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       3. The "after" numbers, both recorded in `docs/image-decisions.md`.
       4. Not covered: clang's default, Rust, and Windows (CON265).
 
+      **2026-11-27:** item 2 is done. The runtime smoke of `:latest` `abb3030d…` and `:latest-rocm` `4de019ad…`
+      passes `x86-64-v3: 4 baseline fact(s) agree`. Left: items 1 and 3. The "before" image is no longer
+      `:latest`, only `7d4d4129…` by digest.
       Done when `check_amd64_isa` passes on a published amd64 image and both measurements are recorded.
       **Owner 2026-11-17:** not yet. First the "before" numbers on the published `:latest` on an idle host; the chain waits for his go after them.
       **Owner 2026-11-20:** he takes them with each consumer's `quality-report.sh --perf-host --update-baseline` on a fresh
@@ -546,6 +552,11 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       Done when those wheels install and import on the Pi's Debian 13 and in the clean-host job.
 
 - [ ] **CON79 — the cp314t chain twins reach the published images, and phase 2** [L, ★★]. Linux native
+      **riscv64 torch twin, 2026-11-27:** proved in the published `:latest` `abb3030d…`: the cp315t torch wheel loads
+      its `_C` with the GIL off under qemu-riscv64, and FT-STORE passed on all three arches. It had shipped without
+      `_C` since the CMake 4.4.5 bump, because scikit-build-core's `Python_FIND_ABI` made the cross FindPython miss
+      Development.Module (`097ceb94`). The free-threaded WebGPU factory proof passes on arm64 and riscv64 since
+      `98529b3e`, which keeps ORT's qemu stderr warning out of the proof row.
       **arm64 twin, 2026-11-05:** chain `20261105-024512` failed `Assert-NinjaFreeThreadedDefine`, because ORT's CMake only prints that it enables free-threading and a cross configure got no define.
       `007-pybind-free-threaded-define.patch` sets it on the pybind target, unproved until an arm64 chain builds it.
       **Item 3 read 2026-11-04, unchanged:** the twin plan skips `twin:<KNOB>`, `FT_TORCH_TWIN` is not on Windows, and the twin must share the torch RUN, so its mount re-keys the compile.
@@ -788,6 +799,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 ## Open — Linux image (all arches)
 
 - [ ] **CON238 — two test tools the images lack: cargo-mutants and pytest-timeout** [S, ★★]. Found by the audit
+      **Linux half published 2026-11-27:** the runtime smoke of `:latest` `abb3030d…` reports
+      `cargo-mutants=27.1.0` at its pin on amd64. Left: item 2, a `:winarm64` publish with pytest-timeout.
       of 2026-11-12. Source work at any time; both ship with the next planned chain. Next in line (owner, 2026-11-16):
       OxidANT's weekly `rust-mutants.yml` (`scripts/linux/run-mutants.sh`) warns and runs nothing until `:latest`
       carries the tool.
@@ -2159,9 +2172,13 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       containerd store names an image by its manifest digest, so the two legs' ids differ; the copy's source digest
       ties them. **Owner 2026-11-21: zstd from the next chain.** In source the same day: `runtime_push_tag` converts
       each runtime tag's gzip layers with `nerdctl image convert --zstd --oci` before the push (`CROSS_LAYER_COMPRESSION`,
-      default `zstd`), proven in place on a scratch image here and by `test-runtime-push.sh` with two recipes. Left: the
-      next chain, whose `:latest` manifests must list only `tar+zstd` layers, the first re-push's time per arch, and
-      a probe run against the published image.
+      default `zstd`), proven in place on a scratch image here and by `test-runtime-push.sh` with two recipes.
+      **First chain, 2026-11-27:** the in-place convert lost the wrapper's manifest under nerdctl 2.4 (the scratch proof
+      had a second image holding its content), so `5f16a9ff` converts to `<tag>-zstd` and retags. `:latest`
+      `abb3030d…` and `:latest-rocm` `4de019ad…` list only `tar+zstd` layers, 86 per arch. First re-push at the
+      build host's ~4-5 MB/s: amd64 11.7 GB in 2,497 s, arm64 6.2 GB in about 1,100-1,230 s, riscv64 4.3 GB in
+      923 s, rocm amd64 26.1 GB in 7,452 s over three attempts (GHCR closed two 7-8 GB layer uploads mid-transfer).
+      Left: a probe run against the published image.
 
 - [ ] **CON90 — finish the Python 3.15 rollout and remaining measurements** [L, ★★★].
       The default-image and x64 consumer rollout is recorded under
@@ -2304,17 +2321,6 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
 - [ ] **CON282 — GNU `time` in the Linux image** [S, ★]. `/usr/bin/time` is missing on every arch, so a peak-RSS
       measurement inside the image needs a Python `getrusage(RUSAGE_CHILDREN)` wrapper (BB's I13 measurement,
       2026-11-19). Done when `/usr/bin/time -v true` prints `Maximum resident set size` in `:latest`.
-
-- [ ] **CON283 — Pester in the Linux image's `pwsh`** [S, ★]. `pwsh` is installed but `Get-Module -ListAvailable
-      Pester` lists nothing (checked 2026-11-20 on arm64), so the hub's Pester 5 suites and a consumer's Pester
-      suites run only on Windows. BB's agents fetched Pester 3.4.0 into a scratch directory and patched its
-      `Get-WmiObject` lookup to run its 3.4 suites on Linux. Install Pester 5.7 at the version the Windows lanes
-      pin; Pester 3.4 needs WMI and stays a Windows tool.
-      **In source since 2026-11-15 (CON273):** `install_pwsh` installs Pester 6.2.0 (windows-x64.yml's floor) into
-      `$PSHOME/Modules` and fails the stage without it; the `:latest` checked here predates that source. Left: the
-      next chain, then decide 5.7 against 6.2. AccelerANTgine's and OmniAccelerANT's suites still use 3.4's
-      dash-less `Should Be`, which neither runs, and so do OxidANT's; each of the three BACKLOGs holds the migration
-      as blocked on this chain.
 
 - [ ] **CON287 — a slangc newer than the Vulkan SDK's** [S, ★]. Found 2026-11-20 from OxidANT's BACKLOG
       ("Texture streaming past the mip tail"): the image's slangc is the Vulkan SDK's (1.4.363.0 = Slang

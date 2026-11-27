@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — the backlog reads the published images: CON283 done, CON238, CON264, CON79 and CON99 advanced
+
+- `:latest` `abb3030d…` and `:latest-rocm` `4de019ad…` replace the backlog's digest baseline; both passed all six
+  consumers and carry only `tar+zstd` layers.
+- CON283 is done: the image carries Pester 6.2.0, and the owner keeps 6.2 rather than 5.7 (`docs/decisions.md`).
+- CON238's Linux half, CON264's fresh chain, CON79's riscv64 torch twin and CON99's first zstd re-push are recorded
+  with what each still lacks.
+
 ## 2026-11-27 — `prepare-linux-ci-host` takes the full cleanup below 100 GB free
 
 - `fast-floor-gb` defaults to 100, was 90. The larger x86-64-v3 `:latest` with Flutter 3.50 left
