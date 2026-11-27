@@ -259,4 +259,33 @@ t_assert_ok cmp -s "${_work}/host/libtop.so.1" "${b}/bin/libtop.so.1"
 t_assert_eq "libdep.so.1" "$(cat "${b}/lib/preload.list" 2>&1)"
 t_assert_ok walk --protect 'bin/libtop.so.1' --check
 
+t_case "--library-path: a protected file's library resolves in a stated bundle directory, which ld.so then really searches"
+# The rocm Python bundle: a never-patched plugin module beside the chain core its launcher puts on the library path.
+b="$(bundle library-path)"
+mkdir -p "${b}/stated"
+cp "${_work}/host/libtop.so.1" "${_work}/host/libdep.so.1" "${b}/stated/"
+t_assert_fails walk --protect 'bin/*'
+t_assert_contains "$(log)" "bin/app: libtop.so.1"
+t_assert_ok walk --protect 'bin/*' --library-path stated
+t_assert_fails test -e "${b}/lib/libtop.so.1"
+t_assert_fails test -e "${b}/lib/preload.list"
+t_assert_eq "" "$(runpath "${b}/bin/app")" "the protected file stays unpatched"
+t_assert_eq "closure 42" "$(env -i LD_LIBRARY_PATH="${b}/stated" "${b}/bin/app" 2>&1)" "the stated directory is what the loader needs"
+t_assert_ok env LD_LIBRARY_PATH="${_work}/host" bash "${CLOSURE}" --bundle "${b}" --lib-dir "${b}/lib" --ldd --relocatable \
+  --protect 'bin/*' --library-path stated
+t_assert_fails test -e "${b}/lib/libtop.so.1"
+t_assert_ok walk --protect 'bin/*' --library-path lib:stated --check
+
+t_case "--library-path: the census's rules for a launcher path, and no link out of the bundle"
+b="$(bundle library-path-refused)"
+mkdir -p "${b}/stated"
+for _path in /stated ../host stated/../stated nope 'stated::stated'; do
+  t_assert_fails walk --protect 'bin/*' --library-path "${_path}"
+  t_assert_contains "$(log)" "the closure's --library-path must name directories inside ${b}"
+done
+ln -s "${_work}/host/libtop.so.1" "${b}/stated/libtop.so.1"
+cp "${_work}/host/libdep.so.1" "${b}/stated/"
+t_assert_fails walk --protect 'bin/*' --library-path stated
+t_assert_contains "$(log)" "bin/app: libtop.so.1"
+
 t_summary

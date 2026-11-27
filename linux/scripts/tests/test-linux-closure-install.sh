@@ -253,6 +253,32 @@ t_assert_ok bash "${_loader}" --beside --external-library-path "${_work}/externa
 t_assert_eq "external-ok" "$(env -i LD_LIBRARY_PATH="::${_work}/sdk::" "${_work}/external-beside/app")" "beside host loader finds external runtime"
 t_assert_eq "external-ok" "$(env -i KATAGLYPHIS_BUNDLED_GLIBC=1 LD_LIBRARY_PATH="::${_work}/sdk::" "${_work}/external-beside/app")" "beside bundled loader finds external runtime"
 
+t_case "--library-path: the stated bundle directory reaches the loader on both glibc paths, external or not; a rerun keeps it"
+# The rocm Python bundle's capi: the plugin module's core sits there and no RUNPATH may name it.
+for _mode in plain external; do
+  _dir="${_work}/stated-${_mode}"
+  mkdir -p "${_dir}/lib" "${_dir}/runtime/capi"
+  cp "${_work}/sdk/libexternal.so" "${_dir}/runtime/capi/"
+  c++ -o "${_dir}/app" "${_work}/src/app.cpp" -ldl
+  _flags=(--beside --library-path runtime/capi)
+  [ "${_mode}" = plain ] || _flags+=(--external-library-path)
+  t_assert_ok bash "${_loader}" "${_flags[@]}" "${_dir}" "${_dir}/lib" app
+  t_assert_ok bash "${_loader}" "${_flags[@]}" "${_dir}" "${_dir}/lib" app
+  t_assert_eq "external-ok" "$(env -i "${_dir}/app")" "${_mode}: the host glibc path loads from the stated directory"
+  t_assert_eq "external-ok" "$(env -i KATAGLYPHIS_BUNDLED_GLIBC=1 "${_dir}/app")" "${_mode}: so does the bundled loader"
+  t_assert_contains "$(bash "${_loader}" --beside "${_dir}" "${_dir}/lib" app 2>&1)" "different library path"
+done
+mkdir -p "${_work}/unstated/lib" "${_work}/unstated/runtime/capi"
+cp "${_work}/sdk/libexternal.so" "${_work}/unstated/runtime/capi/"
+c++ -o "${_work}/unstated/app" "${_work}/src/app.cpp" -ldl
+for _path in ../stated-plain/runtime/capi /runtime/capi runtime/nope; do
+  t_assert_contains "$(bash "${_loader}" --beside --library-path "${_path}" "${_work}/unstated" "${_work}/unstated/lib" app 2>&1)" \
+    "a launcher's --library-path must name directories inside"
+done
+t_assert_ok bash "${_loader}" --beside "${_work}/unstated" "${_work}/unstated/lib" app
+t_assert_fails env -i "${_work}/unstated/app"
+t_assert_contains "$(bash "${_loader}" --beside --library-path runtime/capi "${_work}/unstated" "${_work}/unstated/lib" app 2>&1)" "different library path"
+
 t_case "an existing non-external launcher is not silently accepted as external"
 mkdir -p "${_work}/upgrade/lib"
 cp "${_work}/stage/lib/fixture/app" "${_work}/upgrade/app"

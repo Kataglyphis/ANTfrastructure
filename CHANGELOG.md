@@ -19,6 +19,27 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — a ROCm Python bundle carries the chain core its plugin MIGraphX EP links (develop-red #276)
+
+- OrchestrANT's `gpu-lin / inventory (amd, x64, latest-rocm)` (runs 43409294907, 45983749575) stopped in the
+  closure: `capi/libmigraphx-ep.so: libonnxruntime.so.1` resolved nowhere. Gate first: the modules of both
+  `:latest-rocm` builds (sha256 `c69589860128…` and `d54388c35c95…`, read from OxidANT's and AccelerANTgine's AMD
+  artifacts) import none of the core's three exports, `OrtGetApiBase` included, so the core they load stays apart
+  from the binding's.
+- `python-app-bundle.sh` (owner decision): `ort_stage_plugin_core` copies the CPU prefix's `libonnxruntime.so.1`
+  to `capi/libonnxruntime.so.1`, checks its sha256 against the chain's, and refuses to replace a wheel file. Every
+  launcher, the closure and G6 take `capi` as the library path.
+- `bundle-loader.sh --library-path DIR[:DIR...]` writes bundle directories into both glibc paths and refuses a
+  rerun with another path. `elf-closure.sh --library-path` resolves a library there ahead of any RUNPATH. Both
+  read the path through the census's rules (`ort_bundle_library_dirs`).
+- `python-app-deb-depends.py` parses such a launcher and counts its directories as bundled.
+  `verify-python-gpu-package.py` proves the copy against the chain core, keeps it out of the wheel proof, and
+  requires it in every finished format. `_ort_validate_python_provider_wheel` skips it as well.
+- Suites: `test-ort-runtime-bundle.sh`, `test-ort-host-runtime.sh`, `test-elf-closure.sh`,
+  `test-linux-closure-install.sh`, `test-python-deb-depends.py`, `test-python-gpu-package.py`, `test-ort-census.sh`
+  and `test-python-app-bundle-license.sh`. Twenty-two `packaging.*` recipes, each seen to bite under WSL.
+  `docs/failure-modes.md` records the symptom. BACKLOG CON256 (i)/(j) is fixed in source, and (k) records the
+  module's empty RUNPATH entry. Not yet run in a rocm image.
 ## 2026-11-27 — the backlog reads the published images: CON283 done, CON238, CON264, CON79 and CON99 advanced
 
 - `:latest` `abb3030d…` and `:latest-rocm` `4de019ad…` replace the backlog's digest baseline; both passed all six

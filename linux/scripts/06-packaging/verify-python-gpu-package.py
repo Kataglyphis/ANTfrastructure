@@ -17,6 +17,8 @@ from typing import IO
 PROVIDER = re.compile(r"libonnxruntime_providers_[A-Za-z0-9_]+\.so(?:\.[0-9]+)*\Z")
 KINDS = {"CUDAExecutionProvider": "cuda", "MIGraphX": "migraphx"}
 PLUGIN_MODULE = "libmigraphx-ep.so"
+# The module's DT_NEEDED core, the chain prefix's file beside it; no wheel holds it, so the chain proves it.
+PLUGIN_CORE = "libonnxruntime.so.1"
 REQUIRED = {"cuda": {"libonnxruntime_providers_shared.so", "libonnxruntime_providers_cuda.so"}, "migraphx": {PLUGIN_MODULE}}
 
 
@@ -27,6 +29,14 @@ def is_engine(name: str) -> bool:
 
 def image_plugin_module() -> Path:
     return Path(os.environ.get("ORT_AMDGPU_EP_ROOT") or "/usr/local/lib/onnxruntime-ep-amdgpu") / "lib" / PLUGIN_MODULE
+
+
+def chain_core() -> Path:
+    return Path(os.environ.get("ONNXRUNTIME_OUTPUT_DIR") or "/usr/local/lib/onnxruntime-cpu") / "lib" / PLUGIN_CORE
+
+
+def wheel_cores(capi: Path, plugin: bool) -> list[Path]:
+    return sorted(p for p in capi.glob("libonnxruntime.so.*") if not (plugin and p.name == PLUGIN_CORE))
 
 
 def sha(stream: IO[bytes]) -> tuple[str, int]:
@@ -61,9 +71,11 @@ def source_libraries(root: Path, kind: str) -> tuple[Path, list[Path], set[str]]
     providers = {p.name for p in candidates}
     if not REQUIRED[kind] <= providers:
         raise ValueError("required ORT GPU EP module or shared bridge is missing")
-    cores = list(capi.glob("libonnxruntime.so.*"))
+    cores = wheel_cores(capi, kind == "migraphx")
     if len(cores) != 1:
         raise ValueError("GPU bundle must contain exactly one ORT core")
+    if kind == "migraphx":
+        cores.append(capi / PLUGIN_CORE)
     return capi, cores + candidates, providers
 
 
@@ -95,17 +107,20 @@ def source_inventory(bundle: Path) -> tuple[Path, dict[str, tuple[str, int]], se
 
 
 def prove_plugin(capi: Path) -> None:
-    """The bundled plugin MIGraphX EP is byte for byte the image's module; no wheel carries it."""
+    """The bundled plugin MIGraphX EP is byte for byte the image's module and its core the chain's; no wheel carries either."""
     bundled = capi / PLUGIN_MODULE
     if not bundled.exists():
         return
     with bundled.open("rb") as stream, image_plugin_module().open("rb") as image:
         if sha(stream) != sha(image):
             raise ValueError(f"{bundled} is not the image's plugin MIGraphX EP")
+    with (capi / PLUGIN_CORE).open("rb") as stream, chain_core().open("rb") as image:
+        if sha(stream) != sha(image):
+            raise ValueError(f"{capi / PLUGIN_CORE} is not the chain's {chain_core()}")
 
 
-def prove_wheel(capi: Path, wheels: Path, scratch: Path) -> None:
-    libraries = sorted(capi.glob("libonnxruntime.so.*")) + sorted(capi.glob("libonnxruntime_providers_*.so*"))
+def prove_wheel(capi: Path, plugin: bool, wheels: Path, scratch: Path) -> None:
+    libraries = wheel_cores(capi, plugin) + sorted(capi.glob("libonnxruntime_providers_*.so*"))
     command = [sys.executable, str(Path(__file__).with_name("stage-ort-wheel-licenses.py")),
                "--wheel-dir", str(wheels), "--destination", str(scratch), "--strip", "strip", "--require-unstripped"]
     for library in libraries:
@@ -216,7 +231,7 @@ def main() -> int:
             raise ValueError("package prefix must be canonical")
         capi, hashes, providers = source_inventory(args.bundle)
         with tempfile.TemporaryDirectory(prefix="python-gpu-wheel-") as temporary:
-            prove_wheel(capi, args.wheel_dir, Path(temporary))
+            prove_wheel(capi, PLUGIN_MODULE in providers, args.wheel_dir, Path(temporary))
         prove_plugin(capi)
         capi_relative = capi.relative_to(args.bundle.resolve()).as_posix()
         check_artifact(args.artifact, prefix, hashes, providers, capi_relative)

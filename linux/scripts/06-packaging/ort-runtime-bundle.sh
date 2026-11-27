@@ -4,6 +4,9 @@
 # The plugin MIGraphX EP's module name and where the rocm image keeps it: docs/consumer-image-contract.md#amds-plugin-migraphx-ep
 ORT_AMDGPU_EP_MODULE=libmigraphx-ep.so
 ort_amdgpu_ep_dir() { printf '%s/lib' "${ORT_AMDGPU_EP_ROOT:-/usr/local/lib/onnxruntime-ep-amdgpu}"; }
+# The module's DT_NEEDED core; a Python bundle carries the chain's under this name beside it: docs/python-app-bundles.md#linux-gpu-bundles
+ORT_PLUGIN_CORE=libonnxruntime.so.1
+ort_chain_core_file() { printf '%s/lib/%s' "${ONNXRUNTIME_OUTPUT_DIR:-/usr/local/lib/onnxruntime-cpu}" "${ORT_PLUGIN_CORE}"; }
 # <capi or lib dir> <cuda|migraphx>: the GPU EP module a bundle carries for that kind.
 ort_python_provider_file() {
   case "$2" in
@@ -38,7 +41,7 @@ _ort_host_import_class() {
     libc.so.6|libm.so.6|libstdc++.so.6|libgcc_s.so.1|libpthread.so.0|libdl.so.2|librt.so.1|ld-linux*.so*) printf 'system\n'; return ;;
   esac
   case "${ort_kind}:${ort_soname}" in
-    # The plugin MIGraphX EP links the chain ORT it is loaded into; the bundle carries that.
+    # The plugin MIGraphX EP's chain core travels beside it (ort_stage_plugin_core), never from the host.
     migraphx:libonnxruntime.so.1) printf 'system\n' ;;
     cuda:libcuda.so.*|cuda:libcudart.so.*|cuda:libcublas.so.*|cuda:libcublasLt.so.*|cuda:libcurand.so.*|cuda:libcudnn*.so.*|cuda:libcufft*.so.*|cuda:libcusparse.so.*|cuda:libnvrtc.so.*|cuda:libnvJitLink.so.*) printf 'a\n' ;;
     migraphx:libmigraphx_c.so.*) printf 'a\n' ;;
@@ -86,13 +89,16 @@ ort_host_runtime_needed() {
 _ort_validate_python_provider_wheel() {
   local ort_site="${1:?ORT capi directory required}" ort_kind="${2:?provider kind required}"
   local ort_wheels="${3:?wheel directory required}" ort_proof="${4:?proof directory required}"
-  local ort_here ort_nullglob=0
+  local ort_here ort_core ort_nullglob=0
   local -a ort_cores=() ort_libraries=()
   _ort_require_gpu_kind "${ort_kind}" 'Python GPU provider' || return 2
   ort_here="$(_ort_packaging_dir)" || return 1
   if shopt -q nullglob; then ort_nullglob=1; fi
   shopt -s nullglob
-  ort_cores=("${ort_site}"/libonnxruntime.so.*)
+  for ort_core in "${ort_site}"/libonnxruntime.so.*; do
+    # The plugin's core is the chain prefix's stripped file, which no wheel holds; ort_assert_plugin_core proves it.
+    [ "${ort_kind}:${ort_core##*/}" = "migraphx:${ORT_PLUGIN_CORE}" ] || ort_cores+=("${ort_core}")
+  done
   if [ "${ort_nullglob}" -eq 0 ]; then shopt -u nullglob; fi
   [ "${#ort_cores[@]}" -eq 1 ] || { printf 'expected one Python ORT core, found %s\n' "${#ort_cores[@]}" >&2; return 1; }
   # The CUDA plugin EP is the GPU wheel's; the plugin MIGraphX EP is no wheel's and is proved against the image's module instead.
@@ -103,15 +109,45 @@ _ort_validate_python_provider_wheel() {
     --destination "${ort_proof}" --strip strip --require-unstripped >&2
 }
 
+# <file> <what>: a link would let the package repoint the proved bytes after the check.
+_ort_regular_plugin_file() {
+  if [ -f "$1" ] && [ ! -L "$1" ]; then return 0; fi
+  printf 'missing or linked %s: %s\n' "$2" "$1" >&2
+  return 1
+}
+
 # <file>: a bundled plugin MIGraphX EP is a regular file, byte for byte the image's module, whose media stage already read both plugin entry points (no wheel carries it).
 ort_assert_plugin_module() {
   local ort_image; ort_image="$(ort_amdgpu_ep_dir)/${ORT_AMDGPU_EP_MODULE}"
-  if [ ! -f "$1" ] || [ -L "$1" ]; then printf 'missing or linked plugin MIGraphX EP: %s\n' "$1" >&2; return 1; fi
+  _ort_regular_plugin_file "$1" 'plugin MIGraphX EP' || return 1
   cmp -s "$1" "${ort_image}" && return 0
   printf "%s is not the image's %s\n" "$1" "${ort_image}" >&2
   return 1
 }
-_ort_validate_python_plugin_module() { ort_assert_plugin_module "$(ort_python_provider_file "$1" migraphx)"; }
+
+# <file>: the plugin's core is a regular file whose sha256 is the chain core's, so it is no second ORT source.
+ort_assert_plugin_core() {
+  local ort_chain ort_want ort_have
+  ort_chain="$(ort_chain_core_file)"
+  _ort_regular_plugin_file "$1" 'plugin MIGraphX EP core' || return 1
+  ort_want="$(sha256sum < "${ort_chain}")" || { printf 'cannot read the chain ORT core %s\n' "${ort_chain}" >&2; return 1; }
+  ort_have="$(sha256sum < "$1")" || return 1
+  if [ "${ort_have%% *}" = "${ort_want%% *}" ]; then return 0; fi
+  printf "%s is not the chain's %s: sha256 %s, not %s\n" "$1" "${ort_chain}" "${ort_have%% *}" "${ort_want%% *}" >&2
+  return 1
+}
+
+# <capi>: the chain core under the module's DT_NEEDED name; never over a file the wheel ships there.
+ort_stage_plugin_core() {
+  local ort_dest="${1:?capi directory required}/${ORT_PLUGIN_CORE}"
+  if [ -e "${ort_dest}" ] || [ -L "${ort_dest}" ]; then printf 'refusing to replace %s, which the wheel ships\n' "${ort_dest}" >&2; return 1; fi
+  cp -L "$(ort_chain_core_file)" "${ort_dest}" || return 1
+  ort_assert_plugin_core "${ort_dest}"
+}
+_ort_validate_python_plugin_module() {
+  ort_assert_plugin_module "$(ort_python_provider_file "$1" migraphx)" || return 1
+  ort_assert_plugin_core "$1/${ORT_PLUGIN_CORE}"
+}
 
 _ort_emit_python_host_lines() {
   local ort_label="$1" ort_lines="$2" ort_soname

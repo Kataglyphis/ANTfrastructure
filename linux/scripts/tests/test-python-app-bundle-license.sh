@@ -43,6 +43,12 @@ t_case 'an AMD image bundle carries the plugin MIGraphX EP beside the chain core
 t_assert_contains "$(cat "$SCRIPT")" 'cp -L "${plugin_module}" "$(ort_python_provider_file "${site_packages}/onnxruntime/capi" migraphx)"' \
   'the image module is copied into capi, where the self-test and the package proof read it'
 t_assert_contains "$(cat "$SCRIPT")" 'err "the rocm image carries no plugin MIGraphX EP at ${plugin_module}"' 'a rocm image without the module fails the bundle'
+t_assert_contains "$(cat "$SCRIPT")" '  ort_stage_plugin_core "${site_packages}/onnxruntime/capi" || err ' 'the chain core the module links travels beside it'
+t_assert_contains "$(cat "$SCRIPT")" '  closure_args+=(--library-path "${ort_library_path}")' 'the closure takes capi as the launchers state it'
+t_assert_contains "$(cat "$SCRIPT")" 'if [ -n "${ort_library_path}" ]; then loader_args+=(--library-path "${ort_library_path}"); fi' \
+  'every launcher hands the loader capi'
+t_assert_contains "$(cat "$SCRIPT")" 'if [ -n "${ort_library_path}" ]; then census_args+=(--library-path "${ort_library_path}"); fi' \
+  'G6 takes the same library path'
 
 t_case 'missing or empty license fails before an existing bundle is reset'
 printf 'keep existing bundle\n' > "$work/bundle/sentinel"

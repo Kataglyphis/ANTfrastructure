@@ -40,6 +40,11 @@ class DebianDependencies(unittest.TestCase):
         env = dict(os.environ, PATH=str(self.fake) + os.pathsep + os.environ["PATH"])
         return subprocess.run(["python3", str(SUBJECT), str(self.bundle)], env=env, text=True, capture_output=True, check=False)
 
+    def assert_depends_on(self, owner: str, expected: bool, message: str | None = None) -> None:
+        result = self.run_subject()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (self.assertIn if expected else self.assertNotIn)(owner, result.stdout, message)
+
     def fake_tool(self, name: str, script: str) -> None:
         path = self.fake / name
         path.write_text("#!/bin/sh\n" + script + "\n")
@@ -258,13 +263,9 @@ esac''')
         directory = self.bundle / "unrelated"
         directory.mkdir()
         shutil.copyfile(source, directory / "libz.so.1")
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(owner, result.stdout)
+        self.assert_depends_on(owner, True)
         subprocess.run(["patchelf", "--set-rpath", "$ORIGIN/unrelated", str(self.app)], check=True)
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn(owner, result.stdout)
+        self.assert_depends_on(owner, False)
 
     def test_untrusted_search_path_before_bundled_library_fails_closed(self) -> None:
         source = module.ldconfig_cache()["libz.so.1"]
@@ -358,18 +359,14 @@ esac''')
         env.pop("LD_PRELOAD", None)
         output = subprocess.run([str(self.app)], env=env, check=True, capture_output=True, text=True).stdout
         self.assertIn(str(local), output)
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn(owner, result.stdout)
+        self.assert_depends_on(owner, False)
         data = bytearray(original)
         data[18] ^= 1
         local.write_bytes(data)
         output = subprocess.run([str(self.app)], env=env, check=True, capture_output=True, text=True).stdout
         self.assertIn(os.path.realpath(source), output)
         self.assertNotIn(str(local), output)
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(owner, result.stdout)
+        self.assert_depends_on(owner, True)
         for index in (4, 5):
             data = bytearray(original)
             data[index] = 3 - data[index]
@@ -436,19 +433,13 @@ esac''')
         directory = self.bundle / "runtime/lib"
         directory.mkdir(parents=True)
         shutil.copyfile(source, directory / "libz.so.1")
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(owner, result.stdout)
+        self.assert_depends_on(owner, True)
         (self.bundle / "bundle.json").write_text(json.dumps({"glibc": False, "host_gpu_sonames": ["libcuda.so.1"]}))
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(owner, result.stdout)
+        self.assert_depends_on(owner, True)
         runtime_app = self.bundle / "runtime/bin/python3"
         runtime_app.parent.mkdir(parents=True)
         self.app.rename(runtime_app)
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(owner, result.stdout)
+        self.assert_depends_on(owner, True)
         loader_script = SUBJECT.with_name("bundle-loader.sh")
         subprocess.run(["bash", str(loader_script), "--beside", "--external-library-path", str(self.bundle),
                         str(directory), "runtime/bin/python3"], check=True, stdout=subprocess.DEVNULL)
@@ -457,9 +448,39 @@ esac''')
             env = {"PATH": "/usr/bin:/bin", "KATAGLYPHIS_BUNDLED_GLIBC": bundled, "LD_DEBUG": "libs"}
             execution = subprocess.run([str(runtime_app)], env=env, check=True, text=True, capture_output=True)
             self.assertIn("/lib/libz.so.1", execution.stderr)
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn(owner, result.stdout)
+        self.assert_depends_on(owner, False)
+
+    def assert_stated_library_path(self, flags: list[str]) -> None:
+        source = module.ldconfig_cache()["libz.so.1"]
+        owner = module.package_owner(source)
+        self.assertTrue(owner)
+        capi = self.bundle / "runtime/lib/python3.15/site-packages/onnxruntime/capi"
+        capi.mkdir(parents=True)
+        shutil.copyfile(source, capi / "libz.so.1")
+        plugin_source = self.root / "plugin.c"
+        plugin_source.write_text("int plugin(void) { return 1; }\n")
+        subprocess.run(["cc", "-shared", "-fPIC", str(plugin_source), "-o", str(capi / "libplugin.so")], check=True)
+        subprocess.run(["patchelf", "--add-needed", "libz.so.1", str(capi / "libplugin.so")], check=True)
+        runtime_app = self.bundle / "runtime/bin/python3"
+        runtime_app.parent.mkdir(parents=True)
+        self.app.rename(runtime_app)
+        self.assert_depends_on(owner, True, "an unwrapped interpreter states no library path")
+        subprocess.run(["bash", str(SUBJECT.with_name("bundle-loader.sh")), "--beside", *flags,
+                        "--library-path", str(capi.relative_to(self.bundle)), str(self.bundle),
+                        str(self.bundle / "runtime/lib"), "runtime/bin/python3"], check=True, stdout=subprocess.DEVNULL)
+        shutil.rmtree(self.bundle / "runtime/lib/glibc")
+        self.assertTrue(module.isolated_interpreter_ready(self.bundle))
+        self.assert_depends_on(owner, False, "the launcher hands the loader capi on both glibc paths")
+        launcher = runtime_app.read_text()
+        runtime_app.write_text(launcher.replace("/python3.15/", "/python3.14/", 1))
+        self.assertFalse(module.isolated_interpreter_ready(self.bundle), "one glibc path without the directory")
+        self.assert_depends_on(owner, True)
+
+    def test_stated_library_path_satisfies_an_unpatched_module(self) -> None:
+        self.assert_stated_library_path([])
+
+    def test_stated_library_path_with_external_paths(self) -> None:
+        self.assert_stated_library_path(["--external-library-path"])
 
     def test_gpu_unwrapped_executable_keeps_host_library_dependency(self) -> None:
         source = module.ldconfig_cache()["libz.so.1"]
@@ -492,9 +513,7 @@ esac''')
         self.assertIn(os.path.realpath(source), actual.stdout)
         self.assertNotIn(str(directory / "libz.so.1"), actual.stdout)
         self.assertFalse(module.gpu_launcher_ready(self.bundle))
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(owner, result.stdout)
+        self.assert_depends_on(owner, True)
 
     def test_python_preload_requires_sitecustomize_and_bundle_library(self) -> None:
         source = module.ldconfig_cache()["libz.so.1"]
@@ -509,9 +528,7 @@ esac''')
         source_file.write_text("int fixture(void) { return 1; }\n")
         subprocess.run(["cc", "-shared", "-fPIC", str(source_file), "-o", str(module_file)], check=True)
         subprocess.run(["patchelf", "--add-needed", "libz.so.1", str(module_file)], check=True)
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(owner, result.stdout)
+        self.assert_depends_on(owner, True)
         (site / "sitecustomize.py").write_text(module.SITE_CUSTOMIZE)
         self.app.unlink()
         runtime = self.bundle / "runtime/bin/python3.14"
@@ -542,27 +559,19 @@ exec "$root/runtime/bin/python3" -I -B -c 'import sys; sys.argv[0] = "fixture"; 
         command = 'import sys,ctypes; sys.prefix=sys.argv[1]; exec(open(sys.argv[2]).read()); ctypes.CDLL(sys.argv[3])'
         subprocess.run(["python3", "-I", "-S", "-c", command, str(self.bundle / "runtime"),
                         str(site / "sitecustomize.py"), str(module_file)], check=True)
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn(owner, result.stdout)
+        self.assert_depends_on(owner, False)
         self.assert_preload_pth_scope(site, module_file, source, directory, owner)
         self.assert_probe_mutations(site, source, directory, owner, runtime, probe_source)
         original = launcher.read_text()
         launcher.write_text(original.replace(" -I -B ", " -B "))
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(owner, result.stdout)
+        self.assert_depends_on(owner, True)
         launcher.write_text(original)
         interpreter = runtime.read_text()
         runtime.write_text(interpreter.replace('"$@"', '"$@"; true', 1))
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(owner, result.stdout)
+        self.assert_depends_on(owner, True)
         (directory / "libz.so.1").unlink()
         (self.bundle / "bundle.json").write_text(json.dumps({"glibc": False, "unresolved_allowed": ["libz.so.1"]}))
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn(owner, result.stdout)
+        self.assert_depends_on(owner, False)
 
     def assert_probe_mutations(self, site: Path, source: str, directory: Path, owner: str,
                                runtime: Path, probe_source: Path) -> None:
@@ -572,23 +581,17 @@ exec "$root/runtime/bin/python3" -I -B -c 'import sys; sys.argv[0] = "fixture"; 
                                   [str(directory / "libz.so.1")]])
         probe_source.write_text(f'#include <stdio.h>\nint main(void) {{ puts({json.dumps(wrong_proof)}); }}\n')
         subprocess.run(["cc", str(probe_source), "-o", str(binary)], check=True)
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(owner, result.stdout)
+        self.assert_depends_on(owner, True)
         conflicting = json.dumps([str(self.bundle / "runtime"), str(site / "sitecustomize.py"), 1, 0, 1,
                                   [str(site)], [str(directory / "libz.so.1"), source]])
         probe_source.write_text(f'#include <stdio.h>\nint main(void) {{ puts({json.dumps(conflicting)}); }}\n')
         subprocess.run(["cc", str(probe_source), "-o", str(binary)], check=True)
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(owner, result.stdout)
+        self.assert_depends_on(owner, True)
         binary.write_bytes(original_binary)
         preload = directory / "libz.so.1"
         original_preload = preload.read_bytes()
         subprocess.run(["patchelf", "--set-soname", "libz-wrong.so.1", str(preload)], check=True)
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(owner, result.stdout)
+        self.assert_depends_on(owner, True)
         preload.write_bytes(original_preload)
 
     def assert_preload_pth_scope(self, site: Path, module_file: Path, source: str,
@@ -606,27 +609,19 @@ exec "$root/runtime/bin/python3" -I -B -c 'import sys; sys.argv[0] = "fixture"; 
                                'while (fgets(line, sizeof(line), f)) if (strstr(line, "libz.so")) fputs(line, stdout); '
                                'return 0; }\n')
         subprocess.run(["cc", str(source_file), "-ldl", "-o", str(standalone)], check=True)
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(owner, result.stdout)
+        self.assert_depends_on(owner, True)
         standalone.unlink()
         linked = directory / "linked-site"
         linked.symlink_to(other_site, target_is_directory=True)
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(owner, result.stdout)
+        self.assert_depends_on(owner, True)
         linked.unlink()
         (site / "early.pth").write_text("# passive path\noptional-directory\n")
-        result = self.run_subject()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn(owner, result.stdout)
+        self.assert_depends_on(owner, False)
         (site / "early_loader.py").write_text(f"import ctypes\nhandle = ctypes.CDLL({str(module_file)!r})\n")
         for payload in (b"import early_loader\n", b"import\tearly_loader\n", b"\xef\xbb\xbfimport early_loader\n", b"\xff\n"):
             with self.subTest(payload=payload):
                 (site / "early.pth").write_bytes(payload)
-                result = self.run_subject()
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn(owner, result.stdout)
+                self.assert_depends_on(owner, True)
         (site / "early.pth").write_text("import early_loader\n")
         early = ('import os,site,sys; sys.prefix=sys.argv[1]; site.addsitedir(sys.argv[2]); '
                  'exec(open(sys.argv[5]).read()); paths=open("/proc/self/maps").read(); '

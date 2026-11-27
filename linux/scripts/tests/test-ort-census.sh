@@ -340,6 +340,20 @@ _out="$(_ort_census_run() { echo "ORT census ran: $*"; }; ort_census_main --imag
 t_assert_eq "check-ort-provenance: --library-path describes a bundle's launcher; --image reads the system's own LD_LIBRARY_PATH
 exit 2" "${_out}" "--image is refused before any scan"
 
+t_case "G6 --library-path: a Python bundle's capi holds the plugin and the chain core its launcher's library path finds"
+_capi=runtime/lib/python3.15/site-packages/onnxruntime/capi
+_pyb="${_work}/python-bundle"
+_elf "${_pyb}/${_capi}/libmigraphx-ep.so" libonnxruntime.so.1 "" CreateEpFactories
+cp "${_ref}/lib/libonnxruntime.so.1" "${_pyb}/${_capi}/libonnxruntime.so.1"
+t_assert_contains "$(_census "${_pyb}")" "UNRESOLVED   /${_capi}/libmigraphx-ep.so -- no libonnxruntime.so.1 on its ld.so search path" \
+  "what OrchestrANT's AMD inventory met, without the path"
+t_assert_contains "$(_census --library-path "${_capi}" "${_pyb}")" "ORT census PASS: every ONNX Runtime binary in ${_pyb} (library path ${_capi})" \
+  "python-app-bundle.sh states capi, which every launcher hands the loader"
+_elf "${_pyb}/${_capi}/libonnxruntime.so.1" "" "" "${WINML_SRC}"
+t_assert_contains "$(_census --library-path "${_capi}" "${_pyb}")" \
+  "UNRESOLVED   /${_capi}/libmigraphx-ep.so -- libonnxruntime.so.1 resolves to /${_capi}/libonnxruntime.so.1, which is not the chain ORT" \
+  "a core there that is not the chain's stays red"
+
 t_case "G1 image mode: ld.so.conf order and LD_LIBRARY_PATH decide which copy an importer gets"
 _img="${_work}/img"
 mkdir -p "${_img}/etc/ld.so.conf.d"

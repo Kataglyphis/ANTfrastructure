@@ -15,6 +15,7 @@ VERIFIER = Path(__file__).resolve().parents[1] / "06-packaging/verify-python-gpu
 CAPI = Path("runtime/lib/python3.15/site-packages/onnxruntime/capi")
 LIBS = ("libonnxruntime.so.1.31.0", "libonnxruntime_providers_shared.so", "libonnxruntime_providers_cuda.so")
 PLUGIN = "libmigraphx-ep.so"
+CORE = "libonnxruntime.so.1"
 
 
 class FinishedPackageProof(unittest.TestCase):
@@ -52,6 +53,10 @@ class FinishedPackageProof(unittest.TestCase):
             (provider / "libonnxruntime_providers_rogue.so").write_bytes(b"rogue")
         elif mutation == "metadata":
             (payload / "REQUIRES-GPU-RUNTIME.txt").write_text("changed")
+        elif mutation == "core-altered":
+            (provider / CORE).write_bytes(b"altered")
+        elif mutation == "core-missing":
+            (provider / CORE).unlink()
         elif mutation == "linked":
             file = provider / "libonnxruntime_providers_cuda.so"
             file.unlink()
@@ -117,7 +122,7 @@ class FinishedPackageProof(unittest.TestCase):
 
 
 class PluginMigraphxPackageProof(FinishedPackageProof):
-    """An AMD bundle carries the CPU core and the image's plugin MIGraphX EP; the wheel proves the core, the image copy the plugin."""
+    """An AMD bundle carries the wheel's core, the image's plugin MIGraphX EP and the chain core it links; each has its own proof."""
 
     def setUp(self) -> None:
         super().setUp()
@@ -128,6 +133,10 @@ class PluginMigraphxPackageProof(FinishedPackageProof):
         self.ep_root = self.root / "ep root"
         (self.ep_root / "lib").mkdir(parents=True)
         shutil.copy(self.bundle / CAPI / PLUGIN, self.ep_root / "lib" / PLUGIN)
+        self.chain = self.root / "chain"
+        (self.chain / "lib").mkdir(parents=True)
+        (self.chain / "lib" / CORE).write_bytes(elf + b"\x0a")
+        shutil.copy(self.chain / "lib" / CORE, self.bundle / CAPI / CORE)
         (self.bundle / "bundle.json").write_text(json.dumps({"required_provider": "MIGraphX", "host_gpu_sonames": ["libmigraphx_c.so.3"]}))
         with zipfile.ZipFile(self.wheels / "onnxruntime_gpu-1.0-py3-none-any.whl", "w") as wheel:
             wheel.write(self.bundle / CAPI / LIBS[0], f"onnxruntime/capi/{LIBS[0]}")
@@ -136,13 +145,13 @@ class PluginMigraphxPackageProof(FinishedPackageProof):
 
     def verify(self, kind: str, mutation: str) -> subprocess.CompletedProcess[str]:
         artifact, prefix = self.package(kind, mutation)
-        env = {**os.environ, "ORT_AMDGPU_EP_ROOT": str(self.ep_root)}
+        env = {**os.environ, "ORT_AMDGPU_EP_ROOT": str(self.ep_root), "ONNXRUNTIME_OUTPUT_DIR": str(self.chain)}
         return subprocess.run(["python3", str(VERIFIER), "--bundle", str(self.bundle), "--wheel-dir", str(self.wheels),
                                "--artifact", str(artifact), "--prefix", prefix], check=False, capture_output=True, text=True, env=env)
 
     def test_valid_and_mutated_finished_formats(self) -> None:
         for kind in ("tar", "deb", "appimage"):
-            for mutation in ("valid", "metadata"):
+            for mutation in ("valid", "metadata", "core-altered", "core-missing"):
                 with self.subTest(kind=kind, mutation=mutation):
                     result = self.verify(kind, mutation)
                     self.assertEqual(result.returncode == 0, mutation == "valid", result.stdout + result.stderr)
@@ -152,6 +161,16 @@ class PluginMigraphxPackageProof(FinishedPackageProof):
         result = self.verify("tar", "valid")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("is not the image's plugin MIGraphX EP", result.stderr)
+
+    def test_plugin_core_must_match_the_chain(self) -> None:
+        (self.chain / "lib" / CORE).write_bytes(b"another build")
+        result = self.verify("tar", "valid")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(f"is not the chain's {self.chain / 'lib' / CORE}", result.stderr)
+
+    def test_missing_plugin_core_rejected(self) -> None:
+        (self.bundle / CAPI / CORE).unlink()
+        self.assertNotEqual(self.verify("tar", "valid").returncode, 0)
 
     def test_missing_plugin_module_rejected(self) -> None:
         (self.bundle / CAPI / PLUGIN).unlink()

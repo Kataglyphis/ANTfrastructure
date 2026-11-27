@@ -785,6 +785,8 @@ the path.
   first, they would be searched below the bundle a second time and find nothing.
 - The census takes the path on the caller's word; it does not read the launcher. When a consumer
   passes it: [`consumer-image-contract.md`](consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime).
+  `bundle-loader.sh` and `elf-closure.sh` read their `--library-path` through the same rules
+  (`ort_bundle_library_dirs`), so one value serves the launcher, the closure and the census.
 - On a stated path the search ends where `ld.so`'s would: a file of the import's name that is a
   link out of the bundle, a link loop or a directory is the hit, unproven, and the finding names
   it; the chain core behind it does not count. Not covered: the same name on an importer's own

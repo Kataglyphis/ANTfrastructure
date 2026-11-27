@@ -1646,7 +1646,16 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       loads it as the answer to that name. It is the Python twin of the census fault under (i), and it comes
       before (a): with it fixed the lane reaches the registration gate that cannot pass without a card. Not
       looked at: under which file name the wheel holds its core, and whether `--allow-unresolved` or a rule for
-      a library's own loader is the right answer.
+      a library's own loader is the right answer. **Fixed in source 2026-11-27 (develop-red #276, owner decision
+      of that day):** `ort_stage_plugin_core` copies `/usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so.1` to
+      `capi/libonnxruntime.so.1` with a sha256 check against the chain's and never over a wheel file; the
+      launchers put `capi` on both glibc paths (`bundle-loader.sh --library-path`), and the closure and G6 take
+      the same path (`elf-closure.sh --library-path`, `check-ort-provenance.sh --library-path`); the DEB scan and
+      `verify-python-gpu-package.py` know the copy. Gate first: neither `:latest-rocm` module
+      (`c69589860128…` from OxidANT run 46023889038, index `4de019ad`; `d54388c3…` from AccelerANTgine run
+      45987755762, index `4e76aa2a`) imports any of the core's three exports, `OrtGetApiBase` included, so two
+      cores in one process stay apart. The wheel's core is the CMake `TARGET_FILE`, `libonnxruntime.so.1.<v>`.
+      Not yet run in a rocm image: OrchestrANT's next AMD inventory is the proof, and then it meets (a).
       (i) **Seen in `:latest-rocm`, 2026-11-12** (OxidANT's AMD candidate lane, the first consumer build on the
       plugin-only image). Run 43303579930 stopped at the wheel proof (`expected one wheel matching every native
       library; found 0`): the image strips the CPU core, so `stage-ort-wheel-licenses.py --require-unstripped`
@@ -1658,10 +1667,9 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       `ort_assert_plugin_module` forbids a package to patch one in. Owner, 2026-11-12: the census takes the
       launcher's library path; no per-consumer exemption, no image rebuild. Closed 2026-11-13 for native
       packages: `check-ort-provenance.sh --library-path`
-      ([contract](docs/consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime)). Open:
-      `python-app-bundle.sh` does not pass it, because its module sits in `capi`, which no launcher path names,
-      and with `PYTHON_APP_HOST_GPU_RUNTIME=true` its closure stops on the same import before the census runs
-      (shown on a fixture, not in the rocm image). With the option the census passed on the real package
+      ([contract](docs/consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime)). The Python
+      half (`python-app-bundle.sh` passed no path, its module sat in `capi`, which no launcher path named, and
+      its closure stopped first) is fixed in source 2026-11-27 under the first (j). With the option the census passed on the real package
       (`ORT census PASS ... (library path lib/glibc:lib)`, run 43345664993). That run then stopped where (i)
       expected: `verify-ort-appimage-payload.sh` passes `--require-unstripped` for `amd` too, and the core an AMD
       AppImage carries is the wheel's library stripped (`found 0`); the tarball and the DEB had passed without the
@@ -1674,6 +1682,11 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       text form `tree` with `verify_plugin_texts`, and `accelerantgine_keep_module_in_appimage`, because
       `patchelf-keep-glibc.sh --keep-ort` keeps `libonnxruntime*` only and CPack's AppImage step would patch the
       module. Both repos' BACKLOGs name them for removal.
+      (k) **An empty RUNPATH entry in AMD's module, seen 2026-11-27.** Both modules above end their RUNPATH with
+      `:` (`…:/usr/local/lib/onnxruntime-cpu/lib:/opt/rocm/core/lib:`); glibc reads an empty entry as the current
+      directory, ahead of the ld.so cache, for `libmigraphx_c.so.3` and `libamdhip64.so.7` on a host whose ROCm is
+      not under the named paths. A package may not patch the module, so the fix belongs in the plugin build
+      (`35-build-migraphx-plugin-ep.sh`). Owner to decide; not changed here.
       First step: (a), in the rocm image on a machine without a card: register the module from Python and write
       the result into `docs/failure-modes.md`, then make the two pages agree and settle the gate. Done when each
       letter is fixed or decided and one consumer's AMD package passes parity with `MIGraphX` nodes in its profile.

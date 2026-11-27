@@ -132,10 +132,18 @@ cp "${work}/provider.so" "${amdsite}/libmigraphx-ep.so"
 patchelf --add-needed libonnxruntime.so.1 --add-needed libmigraphx_c.so.3 --add-needed libamdhip64.so.7 "${amdsite}/libmigraphx-ep.so"
 write_wheel "${wheels}/onnxruntime-1.31.0-py3-none-any.whl" "${amdsite}" 'libonnxruntime.so.*'
 rm -f "${wheels}/onnxruntime_gpu-1.31.0-py3-none-any.whl"
+# The chain prefix's core is the wheel's stripped, so its bytes differ from the wheel member's.
+mkdir -p "${work}/chain/lib"
+{ cat "${work}/provider.so"; printf 'stripped'; } > "${work}/chain/lib/libonnxruntime.so.1"
+export ONNXRUNTIME_OUTPUT_DIR="${work}/chain"
+t_assert_ok ort_stage_plugin_core "${amdsite}"
 t_assert_fails ort_python_host_runtime_needed "${amdsite}" migraphx "${wheels}" "${work}/proof-amd" 'no image copy under the default root'
 cp "${amdsite}/libmigraphx-ep.so" "${work}/ep root/lib/libmigraphx-ep.so"
 export ORT_AMDGPU_EP_ROOT="${work}/ep root"
 needed_lines "${amdsite}" migraphx "${work}/proof-amd" libmigraphx_c.so.3 libamdhip64.so.7
+printf 'x' >> "${amdsite}/libonnxruntime.so.1"
+t_assert_fails ort_python_host_runtime_needed "${amdsite}" migraphx "${wheels}" "${work}/proof-amd" 'a plugin core that is not the chain core fails'
+cp "${work}/chain/lib/libonnxruntime.so.1" "${amdsite}/libonnxruntime.so.1"
 unset ORT_AMDGPU_EP_ROOT
 printf 'sdk\n' > "${work}/bundle/lib/libmigraphx-ep.so"
 t_assert_ok ort_assert_no_bundled_host_runtime "${work}/bundle" migraphx 'the plugin module is the bundle'"'"'s own EP, not a host SDK library'

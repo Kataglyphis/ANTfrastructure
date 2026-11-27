@@ -247,10 +247,15 @@ closure_args=()
 site_packages="$("${PY}" -I -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
 source "${SCRIPT_DIR}/ort-runtime-bundle.sh"
 # The plugin MIGraphX EP travels beside the chain ORT's capi; the app registers it from there when ORT_AMDGPU_EP_ROOT is unset: docs/python-app-bundles.md#linux-gpu-bundles
+ort_library_path=""
 if [ "${image_provider}" = MIGraphX ]; then
   plugin_module="$(ort_amdgpu_ep_dir)/${ORT_AMDGPU_EP_MODULE}"
   [ -f "${plugin_module}" ] || err "the rocm image carries no plugin MIGraphX EP at ${plugin_module}"
   cp -L "${plugin_module}" "$(ort_python_provider_file "${site_packages}/onnxruntime/capi" migraphx)"
+  ort_stage_plugin_core "${site_packages}/onnxruntime/capi" || err "could not stage the chain ORT core the plugin MIGraphX EP links"
+  # The module is never patched, so its core resolves through the launchers' library path, which the closure and G6 take too.
+  ort_library_path="${site_packages#"${BUNDLE}"/}/onnxruntime/capi"
+  closure_args+=(--library-path "${ort_library_path}")
 fi
 if [ "${host_gpu_runtime}" = true ]; then
   case "${required_provider}" in
@@ -308,6 +313,7 @@ gst_tools=()
 for tool in "${GST_TOOLS[@]}"; do gst_tools+=("runtime/libexec/gstreamer/${tool}"); done
 loader_args=(--beside)
 if [ "${host_gpu_runtime}" = true ]; then loader_args+=(--external-library-path); fi
+if [ -n "${ort_library_path}" ]; then loader_args+=(--library-path "${ort_library_path}"); fi
 bash "${SCRIPT_DIR}/bundle-loader.sh" "${loader_args[@]}" "${BUNDLE}" "${RUNTIME}/lib" "runtime/bin/$(basename "$(readlink -f "${PY}")")" "${gst_tools[@]}"
 GLIBC_VERSION="$(getconf GNU_LIBC_VERSION | awk '{ print $2 }')"
 
@@ -325,7 +331,9 @@ for tool in "${GST_TOOLS[@]}"; do
 done
 
 info "== G6: ONNX Runtime is the chain build"
-bash "${SCRIPT_DIR}/check-ort-provenance.sh" "${BUNDLE}"
+census_args=()
+if [ -n "${ort_library_path}" ]; then census_args+=(--library-path "${ort_library_path}"); fi
+bash "${SCRIPT_DIR}/check-ort-provenance.sh" "${census_args[@]}" "${BUNDLE}"
 
 info "== self-test: ${SELF_TEST[*]}"
 self_test_args=()
