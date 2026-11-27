@@ -560,6 +560,7 @@ See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 - [GCC 16.2 segfaults in a module unit's constructor over a `std::span` member](#gcc-162-segfaults-in-a-module-units-constructor-over-a-stdspan-member)
 - [Every ASan GPU test leaks under `setup_loader_term_phys_devs` on a new runner image](#every-asan-gpu-test-leaks-under-setup_loader_term_phys_devs-on-a-new-runner-image)
 - [An exception through std::call_once segfaults in libunwind](#an-exception-through-stdcall_once-segfaults-in-libunwind)
+- [A Flutter 3.50 Linux app aborts at its first C++ exception](#a-flutter-350-linux-app-aborts-at-its-first-c-exception)
 - [A Linux AMD package returns fewer, drifting detections on MIGraphX](#a-linux-amd-package-returns-fewer-drifting-detections-on-migraphx)
 - [lavapipe segfaults building an acceleration structure on arm64](#lavapipe-segfaults-building-an-acceleration-structure-on-arm64)
 - [Headless Chrome prints nothing under qemu-user](#headless-chrome-prints-nothing-under-qemu-user)
@@ -1959,6 +1960,8 @@ hazard back. The runtime smoke's `check_no_libunwind_closure` fails any shipped 
 or `/usr/local` that needs it, and `tests/test-no-libunwind.sh` pins both flags and that verdict.
 `libunwind-dev` stays installed (several `install-deps.sh` and the runtime image ship it), so
 the flags are the guard: do not set them back to `auto` to "get better backtraces".
+A Flutter 3.50 runner has the same class, with the engine as the second unwinder:
+[A Flutter 3.50 Linux app aborts at its first C++ exception](#a-flutter-350-linux-app-aborts-at-its-first-c-exception).
 
 ### A Flutter app on ROCm aborts with filesystem_error
 
@@ -1980,7 +1983,49 @@ lookup to GCC's unwinder, and the same bundle then runs MIGraphX and matches the
 behind it, and through the bundled loader's `--preload` otherwise, so host children inherit
 nothing. A bundle without a regular `libgcc_s.so.1` refuses the option, and a launcher built
 under the other policy must be restaged. The closure suite proves the lookup owner on both
-paths with a stand-in library; it does not reproduce ROCm or prove inference.
+paths with a stand-in library; it does not reproduce ROCm or prove inference. The engine's
+exports break every C++ exception in a 3.50 runner, not only ROCm's:
+[the entry below](#a-flutter-350-linux-app-aborts-at-its-first-c-exception) fixes the order at link time.
+
+### A Flutter 3.50 Linux app aborts at its first C++ exception
+
+**Symptom.** A Linux Flutter app dies with SIGABRT at its first C++ exception, even one the
+throwing library catches itself. stderr shows `terminate called after throwing an instance of`,
+then `terminate called recursively`. The core's stack runs `__cxa_throw` (libstdc++) →
+`_Unwind_RaiseException` (`libflutter_linux_gtk.so`) → `__gxx_personality_v0` →
+`__cxa_call_terminate` → `abort`. An integration test then reports `did not complete` for that
+test and every later one, with nothing in its log. Seen first in OmniAccelerANT, when GenAI refused
+a missing model directory with an exception it catches itself. A Rust panic in an FFI library dies
+the same way.
+
+**Cause.** Two unwinders in one process. Flutter 3.50's engine links LLVM libunwind statically
+and exports 31 of its symbols: ten `_Unwind_*` functions, four `__unw_*` and the `unw_*` API.
+`_Unwind_GetIPInfo` and `_Unwind_Backtrace` are not among them. Flutter 3.47.9 exports none. The
+runner lists `libflutter_linux_gtk.so` first among its libraries, so the global lookup binds
+libstdc++'s `_Unwind_RaiseException` to the engine. libstdc++'s personality routine then reads the
+instruction pointer through `_Unwind_GetIPInfo`, which only libgcc_s defines, from a context the
+engine's unwinder built. It finds no handler and terminates. Rust's personality calls
+`_Unwind_GetIPInfo` too.
+
+Measured with ten lines of C++ that throw and catch a `std::runtime_error`, linked with
+`--no-as-needed` against the real 3.50.1 engine (release and debug, Ubuntu GCC 15.2). It aborts
+with rc 134 when `libflutter_linux_gtk.so` comes first in NEEDED, and catches when
+`libgcc_s.so.1` comes first. Against 3.47.9's engine both orders catch.
+
+**Fix.** Link `libgcc_s` ahead of the engine. In the runner's `linux/CMakeLists.txt`, include the
+hub's `KataglyphisFlutterUnwinder` module and call `kataglyphis_flutter_unwinder_first(${BINARY_NAME})`
+before `target_link_libraries(${BINARY_NAME} PRIVATE flutter)`. It adds `gcc_s` inside
+`--push-state,--no-as-needed`, so `libgcc_s.so.1` leads the NEEDED list. A call after `flutter`
+fails the configure. Then run `05-frameworks/flutter/check-flutter-unwinder-order.sh` on the built
+runner: it fails when anything defines `_Unwind_RaiseException` ahead of libgcc_s in `ldd`'s load
+order. Both are described with [the Flutter gates](code-quality-tooling.md#the-flutter-linux-unwinder-order).
+With the module, the same ten lines catch against the real 3.50.1 engine. OmniAccelerANT carried
+the fix first.
+
+Upstream hides the symbols on master (flutter/flutter#196451, which closed #196402), but neither
+3.50.1 nor the 3.51 beta carries it. [The cherry-pick request](../linux/upstream/flutter-unwinder-cherry-pick/ISSUE.md)
+is prepared, not posted. The [`libunwind.so.8` entry](#an-exception-through-stdcall_once-segfaults-in-libunwind)
+is the same class with another culprit.
 
 ### lavapipe segfaults building an acceleration structure on arm64
 

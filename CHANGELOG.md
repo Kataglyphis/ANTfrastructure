@@ -19,6 +19,31 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-27 — a Flutter 3.50 runner loads libgcc_s ahead of the engine's unwinder
+
+- Flutter 3.50.1's `libflutter_linux_gtk.so` exports 31 of LLVM libunwind's symbols (ten `_Unwind_*`, four
+  `__unw_*`, seventeen `unw_*`) but not `_Unwind_GetIPInfo`; 3.47.9 exports none. A runner lists the engine
+  first among its libraries, so the first C++ exception aborts the app, even one the throwing library catches.
+  OmniAccelerANT's integration test hit it (develop-red #408 x64, #411 arm64; fixed there in 0393907c and
+  d53bf654). Ten lines of C++ against the real 3.50.1 engine abort with rc 134 when the engine leads NEEDED
+  and catch when libgcc_s does.
+- `cmake/KataglyphisFlutterUnwinder.cmake`: `kataglyphis_flutter_unwinder_first(<runner>)` links `gcc_s` inside
+  `--push-state,--no-as-needed` ahead of `flutter`, and fails the configure when the runner already links
+  `flutter` or the engine's path. Windows and macOS runners are left alone. With it, the same ten lines catch
+  against the real engine.
+- `05-frameworks/flutter/check-flutter-unwinder-order.sh <executable>...` fails unless libgcc_s is the first
+  object in `ldd`'s load order that defines `_Unwind_RaiseException`. An unresolved library, a `readelf`
+  error and a launcher without its ELF fail too; a `bundle-loader.sh --beside` launcher is graded by its
+  `<name>.bin`.
+- Suites: `test-cmake-flutter-unwinder.sh` (the link line, the refusals, and a runner and a control built
+  against a stand-in engine, run and gated) and `test-check-flutter-unwinder-order.sh`. Nine
+  `flutter.unwinder-*` mutations, all proven under Linux bash.
+- `docs/failure-modes.md` § A Flutter 3.50 Linux app aborts at its first C++ exception, linked from the
+  `libunwind.so.8` and ROCm entries; `code-quality-tooling.md` § The Flutter Linux unwinder order.
+- Upstream fixed it on master (flutter/flutter#196451), not on 3.50 stable or 3.51 beta.
+  `linux/upstream/flutter-unwinder-cherry-pick/ISSUE.md` is the prepared cherry-pick request, not posted.
+  jotrockenmitlocken still has to adopt the module (BACKLOG CON150).
+
 ## 2026-11-27 — Renovate's Node moves to 24.22.3
 
 - `RENOVATE_NODE_VERSION` 24.22.3 with both `.tar.xz` SHA-256s from nodejs.org's `SHASUMS256.txt`: renovate 45.1.2

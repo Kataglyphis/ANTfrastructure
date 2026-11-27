@@ -667,6 +667,17 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       `fetch-fallback-fonts.py`, its two test cases and the four `fallback-fonts.transition-*` recipes, and
       the transition lock in `--print-generations` with its smoke-test cases and the
       `fallback-fonts.generations-transition` and `web-smoke.fallback-fonts-transition-set` recipes.
+      **3.50.1 exports an unwinder (2026-11-27):** its engine exports 31 of LLVM libunwind's symbols (3.47.9 none),
+      so a Linux runner that loads it ahead of libgcc_s aborts at its first C++ exception or Rust panic
+      (develop-red #408 x64, #411 arm64; fixed in OmniAccelerANT 0393907c and d53bf654). The hub's
+      `cmake/KataglyphisFlutterUnwinder.cmake` and `05-frameworks/flutter/check-flutter-unwinder-order.sh` set and
+      gate the order ([the failure](docs/failure-modes.md#a-flutter-350-linux-app-aborts-at-its-first-c-exception)).
+      Upstream fixed it on master only (flutter/flutter#196451); the cherry-pick request in
+      `linux/upstream/flutter-unwinder-cherry-pick/` is prepared, not posted.
+      **jotrockenmitlocken is the second Flutter Linux runner and must adopt the module** before it can be green on
+      3.50.1: `kataglyphis_flutter_unwinder_first(${BINARY_NAME})` before it links `flutter` in `linux/CMakeLists.txt`,
+      and the gate on its release bundle. OmniAccelerANT moves from its own gate copy to the hub's. Keep both until a
+      stable release exports no `_Unwind_*`; libgcc_s first stays harmless after that.
 
 - [ ] **CON236 — the Windows publish dispatches the consumers' lanes too** [S, ★★]. Owner decision 2026-11-13:
       after each publish every consumer's lanes run once on the new image. `build-runtime-manifest.sh`

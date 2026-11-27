@@ -67254,5 +67254,77 @@
   "replace": "",
   "test": "python3 linux/scripts/tests/test-image-acceptance.py",
   "why": "submodule build trees are part of the consumer's build output and would stay"
+ },
+ {
+  "id": "flutter.unwinder-order-any-first-definer",
+  "target": "linux/scripts/05-frameworks/flutter/check-flutter-unwinder-order.sh",
+  "find": "    libgcc_s.so*)\n",
+  "replace": "    ?*)\n",
+  "test": "bash linux/scripts/tests/test-check-flutter-unwinder-order.sh",
+  "why": "any first definer of _Unwind_RaiseException would pass, Flutter 3.50's engine included"
+ },
+ {
+  "id": "flutter.unwinder-order-unresolved-unchecked",
+  "target": "linux/scripts/05-frameworks/flutter/check-flutter-unwinder-order.sh",
+  "find": "  if [[ \"${listing}\" == *\"not found\"* ]]; then\n",
+  "replace": "  if false; then\n",
+  "test": "bash linux/scripts/tests/test-check-flutter-unwinder-order.sh",
+  "why": "an unresolved library hides its symbols, so the order would be graded on a partial list"
+ },
+ {
+  "id": "flutter.unwinder-order-readelf-failure",
+  "target": "linux/scripts/05-frameworks/flutter/check-flutter-unwinder-order.sh",
+  "find": "    if ! syms=\"$(readelf --dyn-syms -W \"${path}\" 2>&1)\"; then\n",
+  "replace": "    syms=\"$(readelf --dyn-syms -W \"${path}\" 2>&1)\" || true\n    if false; then\n",
+  "test": "bash linux/scripts/tests/test-check-flutter-unwinder-order.sh",
+  "why": "a library readelf cannot read must fail the gate, not pass as one without the unwinder"
+ },
+ {
+  "id": "flutter.unwinder-order-every-executable",
+  "target": "linux/scripts/05-frameworks/flutter/check-flutter-unwinder-order.sh",
+  "find": "  check_one \"${exe}\" || rc=1\n",
+  "replace": "  check_one \"${exe}\" || rc=1\n  break\n",
+  "test": "bash linux/scripts/tests/test-check-flutter-unwinder-order.sh",
+  "why": "every executable named must be graded, not only the first"
+ },
+ {
+  "id": "flutter.unwinder-order-launcher-follow",
+  "target": "linux/scripts/05-frameworks/flutter/check-flutter-unwinder-order.sh",
+  "find": "    exe=\"${exe}.bin\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-check-flutter-unwinder-order.sh",
+  "why": "a bundle-loader.sh --beside launcher is a script, so the gate must grade the <name>.bin it starts"
+ },
+ {
+  "id": "flutter.unwinder-cmake-late-call-by-name",
+  "target": "cmake/KataglyphisFlutterUnwinder.cmake",
+  "find": "    if(_lib STREQUAL \"flutter\" OR _lib MATCHES \"libflutter_linux_gtk\\\\.so$\")\n",
+  "replace": "    if(_lib MATCHES \"libflutter_linux_gtk\\\\.so$\")\n",
+  "test": "bash linux/scripts/tests/test-cmake-flutter-unwinder.sh",
+  "why": "a call after the runner links the flutter target cannot put libgcc_s first and must fail the configure"
+ },
+ {
+  "id": "flutter.unwinder-cmake-late-call-by-path",
+  "target": "cmake/KataglyphisFlutterUnwinder.cmake",
+  "find": "    if(_lib STREQUAL \"flutter\" OR _lib MATCHES \"libflutter_linux_gtk\\\\.so$\")\n",
+  "replace": "    if(_lib STREQUAL \"flutter\")\n",
+  "test": "bash linux/scripts/tests/test-cmake-flutter-unwinder.sh",
+  "why": "the engine linked by its path comes first just the same, so a later call must fail too"
+ },
+ {
+  "id": "flutter.unwinder-cmake-no-as-needed",
+  "target": "cmake/KataglyphisFlutterUnwinder.cmake",
+  "find": "PRIVATE \"-Wl,--push-state,--no-as-needed\" gcc_s \"-Wl,--pop-state\")",
+  "replace": "PRIVATE gcc_s)",
+  "test": "bash linux/scripts/tests/test-cmake-flutter-unwinder.sh",
+  "why": "under --as-needed the linker drops libgcc_s from the runner, whose own code calls no _Unwind_* function"
+ },
+ {
+  "id": "flutter.unwinder-cmake-linux-only",
+  "target": "cmake/KataglyphisFlutterUnwinder.cmake",
+  "find": "     \"Linux\")\n    return()\n",
+  "replace": "     \"Linux\")\n",
+  "test": "bash linux/scripts/tests/test-cmake-flutter-unwinder.sh",
+  "why": "a Windows or macOS runner has no libgcc_s and must keep its link line"
  }
 ]

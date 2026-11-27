@@ -12,8 +12,8 @@ README.md | avg-sentence | 14.1
 README.md | long-share | 0.0
 README.md | ids-per-k | 0.0
 README.md | bold-per-k | 0.0
-cmake/README.md | avg-sentence | 17.5
-cmake/README.md | long-share | 10.9
+cmake/README.md | avg-sentence | 17.3
+cmake/README.md | long-share | 10.7
 cmake/README.md | ids-per-k | 3.0
 cmake/README.md | bold-per-k | 6.0
 docs/INDEX.md | avg-sentence | 15.1
@@ -65,7 +65,7 @@ docs/ci-build-triggers.md | long-share | 7.4
 docs/ci-build-triggers.md | ids-per-k | 5.0
 docs/ci-build-triggers.md | bold-per-k | 3.0
 docs/code-quality-tooling.md | avg-sentence | 21.3
-docs/code-quality-tooling.md | long-share | 18.9
+docs/code-quality-tooling.md | long-share | 18.7
 docs/code-quality-tooling.md | ids-per-k | 2.9
 docs/code-quality-tooling.md | bold-per-k | 6.3
 docs/consumer-image-contract.md | avg-sentence | 19.8
@@ -92,10 +92,10 @@ docs/docs-sites.md | avg-sentence | 18.9
 docs/docs-sites.md | long-share | 14.1
 docs/docs-sites.md | ids-per-k | 4.5
 docs/docs-sites.md | bold-per-k | 3.3
-docs/failure-modes.md | avg-sentence | 18.4
-docs/failure-modes.md | long-share | 11.5
-docs/failure-modes.md | ids-per-k | 5.2
-docs/failure-modes.md | bold-per-k | 18.3
+docs/failure-modes.md | avg-sentence | 18.3
+docs/failure-modes.md | long-share | 11.4
+docs/failure-modes.md | ids-per-k | 5.1
+docs/failure-modes.md | bold-per-k | 18.2
 docs/fleet-health.md | avg-sentence | 18.7
 docs/fleet-health.md | long-share | 12.3
 docs/fleet-health.md | ids-per-k | 1.6

@@ -49,6 +49,7 @@ rather than an uninitialised checkout.
 | `InterproceduralOptimization.cmake` | `myproject_enable_ipo` — IPO on when `check_ipo_supported` passes |
 | `KataglyphisAppImage.cmake` | `kataglyphis_provision_appimagetool`, `kataglyphis_appimagetool_pin` — appimagetool from the immutable release tag pinned in `linux/scripts/01-core/versions.env`, checksum-verified, **fatal** on mismatch or download failure |
 | `KataglyphisFetchData.cmake` | `kataglyphis_fetch_data` — the files or scenes a data lock pins, through the hub's `fetch-data-lock.py`, at configure or in `cmake -P` — [`data-repositories.md`](../docs/data-repositories.md#the-hubs-fetcher) |
+| `KataglyphisFlutterUnwinder.cmake` | `kataglyphis_flutter_unwinder_first(<runner>)` — on Linux, links `gcc_s` with `--no-as-needed` ahead of `flutter`, so `libgcc_s.so.1` leads a Flutter runner's NEEDED list and its `_Unwind_*` win over the 3.50 engine's. Call it before the runner links `flutter`: a later call fails the configure. Windows and macOS runners are left alone. The gate for the built runner: [`code-quality-tooling.md`](../docs/code-quality-tooling.md#the-flutter-linux-unwinder-order) |
 | `KataglyphisCMakeHelpers.cmake` | `kataglyphis_collect_module_interfaces` — globs C++20 module interface units; plus `kataglyphis_set_module_scan`, `kataglyphis_join_list`, `kataglyphis_append_prefixed_files`, `kataglyphis_add_source_group` and `kataglyphis_apply_runtime_compile_definitions` |
 | `PreventInSourceBuilds.cmake` | in-source build guard |
 | `ProjectOptionsCommon.cmake` | `myproject_define_core_options` (the 14 core option names the other modules here read — `myproject_ENABLE_*` plus `myproject_WARNINGS_AS_ERRORS` — with the four contested defaults as **required** keyword arguments), `myproject_mark_core_options_advanced`, `myproject_cpp_modules_supported`, and the per-target dispatch — `myproject_create_option_targets`, `myproject_enable_profiling`, `myproject_apply_sanitizers`, `myproject_apply_unity_pch_cache`, `myproject_apply_static_analysis`, `myproject_apply_iwyu`, `myproject_apply_static_analyzer_flags`, `myproject_apply_warnings_as_errors_linker_check`, `myproject_set_output_directories`, `myproject_configure_lwyu_and_ipo`. Defines `MYPROJECT_PROJECT_OPTIONS_COMMON_VERSION` so a consumer can assert it did not load a stale local shadow |
@@ -165,6 +166,16 @@ Returns a verified appimagetool: -DKATAGLYPHIS_APPIMAGETOOL, else PATH (unless N
 ```text
 Registers a GoogleTest executable with CTest; KATAGLYPHIS_ENABLE_GTEST_DISCOVERY=OFF forces the add_test fallback.
   kataglyphis_register_gtest_target(<target> [WORKING_DIRECTORY <absolute dir>] [DISCOVERY_TIMEOUT <seconds, default 300>])
+```
+
+`cmake/KataglyphisFlutterUnwinder.cmake`, in a Flutter app's `linux/CMakeLists.txt`:
+
+```cmake
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ANTfrastructure/cmake")
+include(KataglyphisFlutterUnwinder)
+# Puts libgcc_s.so.1 ahead of the engine in the runner's NEEDED list; fails the configure when flutter is already linked.
+kataglyphis_flutter_unwinder_first(${BINARY_NAME})
+target_link_libraries(${BINARY_NAME} PRIVATE flutter)
 ```
 
 `cmake/CrashDump.cmake`:

@@ -512,6 +512,28 @@ build step checks:
 
 It came out of OmniAccelerANT's `pinned_artefacts_test.dart`. Test: `tests/test-check-web-artefacts.sh`.
 
+#### The Flutter Linux unwinder order
+
+A Flutter 3.50 runner aborts at its first C++ exception unless `libgcc_s.so.1` loads before the
+engine ([the failure](failure-modes.md#a-flutter-350-linux-app-aborts-at-its-first-c-exception)).
+Two pieces keep that order:
+
+- `kataglyphis_flutter_unwinder_first(<runner>)` from
+  [`cmake/KataglyphisFlutterUnwinder.cmake`](../cmake/README.md#what-is-here) links `gcc_s` with
+  `--no-as-needed` ahead of `flutter`. Call it in `linux/CMakeLists.txt` before the runner links
+  `flutter`; a later call fails the configure. It sees the runner's own link items only, not what
+  a linked library brings in.
+- `05-frameworks/flutter/check-flutter-unwinder-order.sh <executable>...` grades each executable's
+  `ldd` load order. It fails unless the first object that defines `_Unwind_RaiseException` is
+  libgcc_s. An unresolved library, a `readelf` error and a script without its ELF fail too. A `#!`
+  launcher from `bundle-loader.sh --beside` is graded by the `<name>.bin` beside it.
+
+The gate cannot see a library the app `dlopen()`s later. `ldd` cannot read a foreign-arch binary,
+so run it on the arch that built the bundle. OmniAccelerANT carried both first; jotrockenmitlocken
+is the second runner. Tests: `tests/test-cmake-flutter-unwinder.sh` builds a runner and a control
+against a stand-in engine and runs both, and `tests/test-check-flutter-unwinder-order.sh` covers
+the gate. No test downloads the real engine.
+
 #### Frontend frame timings
 
 `05-frameworks/flutter/frontend-perf-report.py <frontend.json> <history-dir>` reads an app's
@@ -1356,7 +1378,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **8396 entries** over **1018 distinct test commands**; both digits are
+manifest holds **8405 entries** over **1020 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

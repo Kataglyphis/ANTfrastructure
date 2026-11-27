@@ -7,7 +7,10 @@ stay under `linux/scripts/patches/`, applied by the image build. The Windows lan
 
 | Directory | Upstream | Kind | Status |
 |---|---|---|---|
-| (none) | | | |
+| [`flutter-unwinder-cherry-pick`](flutter-unwinder-cherry-pick/ISSUE.md) | flutter/flutter | cherry-pick request for #196451 (a comment on #196402) | prepared, not posted |
+
+**Do not post anything here without the owner saying so.** A fix that upstream already merged gets a
+cherry-pick request, not a second issue: search the closed issues first.
 
 ## Not filed, and why
 
