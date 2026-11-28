@@ -22,14 +22,16 @@
 ## 2026-11-27 — `Invoke-VulkanValidationRun -GpuAssisted`: GPU-assisted validation for a consumer's suite
 
 - `WindowsVulkanValidation.Common` gains `Get-VulkanGpuAvLayerSetting` (`gpuav_enable` and
-  `gpuav_safe_mode`, so a reported out-of-bounds access is skipped rather than faulting), and
-  `Copy-VulkanLayerSettings -AppendSetting` adds lines to the staged `vk_layer_settings.txt` only.
+  `gpuav_safe_mode`, with which the layer tries to prevent a crash at the cost of a slower run), and
+  `Copy-VulkanLayerSettings -AppendSetting` adds lines to the staged `vk_layer_settings.txt` only,
+  starting a line of their own when the source lacks a final newline.
   `Invoke-VulkanValidationRun -GpuAssisted` stages both, so GPU-AV checks every shader's
   buffer-device-address and descriptor access for that run; a caller's own settings file stays as it is.
-- Two Pester cases: the staged copy carries the settings and the source does not, and a child sees
-  `gpuav_enable` with the switch and not without. Coverage 141/165 (85.5 %, floor 80 %). Dropping the
-  append fails both, not forwarding the switch fails the second. BeschleunigerBallett's
-  `Invoke-SyncValidation.ps1 -GpuAssisted` is the first caller.
+- Three Pester cases: the staged copy carries the settings and the source does not, a source
+  without a final newline keeps its last line apart from the first appended one, and a child sees
+  `gpuav_enable` with the switch and not without. Coverage 146/170 (85.9 %, floor 80 %). Dropping the
+  append fails all three, appending without the newline the second, not forwarding the switch the
+  third. BeschleunigerBallett's `Invoke-SyncValidation.ps1 -GpuAssisted` is the first caller.
 
 ## 2026-11-27 — the backlog reads the published images: CON283 done, CON238, CON264, CON79 and CON99 advanced
 

@@ -143,12 +143,26 @@ function Restore-VulkanLayerSettings { param($Staging); $State.Calls.Add('restor
       $staging = Copy-VulkanLayerSettings -SettingsPath $source -TargetDirectory $dir -AppendSetting @(Get-VulkanGpuAvLayerSetting)
       try {
         $staged = Get-Content -LiteralPath $staging.StagedPath -Raw
-        $staged | Should -Match 'khronos_validation\.validate_sync\s*=\s*true'
-        $staged | Should -Match 'khronos_validation\.gpuav_enable\s*=\s*true'
-        $staged | Should -Match 'khronos_validation\.gpuav_safe_mode\s*=\s*true'
+        $staged | Should -Match '(?m)^khronos_validation\.validate_sync\s*=\s*true\s*$'
+        $staged | Should -Match '(?m)^khronos_validation\.gpuav_enable\s*=\s*true\s*$'
+        $staged | Should -Match '(?m)^khronos_validation\.gpuav_safe_mode\s*=\s*true\s*$'
       } finally { Restore-VulkanLayerSettings -Staging $staging }
       (Get-Content -LiteralPath $source -Raw) | Should -Be $before
       Test-Path -LiteralPath $staging.StagedPath | Should -BeFalse
+    }
+
+    It 'starts the appended settings on a line of their own when the source lacks a final newline' {
+      $dir = (New-Item -ItemType Directory -Path (Join-Path $script:root 'gpuav-no-final-newline') -Force).FullName
+      $source = Join-Path $script:root 'no-final-newline.txt'
+      [System.IO.File]::WriteAllText($source, 'khronos_validation.validate_sync = true')
+      $staging = Copy-VulkanLayerSettings -SettingsPath $source -TargetDirectory $dir -AppendSetting @(Get-VulkanGpuAvLayerSetting)
+      try {
+        $lines = @(Get-Content -LiteralPath $staging.StagedPath)
+        $lines | Should -Contain 'khronos_validation.validate_sync = true'
+        $lines | Should -Contain 'khronos_validation.gpuav_enable = true'
+        $lines | Should -Contain 'khronos_validation.gpuav_safe_mode = true'
+      } finally { Restore-VulkanLayerSettings -Staging $staging }
+      [System.IO.File]::ReadAllText($source) | Should -Be 'khronos_validation.validate_sync = true'
     }
 
     It 'ignores a null staging handle so finally blocks are safe' {

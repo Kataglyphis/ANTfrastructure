@@ -1067,13 +1067,14 @@ and fatal missing-command versus advisory lookup failures.
 The container image module resolver has a separate three-case Pester suite and a 100%
 floor against 11/11 measured commands; its existing harness suite still checks installer
 imports and Dockerfile mounts.
-Vulkan validation has an 80% floor against 141/165 measured commands. Its Pester suite
+Vulkan validation has an 80% floor against 146/170 measured commands. Its Pester suite
 uses short local executables to verify settings staging, child exit status, environment
 restoration and redirected-file cleanup; it does not require a GPU or Vulkan SDK.
 `Invoke-VulkanValidationRun -GpuAssisted` appends `Get-VulkanGpuAvLayerSetting`
 (`gpuav_enable` and `gpuav_safe_mode`) to the staged copy only, so GPU-assisted validation
-checks every shader's buffer-device-address and descriptor access for that run; the suite
-proves the child sees it with the switch and not without.
+checks every shader's buffer-device-address and descriptor access for that run. The suite
+proves the child sees it with the switch and not without. A source without a final newline
+still gets each setting on its own line.
 
 Run the driver from the repository root. It parses `linux/scripts/01-core/versions.env`, passes
 every version as `--build-arg` (the Dockerfile ARG defaults are only fallbacks), builds the stages

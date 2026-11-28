@@ -13,11 +13,11 @@ function Get-VulkanLayerSettingsDefaultPath {
     return (Join-Path $PSScriptRoot 'vk_layer_settings.default.txt')
 }
 
-# Opt-in: instrumenting every pipeline about doubles a run (1.9x over eight goldens on llvmpipe).
+# Opt-in: instrumenting every pipeline roughly doubles a run.
 function Get-VulkanGpuAvLayerSetting {
     return @(
         'khronos_validation.gpuav_enable = true'
-        # A reported out-of-bounds access is then skipped, so the run goes on instead of faulting or losing the device.
+        # The layer then tries to prevent a crash from an invalid access, at the cost of a slower run.
         'khronos_validation.gpuav_safe_mode = true'
     )
 }
@@ -49,7 +49,11 @@ function Copy-VulkanLayerSettings {
 
     Copy-Item -LiteralPath (Resolve-Path $SettingsPath).Path -Destination $stagedPath -Force
     if ($AppendSetting) {
-        Add-Content -LiteralPath $stagedPath -Value $AppendSetting
+        $lines = $AppendSetting
+        $staged = [System.IO.File]::ReadAllText($stagedPath)
+        # Add-Content starts where the file ends: without a newline there, the first line would join the source's last.
+        if ($staged.Length -gt 0 -and -not $staged.EndsWith("`n")) { $lines = @('') + $AppendSetting }
+        Add-Content -LiteralPath $stagedPath -Value $lines
     }
 
     return [pscustomobject]@{
