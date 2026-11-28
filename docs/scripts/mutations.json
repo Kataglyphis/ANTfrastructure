@@ -68374,5 +68374,261 @@
   "replace": "        print(f\"FAIL: {exc}\", file=sys.stderr)",
   "test": "bash linux/scripts/tests/test-package-license-verifier.sh",
   "why": "a failed flatpak, ostree or extractor names its own stderr; the bare command line left OxidANT's red Flatpak check unexplained"
+ },
+ {
+  "id": "docs-site.ort-web-loader-jspi-needs-promising",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "jspi: typeof wasm.Suspending === 'function' && typeof wasm.promising === 'function',",
+  "replace": "jspi: typeof wasm.Suspending === 'function',",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "a browser with Suspending alone has no working JSPI"
+ },
+ {
+  "id": "docs-site.ort-web-loader-insecure-asks-no-adapter",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "if (caps.secure_context && caps.webgpu) Object.assign(",
+  "replace": "if (caps.webgpu) Object.assign(",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "an insecure page has no WebGPU to ask"
+ },
+ {
+  "id": "docs-site.ort-web-loader-insecure-is-cpu",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "  if (!caps.secure_context) return choice('cpu', 'no-secure-context');\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "an insecure page gets the CPU build and says why"
+ },
+ {
+  "id": "docs-site.ort-web-loader-no-webgpu-is-cpu",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "  if (!caps.webgpu) return choice('cpu', 'no-webgpu');\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "a browser without navigator.gpu gets the CPU build and says why"
+ },
+ {
+  "id": "docs-site.ort-web-loader-adapter-timeout",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "if (adapter === 'timeout') return { adapter: null, adapter_error: 'timeout' };",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "an adapter request that never answers must not hold the page"
+ },
+ {
+  "id": "docs-site.ort-web-loader-adapter-timeout-reason",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "  if (caps.adapter_error === 'timeout') return choice('cpu', 'adapter-timeout');\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "a timed-out adapter is named as such, not as a failed request"
+ },
+ {
+  "id": "docs-site.ort-web-loader-adapter-error-is-cpu",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "  if (caps.adapter_error) return choice('cpu', 'adapter-error');\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "a failed adapter request gets the CPU build and says why"
+ },
+ {
+  "id": "docs-site.ort-web-loader-no-adapter-is-cpu",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "  if (!caps.adapter) return choice('cpu', 'no-adapter');\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "WebGPU without an adapter gets the CPU build"
+ },
+ {
+  "id": "docs-site.ort-web-loader-jspi-before-asyncify",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "return caps.jspi ? choice('jspi', 'jspi-webgpu') : choice('asyncify', 'no-jspi');",
+  "replace": "return choice('asyncify', 'no-jspi');",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "JSPI is preferred whenever the browser has it"
+ },
+ {
+  "id": "docs-site.ort-web-loader-requested-build-known",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "if (!BUILD_ORDER.includes(build)) throw",
+  "replace": "if (build === undefined) throw",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "a requested build that never ships (jsep) is refused"
+ },
+ {
+  "id": "docs-site.ort-web-loader-one-thread-unisolated",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "  if (!caps.cross_origin_isolated) return { threads: 1, threads_note: 'not-isolated' };\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "threads need SharedArrayBuffer, which only an isolated page has"
+ },
+ {
+  "id": "docs-site.ort-web-loader-build-path",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "if (!BUILD_PATH.test(entry.path || '') || !Array.isArray(entry.files)) {",
+  "replace": "if (!Array.isArray(entry.files)) {",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "a manifest path outside ort/<version>-<hash>/ would fetch elsewhere"
+ },
+ {
+  "id": "docs-site.ort-web-loader-plain-file-name",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "if (!PLAIN_FILE.test(f.file || '') || !SHA256.test(f.sha256 || ''))",
+  "replace": "if (!SHA256.test(f.sha256 || ''))",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "a file name with a slash would leave the build's directory"
+ },
+ {
+  "id": "docs-site.ort-web-loader-bundle-order",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "[`${prefix}.min.mjs`, `${prefix}.mjs`, `${prefix}.bundle.min.mjs`]",
+  "replace": "[`${prefix}.bundle.min.mjs`, `${prefix}.min.mjs`, `${prefix}.mjs`]",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "the minified bundle that loads the build's own loader comes first, as in the parity check"
+ },
+ {
+  "id": "docs-site.ort-web-loader-no-bundle-refused",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "  if (!bundle) throw new OrtWebLoadError('no-bundle',",
+  "replace": "  if (bundle === undefined) throw new OrtWebLoadError('no-bundle',",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "an arm64 manifest without bundles is refused, not loaded half"
+ },
+ {
+  "id": "docs-site.ort-web-loader-one-wasm",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "else if (files.length !== 1) throw",
+  "replace": "else if (files.length < 1) throw",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "two wasm files would leave the choice of bytes to order"
+ },
+ {
+  "id": "docs-site.ort-web-loader-hash-checked",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "    if (actual !== item.sha256) throw",
+  "replace": "    if (actual === null) throw",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "a file other than the manifest's, such as index.html, must not load"
+ },
+ {
+  "id": "docs-site.ort-web-loader-http-status",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "  if (!response.ok) throw new OrtWebLoadError('fetch-failed', `${url}: HTTP ${response.status}`, provenance);\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "a missing file is a refusal with its URL, not a TypeError"
+ },
+ {
+  "id": "docs-site.ort-web-loader-unverifiable",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "if (verify && !subtle) throw",
+  "replace": "if (verify && subtle === 0) throw",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "an insecure page cannot check the files and must say so"
+ },
+ {
+  "id": "docs-site.ort-web-loader-version-guard",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "if (provenance.ort_web !== provenance.ort_version) {",
+  "replace": "if (provenance.ort_web === null) {",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "a cached bundle of another ORT version would mix with this build's wasm"
+ },
+ {
+  "id": "docs-site.ort-web-loader-own-wasm-paths",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "wasmPaths: { mjs: at(entry.loader), wasm: at(entry.wasm) }",
+  "replace": "wasmPaths: new URL(entry.path, root).href",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "both paths name this build's own loader and wasm, never a sibling's"
+ },
+ {
+  "id": "docs-site.ort-web-loader-checked-bytes",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "wasmBinary: new Uint8Array(wasmBytes),",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "ORT gets the bytes that were checked, not a second download"
+ },
+ {
+  "id": "docs-site.ort-web-loader-tap-before-import",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "  if (scope.console) consoleTap(scope);\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "ORT's glue binds the console when it loads, so a later tap sees no placement line"
+ },
+ {
+  "id": "docs-site.ort-web-loader-verbose-session",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "{ ...options, logSeverityLevel: 0, logVerbosityLevel: 0 }",
+  "replace": "{ ...options }",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "only the verbose log names each node's provider"
+ },
+ {
+  "id": "docs-site.ort-web-loader-on-provider-count",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "const onProvider = counts[PLACEMENT_NAMES[provenance.provider]] || 0;",
+  "replace": "const onProvider = total;",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "the nodes ORT moved to the CPU must not count as WebGPU's"
+ },
+ {
+  "id": "docs-site.ort-web-loader-plan-fetches-manifest",
+  "target": "shared/web/javascript/ort-web-loader.mjs",
+  "find": "  const staged = manifest ?? await readManifest(fetchFn, manifestUrl);\n",
+  "replace": "  const staged = await readManifest(fetchFn, manifestUrl);\n",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "a given manifest is not fetched again"
+ },
+ {
+  "id": "docs-site.ort-web-loader-check-drops-isolation",
+  "target": "linux/scripts/ort-web-loader-check.js",
+  "find": "if (!CASES[opts.case].isolated) for (const name of",
+  "replace": "if (false) for (const name of",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "the not-isolated case must serve no COOP and COEP"
+ },
+ {
+  "id": "docs-site.ort-web-loader-check-fake-hashes",
+  "target": "linux/scripts/ort-web-loader-check.js",
+  "find": "files: list.map(([file, role, body]) => ({ file, role, sha256: sha(body), size: Buffer.byteLength(body) })) };",
+  "replace": "files: list.map(([file, role, body]) => ({ file, role, sha256: sha(file), size: Buffer.byteLength(body) })) };",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "the stand-in ORT must pass the loader's hash check, or every case reads as a refusal"
+ },
+ {
+  "id": "docs-site.ort-web-loader-check-traversal",
+  "target": "linux/scripts/ort-web-loader-check.js",
+  "find": "    const file = within(opts.site, pathname.slice('/site/'.length));\n    return file ? { file } : null;",
+  "replace": "    return { file: path.join(opts.site, pathname.slice('/site/'.length)) };",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "nothing outside the site is served"
+ },
+ {
+  "id": "docs-site.ort-web-loader-check-worker-alone",
+  "target": "linux/scripts/ort-web-loader-check.js",
+  "find": "if (opts.worker && (opts.model || opts.in !== 'page')) throw",
+  "replace": "if (opts.worker && opts.model === null) throw",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "the app's worker runs its own protocol, without a model or the built-in worker"
+ },
+ {
+  "id": "docs-site.ort-web-loader-check-detect-needs-worker",
+  "target": "linux/scripts/ort-web-loader-check.js",
+  "find": "if ((opts.build || opts.image) && !opts.worker) throw",
+  "replace": "if (false) throw",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "a build or an image goes to an app's worker, which only --worker names"
+ },
+ {
+  "id": "docs-site.ort-web-loader-check-threshold-default",
+  "target": "linux/scripts/ort-web-loader-check.js",
+  "find": "build: '', image: '', threshold: 0.25 },",
+  "replace": "build: '', image: '', threshold: 0.4 },",
+  "test": "bash linux/scripts/tests/test-ort-web-loader.sh",
+  "why": "the comparator keeps detections down to 0.25, so a higher default drops boxes it would match"
  }
 ]

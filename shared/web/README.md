@@ -18,6 +18,7 @@ them in its `.antfrastructure-shared.manifest`, so `sync-shared-config.sh --chec
 | `javascript/utils.js` | `setMessage`: German text for `de*`, English otherwise |
 | `javascript/cookies.js` | Shows the notice until its button sets `cookie-consent=true` for 400 days (`Max-Age`, `path=/`); `Secure` only on https, since a plain-http LAN page drops a Secure cookie |
 | `javascript/init.js` | Fills both messages. It is a file, so the page needs no inline script |
+| `javascript/ort-web-loader.mjs` | Picks the staged ORT Web build a browser can run, checks and loads that build's files only, and returns its provenance. An ES module for the worker that runs ORT, not part of the shell: [docs-sites.md § Loading ORT Web in an app](../../docs/docs-sites.md#loading-ort-web-in-an-app) |
 
 What `index.html` must carry, besides its own title, metadata and CSP:
 

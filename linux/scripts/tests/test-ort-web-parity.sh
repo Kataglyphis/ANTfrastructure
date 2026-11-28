@@ -31,6 +31,7 @@ const assert = require('node:assert/strict');
 const { mkdirSync, writeFileSync } = require('node:fs');
 const { join } = require('node:path');
 const [dir, scenario] = process.argv.slice(3);
+const { assertServes } = require(join(process.argv[2], '..', 'tests', 'serve-assert.js'));
 const site = join(dir, 'site');
 mkdirSync(join(site, 'ort', 'b'), { recursive: true });
 for (const [file, body] of [[join(site, 'ort', 'b', 'x.wasm'), 'wasm'], [join(dir, 'secret'), 'secret'], [join(dir, 'model.onnx'), 'model'],
@@ -57,17 +58,8 @@ async function check() {
     assert.equal(route(opts, '/js/ort.min.mjs'), null, 'no JS layer is served without --js-dir');
     assert.equal(route(opts, '/model.onnx').file, opts.model);
     assert.equal(route(opts, '/elsewhere'), null);
-    const server = await serve(opts);
-    const base = `http://127.0.0.1:${server.address().port}`;
-    try {
-      for (const [url, status, type] of [['/', 200, 'text/html'], ['/site/ort/b/x.wasm', 200, 'application/wasm'],
-        ['/site/%2e%2e/secret', 404, undefined], ['/nothing', 404, undefined]]) {
-        const response = await fetch(base + url);
-        assert.equal(response.status, status, url);
-        if (type) assert.equal(response.headers.get('content-type'), type, url);
-        for (const [header, value] of Object.entries(ISOLATED)) assert.equal(response.headers.get(header), value, `${url} ${header}`);
-      }
-    } finally { server.close(); }
+    await assertServes(await serve(opts), [['/', 200, 'text/html'], ['/site/ort/b/x.wasm', 200, 'application/wasm'],
+      ['/site/%2e%2e/secret', 404], ['/nothing', 404]], ISOLATED);
   } else {
     const server = await serve(opts);
     const base = `http://127.0.0.1:${server.address().port}/`;

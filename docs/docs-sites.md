@@ -597,3 +597,117 @@ Chrome 157 on SwiftShader:
 Suite `linux/scripts/tests/test-ort-web-parity.sh` covers the verdicts, the tolerance edges, the cat rule, every
 refusal and the report's shape over fixture builds, and the page and its server against a fake ORT module. The
 `docs-site.ort-web-parity-*`, `docs-site.ort-web-harness-*` and `packaging.ort-profile-*` mutations prove it.
+
+## Loading ORT Web in an app
+
+`shared/web/javascript/ort-web-loader.mjs` picks the staged build a browser can run and loads that build's files
+only. A consumer copies it into `web/javascript/` (shared asset `web-ort-loader-mjs`) and imports it in the worker
+that runs ORT:
+
+```js
+import { createSession, loadOrtWeb, planOrtWeb } from '../javascript/ort-web-loader.mjs';
+
+const base = new URL('../', import.meta.url);  // the directory that holds ort/
+const { provenance } = await planOrtWeb({ base });  // the choice, from ort/manifest.json alone
+const loaded = await loadOrtWeb({ base });  // { ort, provenance, executionProviders }
+const session = await createSession(loaded, modelBytes);
+```
+
+The choice, first match wins:
+
+| Build | When | `reason` |
+|---|---|---|
+| any | the caller passes `build` | `requested` |
+| CPU | `isSecureContext` is false: the page has no WebGPU | `no-secure-context` |
+| CPU | no `navigator.gpu` | `no-webgpu` |
+| CPU | `requestAdapter()` does not answer in 5 s, throws, or answers `null` | `adapter-timeout`, `adapter-error`, `no-adapter` |
+| JSPI | `WebAssembly.Suspending` and `WebAssembly.promising` exist | `jspi-webgpu` |
+| Asyncify | JSPI is missing | `no-jspi` |
+
+- `planOrtWeb` reads `<base>/ort/manifest.json` and fetches nothing of the build. Its provenance has
+  `"verified": false` and `"ort_web": null`.
+- `loadOrtWeb` fetches the build's bundle, loader and wasm. It checks each SHA-256 against the manifest with
+  `crypto.subtle`. Then it imports the bundle. `env.wasm.wasmPaths` gets that build's `{ mjs, wasm }`, and
+  `env.wasm.wasmBinary` the checked bytes. So no other build's loader or wasm can load. The bundle is
+  `ort.<prefix>.min.mjs`, else `.mjs`, else `.bundle.min.mjs`, as in the parity check.
+- Threads: ORT's own default, `min(4, ceil(cores / 2))`, when `crossOriginIsolated`; one otherwise, with
+  `"threads_note": "not-isolated"`.
+- `createSession(loaded, model)` creates the session with ORT's verbose log. It counts the placement lines into
+  `provenance.session`: `placements`, `nodes`, `on_provider`, `share` and `proven`. ORT moves a node it cannot
+  run to the CPU without a word. So the requested provider proves nothing. ORT's glue binds `console.log` and
+  `console.error` once, when it loads. So `loadOrtWeb` taps the console before the import. Sessions are
+  created one at a time, so each count is its own.
+
+It refuses with an `OrtWebLoadError`. Its `code` says why. Its `provenance` holds the choice made so far:
+
+| `code` | When |
+|---|---|
+| `unknown-build` | `build` is not `jspi`, `asyncify` or `cpu` |
+| `bad-manifest` | not a schema 1 manifest, a path other than `ort/<version>-<build hash>/`, a file name with a slash, no SHA-256, or not one wasm and one loader |
+| `build-not-staged`, `no-bundle` | the chosen build or its bundle is missing (the image builds bundles on amd64 only) |
+| `fetch-failed`, `hash-mismatch` | a file does not answer 200, or its bytes are not the manifest's: a missing file can come back as `index.html` |
+| `unverifiable` | no `crypto.subtle`, which only a secure context has; `verify: false` loads unchecked and says `"verified": false` |
+| `version-mismatch` | the bundle's `env.versions.web` is not the manifest's ORT version |
+
+The provenance is plain JSON:
+
+- `build`, `provider` (`webgpu` or `wasm`), `reason`, `reason_text`.
+- `build_hash`, `path`, `ort_version`, `ort_revision`, `ort_web`.
+- `files`: `bundle`, `loader` and `wasm`, each with `file`, `sha256` and `size`.
+- `verified`, `threads`, `threads_note`.
+- `capabilities`: `secure_context`, `cross_origin_isolated`, `jspi`, `webgpu`, `adapter_error`,
+  `hardware_concurrency`, and `adapter` with `vendor`, `architecture`, `device`, `description`, `is_fallback`.
+- `manifest`: `url`, `image_receipt_sha256`.
+- `session`, after `createSession`.
+
+`linux/scripts/ort-web-loader-check.js` runs it in the image's headless Chrome under one browser condition:
+
+```bash
+node linux/scripts/ort-web-loader-check.js --site <app dir> --case <case> --out <report.json> \
+  [--in page|worker | --worker <app-relative worker> [--build NAME] [--image FILE --threshold T]] [--fake-ort] \
+  [--model FILE --input-dims 1,3,640,640 --runs N]
+```
+
+| `--case` | Chrome | The page |
+|---|---|---|
+| `jspi` | SwiftShader's WebGPU | isolated |
+| `asyncify` | SwiftShader's WebGPU; `WebAssembly.Suspending` deleted where the loader runs, since no flag turns JSPI off in Chrome 156 and later | isolated |
+| `no-adapter` | `--disable-gpu` | isolated |
+| `no-webgpu` | SwiftShader, `--disable-features=WebGPU` | isolated |
+| `insecure` | SwiftShader; the page opens at `http://insecure.test`, mapped to loopback | not a secure context |
+| `not-isolated` | SwiftShader's WebGPU | without COOP and COEP |
+
+- `--in page` (default) or `worker` runs the loader in the page or in a module worker. `--model` then creates a
+  session and runs it on a zero tensor.
+- `--worker REL` runs the app's own worker below `--site` instead. It is sent `{"id": 1, "op": "plan"}`, then
+  `{"id": 2, "op": "load"}`, as JSON strings, and answers each with `{"id", "ok", "provenance", "error": {"code",
+  "message"}}`. OmniAccelerANT's `web/inference/inference_worker.mjs` speaks it. `--build NAME` puts `"build"` into
+  each request. `--image FILE` then sends `{"id": 3, "op": "detect", "threshold"}` as `{request, image}`, the
+  file's bytes transferred as an `ArrayBuffer`; `--threshold` defaults to 0.25, the comparator's lowest score.
+- `--fake-ort` serves a stand-in `ort/`: each build's files with their real hashes, each bundle a fake ORT
+  module. It proves the choice and the checks without ORT, also on arm64, where the image has no bundles.
+
+On a Pi 5 in the arm64 image, Chrome 157 on SwiftShader, with ORT 1.31.1's staged wasm and the npm package's
+bundles of the same version. The image builds no bundle there, so this proves the loader and decides nothing about
+the shipped bundles. Each case chose the same in the page, in a worker and through OmniAccelerANT's worker:
+
+| `--case` | Build, `reason` | Load | Nodes on its provider | DEIM, first run and repeat |
+|---|---|---|---|---|
+| `jspi` | JSPI, `jspi-webgpu` | checked, 2 threads | 727 of 737 | 209 s, 21 s in a worker |
+| `asyncify` | Asyncify, `no-jspi` | checked, 2 threads | 727 of 737 | a session only |
+| `no-adapter` | CPU, `no-adapter` | checked, 2 threads | 717 of 717 | 0.9 s, 0.5 s in a worker |
+| `no-webgpu` | CPU, `no-webgpu` | checked, 2 threads | 717 of 717 | 0.9 s in the page |
+| `insecure` | CPU, `no-secure-context` | refused: `unverifiable` | none | none |
+| `not-isolated` | JSPI, `jspi-webgpu` | checked, 1 thread | 727 of 737 | a session only |
+
+No flag of Chrome 157 turns JSPI off or removes `navigator.gpu`: `--js-flags=--no-experimental-wasm-jspi`,
+`--js-flags=--no-wasm-jspi`, `--disable-features=WebAssemblyJSPromiseIntegration`, `--disable-features=WebGPU` and
+`--disable-webgpu` all left them in place. So `asyncify` and `no-webgpu` delete `WebAssembly.Suspending` or
+`navigator.gpu` where the loader runs; around an app's worker, a wrapper module deletes them, imports the worker and
+hands it the messages sent meanwhile. A page without isolation still creates shared wasm memory, so the threaded
+builds load there on one thread.
+
+Suite `linux/scripts/tests/test-ort-web-loader.sh` covers the choice, the probe, the threads, the manifest
+reading, the plan, the load with each build's own files, every refusal and the session placements in node against
+fakes, and the check's arguments, stand-in and server. The `docs-site.ort-web-loader-*` mutations prove it.
+`test-ort-web-loader-chrome.sh` runs each case in Chrome, in the page and in a worker, against `--fake-ort`.

@@ -19,6 +19,29 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — an app loads the ORT Web build its browser can run, and says why
+
+- `shared/web/javascript/ort-web-loader.mjs` reads `ort/manifest.json` and picks JSPI when `WebAssembly.Suspending`
+  and `promising` exist and a WebGPU adapter answers, Asyncify when only the adapter answers, and the CPU build
+  otherwise, naming the reason (`no-secure-context`, `no-webgpu`, `no-adapter`, `adapter-error`, `adapter-timeout`).
+  `loadOrtWeb` checks the bundle, loader and wasm of that build against the manifest's SHA-256, imports the bundle and
+  points `env.wasm.wasmPaths` at that build's loader and wasm, with the checked bytes as `wasmBinary`, so no two builds
+  mix. It refuses a hash, status or ORT version that differs, and a page without `crypto.subtle`. `createSession`
+  counts ORT's placement lines into the provenance, since ORT moves nodes to the CPU without a word. Consumers copy it
+  as shared asset `web-ort-loader-mjs`.
+- `linux/scripts/ort-web-loader-check.js` runs it in the image's Chrome under six conditions, in the page, in a worker
+  or through an app's own worker, with `--fake-ort` where no bundle exists. No Chrome 157 flag turns JSPI off or
+  removes `navigator.gpu` (`--js-flags=--no-experimental-wasm-jspi`, `--disable-features=WebGPU` and four more
+  tried), so those two cases delete them where the loader runs. With ORT 1.31.1's arm64 wasm and the npm bundles
+  every case chose as planned: WebGPU builds 727 of 737 nodes on WebGPU, CPU 717 of 717, DEIM in a worker 0.9 s then
+  0.5 s on CPU and 209 s then 21 s on SwiftShader's WebGPU; the non-isolated page ran JSPI on one thread, and the
+  insecure page refused `unverifiable`.
+- An app's worker also gets `--build`, and `--image` sends it a `detect` step with the file's bytes beside the JSON;
+  OmniAccelerANT's still-image check uses it.
+- Suites `test-ort-web-loader.sh` (node) and `test-ort-web-loader-chrome.sh` (13 cases in Chrome); 32
+  `docs-site.ort-web-loader-*` recipes. `ort-web-detector-parity.js` exports its server pieces for the check.
+  `docs-sites.md` § Loading ORT Web in an app.
+
 ## 2026-11-28 — an app's models are mirrored from the locks, and the live check reads them back by their bytes
 
 - `linux/scripts/lib/mirror-app-models.py --out <app> --model <lock> <file>` mirrors the models an app loads into

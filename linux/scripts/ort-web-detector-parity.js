@@ -21,17 +21,25 @@ function fail(message, code = 2) {
   process.exit(code);
 }
 
-function parseArgs(argv) {
-  const opts = { jsDir: '', runs: 2, threads: 2, timeoutMs: 900000 };
+/** --flag value pairs over defaults; a switch stands alone, numbers become Numbers and required ones must be set. */
+function readOptions(argv, { defaults, options, switches = {}, numbers = [], required = [] }) {
+  const opts = { ...defaults };
   for (let i = 0; i < argv.length; i += 2) {
-    const key = OPTIONS[argv[i]];
+    if (switches[argv[i]]) { opts[switches[argv[i]]] = true; i -= 1; continue; }
+    const key = options[argv[i]];
     if (!key) throw new Error(`unknown option ${argv[i]}`);
     if (i + 1 >= argv.length) throw new Error(`${argv[i]} needs a value`);
-    opts[key] = ['runs', 'threads', 'timeoutMs'].includes(key) ? Number(argv[i + 1]) : argv[i + 1];
+    opts[key] = numbers.includes(key) ? Number(argv[i + 1]) : argv[i + 1];
   }
-  for (const key of ['site', 'module', 'wasmDir', 'ep', 'gpu', 'model', 'input', 'out']) {
+  for (const key of required) {
     if (!opts[key]) throw new Error(`--${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)} is required`);
   }
+  return opts;
+}
+
+function parseArgs(argv) {
+  const opts = readOptions(argv, { defaults: { jsDir: '', runs: 2, threads: 2, timeoutMs: 900000 }, options: OPTIONS,
+    numbers: ['runs', 'threads', 'timeoutMs'], required: ['site', 'module', 'wasmDir', 'ep', 'gpu', 'model', 'input', 'out'] });
   if (!['webgpu', 'wasm'].includes(opts.ep)) throw new Error(`--ep is webgpu or wasm, not ${opts.ep}`);
   if (!['webgpu', 'none'].includes(opts.gpu)) throw new Error(`--gpu is webgpu or none, not ${opts.gpu}`);
   for (const key of ['runs', 'threads', 'timeoutMs']) {
@@ -61,18 +69,23 @@ function route(opts, pathname) {
   return null;
 }
 
-function serve(opts) {
+/** A loopback server on a free port: router(pathname) gives { body, type }, { file } or null; every reply carries headers. */
+function serveRoutes(router, headers) {
   const server = http.createServer((req, res) => {
     let found;
-    try { found = route(opts, decodeURIComponent(new URL(req.url, 'http://x').pathname)); } catch { found = null; }
-    if (found && found.body) { res.writeHead(200, { ...ISOLATION, 'Content-Type': found.type }).end(found.body); return; }
-    if (!found) { res.writeHead(404, ISOLATION).end(); return; }
+    try { found = router(decodeURIComponent(new URL(req.url, 'http://x').pathname)); } catch { found = null; }
+    if (found && found.body) { res.writeHead(200, { ...headers, 'Content-Type': found.type }).end(found.body); return; }
+    if (!found) { res.writeHead(404, headers).end(); return; }
     fs.readFile(found.file, (err, body) => {
-      if (err) { res.writeHead(404, ISOLATION).end(); return; }
-      res.writeHead(200, { ...ISOLATION, 'Content-Type': TYPES[path.extname(found.file)] || 'application/octet-stream' }).end(body);
+      if (err) { res.writeHead(404, headers).end(); return; }
+      res.writeHead(200, { ...headers, 'Content-Type': TYPES[path.extname(found.file)] || 'application/octet-stream' }).end(body);
     });
   });
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
+}
+
+function serve(opts) {
+  return serveRoutes((pathname) => route(opts, pathname), ISOLATION);
 }
 
 // Runs in the page: one session on the build, the same input `runs` times; output0's bytes go back as base64.
@@ -155,4 +168,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => fail(e.stack || String(e)));
-else module.exports = { parseArgs, route, serve, runInPage, consoleLine };
+else module.exports = { parseArgs, readOptions, route, serve, serveRoutes, runInPage, consoleLine, within, TYPES, ISOLATION };
