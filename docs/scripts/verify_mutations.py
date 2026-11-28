@@ -50,6 +50,7 @@ _IGNORED_LOCK = threading.Lock()
 DEFAULT_JOBS = (getattr(os, "process_cpu_count", None) or os.cpu_count)() or 1
 # Git Bash may skip a suite (exit 77) or waive a case it cannot host; Linux, where CI runs, never may.
 HOST_MAY_SKIP = os.name == "nt" or sys.platform.startswith(("cygwin", "msys"))
+UNBUILT_RC = 3  # A test exits this to say its mutant does not build, so a bite would prove only the build break.
 _HOST_SKIP = re.compile(r"^ *(?:SKIP \[|\d+ failed assertion\(s\) waived)", re.MULTILINE)
 
 
@@ -410,7 +411,7 @@ def run_stale(entries: Iterable[MutationEntry], root: str) -> int:
 
 
 def apply_and_run(entry: MutationEntry, root: str) -> tuple[bool, bool, str | None, int]:
-    """Mutate, run the test, restore. Returns (applied, test_failed, detail, host_skips)."""
+    """Mutate, run the test, restore. Returns (applied, test_failed, detail, host_skips); applied is False when no verdict is possible."""
     target = os.path.join(root, entry["target"])
     original, mutated, why = applicable(entry, root)
     if mutated is None:
@@ -426,6 +427,8 @@ def apply_and_run(entry: MutationEntry, root: str) -> tuple[bool, bool, str | No
         rc, timed_out, output = _run_test(entry["test"], root, entry.get("timeout", 300))
         if timed_out:
             return True, True, "test timed out (counts as failing)", 0
+        if rc == UNBUILT_RC:
+            return False, False, f"the mutant does not build (test exit {rc}); keep the edit compilable", 0
         return True, rc != 0, f"exit {rc}", host_skips(output)
     finally:
         shutil.copyfile(backup.name, target)

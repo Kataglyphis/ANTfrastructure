@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A mutant that no longer parses bites for its syntax error alone; see docs/code-quality-tooling.md#mutants-must-parse
+# A mutant that no longer parses or builds bites for that alone; see docs/code-quality-tooling.md#mutants-must-parse
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=linux/scripts/tests/test-workspace-fixture.sh
@@ -66,6 +66,14 @@ t_assert_contains "${_out}" "probe -- the mutant does not parse (compile(): line
 t_assert_eq "1" "$(t_rc _gate)"
 _recipe subject.py 'return 1' 'return 2' "${PY} -c 'import subject; assert subject.f() == 1'"
 t_assert_eq "0" "$(t_rc _gate --parse-check)" "a mutant that compiles is not refused"
+
+t_case "a mutant whose test exits 3 does not build, and is refused instead of biting"
+printf 'int f() { return ORIGINAL; }\n' > "${_work}/t.cpp"
+_recipe t.cpp 'return ORIGINAL;' 'return ORIGINAL &&;' 'grep -q "return ORIGINAL;" t.cpp || { echo the tree does not compile >&2; exit 3; }'
+_out="$(t_out _gate)"
+t_assert_contains "${_out}" "FAIL: probe -- the mutant does not build (test exit 3)" "a build break says nothing of the tests"
+t_assert_eq "1" "$(t_rc _gate)" "a mutant that does not build fails the gate"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c -e 'bites' || true)" "a build break must not pass as a caught mutation"
 
 t_case "each test command reports its wall and baseline seconds once, on stderr"
 printf 'GUARD=on\nOTHER=on\n' > "${_work}/subject.sh"

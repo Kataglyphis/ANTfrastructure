@@ -19,6 +19,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — the mutation gate refuses a mutant that does not build
+
+- `verify_mutations.py` reads a recipe test's exit 3 (`UNBUILT_RC`) as "the mutant does not build" and fails the
+  recipe with `FAIL: <id> -- the mutant does not build (test exit 3)`, as it refuses a mutant that does not parse.
+  It graded that exit as a bite: AccelerANTgine's `cxx-mutation-test.sh` exits 3 when the mutated tree does not
+  compile, and a recipe whose edit broke the build passed as caught, proving only the build break.
+- `test-mutation-parse.sh` gains the case, a C++ fixture whose test exits 3: against the old runner it printed
+  `bites` and `OK: every recorded mutation is caught`, exit 0, and failed 3 of 31 assertions; all 31 pass now.
+  `mutations.unbuilt-mutant-refused` bites, and all 58 recipes on `verify_mutations.py` still bite.
+
 ## 2026-11-28 — gates that read an input they could not grade as clean now fail or say so
 
 - `verify-shipped-wrapper.sh` check 5 printed `OK AP4 strip verified` for a libavcodec cut short in its second

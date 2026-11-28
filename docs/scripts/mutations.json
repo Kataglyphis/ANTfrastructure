@@ -18428,6 +18428,14 @@
   "why": "the shard plan is built from these lines; without them no per-command time reaches a CI log"
  },
  {
+  "id": "mutations.unbuilt-mutant-refused",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "        if rc == UNBUILT_RC:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-mutation-parse.sh",
+  "why": "a C++ recipe's test exits 3 when its mutant does not compile; graded as a bite, the gate passes a recipe that proves only the build break"
+ },
+ {
   "id": "mutations.plan-partitions",
   "target": "docs/scripts/mutation_shards.py",
   "find": "    return [[entries[i] for i in _interleave(pieces)] for pieces in shards]\n",
