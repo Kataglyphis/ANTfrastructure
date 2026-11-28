@@ -93,7 +93,7 @@ docs/docs-sites.md | long-share | 10.8
 docs/docs-sites.md | ids-per-k | 3.3
 docs/docs-sites.md | bold-per-k | 2.8
 docs/failure-modes.md | avg-sentence | 18.3
-docs/failure-modes.md | long-share | 11.4
+docs/failure-modes.md | long-share | 11.3
 docs/failure-modes.md | ids-per-k | 5.1
 docs/failure-modes.md | bold-per-k | 18.2
 docs/fleet-health.md | avg-sentence | 18.7

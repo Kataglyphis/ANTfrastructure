@@ -572,6 +572,7 @@ See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 - [A Flutter 3.50 Linux app aborts at its first C++ exception](#a-flutter-350-linux-app-aborts-at-its-first-c-exception)
 - [A Linux AMD package returns fewer, drifting detections on MIGraphX](#a-linux-amd-package-returns-fewer-drifting-detections-on-migraphx)
 - [lavapipe segfaults building an acceleration structure on arm64](#lavapipe-segfaults-building-an-acceleration-structure-on-arm64)
+- [llvmpipe segfaults at one vector width on a shader cache another width wrote](#llvmpipe-segfaults-at-one-vector-width-on-a-shader-cache-another-width-wrote)
 - [Headless Chrome prints nothing under qemu-user](#headless-chrome-prints-nothing-under-qemu-user)
 - [Chrome stops with `No usable sandbox!`](#chrome-stops-with-no-usable-sandbox)
 - [An arm64 app dies in `ndk_translation` on an API 30 emulator](#an-arm64-app-dies-in-ndk_translation-on-an-api-30-emulator)
@@ -2055,6 +2056,22 @@ writes through garbage addresses. Measured 2026-10-01 with `vulkaninfo` in the p
 runtime smoke's `check_lavapipe_subgroup` fails an image whose variable or lavapipe subgroup is
 anything else. Retire both once the image's Mesa carries upstream ebcfbe60 (2026-08-22), which
 deletes that sort.
+
+### llvmpipe segfaults at one vector width on a shader cache another width wrote
+
+**Symptom.** A Vulkan process on lavapipe with `LP_NATIVE_VECTOR_WIDTH=128` dies with SIGSEGV
+(exit 139) right after it creates its device. It does so only after a process at another width ran
+under the same `HOME`, such as one at the image's 256. Alone, or first, it runs clean. Each crash
+leaves a core file of several hundred MB in its working directory. Seen on arm64 in
+BeschleunigerBallett: OxidANT's `headless_render` at 128 after a C++ golden at 256, in one container.
+
+**Cause.** Mesa's on-disk shader cache does not key llvmpipe's entries on the vector width (Mesa 26.0
+with LLVM 21.1.8 in the Linux image). The cache lives in `MESA_SHADER_CACHE_DIR`, else in
+`~/.cache/mesa_shader_cache`. The 128-bit process therefore loads code built for 256-bit vectors.
+
+**Fix.** Give a process that overrides the width a cache of its own (`MESA_SHADER_CACHE_DIR=<dir>`)
+or none (`MESA_SHADER_CACHE_DISABLE=true`). Either ended the crash. BeschleunigerBallett's
+`compare-renderer-pixels.sh` turns the cache off for its 128-bit run.
 
 ### `tree-arch: /usr/local/lib/onnxruntime-cpu ships 107 EM164 object(s)` on arm64
 
