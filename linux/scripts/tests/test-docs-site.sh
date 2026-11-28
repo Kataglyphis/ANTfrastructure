@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# docs-site.sh plan, build and stage, and the publish contract of build-docs.yml. See docs/docs-sites.md#the-reusable-workflow
+# docs-site.sh plan, build, stage and live, and the publish contract of build-docs.yml. See docs/docs-sites.md#the-reusable-workflow
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -163,6 +163,12 @@ _checked() { printf 'node %s/linux/scripts/check-live-site.js https://docs.examp
 t_case "live: each isolated app at its published URL, against the files published, isolated"
 t_assert_eq "$(_checked app; printf '\n'; _checked demo)" "$(_live DOCS_LIVE_URL=https://docs.example.org/ DOCS_ISOLATED_APPS='app demo/')"
 t_assert_eq "$(_checked app)" "$(_live DOCS_LIVE_URL=https://docs.example.org DOCS_ISOLATED_APPS=app)" "with or without the URL's trailing slash"
+
+t_case "live: an app published with models/manifest.json is checked by its models' bytes too"
+mkdir -p "${_tmp}/live/models-app/models"
+printf '{}' > "${_tmp}/live/models-app/models/manifest.json"
+t_assert_eq "node ${FAKE}/linux/scripts/check-live-site.js https://docs.example.org/models-app/ --models live/models-app/models/manifest.json --files live/models-app --isolated" \
+  "$(_live DOCS_LIVE_URL=https://docs.example.org/ DOCS_ISOLATED_APPS=models-app)"
 
 t_case "live: a red app fails the job, and the apps after it are still checked"
 mkdir -p "${_tmp}/live/broken"

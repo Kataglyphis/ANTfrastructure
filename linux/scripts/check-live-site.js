@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// check-live-site.js <base URL> [route ...] [--files DIR] [--version V] [--allow-host H] [--isolated] [--scrolls N] [--settle-ms N] [--ready-ms N]: a deployed web app in headless Chrome, its files over HTTP and its version.json. See docs/ftp-deploys.md#the-live-site-check
+// check-live-site.js <base URL> [route ...] [--files DIR] [--models MANIFEST] [--version V] [--allow-host H] [--isolated] [--scrolls N] [--settle-ms N] [--ready-ms N]: a deployed web app in headless Chrome, its files and models over HTTP and its version.json. See docs/ftp-deploys.md#the-live-site-check
 'use strict';
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const https = require('node:https');
@@ -19,7 +20,7 @@ function fail(message, code = 2) {
 }
 
 function parseArgs(argv) {
-  const opts = { routes: [], files: null, version: null, allow: [], isolated: false, scrolls: 30, settleMs: 5000, readyMs: 30000 };
+  const opts = { routes: [], files: null, models: null, version: null, allow: [], isolated: false, scrolls: 30, settleMs: 5000, readyMs: 30000 };
   const value = (i, flag) => {
     if (i >= argv.length) fail(`${flag} needs a value`);
     return argv[i];
@@ -27,6 +28,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--files') opts.files = value(++i, a);
+    else if (a === '--models') opts.models = value(++i, a);
     else if (a === '--version') opts.version = value(++i, a);
     else if (a === '--allow-host') opts.allow.push(value(++i, a));
     else if (a === '--isolated') opts.isolated = true;
@@ -37,9 +39,10 @@ function parseArgs(argv) {
     else if (!opts.base) opts.base = a;
     else opts.routes.push(a);
   }
-  if (!opts.base || !/^https?:\/\//.test(opts.base)) fail('usage: check-live-site.js <base URL> [route ...] [--files DIR] [--version V] [--allow-host H] [--isolated] [--scrolls N] [--settle-ms N] [--ready-ms N]');
+  if (!opts.base || !/^https?:\/\//.test(opts.base)) fail('usage: check-live-site.js <base URL> [route ...] [--files DIR] [--models MANIFEST] [--version V] [--allow-host H] [--isolated] [--scrolls N] [--settle-ms N] [--ready-ms N]');
   if (![opts.scrolls, opts.settleMs, opts.readyMs].every((n) => Number.isInteger(n) && n >= 0)) fail('--scrolls, --settle-ms and --ready-ms take whole numbers');
   if (opts.files && !fs.existsSync(path.join(opts.files, 'index.html'))) fail(`${opts.files} has no index.html`);
+  if (opts.models) opts.modelFiles = modelFiles(opts.models);
   opts.base = opts.base.replace(/\/?$/, '/');
   if (!opts.routes.length) opts.routes.push('');
   return opts;
@@ -121,20 +124,30 @@ function request(url, method) {
   });
 }
 
-// The status, or the network error of the last of three attempts: one dropped connection is no missing file.
-async function status(url) {
-  let error = '';
+// Three attempts, the last one's network error thrown: one dropped connection is no missing file.
+async function retried(task) {
+  let error;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      let res = await request(url, 'HEAD');
-      if (res.status === 405 || res.status === 501) res = await request(url, 'GET');
-      return res.status;
+      return await task();
     } catch (e) {
-      error = e.code || e.message;
+      error = e;
       await sleep(1000 * attempt);
     }
   }
-  return error;
+  throw error;
+}
+
+// The status, or the network error of the last attempt.
+async function status(url) {
+  try {
+    return await retried(async () => {
+      const res = await request(url, 'HEAD');
+      return res.status === 405 || res.status === 501 ? (await request(url, 'GET')).status : res.status;
+    });
+  } catch (e) {
+    return e.code || e.message;
+  }
 }
 
 // A route that fails once is retried fresh: a failure that repeats on the retry is the verdict; the first one is only logged.
@@ -159,6 +172,53 @@ async function checkFiles(opts) {
   };
   await Promise.all(Array.from({ length: FILE_JOBS }, worker));
   return { count: files.length, bad: bad.sort() };
+}
+
+// models/manifest.json as mirror-app-models.py writes it: every model and license text at models/<its sha256>/.
+function modelFiles(file) {
+  let manifest = null;
+  try {
+    manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    fail(`${file}: ${e.message}`);
+  }
+  const files = (manifest?.models || []).flatMap((m) => [m, ...(m?.licenses || [])]);
+  const odd = files.find((f) => !/^models\/[0-9a-f]{64}\/[^/]+$/.test(f?.path) || f.path.split('/')[1] !== f.sha256 || !Number.isInteger(f.size));
+  if (manifest?.schema_version !== 1 || !files.length || odd) fail(`${file} is no model manifest of schema 1${odd ? `: ${JSON.stringify(odd)}` : ''}`);
+  return files;
+}
+
+// The whole body hashed: the host can answer a missing model with a page and 200, so only the bytes tell.
+function digest(url) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const headers = { 'Cache-Control': 'no-cache', 'Accept-Encoding': 'identity' };
+    const req = (u.protocol === 'https:' ? https : http).request(u, { agent: AGENTS[u.protocol], headers, timeout: 30000 }, (res) => {
+      const hash = crypto.createHash('sha256');
+      let size = 0;
+      res.on('data', (c) => { hash.update(c); size += c.length; });
+      res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'] || '', size, sha256: hash.digest('hex') }));
+    });
+    req.on('timeout', () => req.destroy(new Error('timed out after 30 s')));
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function checkModels(opts) {
+  const bad = [];
+  for (const f of opts.modelFiles) {
+    const url = new URL(f.path.split('/').map(encodeURIComponent).join('/'), opts.base).href;
+    try {
+      const got = await retried(() => digest(url));
+      const page = got.type.startsWith('text/html') ? ', an HTML page in its place' : '';
+      if (got.status !== 200) bad.push(`HTTP ${got.status} ${f.path}`);
+      else if (got.sha256 !== f.sha256 || got.size !== f.size) bad.push(`${f.path}: ${got.size} bytes, sha256 ${got.sha256}${page}; want ${f.size} bytes, sha256 ${f.sha256}`);
+    } catch (e) {
+      bad.push(`${e.code || e.message} ${f.path}`);
+    }
+  }
+  return bad;
 }
 
 // The isolation headers an isolated app's page must carry, as the hub's flutter-web-isolated.htaccess sets them.
@@ -248,6 +308,11 @@ ${problems.map((p) => `     ${p}
     const { count, bad } = await checkFiles(opts);
     if (bad.length) failed++;
     process.stdout.write(`${bad.length ? 'FAIL' : 'ok  '} ${count} files of ${opts.files}, ${bad.length} not served with 200\n${bad.map((b) => `     ${b}\n`).join('')}`);
+  }
+  if (opts.models) {
+    const wrong = await checkModels(opts);
+    if (wrong.length) failed++;
+    process.stdout.write(`${wrong.length ? 'FAIL' : 'ok  '} ${opts.modelFiles.length} model files of ${opts.models}, ${wrong.length} not their manifest's bytes\n${wrong.map((b) => `     ${b}\n`).join('')}`);
   }
   const headers = await checkIsolationHeaders(opts);
   if (headers.length) failed++;

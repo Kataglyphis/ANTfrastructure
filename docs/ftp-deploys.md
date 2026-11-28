@@ -266,7 +266,7 @@ web app.
 
 ## The live-site check
 
-`linux/scripts/check-live-site.js <base URL> [route ...] --files <build dir> [--isolated]` runs after a web
+`linux/scripts/check-live-site.js <base URL> [route ...] --files <build dir> [--models <manifest>] [--isolated]` runs after a web
 app's deploy, in `:latest` (node and Chrome, no Playwright), and fails when:
 
 - a route, loaded fresh at 1280x800 and 390x844 and scrolled, fails twice in a row (a route that
@@ -274,6 +274,9 @@ app's deploy, in `:latest` (node and Chrome, no Playwright), and fails when:
   exception, has a request blocked by the CSP or answered 400 or more, or requests a host other
   than the site's (`--allow-host` admits one);
 - a file of the build dir, dotfiles aside, is not served with 200;
+- with `--models`, a file of [an app's model manifest](docs-sites.md#mirroring-an-apps-models) comes back with
+  another status, size or SHA-256. The check downloads each one whole, because a host can answer a missing
+  model with a page and 200. A manifest entry outside `models/<its sha256>/` is a usage error;
 - `version.json` is not the build's (or `--version`'s).
 - with `--isolated`, a route's `crossOriginIsolated` is false, or the base URL's response does not carry
   `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. An app behind

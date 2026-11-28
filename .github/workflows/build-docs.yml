@@ -66,7 +66,7 @@ on:
       live-url:
         description: >-
           The published site's https:// address. With isolated-apps, a job after the publish runs
-          check-live-site.js --isolated on each app there, against the files it published.
+          check-live-site.js --isolated on each app there, against the files and models it published.
         type: string
         default: ''
       publish:

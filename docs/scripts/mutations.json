@@ -66640,6 +66640,30 @@
   "why": "a header failure printed but not counted exits 0 and the deploy stays green"
  },
  {
+  "id": "live-site.models-bytes",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "else if (got.sha256 !== f.sha256 || got.size !== f.size)",
+  "replace": "else if (false)",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "a model answered with other bytes, a page among them, must fail the check"
+ },
+ {
+  "id": "live-site.models-verdict",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "    if (wrong.length) failed++;\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "a model with the wrong bytes printed as FAIL must also fail the run"
+ },
+ {
+  "id": "live-site.models-manifest-shape",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "!/^models\\/[0-9a-f]{64}\\/[^/]+$/.test(f?.path) || f.path.split('/')[1] !== f.sha256 || ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "a manifest entry outside models/<its sha256>/ is not what the mirror writes, and its check would prove nothing"
+ },
+ {
   "id": "docs-site.stage-isolated-app",
   "target": "linux/scripts/docs-site.sh",
   "find": "  cp \"${DOCS_SITE_HUB}/linux/webserver/templates/flutter-web-isolated.htaccess\" \"$1/$2/.htaccess\"\n",
@@ -66818,8 +66842,8 @@
  {
   "id": "docs-site.live-app-path-safety",
   "target": "linux/scripts/docs-site.sh",
-  "find": "    _docs_site_relative \"isolated app\" \"${app}\"\n    # Every app",
-  "replace": "    # Every app",
+  "find": "    _docs_site_relative \"isolated app\" \"${app}\"\n    models=()\n",
+  "replace": "    models=()\n",
   "test": "bash linux/scripts/tests/test-docs-site.sh",
   "why": "an app path climbing out of the site would check files the publish never sent"
  },
@@ -66838,6 +66862,94 @@
   "replace": "    if: inputs.isolated-apps != ''\n",
   "test": "bash linux/scripts/tests/test-docs-site.sh",
   "why": "without a live-url the check has no address, and the job would fail every site that has apps"
+ },
+ {
+  "id": "docs-site.app-models-hash-path",
+  "target": "linux/scripts/lib/mirror-app-models.py",
+  "find": "\"path\": f\"models/{sha}/{name}\"",
+  "replace": "\"path\": f\"models/{name}\"",
+  "test": "bash linux/scripts/tests/test-mirror-app-models.sh",
+  "why": "only models/<sha256>/ is immutable to the isolated-app .htaccess; a plain name can change under a cached copy"
+ },
+ {
+  "id": "docs-site.app-models-texts-shipped",
+  "target": "linux/scripts/lib/mirror-app-models.py",
+  "find": "    return [model, *texts]\n",
+  "replace": "    return [model]\n",
+  "test": "bash linux/scripts/tests/test-mirror-app-models.sh",
+  "why": "the site ships each model's LICENSE and NOTICE beside it, or it distributes the model without its terms"
+ },
+ {
+  "id": "docs-site.app-models-notice-required",
+  "target": "linux/scripts/lib/mirror-app-models.py",
+  "find": "LICENSE_SUFFIXES = (\".LICENSE\", \".NOTICE\")",
+  "replace": "LICENSE_SUFFIXES = (\".LICENSE\",)",
+  "test": "bash linux/scripts/tests/test-mirror-app-models.sh",
+  "why": "ModelANT's NOTICE carries the Apache-2.0 attribution, and a model must not ship without it"
+ },
+ {
+  "id": "docs-site.app-models-existing-refused",
+  "target": "linux/scripts/lib/mirror-app-models.py",
+  "find": "    if target.exists():\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-mirror-app-models.sh",
+  "why": "an existing models/ is refused by name rather than mixed with or left behind a new mirror"
+ },
+ {
+  "id": "docs-site.app-models-lock-in-repo",
+  "target": "linux/scripts/lib/mirror-app-models.py",
+  "find": "relative = lock.resolve().relative_to(root.resolve()).as_posix()",
+  "replace": "relative = lock.resolve().as_posix()",
+  "test": "bash linux/scripts/tests/test-mirror-app-models.sh",
+  "why": "the manifest is published, so it names the lock by its path in the repository, never the runner's"
+ },
+ {
+  "id": "docs-site.app-models-twice-refused",
+  "target": "linux/scripts/lib/mirror-app-models.py",
+  "find": "    if len(set(names)) != len(names):\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-mirror-app-models.sh",
+  "why": "one model named twice would stand twice in the manifest the browser reads"
+ },
+ {
+  "id": "docs-site.app-models-release-named",
+  "target": "linux/scripts/lib/mirror-app-models.py",
+  "find": "\"release\": {\"repository\": release[1], \"tag\": release[2]} if release else None",
+  "replace": "\"release\": None",
+  "test": "bash linux/scripts/tests/test-mirror-app-models.sh",
+  "why": "the provenance panel shows the model's ModelANT release from the manifest"
+ },
+ {
+  "id": "docs-site.app-models-real-size",
+  "target": "linux/scripts/lib/mirror-app-models.py",
+  "find": "\"size\": (work / sha / name).stat().st_size",
+  "replace": "\"size\": 0",
+  "test": "bash linux/scripts/tests/test-mirror-app-models.sh",
+  "why": "the live check and the browser compare the bytes they receive with the manifest's size"
+ },
+ {
+  "id": "docs-site.app-models-built-app-only",
+  "target": "linux/scripts/lib/mirror-app-models.py",
+  "find": "    if not out.is_dir():\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-mirror-app-models.sh",
+  "why": "a mistyped app path is refused with its reason, not with a bare file error"
+ },
+ {
+  "id": "docs-site.app-models-refusal-leaves-nothing",
+  "target": "linux/scripts/lib/mirror-app-models.py",
+  "find": "    finally:\n        shutil.rmtree(work, ignore_errors=True)\n",
+  "replace": "    finally:\n        pass\n",
+  "test": "bash linux/scripts/tests/test-mirror-app-models.sh",
+  "why": "a refused mirror leaves the app as the build wrote it; a stray work directory would be published"
+ },
+ {
+  "id": "docs-site.live-models",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "|| models=(--models \"${site}/${app}/models/manifest.json\")",
+  "replace": "|| models=()",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "a 200 is also what a host's catch-all page answers; only the models' bytes prove the mirror is served"
  },
  {
   "id": "handoff.groups-from-source-slugs",

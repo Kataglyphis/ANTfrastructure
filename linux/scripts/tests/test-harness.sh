@@ -357,6 +357,12 @@ t_stop_children() {
   done
 }
 
+# t_logged <file> <command...>: run it with its output in <file>, which a subshell (t_assert_rc's) cannot lose.
+t_logged() { local file="$1"; shift; "$@" > "${file}" 2>&1; }
+
+# t_json <file> <python expression over m, the parsed file>: that value, a tuple printed space-separated.
+t_json() { "${PREFLIGHT_PYTHON:-python3}" -I -c "import json, sys; m = json.load(open(sys.argv[1])); v = ($2); print(*v) if isinstance(v, tuple) else print(v)" "$1" 2>&1; }
+
 # t_assert_eq <expected> <actual> [message]
 t_assert_eq() {
   _T_RUN=$((_T_RUN + 1))

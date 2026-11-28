@@ -171,13 +171,13 @@ docs_site_check() {
   node "${DOCS_SITE_HUB}/linux/scripts/check-docs-sidebars.js" "${site}"
 }
 
-# live <site>: after the publish, check-live-site.js --isolated on each DOCS_ISOLATED_APPS app at DOCS_LIVE_URL, against the files published.
+# live <site>: after the publish, check-live-site.js --isolated on each DOCS_ISOLATED_APPS app at DOCS_LIVE_URL, against the files and models published.
 docs_site_live() {
   # Owned at the reader, not in lint-env-knobs.allow: empty is refused below, as build-docs.yml's inputs left unset.
   : "${DOCS_LIVE_URL:=}"
   : "${DOCS_ISOLATED_APPS:=}"
   local site="${1:?usage: docs-site.sh live <site dir>}" base="${DOCS_LIVE_URL:-}" app failed=0
-  local -a apps=()
+  local -a apps=() models=()
   case "${base}" in
     https://*) ;;
     *) die "bad live-url" "live-url is the published site's https:// address, got '${base}'." ;;
@@ -189,8 +189,11 @@ docs_site_live() {
   for app in "${apps[@]}"; do
     app="${app%/}"
     _docs_site_relative "isolated app" "${app}"
+    models=()
+    # The published tree is the truth: a manifest in it means the server must answer each model with its bytes.
+    [ ! -f "${site}/${app}/models/manifest.json" ] || models=(--models "${site}/${app}/models/manifest.json")
     # Every app is checked even after a red one, so one run names every broken app.
-    node "${DOCS_SITE_HUB}/linux/scripts/check-live-site.js" "${base%/}/${app}/" --files "${site}/${app}" --isolated || failed=1
+    node "${DOCS_SITE_HUB}/linux/scripts/check-live-site.js" "${base%/}/${app}/" ${models[@]+"${models[@]}"} --files "${site}/${app}" --isolated || failed=1
   done
   return "${failed}"
 }

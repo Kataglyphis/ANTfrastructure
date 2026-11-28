@@ -69,7 +69,7 @@ commit changes only docs. The hub's own caller is `.github/workflows/docs.yml`.
 | `link-allow` | `''` | The link gate's allow file, relative to the repository root |
 | `htaccess` | `true` | Add the hub's `.htaccess` and 404 page; `false` for a site that ships its own |
 | `isolated-apps` | `''` | Web apps below the site's root, space-separated paths relative to it. Each gets [the isolated-app `.htaccess`](#an-isolated-apps-htaccess); `docs-site.sh stage` refuses a path outside the site, one without an `index.html`, and an app that ships its own `.htaccess` |
-| `live-url` | `''` | The published site's `https://` address. With `isolated-apps`, a `live-check` job after the publish runs `check-live-site.js --isolated` on each app at `<live-url>/<app>/`, against the files it published. A red job means the live app is broken now |
+| `live-url` | `''` | The published site's `https://` address. With `isolated-apps`, a `live-check` job after the publish runs `check-live-site.js --isolated` on each app at `<live-url>/<app>/`, against the files and models it published. A red job means the live app is broken now |
 | `publish` | `true` | `false` builds and checks only, and needs no secrets |
 | `publish-on-dispatch` | `false` | Also publish a `workflow_dispatch` run on `develop` or `main` |
 | `publish-timeout-minutes` | `30` | The publish job's limit. An upload it cuts off saves no sync state, so a file too large to finish in time is retried from scratch on every run: BeschleunigerBallett's 61 MB demo scene at about 74 kB/s never landed under 30 |
@@ -369,7 +369,9 @@ checks the headers and `crossOriginIsolated` in Chrome:
 `build-docs.yml` runs that check itself when the caller passes `live-url`. Its `live-check` job needs the
 publish, so it never runs on a pull request. It pulls the family image for node and Chrome, takes the published
 site, and runs `docs-site.sh live`. That checks every app, also after a red one, and fails if any is red. It refuses a
-plain-http address, an empty app list and an app path outside the site.
+plain-http address, an empty app list and an app path outside the site. An app published with
+[`models/manifest.json`](#mirroring-an-apps-models) also gets `--models`, which downloads each mirrored file and
+compares its bytes.
 
 ## Staging ORT Web for an app
 
@@ -417,6 +419,92 @@ hash there is of the bytes (`"hash_from": "bytes"`).
 
 Suite `linux/scripts/tests/test-stage-ort-web.sh` covers the order, the file lists, the hashes, the
 license sources and every refusal over fixture outputs. The `docs-site.ort-web-*` mutations prove it.
+
+## Mirroring an app's models
+
+GitHub release downloads send no CORS header. So an app loads its models from its own origin, mirrored from
+the data locks. The site's build command runs the mirror in the family image, after the app's build and before
+anything that lists the app's files, such as a license inventory:
+
+```bash
+python3 -I linux/scripts/lib/mirror-app-models.py --out <site>/<app> --model <lock> <file> [--model <lock> <file>]... \
+  [--root DIR] [--cache DIR]
+```
+
+Each lock is a data lock of `sha256 file url` rows ([the hub's fetcher](data-repositories.md#the-hubs-fetcher)).
+OmniAccelerANT's `build-docs-site.sh` mirrors DEIM-D-FINE-N from OxidANT's `models.lock` into `doc/api/app`.
+
+The mirror fetches each model with its `<name>.LICENSE` and `<name>.NOTICE` through `fetch-data-lock.py`. That
+checks every file by its SHA-256 and keeps a cache. The mirror then writes `models/` below the app by one rename:
+
+- Every file lands at `models/<its sha256>/<file>`, each license text under its own hash. The isolated-app
+  `.htaccess` marks only such a path immutable, so new bytes get a new URL.
+- `models/manifest.json` keeps its name, so the app revalidates it.
+
+It exits 1 and leaves the app as the build wrote it when:
+
+1. A file is not in its lock, or its bytes differ from the lock's SHA-256.
+2. The lock has no `<name>.LICENSE` or no `<name>.NOTICE` for the model. ModelANT releases both with every model.
+3. The model is an archive. The browser fetches single files.
+4. `<app>/models` exists or the app's directory does not.
+5. A model is named twice, or a lock lies outside `--root`. The default root is the working directory, where
+   `build-docs.yml` runs the build command: the repository root.
+
+### The web manifest
+
+```json
+{
+  "schema_version": 1,
+  "models": [
+    {
+      "name": "deim_dfine_n_coco",
+      "file": "deim_dfine_n_coco.onnx",
+      "path": "models/<sha256>/deim_dfine_n_coco.onnx",
+      "sha256": "<sha256>",
+      "size": 15540167,
+      "lock": {
+        "path": "third_party/OxidANT/resources/models/models.lock",
+        "line": 4,
+        "url": "https://github.com/Kataglyphis/ModelANT/releases/download/deim_dfine_n_coco-v2/deim_dfine_n_coco.onnx"
+      },
+      "release": {"repository": "Kataglyphis/ModelANT", "tag": "deim_dfine_n_coco-v2"},
+      "licenses": [
+        {"file": "deim_dfine_n_coco.LICENSE", "path": "models/<sha256>/deim_dfine_n_coco.LICENSE",
+         "sha256": "<sha256>", "size": 11564, "lock": {"path": "...", "line": 5, "url": "..."}},
+        {"file": "deim_dfine_n_coco.NOTICE", "path": "models/<sha256>/deim_dfine_n_coco.NOTICE",
+         "sha256": "<sha256>", "size": 1155, "lock": {"path": "...", "line": 6, "url": "..."}}
+      ]
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `schema_version` | `1`; a reader refuses any other |
+| `models` | One entry per model, in the order of the `--model` options |
+| `name` | The file name without its last suffix; the license texts are `<name>.LICENSE` and `<name>.NOTICE` |
+| `file` | The file name in the lock |
+| `path` | The URL relative to the app's directory: `new URL(path, <app base>)` |
+| `sha256`, `size` | The file's bytes, as the lock pins them |
+| `lock` | The row the file came from: the lock's path in the repository, its line and its URL |
+| `release` | The GitHub release the URL names, or `null` for any other URL |
+| `licenses` | The model's license texts, each with `file`, `path`, `sha256`, `size` and `lock` |
+
+A browser reads it in three steps:
+
+1. Fetch `models/manifest.json`, then each model at its `path`.
+2. Check the size and the SHA-256 of the bytes with `crypto.subtle.digest` before ORT sees them. A missing file
+   can come back as a page with status 200, from a host's catch-all rule or a service worker.
+3. Cache the bytes by their hash. A hash the cache holds needs no download.
+
+After each publish, the `live-check` job finds the manifest in the published tree and passes it to
+`check-live-site.js --models`. That downloads every file the manifest names and fails on another status, size or
+hash: [ftp-deploys.md § The live-site check](ftp-deploys.md#the-live-site-check).
+
+Suite `linux/scripts/tests/test-mirror-app-models.sh` covers the tree, the manifest and every refusal over `file://`
+locks and a seeded cache. The `docs-site.app-models-*` mutations prove it; `docs-site.live-models` and the
+`live-site.models-*` mutations prove the live check.
 
 ## Detector parity of the ORT Web builds
 

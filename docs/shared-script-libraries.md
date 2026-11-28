@@ -1203,6 +1203,13 @@ options and names: [`branch-and-release-strategy.md` § *Collecting the release 
 or scenes a data lock pins, checked by SHA-256, through a cache; CMake reaches it through
 `kataglyphis_fetch_data`. The contract: [`data-repositories.md` § *The hub's fetcher*](data-repositories.md#the-hubs-fetcher).
 
+### `lib/mirror-app-models.py`
+
+`python3 -I mirror-app-models.py --out DIR --model LOCK FILE [--model LOCK FILE]... [--root DIR] [--cache DIR]`:
+each model with its license texts from a data lock, through `fetch-data-lock.py`, under `DIR/models/<sha256>/`,
+with a web manifest. The manifest and the refusals:
+[`docs-sites.md` § *Mirroring an app's models*](docs-sites.md#mirroring-an-apps-models).
+
 ### `lib/stage-ort-web.py`
 
 `python3 -I stage-ort-web.py --out DIR [--source DIR] [--jsep] [--no-js-bundles] [--site-packages DIR]`: the

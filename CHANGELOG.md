@@ -19,6 +19,29 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — an app's models are mirrored from the locks, and the live check reads them back by their bytes
+
+- `linux/scripts/lib/mirror-app-models.py --out <app> --model <lock> <file>` mirrors the models an app loads into
+  `<app>/models/<sha256>/<file>`, each with its `<name>.LICENSE` and `<name>.NOTICE` under their own hashes, and
+  writes `models/manifest.json`: file, SHA-256, size, license texts, the lock row (path in the repository, line,
+  URL) and the GitHub release. It fetches through `fetch-data-lock.py`, so the hub keeps one downloader and one
+  cache. It refuses bytes that differ from the lock, a lock without the model's LICENSE or NOTICE, an archive, a
+  file the lock does not name, an existing `models/`, a model named twice and a lock outside the repository, and a
+  refusal leaves the app as the build wrote it. A site's build command runs it, before anything that lists the
+  app's files: OmniAccelerANT's `build-docs-site.sh` mirrors DEIM-D-FINE-N ahead of its web license inventory.
+  Suite `test-mirror-app-models.sh`, 42 assertions over `file://` locks and a seeded cache; on OxidANT's
+  `models.lock` and the real release files it wrote the 15,540,167-byte model and both texts.
+- After each publish, `docs-site.sh live` passes `--models` for an app whose published tree holds
+  `models/manifest.json`, and `check-live-site.js --models` downloads every file the manifest names and fails on
+  another status, size or SHA-256. The file sweep's 200 was also what a host's catch-all page answers in a
+  missing model's place; that page now fails by its bytes. `test-check-live-site.sh` serves a mirrored tree, a
+  tampered model, a catch-all host and a missing file (12 new assertions, 51 in all); `test-docs-site.sh` pins
+  the flag.
+- Recipes `docs-site.app-models-*` (10), `docs-site.live-models` and `live-site.models-*` (3) bite;
+  `docs-site.live-app-path-safety` follows its moved line. Docs: `docs-sites.md` § *Mirroring an app's models*
+  with the web manifest's format for the browser side, `ftp-deploys.md` § *The live-site check*,
+  `shared-script-libraries.md`.
+
 ## 2026-11-28 — the ORT Web parity job is decided by the shipping builds
 
 - `ort_web_parity.py` exits on JSPI, Asyncify and CPU; a requested JSEP report informs, because JSEP cannot

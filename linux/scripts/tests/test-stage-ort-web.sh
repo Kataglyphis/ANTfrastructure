@@ -57,8 +57,7 @@ PY
 case_tree() { rm -rf "${w:?}/$1"; fixture "${w}/$1" "${2:-1.31.1}"; t="${w}/$1"; }
 stage() { "${PY}" -I "${STAGE}" --source "${t}/web" --out "${t}/out" --site-packages "${t}/site" "$@" > "${t}/log" 2>&1; }
 log() { cat "${t}/log"; }
-# mf <python expression over m, the manifest>: one value of the staged manifest.
-mf() { "${PY}" -I -c "import json, sys; m = json.load(open(sys.argv[1])); v = ($1); print(*v) if isinstance(v, tuple) else print(v)" "${t}/out/ort/manifest.json" 2>&1; }
+mf() { t_json "${t}/out/ort/manifest.json" "$1"; }
 builds() { mf "' '.join(b['$1'] for b in m['builds'])"; }
 # keys <section> <key>...: those values of one top-level manifest section.
 keys() { mf "tuple(m['$1'][k] for k in '${*:2}'.split())"; }

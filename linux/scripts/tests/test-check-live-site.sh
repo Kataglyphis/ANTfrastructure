@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-live-site.js against fixture sites in headless Chrome: CSP blocks, third-party hosts, 404s, console errors, the file sweep, version.json and isolation. See docs/ftp-deploys.md#the-live-site-check
+# check-live-site.js against fixture sites in headless Chrome: CSP blocks, third-party hosts, 404s, console errors, the file sweep, mirrored models, version.json and isolation. See docs/ftp-deploys.md#the-live-site-check
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -116,10 +116,11 @@ t_assert_contains "${out}" "not cross-origin isolated: crossOriginIsolated is fa
 t_assert_contains "${out}" "cross-origin-opener-policy: missing, want same-origin"
 t_assert_contains "${out}" "cross-origin-embedder-policy: missing, want require-corp"
 
-# The same tree with the isolated-app template's headers; credentialless/ isolates too, but is not what the template sets.
+# The isolated-app headers; credentialless/ isolates but is not the template's, and fallback/ answers any path with a page and 200.
 _page credentialless '' ''
 _serve "${w}/iso-port" "r.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-    r.setHeader('Cross-Origin-Embedder-Policy', q.url.startsWith('/credentialless/') ? 'credentialless' : 'require-corp');"
+    r.setHeader('Cross-Origin-Embedder-Policy', q.url.startsWith('/credentialless/') ? 'credentialless' : 'require-corp');
+    if (q.url.startsWith('/fallback/')) q.url = '/models/index.html';"
 iso=$!
 ISO="http://127.0.0.1:$(cat "${w}/iso-port" 2>/dev/null)"
 
@@ -132,6 +133,52 @@ out="$(t_out _check "${ISO}/credentialless/" --isolated)"
 t_assert_rc 1 _check "${ISO}/credentialless/" --isolated
 t_assert_contains "${out}" "cross-origin-embedder-policy: credentialless, want require-corp"
 t_assert_eq 0 "$(grep -c "not cross-origin isolated" <<< "${out}")" "credentialless isolates in Chrome; only the header check tells it apart"
+
+# A mirrored tree as mirror-app-models.py writes it: each file at models/<sha256 of its bytes>/<name>.
+_page models '' ''
+M="${w}/site/models"
+_sha() { printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
+# _put <name> <text>: the text at models/<its sha256>/<name> below the models site; prints its manifest entry.
+_put() {
+  mkdir -p "${M}/models/$(_sha "$2")"
+  printf '%s' "$2" > "${M}/models/$(_sha "$2")/$1"
+  printf '{"file": "%s", "path": "models/%s/%s", "sha256": "%s", "size": %d}' "$1" "$(_sha "$2")" "$1" "$(_sha "$2")" "${#2}"
+}
+_manifest() { printf '{"schema_version": 1, "models": [%s]}\n' "$1"; }
+model="$(_put m.onnx onnx-bytes)"
+_manifest "${model%\}}, \"licenses\": [$(_put m.LICENSE license), $(_put m.NOTICE notice)]}" > "${w}/ok.json"
+_manifest "$(_put t.onnx original)" > "${w}/wrong.json"
+printf 'tampered' > "${M}/models/$(_sha original)/t.onnx"
+_manifest "{\"file\": \"gone.onnx\", \"path\": \"models/$(_sha gone)/gone.onnx\", \"sha256\": \"$(_sha gone)\", \"size\": 4}" > "${w}/missing.json"
+_manifest '{"file": "m.onnx", "path": "models/m.onnx", "sha256": "x", "size": 1}' > "${w}/odd.json"
+# _verdict <args...>: one run of _check, its output in out and its exit code in rc, so each case starts Chrome once.
+_verdict() { out="$(_check "$@" 2>&1)"; rc=$?; }
+
+t_case "--models passes when every model and license text answers with its manifest's bytes"
+_verdict "${ISO}/models/" --models "${w}/ok.json"
+t_assert_eq 0 "${rc}"
+t_assert_contains "${out}" "ok   3 model files of ${w}/ok.json, 0 not their manifest's bytes"
+
+t_case "--models fails a model whose served bytes differ, naming what came and what the manifest wants"
+_verdict "${ISO}/models/" --models "${w}/wrong.json"
+t_assert_eq 1 "${rc}"
+t_assert_contains "${out}" "models/$(_sha original)/t.onnx: 8 bytes, sha256 $(_sha tampered); want 8 bytes, sha256 $(_sha original)"
+
+t_case "--models fails a host that answers a model with a page and 200, and says so"
+_verdict "${ISO}/fallback/" --models "${w}/ok.json"
+t_assert_eq 1 "${rc}"
+t_assert_contains "${out}" "FAIL 3 model files of ${w}/ok.json, 3 not their manifest's bytes"
+t_assert_contains "${out}" "an HTML page in its place"
+
+t_case "--models fails a model the host does not serve, by its status"
+_verdict "${ISO}/models/" --models "${w}/missing.json"
+t_assert_eq 1 "${rc}"
+t_assert_contains "${out}" "HTTP 404 models/$(_sha gone)/gone.onnx"
+
+t_case "a manifest whose path is not models/<its sha256>/, or no manifest, is a usage error"
+t_assert_rc 2 node "${CHECK}" "${ISO}/models/" --models "${w}/odd.json"
+t_assert_contains "$(t_out node "${CHECK}" "${ISO}/models/" --models "${w}/odd.json")" "is no model manifest of schema 1"
+t_assert_rc 2 node "${CHECK}" "${ISO}/models/" --models "${w}/no-such.json"
 
 t_case "a site that does not answer names each file's network error, not a status"
 # Chrome rejects port 9 before the request can report ECONNREFUSED.
