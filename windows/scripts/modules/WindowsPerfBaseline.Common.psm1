@@ -40,6 +40,25 @@ function Format-BenchmarkDelta {
     return $sign + $pct.ToString($script:Invariant) + '%'
 }
 
+$script:NotRunFlags = [ordered]@{ error_occurred = 'error_message'; skipped = 'skip_message' }
+
+# Google Benchmark writes an errored or skipped run with real_time 0, which would compare as a 100% speed-up.
+function Get-BenchmarkNotRunReason {
+    param(
+        [Parameter(Mandatory)]
+        [psobject]$Benchmark
+    )
+
+    foreach ($flag in $script:NotRunFlags.GetEnumerator()) {
+        $set = $Benchmark.PSObject.Properties[$flag.Key]
+        if ($set -and $set.Value) {
+            $message = $Benchmark.PSObject.Properties[$flag.Value]
+            return "$($Benchmark.name) ($($flag.Key): $(if ($message) { $message.Value }))"
+        }
+    }
+    return $null
+}
+
 # name -> nanoseconds; each entry's time_unit applies to both real_time and cpu_time.
 function Get-BenchmarkTimeMap {
     param(
@@ -50,8 +69,15 @@ function Get-BenchmarkTimeMap {
 
     $document = Get-Content $Path -Raw | ConvertFrom-Json
     $map = @{}
+    $notRun = @()
     foreach ($benchmark in $document.benchmarks) {
+        $reason = Get-BenchmarkNotRunReason -Benchmark $benchmark
+        if ($reason) { $notRun += $reason; continue }
         $map[$benchmark.name] = ConvertTo-Nanoseconds -Value $benchmark.$Metric -Unit $benchmark.time_unit
+    }
+    if ($notRun.Count -gt 0) {
+        throw ("$Path holds $($notRun.Count) benchmark(s) that did not run, so it cannot be graded: " +
+            "$($notRun -join '; '). Rerun them, or leave them out of both runs with --benchmark_filter.")
     }
     return $map
 }

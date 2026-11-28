@@ -36,6 +36,13 @@
   `Shared.GeneratedArtifacts.Tests.ps1` runs the consumer suite on a refused line under Pester 3.4.0 and 6.2.0
   (2/0 green before the fix). Recipes
   `lib.repo-hygiene-git-failure-throws` and `lib.repo-hygiene-reachability-probe-may-fail`.
+- `WindowsPerfBaseline.Common`'s comparison read a benchmark that errored or was skipped as a 100% speed-up and
+  passed. Google Benchmark writes such a run with `real_time` 0 beside `error_occurred` or `skipped`, and
+  `SkipWithMessage` exits 0, so nothing upstream catches the skipped case. `Get-BenchmarkTimeMap` now refuses a
+  document holding one, naming each benchmark and its message. Before the fix an errored candidate printed
+  `=== PERF BASELINE COMPARISON PASSED ===` and returned 0; the two new cases in `WindowsPerfBaseline.Common.Tests.ps1`
+  failed (18/20) and pass after. Recipes `lib.perf-baseline-not-run-refused` and
+  `lib.perf-baseline-skipped-is-not-run`.
 
 ## 2026-11-28 — `Invoke-VulkanValidationRun -GpuAssisted`: GPU-assisted validation for a consumer's suite
 

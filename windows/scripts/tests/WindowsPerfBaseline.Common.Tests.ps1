@@ -20,7 +20,7 @@ Describe 'WindowsPerfBaseline.Common' {
     # Every fixture document is written once, so each test only names the one it reads.
     $script:doc = @{
       units = New-BenchmarkDocument -Name 'units.json' -Benchmarks @(
-        @{ name = 'BM_Ns'; real_time = 1000.0; cpu_time = 900.0; time_unit = 'ns' },
+        @{ name = 'BM_Ns'; real_time = 1000.0; cpu_time = 900.0; time_unit = 'ns'; error_occurred = $false },
         @{ name = 'BM_Us'; real_time = 1.0; cpu_time = 2.0; time_unit = 'us' }
       )
       metric = New-BenchmarkDocument -Name 'metric.json' -Benchmarks @(@{ name = 'BM_A'; real_time = 10.0; cpu_time = 7.0; time_unit = 'us' })
@@ -28,6 +28,11 @@ Describe 'WindowsPerfBaseline.Common' {
       # 1 us == the 1000 ns baseline: the units differ, the timing does not.
       good = New-BenchmarkDocument -Name 'e2e-good.json' -Benchmarks @(@{ name = 'BM_A'; real_time = 1.0; time_unit = 'us' })
       bad = New-BenchmarkDocument -Name 'e2e-bad.json' -Benchmarks @(@{ name = 'BM_A'; real_time = 2000.0; time_unit = 'ns' })
+      # Google Benchmark's own shape for a run that never measured: the flag, its message and zero times.
+      errored = New-BenchmarkDocument -Name 'e2e-errored.json' -Benchmarks @(@{ name = 'BM_A'; error_occurred = $true
+          error_message = 'model missing'; iterations = 0; real_time = 0.0; cpu_time = 0.0; time_unit = 'ns' })
+      skipped = New-BenchmarkDocument -Name 'skipped.json' -Benchmarks @(@{ name = 'BM_A'; skipped = $true
+          skip_message = 'no display'; iterations = 0; real_time = 0.0; time_unit = 'ns' })
     }
   }
 
@@ -77,7 +82,13 @@ Describe 'WindowsPerfBaseline.Common' {
   }
 
   Context 'Get-BenchmarkTimeMap' {
-    It 'normalises every entry to nanoseconds regardless of its own time_unit' {
+    It 'refuses a document holding a benchmark that errored or was skipped' {
+      { Get-BenchmarkTimeMap -Path $script:doc.errored } |
+        Should -Throw -ExpectedMessage '*1 benchmark(s) that did not run*BM_A (error_occurred: model missing)*'
+      { Get-BenchmarkTimeMap -Path $script:doc.skipped } | Should -Throw -ExpectedMessage '*BM_A (skipped: no display)*'
+    }
+
+    It 'normalises every entry to nanoseconds regardless of its own time_unit, a false error flag included' {
       $map = Get-BenchmarkTimeMap -Path $script:doc.units
       $map['BM_Ns'] | Should -Be 1000
       $map['BM_Us'] | Should -Be 1000
@@ -154,6 +165,11 @@ Describe 'WindowsPerfBaseline.Common' {
     It 'returns 0 when nothing regressed and 1 when something did' {
       (Invoke-BenchmarkBaselineComparison -BaselinePath $script:doc.base -CandidatePath $script:doc.good 6>$null) | Should -Be 0
       (Invoke-BenchmarkBaselineComparison -BaselinePath $script:doc.base -CandidatePath $script:doc.bad 6>$null) | Should -Be 1
+    }
+
+    It 'fails instead of passing when the candidate benchmark never ran' {
+      { Invoke-BenchmarkBaselineComparison -BaselinePath $script:doc.base -CandidatePath $script:doc.errored 6>$null } |
+        Should -Throw -ExpectedMessage '*e2e-errored.json holds 1 benchmark(s) that did not run*'
     }
 
     It 'throws when either document is missing' {

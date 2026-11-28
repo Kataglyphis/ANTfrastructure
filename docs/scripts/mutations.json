@@ -68158,5 +68158,21 @@
   "replace": "Invoke-GitIn -Path $SubmodulePath -Arguments @('rev-parse', 'HEAD')",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsRepoHygiene.Common.Tests.ps1 -ResultFile logs/code-quality/repo-hygiene-mutation.json",
   "why": "a failed reachability probe is the answer unreachable, not an error that hides which pin failed"
+ },
+ {
+  "id": "lib.perf-baseline-not-run-refused",
+  "target": "windows/scripts/modules/WindowsPerfBaseline.Common.psm1",
+  "find": "        if ($reason) { $notRun += $reason; continue }\n",
+  "replace": "        if ($false) { $notRun += $reason; continue }\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsPerfBaseline.Common.Tests.ps1 -ResultFile logs/code-quality/perf-baseline-mutation.json",
+  "why": "an errored benchmark's real_time 0 would compare as a 100% speed-up and pass; does not judge a run that measured badly"
+ },
+ {
+  "id": "lib.perf-baseline-skipped-is-not-run",
+  "target": "windows/scripts/modules/WindowsPerfBaseline.Common.psm1",
+  "find": "[ordered]@{ error_occurred = 'error_message'; skipped = 'skip_message' }",
+  "replace": "[ordered]@{ error_occurred = 'error_message' }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsPerfBaseline.Common.Tests.ps1 -ResultFile logs/code-quality/perf-baseline-mutation.json",
+  "why": "SkipWithMessage exits 0 and writes skipped, not error_occurred, so it is the case a run's exit code never reports"
  }
 ]
