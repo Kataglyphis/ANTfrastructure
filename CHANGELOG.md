@@ -19,6 +19,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — the package licence gate names a failed tool's own reason
+
+- `verify_package_license.py` runs `flatpak`, `ostree` and the archive tools with `capture_output`, and its FAIL
+  line printed only the command and its status. OxidANT's Linux lane 46120791959 failed so at
+  `flatpak build-import-bundle` with no cause shown. The FAIL line now carries the tool's stderr.
+  `test-package-license-verifier.sh`'s fake flatpak states a refusal on stderr and the case requires it in
+  the output; printing the bare exception again fails it (recipe `package.license-gate-names-tool-stderr`).
+
 ## 2026-11-28 — without a GPU device node the hub's test runners take lavapipe only (CON284)
 
 - `vulkan_env_default_cpu_driver` (`01-core/vulkan-env.sh`) exports `VK_LOADER_DRIVERS_SELECT='*lvp*'` when no

@@ -3,7 +3,10 @@
 set -euo pipefail
 : "${FAKE_FLATPAK_TREE:=}"
 : "${FAKE_OSTREE_CHECKOUT_RC:=0}"
-if [ "${0##*/}" = flatpak ]; then exit "${FAKE_FLATPAK_RC:-0}"; fi
+if [ "${0##*/}" = flatpak ]; then
+  [ "${FAKE_FLATPAK_RC:-0}" -eq 0 ] || echo 'error: the fake flatpak refused the bundle' >&2
+  exit "${FAKE_FLATPAK_RC:-0}"
+fi
 case "$1" in
   init) exit 0 ;;
   refs)

@@ -50,7 +50,9 @@ export FAKE_LICENSE="$work/LICENSE"
 PATH="$work/tools:$PATH" t_assert_ok python3 "$SCRIPT" "$work/fixture.flatpak" --require "files/lib/demo/LICENSE=$work/LICENSE"
 printf 'wrong terms\n' > "$work/wrong-license"
 FAKE_LICENSE="$work/wrong-license" PATH="$work/tools:$PATH" t_assert_fails python3 "$SCRIPT" "$work/fixture.flatpak" --require "files/lib/demo/LICENSE=$work/LICENSE"
-FAKE_FLATPAK_RC=7 PATH="$work/tools:$PATH" t_assert_fails python3 "$SCRIPT" "$work/fixture.flatpak" --require "files/lib/demo/LICENSE=$work/LICENSE"
+out="$(FAKE_FLATPAK_RC=7 PATH="$work/tools:$PATH" python3 "$SCRIPT" "$work/fixture.flatpak" --require "files/lib/demo/LICENSE=$work/LICENSE" 2>&1)"
+t_assert_eq 1 "$?" 'a refused import fails the package'
+t_assert_contains "$out" 'error: the fake flatpak refused the bundle' 'the FAIL line carries the tool'"'"'s own reason'
 FAKE_REF=$'app/org.example.Demo/x86_64/stable\napp/org.example.Other/x86_64/stable' PATH="$work/tools:$PATH" \
   t_assert_fails python3 "$SCRIPT" "$work/fixture.flatpak" --require "files/lib/demo/LICENSE=$work/LICENSE"
 unset FAKE_LICENSE

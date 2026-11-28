@@ -68238,5 +68238,13 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-cargo-test-junit.sh",
   "why": "CON284: cargo test in a GPU-less container takes lavapipe, as ctest-run.sh does"
+ },
+ {
+  "id": "package.license-gate-names-tool-stderr",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "        print(failure_text(exc), file=sys.stderr)",
+  "replace": "        print(f\"FAIL: {exc}\", file=sys.stderr)",
+  "test": "bash linux/scripts/tests/test-package-license-verifier.sh",
+  "why": "a failed flatpak, ostree or extractor names its own stderr; the bare command line left OxidANT's red Flatpak check unexplained"
  }
 ]

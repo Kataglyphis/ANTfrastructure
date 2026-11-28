@@ -336,6 +336,15 @@ def check_package(path: Path, rules: list[tuple[str, bytes]]) -> list[str]:
     return [pattern for (pattern, _), matched in zip(rules, found, strict=True) if not matched]
 
 
+def failure_text(exc: Exception) -> str:
+    """The FAIL line, with a failed tool's own stderr: capture_output hides the reason otherwise."""
+    stderr = getattr(exc, "stderr", None) if isinstance(exc, subprocess.CalledProcessError) else None
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode("utf-8", "replace")
+    detail = stderr.strip() if stderr else ""
+    return f"FAIL: {exc}" + (f"\n{detail}" if detail else "")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("package", type=Path)
@@ -344,7 +353,7 @@ def main() -> int:
     try:
         missing = check_package(args.package, load_rules(args.require))
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile, EOFError, subprocess.CalledProcessError, zlib.error) as exc:
-        print(f"FAIL: {exc}", file=sys.stderr)
+        print(failure_text(exc), file=sys.stderr)
         return 1
     if missing:
         for pattern in missing:
