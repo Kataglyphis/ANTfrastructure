@@ -31,13 +31,6 @@ Describe 'WindowsRepoHygiene.Common' {
       $clone
     }
 
-    # The ceiling keeps git from finding a repository above the sandbox, wherever the temp dir sits.
-    $script:notARepo = [IO.Directory]::CreateDirectory((Join-Path $script:sandbox 'not-a-repo')).FullName
-    function script:Invoke-OutsideWorkTree {
-      param([scriptblock]$Body)
-      Invoke-WithEnv @{ GIT_CEILING_DIRECTORIES = $script:sandbox } $Body
-    }
-
     # Each refused spec rides with a valid one, as one bad pathspec must not pass the whole list off as clean.
     function script:Assert-RefusedPathspec {
       param([string]$Repo, [string]$Valid, [string[]]$Refused, [string]$MessageFormat)
@@ -120,17 +113,6 @@ Describe 'WindowsRepoHygiene.Common' {
       $tracked.Count | Should -Be 1
       $tracked[0] | Should -Be 'generated.log'
     }
-
-    It 'throws outside a work tree instead of reporting it clean' {
-      script:Invoke-OutsideWorkTree {
-        Assert-Throws -MessagePattern 'git ls-files -i -c --exclude-standard in .* exited 128: .*not a git repository' -Body {
-          Get-TrackedIgnoredFile -RepoRoot $script:notARepo
-        }
-        Assert-Throws -MessagePattern 'git submodule status in .* exited 128' -Body {
-          Get-SubmodulePinDrift -RepoRoot $script:notARepo
-        }
-      }
-    }
   }
 
   Context 'Get-TrackedGeneratedArtifact' {
@@ -181,12 +163,6 @@ Describe 'WindowsRepoHygiene.Common' {
       $result = Test-SubmoduleCommitReachable -SubmodulePath $clone
       $result.Reachable | Should -BeFalse
       $result.Method | Should -Be 'fetched-heads'
-    }
-
-    It 'answers unreachable, not an error, when its git probes fail' {
-      $result = script:Invoke-OutsideWorkTree { Test-SubmoduleCommitReachable -SubmodulePath $script:notARepo }
-      $result.Reachable | Should -BeFalse
-      $result.Method | Should -Be 'no-head'
     }
   }
 }

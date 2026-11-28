@@ -68156,7 +68156,7 @@
   "target": "windows/scripts/modules/WindowsRepoHygiene.Common.psm1",
   "find": "  if ($code -ne 0 -and -not $AllowFailure) {\n",
   "replace": "  if ($false) {\n",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsRepoHygiene.Common.Tests.ps1 -ResultFile logs/code-quality/repo-hygiene-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only WindowsRepoHygiene.GitFailure.Tests.ps1",
   "why": "a git that exits non-zero prints nothing on stdout, which the hygiene guards would read as clean; does not cover a git that exits 0 with wrong output"
  },
  {
@@ -68164,7 +68164,7 @@
   "target": "windows/scripts/modules/WindowsRepoHygiene.Common.psm1",
   "find": "Invoke-GitIn -AllowFailure -Path $SubmodulePath -Arguments @('rev-parse', 'HEAD')",
   "replace": "Invoke-GitIn -Path $SubmodulePath -Arguments @('rev-parse', 'HEAD')",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsRepoHygiene.Common.Tests.ps1 -ResultFile logs/code-quality/repo-hygiene-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only WindowsRepoHygiene.GitFailure.Tests.ps1",
   "why": "a failed reachability probe is the answer unreachable, not an error that hides which pin failed"
  },
  {
@@ -68172,7 +68172,7 @@
   "target": "windows/scripts/modules/WindowsPerfBaseline.Common.psm1",
   "find": "        if ($reason) { $notRun += $reason; continue }\n",
   "replace": "        if ($false) { $notRun += $reason; continue }\n",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsPerfBaseline.Common.Tests.ps1 -ResultFile logs/code-quality/perf-baseline-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only WindowsPerfBaseline.NotRun.Tests.ps1",
   "why": "an errored benchmark's real_time 0 would compare as a 100% speed-up and pass; does not judge a run that measured badly"
  },
  {
@@ -68180,7 +68180,7 @@
   "target": "windows/scripts/modules/WindowsPerfBaseline.Common.psm1",
   "find": "[ordered]@{ error_occurred = 'error_message'; skipped = 'skip_message' }",
   "replace": "[ordered]@{ error_occurred = 'error_message' }",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsPerfBaseline.Common.Tests.ps1 -ResultFile logs/code-quality/perf-baseline-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only WindowsPerfBaseline.NotRun.Tests.ps1",
   "why": "SkipWithMessage exits 0 and writes skipped, not error_occurred, so it is the case a run's exit code never reports"
  },
  {

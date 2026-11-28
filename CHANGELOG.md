@@ -19,6 +19,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — the perf-baseline and repo-hygiene recipes run in harness suites (#425)
+
+- b1ccc563b pointed `lib.perf-baseline-not-run-refused`, `lib.perf-baseline-skipped-is-not-run`,
+  `lib.repo-hygiene-git-failure-throws` and `lib.repo-hygiene-reachability-probe-may-fail` at
+  `WindowsPerfBaseline.Common.Tests.ps1` and `WindowsRepoHygiene.Common.Tests.ps1`, which are Pester-style. The
+  Linux mutation shards carry no Pester, so each baseline skipped and failed (run 46127883704), and
+  `test-mutation-pester-targets.sh` failed preflight. The cases the four recipes need moved into the harness
+  suites `WindowsPerfBaseline.NotRun.Tests.ps1` and `WindowsRepoHygiene.GitFailure.Tests.ps1`, run through
+  `Invoke-HarnessSuite.ps1`; their Pester copies are gone. All four recipes bite, and both suites pass under
+  Linux and Windows pwsh.
+
 ## 2026-11-28 — the package licence gate names a failed tool's own reason
 
 - `verify_package_license.py` runs `flatpak`, `ostree` and the archive tools with `capture_output`, and its FAIL

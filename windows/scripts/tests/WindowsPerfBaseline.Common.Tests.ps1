@@ -31,8 +31,6 @@ Describe 'WindowsPerfBaseline.Common' {
       # Google Benchmark's own shape for a run that never measured: the flag, its message and zero times.
       errored = New-BenchmarkDocument -Name 'e2e-errored.json' -Benchmarks @(@{ name = 'BM_A'; error_occurred = $true
           error_message = 'model missing'; iterations = 0; real_time = 0.0; cpu_time = 0.0; time_unit = 'ns' })
-      skipped = New-BenchmarkDocument -Name 'skipped.json' -Benchmarks @(@{ name = 'BM_A'; skipped = $true
-          skip_message = 'no display'; iterations = 0; real_time = 0.0; time_unit = 'ns' })
     }
   }
 
@@ -82,12 +80,6 @@ Describe 'WindowsPerfBaseline.Common' {
   }
 
   Context 'Get-BenchmarkTimeMap' {
-    It 'refuses a document holding a benchmark that errored or was skipped' {
-      { Get-BenchmarkTimeMap -Path $script:doc.errored } |
-        Should -Throw -ExpectedMessage '*1 benchmark(s) that did not run*BM_A (error_occurred: model missing)*'
-      { Get-BenchmarkTimeMap -Path $script:doc.skipped } | Should -Throw -ExpectedMessage '*BM_A (skipped: no display)*'
-    }
-
     It 'normalises every entry to nanoseconds regardless of its own time_unit, a false error flag included' {
       $map = Get-BenchmarkTimeMap -Path $script:doc.units
       $map['BM_Ns'] | Should -Be 1000
