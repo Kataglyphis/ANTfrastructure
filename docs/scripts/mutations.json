@@ -68174,5 +68174,21 @@
   "replace": "[ordered]@{ error_occurred = 'error_message' }",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsPerfBaseline.Common.Tests.ps1 -ResultFile logs/code-quality/perf-baseline-mutation.json",
   "why": "SkipWithMessage exits 0 and writes skipped, not error_occurred, so it is the case a run's exit code never reports"
+ },
+ {
+  "id": "flutter.sync-back-failure-throws",
+  "target": "windows/scripts/modules/WindowsFlutter.Common.psm1",
+  "find": "    if ($failures.Count -gt 0) { throw ($failures -join ' ') }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only WindowsFlutter.Common.Tests.ps1",
+  "why": "a sync-back robocopy could not finish leaves the host on the previous build while the step reports success; does not prove the copied bytes"
+ },
+ {
+  "id": "flutter.sync-back-rust-failure-kept",
+  "target": "windows/scripts/modules/WindowsFlutter.Common.psm1",
+  "find": "        $failures += @(Sync-FlutterArtifactTree",
+  "replace": "        $null = @(Sync-FlutterArtifactTree",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only WindowsFlutter.Common.Tests.ps1",
+  "why": "a failed Rust artifact copy must fail the delivery too, not only the build tree's"
  }
 ]

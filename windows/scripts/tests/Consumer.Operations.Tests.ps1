@@ -195,15 +195,16 @@ Describe 'Shared consumer operation policies' {
     )
     Invoke-TestMutationChecks -Check $operationChecks
 
-    It 'keeps Flutter advisory even for serious errors and preserves its different exclusion order and log option' {
+    It 'hands a Flutter serious error to its caller and preserves its different exclusion order and log option' {
         $module = New-TestArtifactCopyModuleArguments -Codes @(16)
         Invoke-WithFunctionModule @module -Body {
                 param($state)
                 Invoke-InTestDir { param($dir)
-                    Assert-Equal 0 @(Sync-MutFlutterArtifactTree -Context ([pscustomobject]@{}) -Source source -Destination $dir -Kind Rust -ExcludeFiles @('*.rlib') -ExcludeDirectories @('deps')).Count
+                    $failure = @(Sync-MutFlutterArtifactTree -Context ([pscustomobject]@{}) -Source source -Destination $dir -Kind Rust -ExcludeFiles @('*.rlib') -ExcludeDirectories @('deps'))
+                    Assert-Match '^robocopy sync-back of Rust artifacts.*exit code 16' "$failure"
                     Assert-Equal "source|$dir|/E|/MT:16|/R:1|/W:1|/FFT|/NOOFFLOAD|/XF|*.rlib|/XD|deps|/NFL|/NDL|/NJH|/NJS|/nc|/ns|/np|/LOG:nul" ($state.Calls[0] -join '|')
-                    Assert-Equal 1 $state.Warnings.Count
-                    Assert-Match 'Rust artifacts.*exit code 16' $state.Warnings[0]
+                    Assert-Equal 1 $failure.Count
+                    Assert-Equal 0 $state.Warnings.Count
                     Assert-Equal 0 $global:LASTEXITCODE
                 }
             }

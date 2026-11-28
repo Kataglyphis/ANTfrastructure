@@ -43,6 +43,15 @@
   `=== PERF BASELINE COMPARISON PASSED ===` and returned 0; the two new cases in `WindowsPerfBaseline.Common.Tests.ps1`
   failed (18/20) and pass after. Recipes `lib.perf-baseline-not-run-refused` and
   `lib.perf-baseline-skipped-is-not-run`.
+- `Sync-FastLocalArtifactsToHost` (OmniAccelerANT's Flutter sync-back) turned every robocopy failure into a warning,
+  exit 16 (nothing copied) included, and its step stayed green. The Delivery Check only tests that the runner exe
+  exists, so a reused tree delivered the previous build's binaries. A copy that ends at exit 8 or more now fails the
+  step once both the build and the Rust tree were tried, since this copy is the delivery, not a live mirror like
+  `Sync-BuildArtifacts`. The case in `WindowsFlutter.Common.Tests.ps1` and the one in `Consumer.Operations.Tests.ps1`
+  that pinned the warning now assert the failure; both failed on the old code. docs/windows-build-invariants.md
+  § The host gets artifacts, never CMake state. Recipes `flutter.sync-back-failure-throws` and
+  `flutter.sync-back-rust-failure-kept`. The `code-dupes.allow` pair of `WindowsBuild.Common.psm1` and
+  `WindowsFlutter.Common.psm1` is removed: without the warning call they no longer share a block.
 
 ## 2026-11-28 — `Invoke-VulkanValidationRun -GpuAssisted`: GPU-assisted validation for a consumer's suite
 

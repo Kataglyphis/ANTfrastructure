@@ -380,6 +380,8 @@ IREE's dispatched x86 AVX512-base target also needs explicit clang-cl `/clang:-m
 
 **`Sync-FastLocalArtifactsToHost` must keep `CMakeCache.txt` in `/XF` and `CMakeFiles` in `/XD` (2026-09-06).** The Flutter lane builds in a container-local fast root and robocopies the result back onto the bind-mounted host build tree (`Sync-FastLocalArtifactsToHost` in `windows/scripts/modules/WindowsFlutter.Common.psm1` — consumer API, no in-repo caller). A `CMakeCache.txt` is bound to the directory and the generator that wrote it, so copying one back poisons the NEXT run: `flutter build windows --config-only` reconfigures the host tree with the Visual Studio generator, finds the scratch cache and aborts — *"The current CMakeCache.txt directory C:/ws-mnt/build/windows/x64/CMakeCache.txt is different than the directory c:/kataglyphis_fast_build/build/windows/x64 where CMakeCache.txt was created"*, followed by *"Does not match the generator used previously: Ninja"*. `CMakeFiles` is excluded for the same reason. It hid for weeks because the consumer swallowed the exit code and still reported every step green, so the step failed on **every** run without anyone seeing it. Widen the copy with artifacts whenever a consumer needs one; never let build STATE cross back.
 
+A failed copy fails the step. A robocopy exit of 8 or more on either tree throws once both trees were tried, because a file left behind keeps the previous build on the host. `Sync-BuildArtifacts` still only warns on exit 8, since it mirrors a live tree.
+
 ### ONNX Runtime has exactly one source: the chain (owner rule 2026-09-23)
 
 **Every ONNX Runtime consumer uses the ORT this chain builds: `Build-OnnxFromSource.ps1` →

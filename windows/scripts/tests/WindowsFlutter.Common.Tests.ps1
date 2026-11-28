@@ -43,9 +43,12 @@ function Invoke-FlutterFullSyncCase {
         Invoke-InTestDir { param($dir)
             $build = Join-Path $dir 'host build'
             $rust = Join-Path $dir 'host rust'
-            Sync-MutFastLocalArtifactsToHost -Context ([pscustomobject]@{}) -BuildRoot 'source build' `
-                -OriginalBuildRoot $build -CargoTargetDir 'source rust' -HostRustTargetDir $rust
-            & $Verify $state $build $rust
+            $failure = try {
+                Sync-MutFastLocalArtifactsToHost -Context ([pscustomobject]@{}) -BuildRoot 'source build' `
+                    -OriginalBuildRoot $build -CargoTargetDir 'source rust' -HostRustTargetDir $rust
+                ''
+            } catch { $_.Exception.Message }
+            & $Verify $state $build $rust $failure
         }
     } -Find $Find -Replace $Replace
 }
@@ -94,7 +97,8 @@ Describe 'Flutter plugin patch policy' {
 Describe 'Flutter artifact sync lifecycle' {
     It 'keeps distinct CMake and Rust exclusions and resets successful robocopy exit codes' {
         Invoke-FlutterFullSyncCase @(1, 7) {
-            param($state, $build, $rust)
+            param($state, $build, $rust, $failure)
+            Assert-Equal '' $failure
             Assert-Equal 0 $global:LASTEXITCODE
             Assert-True (Test-Path -LiteralPath $build -PathType Container)
             Assert-True (Test-Path -LiteralPath $rust -PathType Container)
@@ -105,14 +109,17 @@ Describe 'Flutter artifact sync lifecycle' {
         }
     }
 
-    It 'reports failures from each copy while still attempting Rust and clearing the exit code' {
+    It 'fails the delivery on a failed copy of either tree, after still attempting Rust and clearing the exit code' {
         Invoke-FlutterFullSyncCase @(8, 16) {
-            param($state)
+            param($state, $build, $rust, $failure)
+            Assert-Match "build artifacts to '.*host build' failed \(exit code 8\).*Rust artifacts.*exit code 16" $failure
             Assert-Equal 2 $state.Calls.Count
-            Assert-Equal 2 $state.Warnings.Count
-            Assert-Match 'build artifacts.*exit code 8' $state.Warnings[0]
-            Assert-Match 'Rust artifacts.*exit code 16' $state.Warnings[1]
+            Assert-Equal 0 $state.Warnings.Count
             Assert-Equal 0 $global:LASTEXITCODE
+        }
+        Invoke-FlutterFullSyncCase @(0, 16) {
+            param($state, $build, $rust, $failure)
+            Assert-Match '^robocopy sync-back of Rust artifacts .*exit code 16\); the host copy is incomplete\.$' $failure
         }
     }
 
@@ -132,13 +139,13 @@ Describe 'Flutter artifact sync lifecycle' {
 }
 
 Describe 'Flutter refactor mutation guards' {
-    It 'rejects suppressing the robocopy exit 8 warning' {
+    It 'rejects letting a partial copy (robocopy exit 8) through' {
         Assert-Throws {
-            Invoke-FlutterFullSyncCase @(8, 16) -Find '$copyExit -ge 8' -Replace '$copyExit -gt 8' -Verify {
-                param($state)
-                Assert-Equal 2 $state.Warnings.Count
+            Invoke-FlutterFullSyncCase @(8, 0) -Find '$copyExit -ge 8' -Replace '$copyExit -gt 8' -Verify {
+                param($state, $build, $rust, $failure)
+                Assert-Match 'build artifacts.*exit code 8' $failure
             }
-        } -MessagePattern 'expected \[2\] but got \[1\]'
+        } -MessagePattern 'Assert-Match: \[\] does not match'
     }
 
     It 'rejects disabling the plugin patch replacement' {

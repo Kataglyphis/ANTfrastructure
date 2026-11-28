@@ -163,11 +163,11 @@ function Sync-FlutterArtifactTree {
         $ExcludeFiles + @('/XD') + $ExcludeDirectories +
         @('/NFL', '/NDL', '/NJH', '/NJS', '/nc', '/ns', '/np', '/LOG:nul')
     $copyExit = Invoke-BuildArtifactCopy -Source $Source -Destination $Destination -Arguments $copyArgs
-    if ($copyExit -ge 8) {
-        Write-BuildLogWarning -Context $Context -Message "robocopy sync-back of $Kind artifacts to '$Destination' failed (exit code $copyExit); host copy may be incomplete."
-    }
     # Robocopy's success codes 1-7 must not trip the caller's exit-code gate.
     $global:LASTEXITCODE = 0
+    if ($copyExit -ge 8) {
+        "robocopy sync-back of $Kind artifacts to '$Destination' failed (exit code $copyExit); the host copy is incomplete."
+    }
 }
 
 function Sync-FastLocalArtifactsToHost {
@@ -190,14 +190,16 @@ function Sync-FastLocalArtifactsToHost {
     )
 
     # CMake state is tied to its directory and generator, so the host receives only artifacts.
-    Sync-FlutterArtifactTree -Context $Context -Source $BuildRoot -Destination $OriginalBuildRoot -Kind 'build' `
+    $failures = @(Sync-FlutterArtifactTree -Context $Context -Source $BuildRoot -Destination $OriginalBuildRoot -Kind 'build' `
         -ExcludeFiles @('*.obj', '*.tlog', '*.lastbuildstate', '*.idb', '*.ilk', '*.pdb', '.ninja*', 'CMakeCache.txt') `
-        -ExcludeDirectories @('*.dir', 'CMakeFiles', 'x64_x64-ClangCL*')
+        -ExcludeDirectories @('*.dir', 'CMakeFiles', 'x64_x64-ClangCL*'))
     if (-not [string]::IsNullOrEmpty($CargoTargetDir) -and -not [string]::IsNullOrEmpty($HostRustTargetDir)) {
-        Sync-FlutterArtifactTree -Context $Context -Source $CargoTargetDir -Destination $HostRustTargetDir -Kind 'Rust' `
+        $failures += @(Sync-FlutterArtifactTree -Context $Context -Source $CargoTargetDir -Destination $HostRustTargetDir -Kind 'Rust' `
             -ExcludeFiles @('*.rlib', '*.rmeta', '*.d', '*.o') `
-            -ExcludeDirectories @('.fingerprint', 'build', 'deps', 'incremental')
+            -ExcludeDirectories @('.fingerprint', 'build', 'deps', 'incremental'))
     }
+    # The delivery, not a live mirror: a file left behind (bit 8) leaves the host running the previous build.
+    if ($failures.Count -gt 0) { throw ($failures -join ' ') }
 }
 
 # A pub-activated dartdoc: the SDK-bundled 9.0.4 crashes on Flutter apps (_stripDocImports), >= 9.0.9 does not.

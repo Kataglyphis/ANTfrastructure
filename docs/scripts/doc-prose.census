@@ -261,9 +261,9 @@ docs/windows-agentic-loop.md | long-share | 9.3
 docs/windows-agentic-loop.md | ids-per-k | 0.8
 docs/windows-agentic-loop.md | bold-per-k | 5.5
 docs/windows-build-invariants.md | avg-sentence | 20.5
-docs/windows-build-invariants.md | long-share | 17.9
+docs/windows-build-invariants.md | long-share | 17.8
 docs/windows-build-invariants.md | ids-per-k | 6.1
-docs/windows-build-invariants.md | bold-per-k | 8.9
+docs/windows-build-invariants.md | bold-per-k | 8.8
 docs/windows-build-lanes.md | avg-sentence | 26.7
 docs/windows-build-lanes.md | long-share | 33.0
 docs/windows-build-lanes.md | ids-per-k | 8.0
