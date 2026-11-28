@@ -69,7 +69,8 @@ foreach ($group in @($script:ActionCases | ForEach-Object { $_.Group } | Select-
     Describe "Reusable Pester action: $group" {
         foreach ($case in @($script:ActionCases | Where-Object { $_.Group -eq $group })) {
             It $case.It {
-                Assert-ActionCase -Version $case.Version -Result $case.Result -Exit $case.Exit -Pattern $case.Pattern -Absent @($case.Absent | Where-Object { $_ })
+                # Invoke-Tests runs under StrictMode Latest, where a row without Absent has no such property.
+                Assert-ActionCase -Version $case.Version -Result $case.Result -Exit $case.Exit -Pattern $case.Pattern -Absent @($case['Absent'] | Where-Object { $_ })
             }
         }
     }

@@ -54,12 +54,13 @@ Describe 'Shared CI PowerShell module bootstrap' {
     It 'wires Pester and analyzer jobs to the same installer' {
         $root = Get-RepoRoot
         $action = [IO.File]::ReadAllText((Join-Path $root '.github/actions/run-pester-suite/action.yml'))
+        $suite = [IO.File]::ReadAllText((Join-Path $root '.github/actions/run-pester-suite/Invoke-PesterSuite.ps1'))
         $windows = [IO.File]::ReadAllText((Join-Path $root '.github/workflows/windows-x64.yml'))
         $reusable = [IO.File]::ReadAllText((Join-Path $root '.github/workflows/powershell-quality.yml'))
-        $pesterExact = 'Install-PinnedPowerShellModule -Name Pester -Version ''${{ inputs.version }}'''
-        Assert-True $action.Contains($pesterExact) 'shared Pester action uses the installer'
-        Assert-True $action.Contains('GITHUB_ACTION_PATH') 'action imports its own versioned module'
-        Assert-True $action.Contains('../../../windows/scripts/modules/WindowsCi.ModuleBootstrap.psm1') 'action resolves the module from its own checkout'
+        $pesterExact = 'Install-PinnedPowerShellModule -Name Pester -Version $Version'
+        Assert-True $suite.Contains($pesterExact) 'shared Pester action uses the installer'
+        Assert-True $action.Contains("Join-Path `$env:GITHUB_ACTION_PATH 'Invoke-PesterSuite.ps1'") 'action runs the script beside it'
+        Assert-True $suite.Contains("Join-Path `$PSScriptRoot '../../../windows/scripts/modules/WindowsCi.ModuleBootstrap.psm1'") 'action resolves the module from its own checkout'
         Assert-True $windows.Contains("Install-PinnedPowerShellModule -Name Pester -Version '6.2' -Minimum") 'hub tests use the installer'
         foreach ($workflow in @($windows, $reusable)) {
             Assert-True $workflow.Contains('Install-PinnedPowerShellModule -Name PSScriptAnalyzer -Version $pin') `
@@ -70,7 +71,7 @@ Describe 'Shared CI PowerShell module bootstrap' {
         $actionDir = Join-Path $root '.github/actions/run-pester-suite'
         $actionModule = (Resolve-Path -LiteralPath (Join-Path $actionDir '../../../windows/scripts/modules/WindowsCi.ModuleBootstrap.psm1')).Path
         Assert-Equal (Join-Path $root 'windows/scripts/modules/WindowsCi.ModuleBootstrap.psm1') $actionModule
-        $mutant = $action.Replace($pesterExact, 'Install-Module Pester -RequiredVersion ''${{ inputs.version }}''')
+        $mutant = $suite.Replace($pesterExact, 'Install-Module Pester -RequiredVersion $Version')
         Assert-Throws { Assert-True $mutant.Contains($pesterExact) 'shared Pester action uses the installer' } `
             -MessagePattern 'shared Pester action uses the installer'
     }
