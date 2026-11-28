@@ -61,6 +61,15 @@ lc_expect 1 "Build directory not found: absent. Configure/build it first." "${LI
 t_assert_eq "0" "$(lc_argv | grep -c -e '^ctest' || true)" "no suite runs in the wrong directory"
 lc_expect 1 "Unknown argument: --frobnicate" "${LIB}" 'ctest_run_main --frobnicate'
 
+t_case "ctest runs after the CPU driver default, which follows the caller's Vulkan env (CON284)"
+lc_reset
+lc_call out rc "${LIB}" "vulkan_env_default_cpu_driver() { echo cpu-driver-default >> $(printf '%q' "${_work}/argv.log"); }; ctest_run_main"
+t_assert_eq "0" "${rc}"
+t_assert_eq "${SAFE}
+cpu-driver-default
+ctest -C Debug ${FLAGS} --timeout 1500
+cwd build" "$(lc_argv)"
+
 # The fixture is ctest 4.4.3's own report: ok and Gpu.Ran ran, Gpu.Skipped and the rc77 test skipped, Gpu.Disabled disabled.
 JUNIT="${TESTS_DIR}/fixtures/ctest-run/junit.xml"
 REPORT="${_work}/report.xml"

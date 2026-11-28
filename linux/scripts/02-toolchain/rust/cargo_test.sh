@@ -3,6 +3,9 @@ set -euo pipefail
 
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_cargo_wrapper.sh"
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../01-core/vulkan-env.sh"
+vulkan_env_default_cpu_driver
 
 # The log and its JUnit land here, so test counts and failures are recorded; an empty value writes neither.
 results="${CARGO_TEST_RESULTS_DIR-logs/test-results}"

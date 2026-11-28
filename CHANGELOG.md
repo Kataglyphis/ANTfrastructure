@@ -19,6 +19,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — without a GPU device node the hub's test runners take lavapipe only (CON284)
+
+- `vulkan_env_default_cpu_driver` (`01-core/vulkan-env.sh`) exports `VK_LOADER_DRIVERS_SELECT='*lvp*'` when no
+  render node, NVIDIA device or WSL `dxg` exists and a lavapipe ICD manifest is installed; a caller's
+  `VK_LOADER_DRIVERS_SELECT`, `VK_DRIVER_FILES` or `VK_ICD_FILENAMES` wins. `ctest-run.sh` calls it after the
+  caller's Vulkan env and `cargo_test.sh` before cargo, so every consumer's llvmpipe run gets what
+  BeschleunigerBallett 712ed01d set in its own `run-ctest.sh`: Mesa's PowerVR ICD no longer prints
+  `Failed to enumerate drm devices` twice per instance into each golden log, and the ASan leak under
+  `setup_loader_term_phys_devs` cannot come back through another ICD.
+- `test-vulkan-cpu-driver.sh` (10 assertions) covers the four outcomes on a fixture `/dev` and ICD tree;
+  `test-lib-ctest-run.sh` and `test-cargo-test-junit.sh` pin the call order. Recipes
+  `vulkan.cpu-driver-caller-wins`, `vulkan.cpu-driver-gpu-node-keeps-loader`, `vulkan.cpu-driver-needs-lavapipe`,
+  `lib.ctest-run-cpu-driver-default` and `rust.cargo-test-cpu-driver-default` all bite. Not covered: whether the
+  loader then enumerates lavapipe, which the image smoke's `vulkaninfo` check owns.
+
 ## 2026-11-28 — the mutation gate refuses a mutant that does not build
 
 - `verify_mutations.py` reads a recipe test's exit 3 (`UNBUILT_RC`) as "the mutant does not build" and fails the

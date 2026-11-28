@@ -873,6 +873,16 @@ GStreamer's criticals; BeschleunigerBallett's SYNC-HAZARD scan fits the same opt
 A GPU test suite needs the loader and the layers on the same terms the build had,
 which is why the Vulkan environment is resolved here too.
 
+**Without a GPU device node, ctest gets lavapipe only** (CON284). After the Vulkan
+environment, `vulkan_env_default_cpu_driver` (`01-core/vulkan-env.sh`) exports
+`VK_LOADER_DRIVERS_SELECT='*lvp*'` when no `/dev/dri/renderD*`, `/dev/nvidia<N>` or WSL's
+`/dev/dxg` exists and a `lvp_icd*.json` sits in `/usr/share`, `/usr/local/share` or
+`/etc` `vulkan/icd.d`. Mesa's other ICDs then neither print their per-instance warnings
+(PowerVR's `Failed to enumerate drm devices`) nor leak under ASan
+([failure-modes.md](failure-modes.md#every-asan-gpu-test-leaks-under-setup_loader_term_phys_devs-on-a-new-runner-image)).
+A caller that sets `VK_LOADER_DRIVERS_SELECT`, `VK_DRIVER_FILES` or `VK_ICD_FILENAMES`
+keeps its own choice, and a host with a GPU node keeps the loader's. `cargo_test.sh` applies the same default.
+
 ## `compiler-llvm-tools.sh` — the LLVM tools of the compiler that built a tree
 
 Anything that reads clang's output has to come from the same LLVM. That covers

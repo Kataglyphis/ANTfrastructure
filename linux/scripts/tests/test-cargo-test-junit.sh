@@ -43,10 +43,12 @@ t_assert_grep "${work}/out" 'no test binary ran'
 # _cargo_test <fixture> <cargo status>: cargo_test.sh with cargo a function that prints the fixture; output in ${work}/run.
 _cargo_test() {
   local dir; dir="$(mktemp -d "${work}/run.XXXXXX")"
-  ( cd "${dir}" && FIXTURE="$1" STATUS="$2" HOME="${dir}" CARGO_HOME="${dir}/cargo-home" CARGO_SAFE_DIRECTORY='' bash -c '
-      cargo() { case "$1" in test) cat "${FIXTURE}"; return "${STATUS}" ;; *) echo "cargo 1.0.0" ;; esac; }
+  ( cd "${dir}" && FIXTURE="$1" STATUS="$2" HOME="${dir}" CARGO_HOME="${dir}/cargo-home" CARGO_SAFE_DIRECTORY='' \
+      _VULKAN_ENV_SH_LOADED=1 bash -c '
+      vulkan_env_default_cpu_driver() { export VK_LOADER_DRIVERS_SELECT=chosen; }
+      cargo() { case "$1" in test) echo "${VK_LOADER_DRIVERS_SELECT-<unset>}" > "${HOME}/select"; cat "${FIXTURE}"; return "${STATUS}" ;; *) echo "cargo 1.0.0" ;; esac; }
       rustc() { echo "rustc 1.0.0"; }
-      export -f cargo rustc
+      export -f vulkan_env_default_cpu_driver cargo rustc
       bash "$0/cargo_test.sh"' "${RUST_DIR}" ) > "${work}/run" 2>&1
   echo "$?" >> "${work}/run"
   printf '%s' "${dir}"
@@ -57,6 +59,7 @@ d="$(_cargo_test "${fixtures}/plain-colour-slow.txt" 0)"
 t_assert_eq "0" "$(tail -n 1 "${work}/run")" "$(cat "${work}/run")"
 t_assert_grep "${d}/logs/test-results/cargo-test.txt" 'test result: ok'
 t_assert_grep "${d}/logs/test-results/cargo-test.xml" '<testsuite name="contract \(tests/contract.rs\)"'
+t_assert_eq "chosen" "$(cat "${d}/select" 2>/dev/null)" "cargo test runs after the CPU driver default (CON284)"
 
 t_case "a failing cargo test is the step's status, and its JUnit is written before it ends the step"
 d="$(_cargo_test "${fixtures}/verbose-pass-fail-crash.txt" 101)"

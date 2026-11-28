@@ -68198,5 +68198,45 @@
   "replace": "        $null = @(Sync-FlutterArtifactTree",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only WindowsFlutter.Common.Tests.ps1",
   "why": "a failed Rust artifact copy must fail the delivery too, not only the build tree's"
+ },
+ {
+  "id": "vulkan.cpu-driver-caller-wins",
+  "target": "linux/scripts/01-core/vulkan-env.sh",
+  "find": "  [ -z \"${VK_LOADER_DRIVERS_SELECT:-}${VK_DRIVER_FILES:-}${VK_ICD_FILENAMES:-}\" ] || return 0\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-vulkan-cpu-driver.sh",
+  "why": "CON284: a driver the caller names (select, driver files or the older ICD list) is kept, never replaced by lavapipe"
+ },
+ {
+  "id": "vulkan.cpu-driver-gpu-node-keeps-loader",
+  "target": "linux/scripts/01-core/vulkan-env.sh",
+  "find": "  if compgen -G \"${dev}/dri/renderD*\" >/dev/null || compgen -G \"${dev}/nvidia[0-9]*\" >/dev/null || [ -e \"${dev}/dxg\" ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-vulkan-cpu-driver.sh",
+  "why": "CON284: a render node, an NVIDIA device or WSL's dxg means a GPU driver can work, so the GPU lanes keep their GPU"
+ },
+ {
+  "id": "vulkan.cpu-driver-needs-lavapipe",
+  "target": "linux/scripts/01-core/vulkan-env.sh",
+  "find": "  [ \"${found}\" = 1 ] || return 0\n  export VK_LOADER_DRIVERS_SELECT",
+  "replace": "  export VK_LOADER_DRIVERS_SELECT",
+  "test": "bash linux/scripts/tests/test-vulkan-cpu-driver.sh",
+  "why": "CON284: without a lavapipe ICD the filter would leave the loader no driver at all, so it is not set"
+ },
+ {
+  "id": "lib.ctest-run-cpu-driver-default",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "  project_env_source_vulkan\n  vulkan_env_default_cpu_driver\n",
+  "replace": "  project_env_source_vulkan\n",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "CON284: every consumer's ctest in a GPU-less container takes lavapipe, so Mesa's other ICDs neither warn nor leak per test"
+ },
+ {
+  "id": "rust.cargo-test-cpu-driver-default",
+  "target": "linux/scripts/02-toolchain/rust/cargo_test.sh",
+  "find": "vulkan_env_default_cpu_driver\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cargo-test-junit.sh",
+  "why": "CON284: cargo test in a GPU-less container takes lavapipe, as ctest-run.sh does"
  }
 ]

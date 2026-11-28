@@ -2352,17 +2352,6 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       `$VULKAN_SDK/bin/slangc`, then `PATH`. Done when OxidANT's bindless variant of `forward.slang` compiles in the
       image to WGSL that naga validates.
 
-- [ ] **CON284 — Mesa's PowerVR ICD warns on every Vulkan instance** [S, ★]. `powervr_mesa_icd.json` in
-      `/usr/share/vulkan/icd.d` prints `pvr_instance.c:92 ... Failed to enumerate drm devices` twice per instance in
-      a container without `/dev/dri` (checked 2026-11-20 with `vulkaninfo --summary`), so every llvmpipe golden log
-      carries it once per test. Either select the driver in the llvmpipe runs (`VK_DRIVER_FILES` naming
-      `lvp_icd.json` in `ctest-run.sh --virtual-display` and `cargo_test.sh`) or drop the ICD where no PowerVR
-      device is expected; the riscv64 image may want it for boards with a PowerVR GPU. Selecting the driver also
-      ends the leak ASan GPU tests met on runner image 20261116.202.1 (`docs/failure-modes.md`):
-      BeschleunigerBallett 712ed01d sets `VK_LOADER_DRIVERS_SELECT='*lvp*'` in its `run-ctest.sh --virtual-display`
-      unless the caller names an ICD, and run 44784592908 on that runner passed 899 of 899 with no leak report.
-      Left: a shared home for that default (the llvmpipe recipe or `ctest-run.sh`) so other consumers get it.
-
 ## Open — Linux arm64 and riscv64
 
 - [ ] **CON145 — `cxxbridge` in the Linux and Windows images** [S, ★★]. Found 2026-10-21 with

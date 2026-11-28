@@ -182,6 +182,24 @@ vulkan_env_source() {
   return 0
 }
 
+# vulkan_env_default_cpu_driver [dev_root] [icd_dirs]: without a GPU node only lavapipe can work; see docs/failure-modes.md#every-asan-gpu-test-leaks-under-setup_loader_term_phys_devs-on-a-new-runner-image
+vulkan_env_default_cpu_driver() {
+  local dev="${1:-/dev}" icd_dirs="${2:-/usr/share/vulkan/icd.d:/usr/local/share/vulkan/icd.d:/etc/vulkan/icd.d}"
+  local dir found=0
+  [ -z "${VK_LOADER_DRIVERS_SELECT:-}${VK_DRIVER_FILES:-}${VK_ICD_FILENAMES:-}" ] || return 0
+  if compgen -G "${dev}/dri/renderD*" >/dev/null || compgen -G "${dev}/nvidia[0-9]*" >/dev/null || [ -e "${dev}/dxg" ]; then
+    return 0
+  fi
+  local -a _vk_icd_dirs=()
+  IFS=':' read -r -a _vk_icd_dirs <<< "${icd_dirs}"
+  for dir in "${_vk_icd_dirs[@]}"; do
+    if compgen -G "${dir}/lvp_icd*.json" >/dev/null; then found=1; fi
+  done
+  [ "${found}" = 1 ] || return 0
+  export VK_LOADER_DRIVERS_SELECT='*lvp*'
+  _vulkan_env_log "No GPU device node: the Vulkan loader takes lavapipe only (VK_LOADER_DRIVERS_SELECT='*lvp*')"
+}
+
 vulkan_env_cli_usage() {
   cat <<'EOF'
   --vulkan-version VER     Vulkan SDK version to source

@@ -97,6 +97,7 @@ ctest_run_prepare_env() {
   project_env_allow_git_directory "${CTEST_RUN_SAFE_DIRECTORY-/workspace}"
 
   project_env_source_vulkan
+  vulkan_env_default_cpu_driver
 }
 
 # Command construction. Pure: fills CTEST_CMD without running anything, so it stays testable.
