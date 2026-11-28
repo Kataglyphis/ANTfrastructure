@@ -136,6 +136,35 @@ function Restore-VulkanLayerSettings { param($Staging); $State.Calls.Add('restor
         }
     }
 
+    It 'appends the GPU-AV settings to the staged copy, never to the source' {
+      $dir = (New-Item -ItemType Directory -Path (Join-Path $script:root 'gpuav-staging') -Force).FullName
+      $source = Get-VulkanLayerSettingsDefaultPath
+      $before = Get-Content -LiteralPath $source -Raw
+      $staging = Copy-VulkanLayerSettings -SettingsPath $source -TargetDirectory $dir -AppendSetting @(Get-VulkanGpuAvLayerSetting)
+      try {
+        $staged = Get-Content -LiteralPath $staging.StagedPath -Raw
+        $staged | Should -Match '(?m)^khronos_validation\.validate_sync\s*=\s*true\s*$'
+        $staged | Should -Match '(?m)^khronos_validation\.gpuav_enable\s*=\s*true\s*$'
+        $staged | Should -Match '(?m)^khronos_validation\.gpuav_safe_mode\s*=\s*true\s*$'
+      } finally { Restore-VulkanLayerSettings -Staging $staging }
+      (Get-Content -LiteralPath $source -Raw) | Should -Be $before
+      Test-Path -LiteralPath $staging.StagedPath | Should -BeFalse
+    }
+
+    It 'starts the appended settings on a line of their own when the source lacks a final newline' {
+      $dir = (New-Item -ItemType Directory -Path (Join-Path $script:root 'gpuav-no-final-newline') -Force).FullName
+      $source = Join-Path $script:root 'no-final-newline.txt'
+      [System.IO.File]::WriteAllText($source, 'khronos_validation.validate_sync = true')
+      $staging = Copy-VulkanLayerSettings -SettingsPath $source -TargetDirectory $dir -AppendSetting @(Get-VulkanGpuAvLayerSetting)
+      try {
+        $lines = @(Get-Content -LiteralPath $staging.StagedPath)
+        $lines | Should -Contain 'khronos_validation.validate_sync = true'
+        $lines | Should -Contain 'khronos_validation.gpuav_enable = true'
+        $lines | Should -Contain 'khronos_validation.gpuav_safe_mode = true'
+      } finally { Restore-VulkanLayerSettings -Staging $staging }
+      [System.IO.File]::ReadAllText($source) | Should -Be 'khronos_validation.validate_sync = true'
+    }
+
     It 'ignores a null staging handle so finally blocks are safe' {
       { Restore-VulkanLayerSettings -Staging $null } | Should -Not -Throw
     }
@@ -162,6 +191,20 @@ function Restore-VulkanLayerSettings { param($Staging); $State.Calls.Add('restor
 
       Assert-VulkanChildResult -LogPath $log -ExitCode 7 -Marker 'SETTINGS_PRESENT'
       (Get-Content -LiteralPath $log -Raw) | Should -Match 'ARG=hello'
+      Test-Path -LiteralPath $settings | Should -BeFalse
+    }
+
+    It 'stages GPU-AV for the child with -GpuAssisted and only then' {
+      $settings = Join-Path $script:root 'vk_layer_settings.txt'
+      $tool = New-TestBatchTool -Directory $script:root -Name 'vulkan-gpuav-probe.cmd' -Line (
+        "findstr /c:`"gpuav_enable = true`" `"$settings`" >nul && echo GPUAV_ON || echo GPUAV_OFF")
+      $log = Join-Path $script:root 'gpuav.log'
+
+      Invoke-VulkanValidationRun -ExecutablePath $tool -WorkingDirectory $script:root -LogPath $log -GpuAssisted
+      Assert-VulkanChildResult -LogPath $log -ExitCode 0 -Marker 'GPUAV_ON'
+
+      Invoke-VulkanValidationRun -ExecutablePath $tool -WorkingDirectory $script:root -LogPath $log
+      Assert-VulkanChildResult -LogPath $log -ExitCode 0 -Marker 'GPUAV_OFF'
       Test-Path -LiteralPath $settings | Should -BeFalse
     }
 

@@ -273,7 +273,7 @@ docs/windows-build-resources.md | long-share | 19.2
 docs/windows-build-resources.md | ids-per-k | 9.6
 docs/windows-build-resources.md | bold-per-k | 12.0
 docs/windows-builds.md | avg-sentence | 19.9
-docs/windows-builds.md | long-share | 15.4
+docs/windows-builds.md | long-share | 15.3
 docs/windows-builds.md | ids-per-k | 5.2
 docs/windows-builds.md | bold-per-k | 9.7
 docs/windows-clang-cl-sanitizers.md | avg-sentence | 20.4

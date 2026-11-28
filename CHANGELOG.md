@@ -19,6 +19,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — `Invoke-VulkanValidationRun -GpuAssisted`: GPU-assisted validation for a consumer's suite
+
+- `WindowsVulkanValidation.Common` gains `Get-VulkanGpuAvLayerSetting` (`gpuav_enable` and
+  `gpuav_safe_mode`, with which the layer tries to prevent a crash at the cost of a slower run), and
+  `Copy-VulkanLayerSettings -AppendSetting` adds lines to the staged `vk_layer_settings.txt` only,
+  starting a line of their own when the source lacks a final newline.
+  `Invoke-VulkanValidationRun -GpuAssisted` stages both, so GPU-AV checks every shader's
+  buffer-device-address and descriptor access for that run; a caller's own settings file stays as it is.
+- Three Pester cases: the staged copy carries the settings and the source does not, a source
+  without a final newline keeps its last line apart from the first appended one, and a child sees
+  `gpuav_enable` with the switch and not without. Coverage 146/170 (85.9 %, floor 80 %). Dropping the
+  append fails all three, appending without the newline the second, not forwarding the switch the
+  third. BeschleunigerBallett's `Invoke-SyncValidation.ps1 -GpuAssisted` is the first caller.
+
 ## 2026-11-28 — OpenCV's CUDA configure keeps its libcuda stub
 
 - The nvidia chain `20261127-154917-57ee53f3` failed amd64 Media at OpenCV: `CUDA_CUDA_LIBRARY` NOTFOUND for
