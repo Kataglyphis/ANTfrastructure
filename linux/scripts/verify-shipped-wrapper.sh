@@ -84,10 +84,14 @@ if [ -n "${_avc_path}" ] && command -v readelf >/dev/null 2>&1; then
     "${_nerdctl}" export "${_cid}" 2>/dev/null \
       | tar -xf - -C "${_xdir}" --occurrence=1 "${_avc_path}" 2>/dev/null ) || true
   if [ -f "${_xdir}/${_avc_path}" ]; then
-    if [ "$(readelf -S "${_xdir}/${_avc_path}" 2>/dev/null | grep -c '\.symtab')" -eq 0 ]; then
-      _hard 0 "AP4 strip verified: $(basename "${_avc_path}") has no .symtab"
-    else
+    _sections="$(readelf -SW "${_xdir}/${_avc_path}" 2>/dev/null || true)"
+    # The section table sits at the file's end, so a cut-short extraction has none and would read as "no .symtab".
+    if ! grep -q '\.shstrtab' <<< "${_sections}"; then
+      _advise "AP4 strip check skipped (extracted ${_avc_path} has no readable section table)"
+    elif grep -q '\.symtab' <<< "${_sections}"; then
       _hard 1 "AP4 strip NOT applied: $(basename "${_avc_path}") still carries .symtab — MEDIA_STRIP regressed?"
+    else
+      _hard 0 "AP4 strip verified: $(basename "${_avc_path}") has no .symtab"
     fi
   else
     _advise "AP4 strip check skipped (could not extract ${_avc_path})"

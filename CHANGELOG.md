@@ -19,6 +19,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — gates that read an input they could not grade as clean now fail or say so
+
+- `verify-shipped-wrapper.sh` check 5 printed `OK AP4 strip verified` for a libavcodec cut short in its second
+  export. The section table sits at the end of an ELF file, so a truncated copy has none, and readelf exits 0
+  without listing a `.symtab`. The check now grades only a table that lists `.shstrtab`; a truncated copy is a
+  skipped check (a note), like an extraction that produced no file. `test-verify-shipped-wrapper.sh` serves a real
+  `cc -shared` libavcodec through a stub nerdctl, cut at four offsets; before the fix all four read as verified.
+  Recipe `runtime-gates.ap4-strip-needs-a-section-table`.
+
 ## 2026-11-28 — `Invoke-VulkanValidationRun -GpuAssisted`: GPU-assisted validation for a consumer's suite
 
 - `WindowsVulkanValidation.Common` gains `Get-VulkanGpuAvLayerSetting` (`gpuav_enable` and

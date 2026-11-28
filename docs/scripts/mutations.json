@@ -68134,5 +68134,13 @@
   "replace": "        \"-DCUDA_TOOLKIT_ROOT_DIR=${toolkit}\"\n        \"-DCUDA_NVCC_EXECUTABLE=${BASH_SOURCE[0]}\"\n",
   "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
   "why": "A CLI toolkit root makes FindCUDA drop the libcuda stub on the first configure, and cudacodec then fails to generate."
+ },
+ {
+  "id": "runtime-gates.ap4-strip-needs-a-section-table",
+  "target": "linux/scripts/verify-shipped-wrapper.sh",
+  "find": "    if ! grep -q '\\.shstrtab' <<< \"${_sections}\"; then\n",
+  "replace": "    if false; then\n",
+  "test": "bash linux/scripts/tests/test-verify-shipped-wrapper.sh",
+  "why": "a libavcodec cut short in extraction has no section table, so it would read as stripped; does not prove the strip of any other library"
  }
 ]
