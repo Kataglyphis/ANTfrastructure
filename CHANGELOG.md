@@ -19,6 +19,23 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — detector parity of the ORT Web builds in headless Chrome (OmniAccelerANT browser port step 2)
+
+- `shared/python/ort_web_parity.py` runs DEIM on the two-cats photo in each staged ORT Web build, through
+  `linux/scripts/ort-web-detector-parity.js` in headless Chrome: WebGPU on SwiftShader, the CPU build with
+  `--disable-gpu`. A build ships when it matches the native ORT CPU run within `compare_detector_parity.py`'s
+  tolerances, its repeat matches, each run finds two cats at 0.4 or more, and ORT placed nodes on its provider.
+  It writes one report per build. Owner section: `docs-sites.md` § Detector parity of the ORT Web builds.
+- `verify_ort_profile.py` knows `webgpu` and `jsep`, prints each provider's share of the nodes, and reads ORT's
+  verbose placement lines with `--placements`.
+- `ort-web-parity.yml` runs `ort-web-parity-ci.sh` in the amd64 image, whose bundles make its reports the
+  deciding ones; a dispatch can add JSEP. `linux/scripts/lib/ort-web-parity.lock` fetches DEIM v2 and its contract archive.
+- On a Pi 5 with the npm package's JS layer, Asyncify and CPU matched the native run, with a worst IoU of
+  0.999999 and a score difference of 0.00003. JSPI failed once in four runs. JSEP cannot run DEIM: its MaxPool
+  lacks `ceil_mode`.
+- Suite `test-ort-web-parity.sh`; the `docs-site.ort-web-parity-*`, `docs-site.ort-web-harness-*` and new
+  `packaging.ort-profile-*` mutations.
+
 ## 2026-11-27 — a ROCm Python bundle carries the chain core its plugin MIGraphX EP links (develop-red #276)
 
 - OrchestrANT's `gpu-lin / inventory (amd, x64, latest-rocm)` (runs 43409294907, 45983749575) stopped in the

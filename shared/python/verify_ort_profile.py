@@ -6,6 +6,7 @@ import collections
 import itertools
 import json
 import math
+import re
 import sys
 from pathlib import Path
 from typing import cast
@@ -19,7 +20,12 @@ PROVIDERS = {
     "directml": "DmlExecutionProvider",
     "xnnpack": "XnnpackExecutionProvider",
     "dnnl": "DnnlExecutionProvider",
+    # ORT Web's WebGPU builds (JSPI, Asyncify) and the JSEP build name their providers so; the CPU build is "cpu".
+    "webgpu": "WebGpuExecutionProvider",
+    "jsep": "JsExecutionProvider",
 }
+# ORT's session log at verbose, the browser's one record of where each node went: no profile file leaves the wasm.
+PLACEMENT = re.compile(r"(?:All nodes|Node\(s\)) placed on \[([A-Za-z0-9_]+)\]\. Number of nodes: (\d+)")
 
 
 def model_nodes(events: object) -> list[dict]:
@@ -42,6 +48,23 @@ def model_nodes(events: object) -> list[dict]:
 def operator_counts(events: object) -> collections.Counter[str]:
     """Model operators by provider: the one counting rule, which OrchestrANT's bundle imports too (CON289)."""
     return collections.Counter(event["args"]["provider"] for event in model_nodes(events))
+
+
+def placement_counts(lines: object) -> collections.Counter[str]:
+    """Nodes per provider from ORT's verbose placement lines; a second session's lines would double them, so one session only."""
+    if not isinstance(lines, list):
+        raise TypeError("log must be a list of lines")
+    counts: collections.Counter[str] = collections.Counter()
+    for line in lines:
+        for provider, nodes in PLACEMENT.findall(line if isinstance(line, str) else ""):
+            counts[provider] += int(nodes)
+    return counts
+
+
+def provider_shares(counts: collections.Counter[str]) -> dict[str, float]:
+    """Each provider's share of the counted nodes, largest first; a share of 1.0 alone means nothing fell back."""
+    total = sum(counts.values())
+    return {provider: nodes / total for provider, nodes in counts.most_common() if nodes > 0} if total else {}
 
 
 def interval(event: dict) -> tuple[int, float, float]:
@@ -104,13 +127,22 @@ def main() -> int:
         default=None,
         help="require provider operators in every complete model run",
     )
+    parser.add_argument(
+        "--placements",
+        action="store_true",
+        help="the file is a JSON list of ORT's verbose log lines, as a browser gives them",
+    )
     args = parser.parse_args()
     if args.min_runs is not None and args.min_runs < 1:
         parser.error("--min-runs must be positive")
+    if args.placements and args.min_runs is not None:
+        parser.error("--placements counts placed nodes, which have no runs")
     try:
         events = json.loads(args.profile.read_text(encoding="utf-8"))
         nodes = model_nodes(events)
         counts = collections.Counter(event["args"]["provider"] for event in nodes)
+        if args.placements:
+            counts = placement_counts(events)
         if args.min_runs is not None:
             require_profiled_runs(events, nodes, PROVIDERS[args.device], args.min_runs)
     except (OSError, TypeError, ValueError, OverflowError, UnicodeError) as error:
@@ -123,7 +155,8 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"Profiled operators: {dict(counts)}")
+    print(f"{'Placed nodes' if args.placements else 'Profiled operators'}: {dict(counts)}")
+    print("Provider shares: " + ", ".join(f"{name} {share:.1%}" for name, share in provider_shares(counts).items()))
     return 0
 
 

@@ -180,6 +180,45 @@ class ProfileTest(unittest.TestCase):
             self.run_profile([], "cuda", "--min-runs", "0").returncode, 0
         )
 
+    def test_the_web_providers_need_their_own_nodes(self) -> None:
+        cpu_only = [{"cat": "Node", "args": {"provider": "CPUExecutionProvider", "op_name": "Tile"}}]
+        for device, provider in (("webgpu", "WebGpuExecutionProvider"), ("jsep", "JsExecutionProvider")):
+            with self.subTest(device=device):
+                self.assertNotEqual(self.run_profile(cpu_only, device).returncode, 0)
+                profile = [*cpu_only, *[{"cat": "Node", "args": {"provider": provider, "op_name": "Conv"}}] * 3]
+                result = self.run_profile(profile, device)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"Provider shares: {provider} 75.0%, CPUExecutionProvider 25.0%", result.stdout)
+
+    def test_placement_lines_count_nodes_per_provider(self) -> None:
+        module = runpy.run_path(str(SCRIPT))
+        lines = [
+            "[V:onnxruntime:, session_state.cc:1578 VerifyEachNodeIsAssignedToAnEp] Node placements",
+            " Node(s) placed on [CPUExecutionProvider]. Number of nodes: 10",
+            "   Tile (/model/decoder/Tile)",
+            " Node(s) placed on [WebGpuExecutionProvider]. Number of nodes: 727",
+            7,
+        ]
+        counts = module["placement_counts"](lines)
+        self.assertEqual(dict(counts), {"CPUExecutionProvider": 10, "WebGpuExecutionProvider": 727})
+        self.assertEqual(list(module["provider_shares"](counts)), ["WebGpuExecutionProvider", "CPUExecutionProvider"])
+        self.assertEqual(module["provider_shares"](module["placement_counts"]([])), {})
+        all_cpu = module["placement_counts"](["  All nodes placed on [CPUExecutionProvider]. Number of nodes: 717"])
+        self.assertEqual(module["provider_shares"](all_cpu), {"CPUExecutionProvider": 1.0})
+        with self.assertRaises(TypeError):
+            module["placement_counts"]({"lines": []})
+
+    def test_placements_mode_reads_a_browser_log(self) -> None:
+        log = [" Node(s) placed on [CPUExecutionProvider]. Number of nodes: 1",
+               " Node(s) placed on [WebGpuExecutionProvider]. Number of nodes: 3"]
+        result = self.run_profile(log, "webgpu", "--placements")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Placed nodes: {'CPUExecutionProvider': 1, 'WebGpuExecutionProvider': 3}", result.stdout)
+        self.assertIn("WebGpuExecutionProvider 75.0%", result.stdout)
+        self.assertNotEqual(self.run_profile(log[:1], "webgpu", "--placements").returncode, 0)
+        self.assertNotEqual(self.run_profile(log, "jsep", "--placements").returncode, 0)
+        self.assertEqual(self.run_profile(log, "webgpu", "--placements", "--min-runs", "1").returncode, 2)
+
     def test_oversized_integer_timing_fails_cleanly(self) -> None:
         run = {
             "name": "model_run",

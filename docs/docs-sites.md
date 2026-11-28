@@ -389,3 +389,81 @@ hash there is of the bytes (`"hash_from": "bytes"`).
 
 Suite `linux/scripts/tests/test-stage-ort-web.sh` covers the order, the file lists, the hashes, the
 license sources and every refusal over fixture outputs. The `docs-site.ort-web-*` mutations prove it.
+
+## Detector parity of the ORT Web builds
+
+An app ships a staged build only if it detects what native ORT detects. Run the check in the family image
+after staging:
+
+```bash
+python3 -I shared/python/ort_web_parity.py --site <site>/app --model deim_dfine_n_coco.onnx \
+  --image two_cats.jpg --out <report dir> [--jsep] [--build NAME]... [--js-dir DIR]
+```
+
+The model is ModelANT's `deim_dfine_n_coco-v2` and the photo its `contracts/fixtures/two_cats.jpg`. Both are
+checked by SHA-256. `linux/scripts/ort-web-parity-ci.sh <report dir> [--jsep]` stages the image's builds,
+fetches both through `linux/scripts/lib/ort-web-parity.lock` and runs the check.
+
+How it runs:
+
+- The photo becomes one input tensor, stretched to 640x640 by nearest neighbour as OxidANT's `vision_core`
+  does it. Native ORT and every build get the same bytes, so the report compares ORT builds, not decoders.
+- Native ORT runs that tensor on `CPUExecutionProvider`. Its result must pass the comparator's two-cats
+  baseline.
+- `linux/scripts/ort-web-detector-parity.js` serves the site with COOP and COEP and drives headless Chrome.
+  JSPI, Asyncify and JSEP run the `webgpu` provider on SwiftShader's WebGPU. CPU runs the `wasm` provider
+  with `--disable-gpu`.
+- The page imports the build's own `ort.*.min.mjs` with `wasmPaths` at the build's directory. It runs one
+  session twice.
+
+A build gets `"verdict": "ship"` when all four hold, else `"refuse"` with its reasons:
+
+1. Its first run matches the native run within `compare_detector_parity.py`'s tolerances: the same count and
+   classes, IoU 0.90 or more, scores within 0.05.
+2. Its second run matches its first.
+3. Each run finds at least two cats at 0.4 or more.
+4. ORT placed nodes on the build's provider: `WebGpuExecutionProvider`, `JsExecutionProvider` or
+   `CPUExecutionProvider`. ORT moves a node it cannot run to the CPU without a word.
+
+The node counts come from the session's verbose log, because no profile file leaves the wasm.
+`verify_ort_profile.py LOG.json --device webgpu --placements` applies the same rule to a JSON list of log
+lines and prints each provider's share.
+
+It exits 1 and writes no report when a requested build is not staged, a staged file differs from the
+manifest, the model or the photo is another, or the report directory exists.
+
+`<report dir>/<build>.json` holds the verdict, the reasons and the tolerances. It also holds the worst IoU and
+score difference measured, the cats per run, the nodes and shares per provider, the operators placed elsewhere,
+the Chrome version, the adapter and the times. `summary.json` lists the verdicts. Each run's detections sit
+beside them in the comparator's format, and `<build>-page.json` keeps the page's answer with ORT's whole log.
+
+`"decides": true` only when the page loaded the build's own bundle. The arm64 image has none, so `--js-dir` can
+name the `ort.*.mjs` of the npm package of the same ORT version. Such a report proves the build's wasm and
+loader, and decides nothing.
+
+Workflow `ort-web-parity.yml` runs `ort-web-parity-ci.sh` in the amd64 image on a push to its files, on
+Mondays and on dispatch, which can add `--jsep`. It uploads the reports as `ort-web-parity`, and they decide
+which builds ship.
+
+On a Pi 5 in the arm64 image, Chrome 157 on SwiftShader with two threads, against the npm package's JS of
+ORT 1.31.1. These reports decide nothing:
+
+| Build | Verdict | Worst IoU, score difference | Nodes on its provider | Session, first run, repeat |
+|---|---|---|---|---|
+| JSPI | refuse | none: the first run failed | 727 of 737 | 10.6 s, failed |
+| Asyncify | ship | 0.999999, 0.00003 | 727 of 737 | 12.7 s, 219 s, 19 s |
+| CPU | ship | 0.999999, 0.00002 | 717 of 717 | 1.8 s, 0.9 s, 0.5 s |
+| JSEP | refuse | none: the first run failed | 760 of 773 | 5.0 s, failed |
+
+- JSPI stopped in a `Conv2dMM` with `No cached or pending pipeline for deferred dispatch`. Three other runs of
+  the JSPI build passed with Asyncify's numbers in about 210 s and 19 s. The failure is intermittent, so JSPI
+  waits for the amd64 reports.
+- JSEP stopped at a `MaxPool` with `ceil_mode`, which its WebGPU kernel does not implement, and it put `TopK`
+  on the CPU. JSEP is no fallback for DEIM.
+- On the WebGPU builds the ten CPU nodes are shape arithmetic: `Unsqueeze`, `Tile`, `Div`, `Mul`, `Sub` and
+  `Cast`. `GridSample`, `GatherElements` and `TopK` ran on WebGPU.
+- The first WebGPU run compiles every shader on SwiftShader, so the repeat takes a tenth of its time.
+
+Suite `linux/scripts/tests/test-ort-web-parity.sh` covers the verdicts, the tolerance edges, the cat rule, every
+refusal and the report's shape over fixture builds, and the page and its server against a fake ORT module. The
+`docs-site.ort-web-parity-*`, `docs-site.ort-web-harness-*` and `packaging.ort-profile-*` mutations prove it.

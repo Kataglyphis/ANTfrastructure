@@ -1,0 +1,82 @@
+# Copyright (c) 2026 Kataglyphis
+# SPDX-License-Identifier: MIT
+
+# DEIM on the two-cats photo in each ORT Web build of the amd64 image, headless Chrome on SwiftShader, against the native CPU run. See docs/docs-sites.md#detector-parity-of-the-ort-web-builds
+
+name: Docs · ORT Web detector parity
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - shared/python/ort_web_parity.py
+      - shared/python/compare_detector_parity.py
+      - shared/python/verify_ort_profile.py
+      - linux/scripts/ort-web-detector-parity.js
+      - linux/scripts/ort-web-parity-ci.sh
+      - linux/scripts/lib/stage-ort-web.py
+      - linux/scripts/lib/ort-web-parity.lock
+      - .github/workflows/ort-web-parity.yml
+  # The image rebuilds ORT Web, and new bytes need their own report.
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+    inputs:
+      # JSEP cannot run DEIM (its MaxPool lacks ceil_mode), so only a dispatch asks for its report.
+      jsep:
+        description: Also run the JSEP build.
+        type: boolean
+        default: false
+
+concurrency:
+  group: ort-web-parity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parity:
+    name: parity of each ORT Web build
+    runs-on: ubuntu-26.04
+    # SwiftShader compiles every WebGPU shader on the first run: about four minutes per WebGPU build on a Pi 5.
+    timeout-minutes: 90
+    steps:
+      - name: Prepare CI host (checkout + pull the family Linux image)
+        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-linux-ci-host@develop
+        with:
+          fetch-depth: '1'
+          submodules: 'false'
+          free-disk-space: 'true'
+          pull-first: 'false'
+
+      # Only the amd64 image has the ort.*.mjs bundles, so only this run's report decides which builds ship.
+      - name: Run each build against the native CPU run
+        uses: ./.github/actions/run-in-linux-container
+        with:
+          script: bash linux/scripts/ort-web-parity-ci.sh ort-web-parity ${{ inputs.jsep && '--jsep' || '' }}
+
+      - name: Summarise the reports
+        if: always()
+        run: |
+          set -euo pipefail
+          [ -f ort-web-parity/summary.json ] || { echo "no report was written" >> "${GITHUB_STEP_SUMMARY}"; exit 0; }
+          python3 - ort-web-parity >> "${GITHUB_STEP_SUMMARY}" <<'PY'
+          import json, pathlib, sys
+          out = pathlib.Path(sys.argv[1])
+          print("| Build | Verdict | Providers | Min IoU | Max score delta | Reasons |\n|---|---|---|---|---|---|")
+          for item in json.loads((out / "summary.json").read_text())["builds"]:
+              report = json.loads((out / f"{item['build']}.json").read_text())
+              shares = ", ".join(f"{k} {v:.0%}" for k, v in report["providers"]["shares"].items())
+              found = report["parity"] or {}
+              print(f"| {item['build']} | {item['verdict']} | {shares} | {found.get('min_iou')} | {found.get('max_score_delta')} | {'; '.join(item['reasons'])} |")
+          PY
+
+      - name: Upload the reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ort-web-parity
+          path: ort-web-parity/
+          if-no-files-found: error
+          retention-days: 30

@@ -66208,6 +66208,246 @@
   "why": "an existing ort/ is refused rather than mixed with a new staging"
  },
  {
+  "id": "docs-site.ort-web-parity-missing-build",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "raise ParityError(f\"build {name} is not staged in {path}: refusing to report fewer builds\")",
+  "replace": "continue",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "a build the app would ship must not drop out of the report because it was never staged"
+ },
+ {
+  "id": "docs-site.ort-web-parity-file-hash",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "if actual != item[\"sha256\"]:",
+  "replace": "if False:",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "the report is about the staged bytes; a file changed after staging proves nothing about them"
+ },
+ {
+  "id": "docs-site.ort-web-parity-model-hash",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "if sha256(path) != expected:",
+  "replace": "if False:",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "the cat rule and the tolerances were taken from DEIM v2 on the two-cats photo, not from any model"
+ },
+ {
+  "id": "docs-site.ort-web-parity-native-compare",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "        parity.compare(cpu, runs[0])\n",
+  "replace": "        pass\n",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "a build whose detections differ from the native CPU run beyond the tolerances must not ship"
+ },
+ {
+  "id": "docs-site.ort-web-parity-repeat",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "parity.compare(runs[0], again, pairwise=True)",
+  "replace": "pass",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "a second run that differs from the first is a nondeterministic build"
+ },
+ {
+  "id": "docs-site.ort-web-parity-cats-rule",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "\"passed\": min(counted) >= CATS_MINIMUM}",
+  "replace": "\"passed\": True}",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "parity within 0.05 can still leave one cat under 0.4; the old rule holds too"
+ },
+ {
+  "id": "docs-site.ort-web-parity-cats-score",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "item[\"score\"] >= CATS_SCORE",
+  "replace": "item[\"score\"] >= parity.MIN_SCORE",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "a cat counts at 0.4 or more, not at the decoder's 0.25 floor"
+ },
+ {
+  "id": "docs-site.ort-web-parity-required-provider",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "elif counts[wanted] == 0:",
+  "replace": "elif False:",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "ORT puts nodes it cannot run on the CPU without a word: a WebGPU build with no WebGPU node proves nothing"
+ },
+ {
+  "id": "docs-site.ort-web-parity-unproven-provider",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "    if not counts:\n        reasons.append(",
+  "replace": "    if False:\n        reasons.append(",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "a log without placement lines leaves the provider unproven, which is its own reason"
+ },
+ {
+  "id": "docs-site.ort-web-parity-own-bundle-decides",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "\"decides\": js is not None and js[\"from\"] == \"manifest\",",
+  "replace": "\"decides\": js is not None,",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "a run with another JS layer proves the wasm, not the bundle that ships"
+ },
+ {
+  "id": "docs-site.ort-web-parity-decode-score",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "if not math.isfinite(score) or score < parity.MIN_SCORE:",
+  "replace": "if not math.isfinite(score):",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "the comparator reads detections at 0.25 or more, as every family detector decodes them"
+ },
+ {
+  "id": "docs-site.ort-web-parity-decode-unstretch",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "min(max(x1 * width / SIZE, 0.0), width)",
+  "replace": "min(max(x1, 0.0), width)",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "boxes come back in model pixels and must be stretched back to the photo"
+ },
+ {
+  "id": "docs-site.ort-web-parity-stretch-nearest",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "columns = [(x * width // size) * 3 for x in range(size)]",
+  "replace": "columns = [x * width // size for x in range(size)]",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "the tensor samples whole RGB pixels as vision_core does"
+ },
+ {
+  "id": "docs-site.ort-web-parity-provider-per-build",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "\"cpu\": (\"ort.wasm\", \"wasm\", \"none\", \"cpu\"),",
+  "replace": "\"cpu\": (\"ort.wasm\", \"webgpu\", \"webgpu\", \"cpu\"),",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "the CPU build runs the wasm provider with the GPU off, the path a browser without WebGPU takes"
+ },
+ {
+  "id": "docs-site.ort-web-parity-js-dir",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "    if js_dir is None:\n        return None\n",
+  "replace": "    if True:\n        return None\n",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "an arm64 image has no bundles; --js-dir is the only way its wasm runs at all"
+ },
+ {
+  "id": "docs-site.ort-web-parity-two-runs",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "if not reasons and len(runs) < 2:",
+  "replace": "if False:",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "parity is a run and its repeat; one run cannot show a nondeterministic build"
+ },
+ {
+  "id": "docs-site.ort-web-parity-old-report",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "if args.out.exists():",
+  "replace": "if False:",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "a new report must not mix with an old one's files"
+ },
+ {
+  "id": "docs-site.ort-web-parity-output-shape",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "if run.get(\"dims\") != [1, ROWS, STRIDE] or run.get(\"type\") != \"float32\":",
+  "replace": "if False:",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "an output of another shape decodes to garbage rows"
+ },
+ {
+  "id": "packaging.ort-profile-webgpu-name",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "\"webgpu\": \"WebGpuExecutionProvider\",",
+  "replace": "\"webgpu\": \"CPUExecutionProvider\",",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "why": "a WebGPU build that fell back to the CPU must not prove WebGPU ran"
+ },
+ {
+  "id": "packaging.ort-profile-jsep-name",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "\"jsep\": \"JsExecutionProvider\",",
+  "replace": "\"jsep\": \"WebGpuExecutionProvider\",",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "why": "the JSEP build's provider is JsExecutionProvider; the WebGPU EP's name proves another build"
+ },
+ {
+  "id": "packaging.ort-profile-placement-count",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "counts[provider] += int(nodes)",
+  "replace": "counts[provider] += 1",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "why": "a placement line names how many nodes went to the provider; one line is not one node"
+ },
+ {
+  "id": "packaging.ort-profile-placements-mode",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "            counts = placement_counts(events)\n",
+  "replace": "            pass\n",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "why": "--placements reads a browser's log lines, which hold no profile events"
+ },
+ {
+  "id": "packaging.ort-profile-shares",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "{provider: nodes / total for provider",
+  "replace": "{provider: nodes for provider",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "why": "a share is a fraction of all counted nodes"
+ },
+ {
+  "id": "docs-site.ort-web-harness-isolation",
+  "target": "linux/scripts/ort-web-detector-parity.js",
+  "find": "'Cross-Origin-Embedder-Policy': 'require-corp',",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-web-parity.sh",
+  "why": "without COEP the page is not cross-origin isolated and the threaded builds have no SharedArrayBuffer"
+ },
+ {
+  "id": "docs-site.ort-web-harness-traversal",
+  "target": "linux/scripts/ort-web-detector-parity.js",
+  "find": "return file.startsWith(base + path.sep) ? file : null;",
+  "replace": "return file;",
+  "test": "bash linux/scripts/tests/test-ort-web-parity.sh",
+  "why": "the server answers below its roots only"
+ },
+ {
+  "id": "docs-site.ort-web-harness-js-dir-optional",
+  "target": "linux/scripts/ort-web-detector-parity.js",
+  "find": "if (root && pathname.startsWith(prefix)) {",
+  "replace": "if (pathname.startsWith(prefix)) {",
+  "test": "bash linux/scripts/tests/test-ort-web-parity.sh",
+  "why": "without --js-dir no JS layer may come from the working directory"
+ },
+ {
+  "id": "docs-site.ort-web-harness-wasm-paths",
+  "target": "linux/scripts/ort-web-detector-parity.js",
+  "find": "wasmPaths: at(o.wasmDir)",
+  "replace": "wasmPaths: undefined",
+  "test": "bash linux/scripts/tests/test-ort-web-parity.sh",
+  "why": "the bundle must load the staged build's loader and wasm, never one beside the bundle"
+ },
+ {
+  "id": "docs-site.ort-web-harness-verbose-log",
+  "target": "linux/scripts/ort-web-detector-parity.js",
+  "find": "logSeverityLevel: 0, logVerbosityLevel: 0",
+  "replace": "logSeverityLevel: 2, logVerbosityLevel: 0",
+  "test": "bash linux/scripts/tests/test-ort-web-parity.sh",
+  "why": "only the verbose session log names the provider of each node"
+ },
+ {
+  "id": "docs-site.ort-web-harness-runs",
+  "target": "linux/scripts/ort-web-detector-parity.js",
+  "find": "for (let i = 0; i < o.runs; i++) {",
+  "replace": "for (let i = 0; i < 1; i++) {",
+  "test": "bash linux/scripts/tests/test-ort-web-parity.sh",
+  "why": "the repeat is the second run of the same session"
+ },
+ {
+  "id": "docs-site.ort-web-harness-error-captured",
+  "target": "linux/scripts/ort-web-detector-parity.js",
+  "find": "result.error = String((error && error.stack) || error);",
+  "replace": "throw error;",
+  "test": "bash linux/scripts/tests/test-ort-web-parity.sh",
+  "why": "a build that fails must come back as a report with its error, not as a dead page"
+ },
+ {
   "id": "live-site.isolated-page",
   "target": "linux/scripts/check-live-site.js",
   "find": "  const isolated = !opts.isolated || (await look('self.crossOriginIsolated === true'));\n",
