@@ -1071,7 +1071,7 @@ Vulkan validation has an 80% floor against 146/170 measured commands. Its Pester
 uses short local executables to verify settings staging, child exit status, environment
 restoration and redirected-file cleanup; it does not require a GPU or Vulkan SDK.
 `Invoke-VulkanValidationRun -GpuAssisted` appends `Get-VulkanGpuAvLayerSetting`
-(`gpuav_enable` and `gpuav_safe_mode`) to the staged copy only, so GPU-assisted validation
+(`gpuav_enable`, `gpuav_safe_mode`) to the staged copy only. GPU-assisted validation then
 checks every shader's buffer-device-address and descriptor access for that run. The suite
 proves the child sees it with the switch and not without. A source without a final newline
 still gets each setting on its own line.

@@ -9,14 +9,15 @@ Describe 'WindowsVulkanValidation.Common' {
     Import-Module $modulePath -Force
 
     function Invoke-VulkanSettingsFixture {
-      param([Collections.IDictionary]$Files = @{}, [scriptblock]$WhileStaged, [scriptblock]$AfterRestore)
+      param([Collections.IDictionary]$Files = @{}, [scriptblock]$WhileStaged, [scriptblock]$AfterRestore,
+        [string]$SettingsPath = (Get-VulkanLayerSettingsDefaultPath), [string[]]$AppendSetting = @())
       $inspectStaged = $WhileStaged; $inspectRestored = $AfterRestore
       $copy = Get-Command Copy-VulkanLayerSettings
       $restore = Get-Command Restore-VulkanLayerSettings
-      $source = Get-VulkanLayerSettingsDefaultPath
+      $source = $SettingsPath; $append = $AppendSetting
       Invoke-InTestDir -Files $Files -Body { param($dir)
         $path = Join-Path $dir 'vk_layer_settings.txt'
-        $staging = & $copy -SettingsPath $source -TargetDirectory $dir
+        $staging = & $copy -SettingsPath $source -TargetDirectory $dir -AppendSetting $append
         try { & $inspectStaged $path $staging }
         finally { & $restore -Staging $staging }
         & $inspectRestored $path $staging
@@ -137,31 +138,26 @@ function Restore-VulkanLayerSettings { param($Staging); $State.Calls.Add('restor
     }
 
     It 'appends the GPU-AV settings to the staged copy, never to the source' {
-      $dir = (New-Item -ItemType Directory -Path (Join-Path $script:root 'gpuav-staging') -Force).FullName
       $source = Get-VulkanLayerSettingsDefaultPath
       $before = Get-Content -LiteralPath $source -Raw
-      $staging = Copy-VulkanLayerSettings -SettingsPath $source -TargetDirectory $dir -AppendSetting @(Get-VulkanGpuAvLayerSetting)
-      try {
-        $staged = Get-Content -LiteralPath $staging.StagedPath -Raw
-        $staged | Should -Match '(?m)^khronos_validation\.validate_sync\s*=\s*true\s*$'
-        $staged | Should -Match '(?m)^khronos_validation\.gpuav_enable\s*=\s*true\s*$'
-        $staged | Should -Match '(?m)^khronos_validation\.gpuav_safe_mode\s*=\s*true\s*$'
-      } finally { Restore-VulkanLayerSettings -Staging $staging }
+      Invoke-VulkanSettingsFixture -AppendSetting @(Get-VulkanGpuAvLayerSetting) -WhileStaged { param($staged)
+        $text = Get-Content -LiteralPath $staged -Raw
+        $text | Should -Match '(?m)^khronos_validation\.validate_sync\s*=\s*true\s*$'
+        $text | Should -Match '(?m)^khronos_validation\.gpuav_enable\s*=\s*true\s*$'
+        $text | Should -Match '(?m)^khronos_validation\.gpuav_safe_mode\s*=\s*true\s*$'
+      } -AfterRestore { param($staged) Test-Path -LiteralPath $staged | Should -BeFalse }
       (Get-Content -LiteralPath $source -Raw) | Should -Be $before
-      Test-Path -LiteralPath $staging.StagedPath | Should -BeFalse
     }
 
     It 'starts the appended settings on a line of their own when the source lacks a final newline' {
-      $dir = (New-Item -ItemType Directory -Path (Join-Path $script:root 'gpuav-no-final-newline') -Force).FullName
       $source = Join-Path $script:root 'no-final-newline.txt'
       [System.IO.File]::WriteAllText($source, 'khronos_validation.validate_sync = true')
-      $staging = Copy-VulkanLayerSettings -SettingsPath $source -TargetDirectory $dir -AppendSetting @(Get-VulkanGpuAvLayerSetting)
-      try {
-        $lines = @(Get-Content -LiteralPath $staging.StagedPath)
+      Invoke-VulkanSettingsFixture -SettingsPath $source -AppendSetting @(Get-VulkanGpuAvLayerSetting) -WhileStaged { param($staged)
+        $lines = @(Get-Content -LiteralPath $staged)
         $lines | Should -Contain 'khronos_validation.validate_sync = true'
         $lines | Should -Contain 'khronos_validation.gpuav_enable = true'
         $lines | Should -Contain 'khronos_validation.gpuav_safe_mode = true'
-      } finally { Restore-VulkanLayerSettings -Staging $staging }
+      } -AfterRestore { }
       [System.IO.File]::ReadAllText($source) | Should -Be 'khronos_validation.validate_sync = true'
     }
 
