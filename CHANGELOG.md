@@ -27,6 +27,15 @@
   skipped check (a note), like an extraction that produced no file. `test-verify-shipped-wrapper.sh` serves a real
   `cc -shared` libavcodec through a stub nerdctl, cut at four offsets; before the fix all four read as verified.
   Recipe `runtime-gates.ap4-strip-needs-a-section-table`.
+- `WindowsRepoHygiene.Common`'s `Invoke-GitIn` dropped git's exit code. A failed git prints nothing on stdout, so
+  `Get-TrackedGeneratedArtifact`, `Get-TrackedIgnoredFile` and `Get-SubmodulePinDrift` returned "clean". One line
+  git refuses in a consumer's `generated-artifacts.txt` (`../x`, a mistyped `:(magic)`) stopped every other line
+  from being checked, and `Repo.GeneratedArtifacts.Tests.ps1` stayed green. A non-zero exit now throws with git's
+  stderr; only `Test-SubmoduleCommitReachable`'s probes pass `-AllowFailure`, since a failed probe already reads as
+  unreachable. Three new cases in `WindowsRepoHygiene.Common.Tests.ps1` (two failed before the fix), and
+  `Shared.GeneratedArtifacts.Tests.ps1` runs the consumer suite on a refused line under Pester 3.4.0 and 6.2.0
+  (2/0 green before the fix). Recipes
+  `lib.repo-hygiene-git-failure-throws` and `lib.repo-hygiene-reachability-probe-may-fail`.
 
 ## 2026-11-28 — `Invoke-VulkanValidationRun -GpuAssisted`: GPU-assisted validation for a consumer's suite
 

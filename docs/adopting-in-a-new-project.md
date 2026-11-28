@@ -862,7 +862,8 @@ and gets all of it:
    starts a comment). Run it with `run-pester-suite`, `path:` set to that suite under
    `third_party/ANTfrastructure/`, on a Windows runner checked out with `submodules: true`. A
    wildcard pathspec ending in `/` (`**/__pycache__/`, `build*/`) matches no file in git, so the
-   suite refuses it: write `**/__pycache__/*`.
+   suite refuses it: write `**/__pycache__/*`. A pathspec git rejects, such as `../build/`, fails the
+   suite too, since it would make git check none of the others.
    The action also runs consumer Pester suites and fails if none of their tests pass, including
    when every test is skipped. The separate PowerShell quality workflow does not run them.
 4. **Python repos** get the whole CI surface from the reusable

@@ -10,21 +10,31 @@ Set-StrictMode -Version Latest
 function Invoke-GitIn {
   <#
     .SYNOPSIS
-      Runs git in a directory and returns its stdout lines, swallowing stderr.
+      Runs git in a directory and returns its stdout lines; a non-zero exit throws with git's stderr.
     .DESCRIPTION
       Pop-Location in a finally, as an unbalanced location stack would corrupt every later test assertion.
+    .PARAMETER AllowFailure
+      Return stdout even on a non-zero exit, for a probe whose failure is an answer.
   #>
   param(
     [Parameter(Mandatory)] [string]$Path,
-    [Parameter(Mandatory)] [string[]]$Arguments
+    [Parameter(Mandatory)] [string[]]$Arguments,
+    [switch]$AllowFailure
   )
 
   Push-Location -LiteralPath $Path
   try {
-    return @(& git @Arguments 2>$null)
+    $lines = @(& git @Arguments 2>&1)
+    $code = $LASTEXITCODE
   } finally {
     Pop-Location
   }
+  # A failed git prints nothing on stdout, which every caller would read as clean.
+  if ($code -ne 0 -and -not $AllowFailure) {
+    $stderr = @($lines | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] })
+    throw ("git {0} in '{1}' exited {2}: {3}" -f ($Arguments -join ' '), $Path, $code, ($stderr -join ' '))
+  }
+  return @($lines | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] })
 }
 
 function Get-SubmodulePinDrift {
@@ -104,6 +114,7 @@ function Test-SubmoduleCommitReachable {
       Whether a fresh clone could restore a submodule's checked-out commit from its remote.
     .DESCRIPTION
       A shallow CI clone knows only origin/<default>, so it asks cheapest first: tracking refs, ls-remote heads, then a blobless fetch.
+      Each probe may fail, and a failed one leaves the commit unreachable, never reachable.
     .OUTPUTS
       A PSCustomObject: Head, Reachable, ContainingRef, Method.
   #>
@@ -111,31 +122,31 @@ function Test-SubmoduleCommitReachable {
     [Parameter(Mandatory)] [string]$SubmodulePath
   )
 
-  $head = (Invoke-GitIn -Path $SubmodulePath -Arguments @('rev-parse', 'HEAD') | Select-Object -First 1)
+  $head = (Invoke-GitIn -AllowFailure -Path $SubmodulePath -Arguments @('rev-parse', 'HEAD') | Select-Object -First 1)
   if ([string]::IsNullOrWhiteSpace($head)) {
     return [pscustomobject]@{ Head = $null; Reachable = $false; ContainingRef = @(); Method = 'no-head' }
   }
   $head = $head.Trim()
 
-  $containing = @(Invoke-GitIn -Path $SubmodulePath -Arguments @('branch', '-r', '--contains', $head))
+  $containing = @(Invoke-GitIn -AllowFailure -Path $SubmodulePath -Arguments @('branch', '-r', '--contains', $head))
   if ($containing.Count -gt 0) {
     return [pscustomobject]@{ Head = $head; Reachable = $true; ContainingRef = $containing; Method = 'local-tracking' }
   }
 
-  $tips = @(Invoke-GitIn -Path $SubmodulePath -Arguments @('ls-remote', '--heads', 'origin') |
+  $tips = @(Invoke-GitIn -AllowFailure -Path $SubmodulePath -Arguments @('ls-remote', '--heads', 'origin') |
       Where-Object { $_ -match ('^{0}\s' -f [regex]::Escape($head)) })
   if ($tips.Count -gt 0) {
     return [pscustomobject]@{ Head = $head; Reachable = $true; ContainingRef = $tips; Method = 'remote-tip' }
   }
 
-  $isShallow = (Invoke-GitIn -Path $SubmodulePath -Arguments @('rev-parse', '--is-shallow-repository') |
+  $isShallow = (Invoke-GitIn -AllowFailure -Path $SubmodulePath -Arguments @('rev-parse', '--is-shallow-repository') |
       Select-Object -First 1)
   $fetchArgs = @('fetch', '--no-tags', '--filter=blob:none')
   if ("$isShallow".Trim() -eq 'true') { $fetchArgs += '--unshallow' }
   $fetchArgs += @('origin', '+refs/heads/*:refs/remotes/origin/*')
-  Invoke-GitIn -Path $SubmodulePath -Arguments $fetchArgs | Out-Null
+  Invoke-GitIn -AllowFailure -Path $SubmodulePath -Arguments $fetchArgs | Out-Null
 
-  $containing = @(Invoke-GitIn -Path $SubmodulePath -Arguments @('branch', '-r', '--contains', $head))
+  $containing = @(Invoke-GitIn -AllowFailure -Path $SubmodulePath -Arguments @('branch', '-r', '--contains', $head))
   return [pscustomobject]@{
     Head          = $head
     Reachable     = ($containing.Count -gt 0)

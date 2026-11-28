@@ -68142,5 +68142,21 @@
   "replace": "    if false; then\n",
   "test": "bash linux/scripts/tests/test-verify-shipped-wrapper.sh",
   "why": "a libavcodec cut short in extraction has no section table, so it would read as stripped; does not prove the strip of any other library"
+ },
+ {
+  "id": "lib.repo-hygiene-git-failure-throws",
+  "target": "windows/scripts/modules/WindowsRepoHygiene.Common.psm1",
+  "find": "  if ($code -ne 0 -and -not $AllowFailure) {\n",
+  "replace": "  if ($false) {\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsRepoHygiene.Common.Tests.ps1 -ResultFile logs/code-quality/repo-hygiene-mutation.json",
+  "why": "a git that exits non-zero prints nothing on stdout, which the hygiene guards would read as clean; does not cover a git that exits 0 with wrong output"
+ },
+ {
+  "id": "lib.repo-hygiene-reachability-probe-may-fail",
+  "target": "windows/scripts/modules/WindowsRepoHygiene.Common.psm1",
+  "find": "Invoke-GitIn -AllowFailure -Path $SubmodulePath -Arguments @('rev-parse', 'HEAD')",
+  "replace": "Invoke-GitIn -Path $SubmodulePath -Arguments @('rev-parse', 'HEAD')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsRepoHygiene.Common.Tests.ps1 -ResultFile logs/code-quality/repo-hygiene-mutation.json",
+  "why": "a failed reachability probe is the answer unreachable, not an error that hides which pin failed"
  }
 ]

@@ -41,6 +41,13 @@ function script:Invoke-ArtifactsSuite([string]$Dir, [string]$Version, [hashtable
     }
 }
 
+# A pattern file the suite cannot grade must fail it, naming why.
+function script:Assert-ArtifactsSuiteFails([string]$Dir, [string]$Version, [string]$Message) {
+    $r = Invoke-ArtifactsSuite $Dir $Version
+    Assert-Match '/[12]$' $r.Result "the suite must fail on /$Message/, got $($r.Result)"
+    Assert-Match $Message $r.Text
+}
+
 $script:PesterVersions = @(@(Get-Module -ListAvailable -Name Pester | Where-Object { $_.Version -eq [version]'3.4.0' -or $_.Version -ge [version]'5.0' } |
             Sort-Object Version -Unique | ForEach-Object { "$($_.Version)" }) | Select-Object -First 1 -Last 1 | Sort-Object -Unique)
 
@@ -65,18 +72,16 @@ Describe 'shared Repo.GeneratedArtifacts.Tests.ps1' {
             }
         }
 
-        It "fails a pattern file that matches nothing or is missing, and takes -Pattern instead (Pester $version)" {
+        It "fails a pattern file git refuses, that matches nothing or is missing, and takes -Pattern instead (Pester $version)" {
             Invoke-InTestDir { param($d)
+                New-ArtifactsRepo (Join-Path $d 'repo') -Files @('src/__pycache__/a.pyc') -Patterns @('src/', '../outside')
+                Assert-ArtifactsSuiteFails $d $version 'git ls-files -- src/ \.\./outside in .* exited 128'
                 New-ArtifactsRepo (Join-Path $d 'repo') -Files @('src/__pycache__/a.pyc') -Patterns @('**/__pycache__/')
-                $r = Invoke-ArtifactsSuite $d $version
-                Assert-Match '/[12]$' $r.Result "the dead pathspec must fail, got $($r.Result)"
-                Assert-Match "matches no file: \*\*/__pycache__/\. Write '\*\*/__pycache__/\*'" $r.Text
+                Assert-ArtifactsSuiteFails $d $version "matches no file: \*\*/__pycache__/\. Write '\*\*/__pycache__/\*'"
                 $r = Invoke-ArtifactsSuite $d $version -Data @{ Pattern = 'src/' }
                 Assert-Equal '2/1' $r.Result $r.Text
                 Remove-Item -LiteralPath (Join-Path $d 'repo\scripts') -Recurse -Force
-                $r = Invoke-ArtifactsSuite $d $version
-                Assert-Match '/[12]$' $r.Result
-                Assert-Match 'no -Pattern and no pattern file' $r.Text
+                Assert-ArtifactsSuiteFails $d $version 'no -Pattern and no pattern file'
             }
         }
     }

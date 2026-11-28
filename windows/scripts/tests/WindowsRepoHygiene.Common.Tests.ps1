@@ -31,6 +31,23 @@ Describe 'WindowsRepoHygiene.Common' {
       $clone
     }
 
+    # The ceiling keeps git from finding a repository above the sandbox, wherever the temp dir sits.
+    $script:notARepo = [IO.Directory]::CreateDirectory((Join-Path $script:sandbox 'not-a-repo')).FullName
+    function script:Invoke-OutsideWorkTree {
+      param([scriptblock]$Body)
+      Invoke-WithEnv @{ GIT_CEILING_DIRECTORIES = $script:sandbox } $Body
+    }
+
+    # Each refused spec rides with a valid one, as one bad pathspec must not pass the whole list off as clean.
+    function script:Assert-RefusedPathspec {
+      param([string]$Repo, [string]$Valid, [string[]]$Refused, [string]$MessageFormat)
+      foreach ($spec in $Refused) {
+        Assert-Throws -MessagePattern ($MessageFormat -f [regex]::Escape($spec)) -Body {
+          Get-TrackedGeneratedArtifact -RepoRoot $Repo -Pattern @($Valid, $spec)
+        }
+      }
+    }
+
     # Each fixture repo's (file, content, message) commits, committed in order.
     $script:repo = @{}
     foreach ($fixture in ([ordered]@{
@@ -103,6 +120,17 @@ Describe 'WindowsRepoHygiene.Common' {
       $tracked.Count | Should -Be 1
       $tracked[0] | Should -Be 'generated.log'
     }
+
+    It 'throws outside a work tree instead of reporting it clean' {
+      script:Invoke-OutsideWorkTree {
+        Assert-Throws -MessagePattern 'git ls-files -i -c --exclude-standard in .* exited 128: .*not a git repository' -Body {
+          Get-TrackedIgnoredFile -RepoRoot $script:notARepo
+        }
+        Assert-Throws -MessagePattern 'git submodule status in .* exited 128' -Body {
+          Get-SubmodulePinDrift -RepoRoot $script:notARepo
+        }
+      }
+    }
   }
 
   Context 'Get-TrackedGeneratedArtifact' {
@@ -114,6 +142,11 @@ Describe 'WindowsRepoHygiene.Common' {
       $found[0] | Should -Be 'Testing/TAG'
     }
 
+    It 'throws when git refuses one pathspec, which would otherwise hide every other one' {
+      script:Assert-RefusedPathspec -Repo $script:repo['unignored-artifact'] -Valid 'Testing/' `
+        -Refused '../outside', ':(gloob)Testing/' -MessageFormat 'git ls-files -- Testing/ {0} in .* exited 128: .*fatal'
+    }
+
     It 'returns nothing when the generated paths hold no tracked files' {
       @(Get-TrackedGeneratedArtifact -RepoRoot $script:child -Pattern @('Testing/', 'docs/build/')).Count |
         Should -Be 0
@@ -122,12 +155,8 @@ Describe 'WindowsRepoHygiene.Common' {
     It 'refuses a wildcard pathspec ending in a slash, which git matches against no file' {
       $repo = $script:repo['pycache-artifact']
       @(& git -C $repo ls-files -- '**/__pycache__/' 'build*/').Count | Should -Be 0
-      foreach ($dead in '**/__pycache__/', 'build*/', ':(glob)**/__pycache__/', 'pkg/__pycache?/') {
-        $pattern = 'matches no file: {0}\. Write ''{0}\*''\.' -f [regex]::Escape($dead)
-        Assert-Throws -MessagePattern $pattern -Body {
-          Get-TrackedGeneratedArtifact -RepoRoot $repo -Pattern @('logs/', $dead)
-        }
-      }
+      script:Assert-RefusedPathspec -Repo $repo -Valid 'logs/' -MessageFormat 'matches no file: {0}\. Write ''{0}\*''\.' `
+        -Refused '**/__pycache__/', 'build*/', ':(glob)**/__pycache__/', 'pkg/__pycache?/'
       (@(Get-TrackedGeneratedArtifact -RepoRoot $repo -Pattern @('**/__pycache__/*', 'build*/*', 'pkg/__pycache__/')) -join ',') |
         Should -Be 'build-x/out.o,pkg/__pycache__/m.pyc'
     }
@@ -152,6 +181,12 @@ Describe 'WindowsRepoHygiene.Common' {
       $result = Test-SubmoduleCommitReachable -SubmodulePath $clone
       $result.Reachable | Should -BeFalse
       $result.Method | Should -Be 'fetched-heads'
+    }
+
+    It 'answers unreachable, not an error, when its git probes fail' {
+      $result = script:Invoke-OutsideWorkTree { Test-SubmoduleCommitReachable -SubmodulePath $script:notARepo }
+      $result.Reachable | Should -BeFalse
+      $result.Method | Should -Be 'no-head'
     }
   }
 }
