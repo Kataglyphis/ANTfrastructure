@@ -19,6 +19,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — OpenCV's CUDA configure keeps its libcuda stub
+
+- The nvidia chain `20261127-154917-57ee53f3` failed amd64 Media at OpenCV: `CUDA_CUDA_LIBRARY` NOTFOUND for
+  `opencv_cudacodec`. `opencv-cuda-cache.sh` passed `-DCUDA_TOOLKIT_ROOT_DIR` since c238a510, and CMake's FindCUDA
+  clears its library cache entries when that root differs from its unset internal marker. It now exports
+  `CUDA_TOOLKIT_ROOT` instead. `test-opencv-cuda-cache.sh` runs a real FindCUDA configure against a fake toolkit;
+  the recipe `probe.opencv-cuda-cache-root-cli` puts the CLI root back and turns it red.
 ## 2026-11-28 — run-pester-suite runs Pester 5 and 6, so a consumer can leave 3.4.0
 
 - AccelerANTgine's BACKLOG asks its 14 suites to move from Pester 3.4's `Should Be` to the dialect of the image's

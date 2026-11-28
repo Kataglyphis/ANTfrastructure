@@ -1155,11 +1155,12 @@ rule, process sample and counters are under
 `logs/test-results/plugin-proof-nvidia-arm64-media-2/` as `opencv-findcuda-*`.
 
 The selected resolver result now reaches the versioned `opencv-cuda-cache.sh`
-executable as well as the modern launcher. It exports `CUDA_NVCC_EXECUTABLE`:
+executable as well as the modern launcher. It exports `CUDA_NVCC_EXECUTABLE` and
+`CUDA_TOOLKIT_ROOT`. Never pass `-DCUDA_TOOLKIT_ROOT_DIR`. On a first configure the
 [pinned FindCUDA](https://github.com/Kitware/CMake/blob/v4.4.5/Modules/FindCUDA.cmake)
-legitimately clears the CLI cache entry when the toolkit root changes, then
-repopulates it from that environment API. Keep that invalidation; preloading its
-internal root marker would retain stale SDK libraries. The configure verdict checks
+sees a new root and clears its cached libraries, the libcuda stub too. With no
+driver, `cudacodec` then fails to generate. Do not preload the internal root
+marker either: it would keep stale SDK libraries. The configure verdict checks
 both the resulting cache and every generated CUDA object rule, refusing an empty
 rule tree. Its fixtures cover wiring and failures, without proving cache hits.
 
@@ -2108,4 +2109,4 @@ Rules for the compiler-cache launchers, probes and fixtures. Each item is one ru
 - Standalone HailoRT starts its shared cache session before configure, prints stderr counters after compilation and drains before success cleanup. Wiring tests do not prove hits.
 - Torchvision ROCm wires only its build-venv host CXX through the reviewed PyTorch patch and an explicit launcher path. Keep CC/CXX as real compilers for ABI probes, leave the HIP compiler separate, and mount the patch only in the torchvision RUN.
 - Retained cache-log exports never use `--no-cache`, including read-only mounts: BuildKit can reset their cache associations before the copy. Consume a per-run ARG nonce instead. The standalone OpenCV GStreamer plugin reports its own sccache counters and completes the server before deleting its source. Do not start a truncating session over the preceding GStreamer log.
-- OpenCV's classic FindCUDA uses `opencv-cuda-cache.sh` through its executable and environment APIs. Keep the companion and reject a configured cache or generated CUDA object rule that bypasses it. Preserve toolkit-root invalidation, the target host compiler and the architecture list.
+- OpenCV's classic FindCUDA uses `opencv-cuda-cache.sh` through its executable and environment APIs. Keep the companion and reject a configured cache or generated CUDA object rule that bypasses it. Name the toolkit root through `CUDA_TOOLKIT_ROOT`, never `-DCUDA_TOOLKIT_ROOT_DIR`, and preserve the libcuda stub, the target host compiler and the architecture list.

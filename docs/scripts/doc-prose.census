@@ -41,7 +41,7 @@ docs/branch-and-release-strategy.md | long-share | 14.7
 docs/branch-and-release-strategy.md | ids-per-k | 3.2
 docs/branch-and-release-strategy.md | bold-per-k | 14.2
 docs/build-cache-tiers.md | avg-sentence | 21.8
-docs/build-cache-tiers.md | long-share | 22.3
+docs/build-cache-tiers.md | long-share | 22.2
 docs/build-cache-tiers.md | ids-per-k | 6.1
 docs/build-cache-tiers.md | bold-per-k | 9.2
 docs/build-parallelism-memory-tuning.md | avg-sentence | 19.1

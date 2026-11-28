@@ -5,6 +5,15 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## OpenCV CUDA configure: `CUDA_CUDA_LIBRARY (ADVANCED)` linked by `opencv_cudacodec` is NOTFOUND
+
+`CMake Generate step failed` in the nvidia Media OpenCV step, with `CUDA_CUDA_LIBRARY` NOTFOUND even though the
+argument list carries `-DCUDA_CUDA_LIBRARY=…/stubs/libcuda.so`, means the classic FindCUDA dropped the stub. A
+`-DCUDA_TOOLKIT_ROOT_DIR` on a first configure differs from FindCUDA's unset internal marker, so it clears its library
+cache entries, and the build has no driver `libcuda` to find instead. Name the root through the `CUDA_TOOLKIT_ROOT`
+environment variable, as `opencv-cuda-cache.sh` does
+([OpenCV classic FindCUDA](build-cache-tiers.md#nvcc--hipcc)).
+
 ## A download by artifact ID right after its upload finds the run's other artifacts
 
 `Unable to download artifact(s): None of the provided artifact IDs were found`, after `Found N artifact(s)`, in the

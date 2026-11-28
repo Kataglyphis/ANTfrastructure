@@ -6,11 +6,11 @@ opencv_cuda_cache_args() {
     local -n _occa_args="$1"
     local launcher="$2" toolkit="$3"
     export OPENCV_CUDA_CACHE_LAUNCHER="${launcher}" OPENCV_CUDA_CACHE_NVCC="${toolkit}/bin/nvcc"
-    export CUDA_NVCC_EXECUTABLE="${BASH_SOURCE[0]}"
+    # A -DCUDA_TOOLKIT_ROOT_DIR makes FindCUDA drop the CLI libcuda stub on the first configure; see docs/build-cache-tiers.md#nvcc--hipcc.
+    export CUDA_NVCC_EXECUTABLE="${BASH_SOURCE[0]}" CUDA_TOOLKIT_ROOT="${toolkit}"
     _opencv_cuda_cache_required=1
     _occa_args+=(
         "-DCMAKE_CUDA_COMPILER_LAUNCHER=${launcher}"
-        "-DCUDA_TOOLKIT_ROOT_DIR=${toolkit}"
         "-DCUDA_NVCC_EXECUTABLE=${BASH_SOURCE[0]}"
     )
 }

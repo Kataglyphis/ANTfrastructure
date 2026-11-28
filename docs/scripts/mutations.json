@@ -67886,5 +67886,13 @@
   "replace": "        pass\n",
   "test": "python3 -m unittest linux/scripts/tests/test-python-gpu-package.py",
   "why": "a finished AMD package must carry the plugin's core byte for byte, like the module"
+ },
+ {
+  "id": "probe.opencv-cuda-cache-root-cli",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "        \"-DCUDA_NVCC_EXECUTABLE=${BASH_SOURCE[0]}\"\n",
+  "replace": "        \"-DCUDA_TOOLKIT_ROOT_DIR=${toolkit}\"\n        \"-DCUDA_NVCC_EXECUTABLE=${BASH_SOURCE[0]}\"\n",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "A CLI toolkit root makes FindCUDA drop the libcuda stub on the first configure, and cudacodec then fails to generate."
  }
 ]

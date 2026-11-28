@@ -19,15 +19,15 @@ _options() {
     local -a args=('caller value')
     _opencv_cmake_cuda_opts args
     printf 'ARGS'; printf ' <%s>' "${args[@]}"; printf '\n'
-    printf 'ENV <%s> <%s> <%s> <%s>\n' "${OPENCV_CUDA_CACHE_LAUNCHER-}" "${OPENCV_CUDA_CACHE_NVCC-}" "${CACHE_SETUP_REACHED-}" "${CUDA_NVCC_EXECUTABLE-}"
+    printf 'ENV <%s> <%s> <%s> <%s> <%s>\n' "${OPENCV_CUDA_CACHE_LAUNCHER-}" "${OPENCV_CUDA_CACHE_NVCC-}" "${CACHE_SETUP_REACHED-}" "${CUDA_NVCC_EXECUTABLE-}" "${CUDA_TOOLKIT_ROOT-}"
 }
 export ENABLE_NVIDIA=true ENABLE_SCCACHE_CUDA=1 CUDA_HOME='/toolkit root'
 t_case "classic FindCUDA and modern CUDA both retain the selected launcher"
 _out="$(_options)"
 t_assert_contains "${_out}" "<-DCUDA_NVCC_EXECUTABLE=${MODULE}>"
 t_assert_contains "${_out}" '<-DCMAKE_CUDA_COMPILER_LAUNCHER=/cache/sccache launcher>'
-t_assert_contains "${_out}" '<-DCUDA_TOOLKIT_ROOT_DIR=/toolkit root>'
-t_assert_contains "${_out}" "ENV </cache/sccache launcher> </toolkit root/bin/nvcc> <1> <${MODULE}>"
+t_assert_fails grep -F -e '-DCUDA_TOOLKIT_ROOT_DIR' <<< "${_out}"
+t_assert_contains "${_out}" "ENV </cache/sccache launcher> </toolkit root/bin/nvcc> <1> <${MODULE}> </toolkit root>"
 t_assert_contains "${_out}" '<-DCMAKE_CUDA_ARCHITECTURES=75;86;87;89;120>'
 t_assert_contains "${_out}" '<-DCUDA_ARCH_BIN=7.5;8.6;8.7;8.9;12.0>'
 t_case "cross options preserve the target host compiler, target directory and all architectures"
@@ -65,6 +65,26 @@ _build="${_work}/build with spaces"
 mkdir -p "${_build}/nested dir"
 printf 'CUDA_NVCC_EXECUTABLE:FILEPATH=%s\n' "${MODULE}" > "${_build}/CMakeCache.txt"
 printf 'set(CUDA_NVCC_EXECUTABLE "%s") # path\n' "${MODULE}" > "${_build}/nested dir/cuda_compile_1_generated_kernel.cu.o.Release.cmake"
+t_case "CMake's FindCUDA keeps the libcuda stub, toolkit root and wrapper on a first configure"
+t_needs cmake command -v cmake
+mkdir -p "${_work}/toolkit root/include" "${_work}/toolkit root/lib64" "${_work}/findcuda"
+: > "${_work}/toolkit root/include/device_functions.h"
+: > "${_work}/toolkit root/lib64/libcudart.so"
+: > "${_work}/toolkit root/lib64/libcudart_static.a"
+cat > "${_work}/findcuda/CMakeLists.txt" <<'CMAKE'
+cmake_minimum_required(VERSION 3.20)
+cmake_policy(SET CMP0146 OLD)
+project(findcuda_stub C)
+if(CUDA_TOOLKIT_ROOT_DIR)
+  set(CUDA_TOOLKIT_TARGET_DIR ${CUDA_TOOLKIT_ROOT_DIR})
+endif()
+find_package(CUDA REQUIRED)
+file(WRITE "${CMAKE_BINARY_DIR}/found.txt" "${CUDA_CUDA_LIBRARY}|${CUDA_TOOLKIT_ROOT_DIR}|${CUDA_NVCC_EXECUTABLE}")
+CMAKE
+printf '#!/usr/bin/env bash\necho "Cuda compilation tools, release 13.4, V13.4.3"\n' > "${_work}/toolkit root/bin/nvcc"
+_found="$(cmake -S "${_work}/findcuda" -B "${_work}/findcuda/build" -Wno-dev "${_args[@]}" \
+    "-DCUDA_CUDA_LIBRARY=/stub dir/libcuda.so" >/dev/null 2>&1 && cat "${_work}/findcuda/build/found.txt")"
+t_assert_eq "/stub dir/libcuda.so|${_work}/toolkit root|${MODULE}" "${_found}"
 t_case "configured cache and every generated rule must retain the wrapper"
 t_assert_ok opencv_cuda_cache_assert "${_build}"
 printf 'CUDA_NVCC_EXECUTABLE:FILEPATH=/bare/nvcc\n' > "${_build}/CMakeCache.txt"
