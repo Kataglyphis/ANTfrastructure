@@ -73,13 +73,8 @@ info "${APP_NAME} ${VERSION} (${UNAME_ARCH}) from ${BUNDLE}"
 # Runs the self-test through a packaged launcher; --root pins where its ONNX Runtime must come from.
 prove() {
   local root="$1"; shift
-  local -a provider_args=()
   [ "${RUN_TESTS}" = true ] || return 0
-  if [ -n "${required_provider}" ]; then
-    provider_args+=("$(python_app_provider_requirement "${required_provider}")" "${required_provider}")
-    if [ "${PYTHON_APP_REQUIRE_ACTIVE_PROVIDER:-false}" = true ]; then provider_args+=(--require-provider "${required_provider}"); fi
-  fi
-  python3 "${SELFTEST}" --root "${root}" "${provider_args[@]}" -- "$@" > /dev/null || err "the packaged self-test failed: $*"
+  python_app_selftest "${SELFTEST}" "${root}" "${required_provider}" "$@" > /dev/null || err "the packaged self-test failed: $*"
   info "  started: $* -> ok"
 }
 

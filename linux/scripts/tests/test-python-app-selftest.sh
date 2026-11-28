@@ -55,4 +55,20 @@ t_assert_ok python3 "${SELFTEST}" --require-registered-plugin MIGraphX --require
 t_assert_contains "$(t_out python3 "${SELFTEST}" --require-registered-plugin MIGraphX -- python3 "${W}/app.py" "${W}/gpu.out" 0)" 'did not register the plugin EP MIGraphX'
 t_assert_contains "$(t_out python3 "${SELFTEST}" --require-available-provider MIGraphX -- python3 "${W}/app.py" "${W}/plugin.out" 0)" 'did not list MIGraphX as available' "the old flag cannot stand in for registration"
 
+t_case "without the device, only the bundle's own module failing at AMD's device query stands in for a registration"
+NODEV='HIP failure 100: no ROCm-capable device is detected'
+# _plugin_error <module> <reason>: a report whose MIGraphX registration failed, worded as OrchestrANT's self-test words it.
+_plugin_error() { printf '{\n  "ok": true,\n  "registered_plugin_eps": [],\n  "plugin_ep_errors": {"MIGraphX": "MIGraphX failed to register %s: [ONNXRuntimeError] : 1 : FAIL : %s"}\n}\n' "$1" "$2"; }
+_plugin_error "${W}/capi/libmigraphx-ep.so" "${NODEV}; GPU=30208" > "${_work}/nodev.out"
+_plugin_error /usr/local/lib/onnxruntime-ep-amdgpu/lib/libmigraphx-ep.so "${NODEV}" > "${_work}/nodev-image.out"
+_plugin_error "${W}/capi/libmigraphx-ep.so" 'undefined symbol: hipGetDeviceCount' > "${_work}/nodev-symbol.out"
+# _nodev <case> [checker args...]: the MIGraphX requirement over that report.
+_nodev() { local out="$1"; shift; python3 "${SELFTEST}" --require-registered-plugin MIGraphX "$@" -- python3 "${W}/app.py" "${W}/${out}.out" 0; }
+t_assert_ok _nodev nodev --root "${W}" --deviceless-plugin-error "${NODEV}"
+t_assert_contains "$(t_out _nodev nodev --root "${W}" --deviceless-plugin-error "${NODEV}")" 'did not register on this host without the device, as accepted'
+t_assert_contains "$(t_out _nodev nodev --root "${W}")" "did not register the plugin EP MIGraphX: []; its error: MIGraphX failed to register" "a host with the device still requires the registration"
+t_assert_fails _nodev nodev-image --root "${W}" --deviceless-plugin-error "${NODEV}"
+t_assert_fails _nodev nodev-symbol --root "${W}" --deviceless-plugin-error "${NODEV}"
+t_assert_fails _nodev nodev --deviceless-plugin-error "${NODEV}"
+
 t_summary

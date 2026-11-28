@@ -10,9 +10,9 @@ on:
         default: 'third_party/ANTfrastructure/shared/windows/tests/Submodule.Pins.Tests.ps1'
       pester-version:
         description: >-
-          Exact Pester version run-pester-suite installs. 3.4.0 is the only
-          version the action's invocation survives today (5.x loses the
-          per-failure diagnostics, 6.x rejects -Quiet), measured 2026-09-07.
+          Exact Pester version run-pester-suite installs. The pin suite runs
+          under 3.4.0 and under 5.0.0 or later, which the action runs through
+          a Pester configuration.
         type: string
         default: '3.4.0'
       hub-checkout:

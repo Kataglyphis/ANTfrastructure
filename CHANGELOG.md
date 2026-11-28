@@ -19,6 +19,59 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — OpenCV's CUDA configure keeps its libcuda stub
+
+- The nvidia chain `20261127-154917-57ee53f3` failed amd64 Media at OpenCV: `CUDA_CUDA_LIBRARY` NOTFOUND for
+  `opencv_cudacodec`. `opencv-cuda-cache.sh` passed `-DCUDA_TOOLKIT_ROOT_DIR` since c238a510, and CMake's FindCUDA
+  clears its library cache entries when that root differs from its unset internal marker. It now exports
+  `CUDA_TOOLKIT_ROOT` instead. `test-opencv-cuda-cache.sh` runs a real FindCUDA configure against a fake toolkit;
+  the recipe `probe.opencv-cuda-cache-root-cli` puts the CLI root back and turns it red.
+## 2026-11-28 — run-pester-suite runs Pester 5 and 6, so a consumer can leave 3.4.0
+
+- AccelerANTgine's BACKLOG asks its 14 suites to move from Pester 3.4's `Should Be` to the dialect of the image's
+  Pester 6.2.0 (CON283). Its workflows could not follow: the action called `Invoke-Pester -PassThru -Quiet` and read
+  `TestResult`, which Pester 6 rejects and 5 no longer has. The logic moved into
+  `.github/actions/run-pester-suite/Invoke-PesterSuite.ps1`. Below 5.0.0 it makes the same call as before. From
+  5.0.0 on it runs a Pester configuration with `Run.Exit` off, prints each failed test's path, message and stack,
+  and fails a file that breaks in discovery or its top-level `BeforeAll`, which Pester reports as a failed
+  container with no failed test. The default stays `3.4.0`. `path` and `version` reach the script through the
+  environment instead of the script text.
+- `Ci.PesterActionExit.Tests.ps1` grades both dialects against stubbed Pester (9 cases). `Ci.PesterAction.Tests.ps1`
+  now runs genuine Pester: eight cases at versions.env's `PESTER_VERSION`, and the six 3.4.0 cases on Windows.
+  `actions-selftest.yml` runs a modern suite at that pin and asserts that a broken file fails the action. Two recipes
+  are retargeted to the script and six added; all eight go red.
+
+## 2026-11-28 — the rustdoc site links its dependencies to docs.rs, and the link gate sees Rust paths
+
+- `cargo_build_doc.sh` runs `cargo +${RUST_NIGHTLY_TOOLCHAIN} doc -Zrustdoc-map` with crates.io mapped to docs.rs
+  (owner decision). Stable `--no-deps` gave rustdoc no page for a dependency, so every link into one stayed raw
+  text. tracing's blanket impls put `dispatcher#…` on every OxidANT type page, which OxidANT froze as 60
+  `missing <module>/dispatcher` rows. tracing 0.1.44 is correct: built with its dependencies, the same link
+  resolves, so no upstream fix is due. The pin comes from `versions.env`, and a host without that toolchain
+  fails with the install line.
+- `verify_site_links.py` reports a link that is a Rust path (`super::Subscriber`, `crate::Span`) as
+  `unresolved<TAB><link>`. `urljoin` read `super:` as a URL scheme and skipped those as external, four per
+  type page on rust.jonasheinle.de.
+- Measured in WSL on OxidANT's develop, 18 of 20 crates: 69 findings with stable (63 `missing`, 6
+  `unresolved`), none of them with the nightly. Six new recipes; nine builder and gate mutants go red. OxidANT
+  drops its frozen rows once this lands. docs/docs-sites.md § Links into dependencies.
+
+## 2026-11-28 — an AMD bundle's self-test proves its own plugin module on a host without the GPU (develop-red #276)
+
+- OrchestrANT's `gpu-lin / inventory (amd, x64, latest-rocm)` got past the closure with 5f8bc07ae and stopped at
+  the self-test (run 46072754506): `the self-test did not register the plugin EP MIGraphX: []`. AMD's module
+  asks HIP for its devices while it registers, so the hosted runner answered `HIP failure 100: no ROCm-capable
+  device is detected`. The docs' "permits a build without GPU hardware" was never true. The report also named
+  the image's module, because `ORT_AMDGPU_EP_ROOT` pointed there.
+- `python_app_selftest` in `python-app-cli.sh` now runs the self-test for both drivers, with
+  `ORT_AMDGPU_EP_ROOT` unset, so the app registers the bundle's copy (owner decision). Where `/dev/kfd` is
+  missing, `python_app_deviceless_args` adds `--deviceless-plugin-error`. `python-app-selftest.py` then accepts
+  the registration's failure in place of the registration, and only when it carries HIP error 100 and names a
+  module under `--root`. Any other reason, an image path or a missing `--root` still fails, and a host with
+  the device still has to register.
+- Suites: 6 new self-test assertions, 7 for the CLI helpers. Six new recipes, two retargeted to the moved
+  lines; eleven mutants go red. docs/python-app-bundles.md § Linux GPU bundles.
+
 ## 2026-11-28 — detector parity of the ORT Web builds in headless Chrome (OmniAccelerANT browser port step 2)
 
 - `shared/python/ort_web_parity.py` runs DEIM on the two-cats photo in each staged ORT Web build, through

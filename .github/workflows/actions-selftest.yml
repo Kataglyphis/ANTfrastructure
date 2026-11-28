@@ -417,6 +417,46 @@ jobs:
           path: ${{ runner.temp }}/selftest-pester/Selftest.Tests.ps1
           version: '3.4.0'
 
+      # The modern dialect at versions.env's pin, and a file that breaks in discovery, which must fail the action.
+      - name: Write a throwaway modern Pester suite and a broken one
+        id: modern-pester
+        run: |
+          $pin = [regex]::Match((Get-Content -Raw -LiteralPath 'linux/scripts/01-core/versions.env'), '(?m)^PESTER_VERSION=(\S+)').Groups[1].Value
+          if (-not $pin) { throw 'versions.env has no PESTER_VERSION' }
+          "version=$pin" >> $env:GITHUB_OUTPUT
+          $good = Join-Path $env:RUNNER_TEMP 'selftest-pester-modern'
+          $broken = Join-Path $env:RUNNER_TEMP 'selftest-pester-broken'
+          New-Item -ItemType Directory -Force -Path $good, $broken | Out-Null
+          @'
+          Describe 'ANTfrastructure composite actions self-test' {
+              BeforeAll { $sum = 1 + 1 }
+              It 'runs a real assertion' {
+                  $sum | Should -Be 2
+              }
+          }
+          '@ | Set-Content -LiteralPath (Join-Path $good 'Selftest.Tests.ps1') -Encoding utf8
+          "throw 'discovery broke'" | Set-Content -LiteralPath (Join-Path $broken 'Broken.Tests.ps1') -Encoding utf8
+
+      - name: run-pester-suite (modern Pester)
+        uses: ./.github/actions/run-pester-suite
+        with:
+          path: ${{ runner.temp }}/selftest-pester-modern/Selftest.Tests.ps1
+          version: ${{ steps.modern-pester.outputs.version }}
+
+      - name: run-pester-suite on a file that breaks in discovery
+        id: broken-pester
+        continue-on-error: true
+        uses: ./.github/actions/run-pester-suite
+        with:
+          path: ${{ runner.temp }}/selftest-pester-broken
+          version: ${{ steps.modern-pester.outputs.version }}
+
+      - name: The broken file failed the action
+        env:
+          OUTCOME: ${{ steps.broken-pester.outcome }}
+        run: |
+          if ($env:OUTCOME -ne 'failure') { throw "run-pester-suite passed a file that throws during discovery (outcome '$env:OUTCOME')" }
+
       # D:\ws is outside GITHUB_WORKSPACE, which is where the SARIF probe below must still look.
       - name: clone-into-short-path
         id: shortclone

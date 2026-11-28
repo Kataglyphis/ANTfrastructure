@@ -13836,6 +13836,38 @@
   "why": "a single-package manifest must build exactly as before, without a --workspace it never asked for"
  },
  {
+  "id": "rust.cargo-doc-nightly-toolchain",
+  "target": "linux/scripts/02-toolchain/rust/cargo_build_doc.sh",
+  "find": "cargo \"+${RUST_NIGHTLY_TOOLCHAIN}\" doc \"${DOC_MAP[@]}\" --no-deps",
+  "replace": "cargo doc \"${DOC_MAP[@]}\" --no-deps",
+  "test": "bash linux/scripts/tests/test-cargo-build-doc.sh",
+  "why": "-Zrustdoc-map is a nightly cargo flag; stable cargo refuses it and the site is never built"
+ },
+ {
+  "id": "rust.cargo-doc-rustdoc-map",
+  "target": "linux/scripts/02-toolchain/rust/cargo_build_doc.sh",
+  "find": "DOC_MAP=(-Zrustdoc-map --config 'doc.extern-map.registries.crates-io=\"https://docs.rs/\"')",
+  "replace": "DOC_MAP=()",
+  "test": "bash linux/scripts/tests/test-cargo-build-doc.sh",
+  "why": "without the map rustdoc leaves every link into a dependency as raw text, a dead link on every type page"
+ },
+ {
+  "id": "rust.cargo-doc-missing-nightly-refused",
+  "target": "linux/scripts/02-toolchain/rust/cargo_build_doc.sh",
+  "find": "if [ -z \"${RUST_NIGHTLY_TOOLCHAIN:-}\" ] || ! cargo \"+${RUST_NIGHTLY_TOOLCHAIN}\" --version >/dev/null 2>&1; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-cargo-build-doc.sh",
+  "why": "a host without the pinned nightly must hear which toolchain to install, not a bare cargo error"
+ },
+ {
+  "id": "rust.cargo-doc-nightly-from-versions-env",
+  "target": "linux/scripts/02-toolchain/rust/cargo_build_doc.sh",
+  "find": "load_raw_pin_if_empty RUST_NIGHTLY_TOOLCHAIN RUST_NIGHTLY_TOOLCHAIN \"$SCRIPT_DIR/../../01-core/versions.env\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-cargo-build-doc.sh",
+  "why": "the image carries no RUST_NIGHTLY_TOOLCHAIN variable, so the pin must come from versions.env"
+ },
+ {
   "id": "env-knobs.tool-pins-are-owners",
   "target": "linux/scripts/lint-env-knobs.sh",
   "find": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}/01-core/tool-pins.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env)",
@@ -15610,6 +15642,22 @@
   "replace": "        print(\"OK: every internal link and anchor resolves\")\n    return 0\n",
   "test": "bash linux/scripts/tests/test-site-links.sh",
   "why": "a gate that prints its findings and exits 0 publishes the broken site anyway"
+ },
+ {
+  "id": "site-links.rust-path-unresolved",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "        if RUST_PATH.match(link):\n            self.note(\"unresolved\\t\" + link, rel_page)\n            return\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "urljoin reads super::Subscriber as a URL with the scheme super: and skips it, so the dead link passes"
+ },
+ {
+  "id": "site-links.rust-path-not-a-scheme",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "RUST_PATH = re.compile(r\"^[A-Za-z_]\\w*::[A-Za-z_]\")",
+  "replace": "RUST_PATH = re.compile(r\"^[A-Za-z_]\\w*:\")",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "tel:, urn: and the like are URLs; only a double colon names a Rust path"
  },
  {
   "id": "docs-site.fileinfo-only",
@@ -30946,19 +30994,67 @@
  },
  {
   "id": "windows-lane.pester-action-requires-passing-test",
-  "target": ".github/actions/run-pester-suite/action.yml",
-  "find": "if ($r.PassedCount -lt 1) {",
-  "replace": "if ($false) {",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ci.PesterAction.Tests.ps1 -ResultFile logs/code-quality/pester-action-mutation.json",
+  "target": ".github/actions/run-pester-suite/Invoke-PesterSuite.ps1",
+  "find": "    if ($Result.Passed -lt 1) {",
+  "replace": "    if ($false) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
   "why": "a skipped or pending Pester suite cannot count as a passing test run"
  },
  {
   "id": "windows-lane.pester-action-ends-with-its-verdict",
-  "target": ".github/actions/run-pester-suite/action.yml",
-  "find": "        # GitHub's pwsh wrapper exits with $LASTEXITCODE, which a passing suite's own native calls can leave nonzero.\n        exit 0",
-  "replace": "        # GitHub's pwsh wrapper exits with $LASTEXITCODE, which a passing suite's own native calls can leave nonzero.",
+  "target": ".github/actions/run-pester-suite/Invoke-PesterSuite.ps1",
+  "find": "exit (Get-SuiteExitCode -Result $result -Path $Path)",
+  "replace": "$null = Get-SuiteExitCode -Result $result -Path $Path",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
   "why": "a passing suite whose own native calls left $LASTEXITCODE nonzero must not fail the step through GitHub's pwsh wrapper"
+ },
+ {
+  "id": "windows-lane.pester-action-modern-dialect",
+  "target": ".github/actions/run-pester-suite/Invoke-PesterSuite.ps1",
+  "find": "    return ([version]$Version).Major -ge 5",
+  "replace": "    return $false",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
+  "why": "Pester 5 and 6 reject -Quiet and drop TestResult, so the legacy call fails every modern suite"
+ },
+ {
+  "id": "windows-lane.pester-action-pester-never-exits",
+  "target": ".github/actions/run-pester-suite/Invoke-PesterSuite.ps1",
+  "find": "    $config.Run.Exit = $false\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
+  "why": "a Pester that ends the process itself skips the no-test and no-pass verdicts"
+ },
+ {
+  "id": "windows-lane.pester-action-failed-container-fails",
+  "target": ".github/actions/run-pester-suite/Invoke-PesterSuite.ps1",
+  "find": "    if ($Result.Failed -gt 0 -or $Result.FailedContainers -gt 0) {",
+  "replace": "    if ($Result.Failed -gt 0) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
+  "why": "a file that fails discovery reports no failed test, only a failed container, and its error must be printed"
+ },
+ {
+  "id": "windows-lane.pester-action-container-errors-printed",
+  "target": ".github/actions/run-pester-suite/Invoke-PesterSuite.ps1",
+  "find": "        $failures += @($Run.Containers | Where-Object { $_.Result -eq 'Failed' } | ForEach-Object {\n                Get-SuiteFailure -Item $_ -Name \"container $($_.Item)\"\n            })\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
+  "why": "without the container's error a discovery failure reads as a red step with no reason"
+ },
+ {
+  "id": "windows-lane.pester-action-broken-file-is-not-empty",
+  "target": ".github/actions/run-pester-suite/Invoke-PesterSuite.ps1",
+  "find": "($Result.Total -eq 0 -and $Result.FailedContainers -eq 0)",
+  "replace": "($Result.Total -eq 0)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
+  "why": "a file that broke before its tests ran must say so, not that the path matched nothing"
+ },
+ {
+  "id": "windows-lane.pester-action-inputs-through-env",
+  "target": ".github/actions/run-pester-suite/action.yml",
+  "find": "-Path $env:PESTER_SUITE_PATH",
+  "replace": "-Path '${{ inputs.path }}'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
+  "why": "an input expanded into the script text runs whatever a quote in the path closes"
  },
  {
   "id": "lib.wsl-quality-windows-test-exit-is-fatal",
@@ -32226,8 +32322,8 @@
  },
  {
   "id": "package.python-gpu-hardware-option",
-  "target": "linux/scripts/06-packaging/python-app-package.sh",
-  "find": "if [ \"${PYTHON_APP_REQUIRE_ACTIVE_PROVIDER:-false}\" = true ]; then provider_args+=(--require-provider \"${required_provider}\"); fi",
+  "target": "linux/scripts/06-packaging/python-app-cli.sh",
+  "find": "if [ \"${PYTHON_APP_REQUIRE_ACTIVE_PROVIDER:-false}\" = true ]; then args+=(--require-provider \"${provider}\"); fi",
   "replace": ":",
   "test": "bash linux/scripts/tests/test-python-app-package-licenses.sh",
   "why": "The hardware validation option must reach the installed package self-test."
@@ -37539,10 +37635,58 @@
  {
   "id": "packaging.selftest-registered-plugin-required",
   "target": "linux/scripts/06-packaging/python-app-selftest.py",
-  "find": "    if args.require_registered_plugin and args.require_registered_plugin not in report.get(\"registered_plugin_eps\", []):\n",
-  "replace": "    if False:\n",
+  "find": "    if not name or name in registered:\n        return \"\"\n",
+  "replace": "    return \"\"\n",
   "test": "bash linux/scripts/tests/test-python-app-selftest.sh",
   "why": "a plugin EP is never in onnxruntime's available list; registration is the only fact the self-test can prove"
+ },
+ {
+  "id": "packaging.selftest-deviceless-bundle-module",
+  "target": "linux/scripts/06-packaging/python-app-selftest.py",
+  "find": "deviceless_error in error and root.rstrip(\"/\") + \"/\" in error",
+  "replace": "deviceless_error in error",
+  "test": "bash linux/scripts/tests/test-python-app-selftest.sh",
+  "why": "inside the ROCm image the image's module reaching HIP proves nothing about the bundle's copy"
+ },
+ {
+  "id": "packaging.selftest-deviceless-reason",
+  "target": "linux/scripts/06-packaging/python-app-selftest.py",
+  "find": "if deviceless_error and root and deviceless_error in error and ",
+  "replace": "if deviceless_error and root and ",
+  "test": "bash linux/scripts/tests/test-python-app-selftest.sh",
+  "why": "an undefined symbol or a missing file is a broken module, not a missing GPU"
+ },
+ {
+  "id": "packaging.selftest-deviceless-root",
+  "target": "linux/scripts/06-packaging/python-app-selftest.py",
+  "find": "if deviceless_error and root and ",
+  "replace": "if deviceless_error and ",
+  "test": "bash linux/scripts/tests/test-python-app-selftest.sh",
+  "why": "without --root any module path would pass as the bundle's"
+ },
+ {
+  "id": "packaging.deviceless-only-without-device",
+  "target": "linux/scripts/06-packaging/python-app-cli.sh",
+  "find": "  if [ \"${1:-}\" != MIGraphX ] || [ -c \"${2:-/dev/kfd}\" ]; then return 0; fi\n",
+  "replace": "  if [ \"${1:-}\" != MIGraphX ]; then return 0; fi\n",
+  "test": "bash linux/scripts/tests/test-python-app-cli.sh",
+  "why": "a host with the GPU must still register the EP; the stand-in is for hosts without one"
+ },
+ {
+  "id": "packaging.selftest-deviceless-args-passed",
+  "target": "linux/scripts/06-packaging/python-app-cli.sh",
+  "find": "    while IFS= read -r line; do args+=(\"${line}\"); done < <(python_app_deviceless_args \"${provider}\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-app-cli.sh",
+  "why": "without the flag a hosted AMD build fails at a registration no runner without a GPU can make"
+ },
+ {
+  "id": "packaging.selftest-bundle-amd-module",
+  "target": "linux/scripts/06-packaging/python-app-cli.sh",
+  "find": "  (unset ORT_AMDGPU_EP_ROOT; python3 \"${selftest}\" \"${args[@]}\" -- \"$@\")\n",
+  "replace": "  (python3 \"${selftest}\" \"${args[@]}\" -- \"$@\")\n",
+  "test": "bash linux/scripts/tests/test-python-app-cli.sh",
+  "why": "inside the ROCm image the variable names the image's module, so the self-test would prove that one instead"
  },
  {
   "id": "packaging.provider-requirement-flag",
@@ -67982,5 +68126,13 @@
   "replace": "        pass\n",
   "test": "python3 -m unittest linux/scripts/tests/test-python-gpu-package.py",
   "why": "a finished AMD package must carry the plugin's core byte for byte, like the module"
+ },
+ {
+  "id": "probe.opencv-cuda-cache-root-cli",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "        \"-DCUDA_NVCC_EXECUTABLE=${BASH_SOURCE[0]}\"\n",
+  "replace": "        \"-DCUDA_TOOLKIT_ROOT_DIR=${toolkit}\"\n        \"-DCUDA_NVCC_EXECUTABLE=${BASH_SOURCE[0]}\"\n",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "A CLI toolkit root makes FindCUDA drop the libcuda stub on the first configure, and cudacodec then fails to generate."
  }
 ]

@@ -336,15 +336,10 @@ if [ -n "${ort_library_path}" ]; then census_args+=(--library-path "${ort_librar
 bash "${SCRIPT_DIR}/check-ort-provenance.sh" "${census_args[@]}" "${BUNDLE}"
 
 info "== self-test: ${SELF_TEST[*]}"
-self_test_args=()
-if [ -n "${required_provider}" ]; then
-  self_test_args+=("$(python_app_provider_requirement "${required_provider}")" "${required_provider}")
-  if [ "${PYTHON_APP_REQUIRE_ACTIVE_PROVIDER:-false}" = true ]; then self_test_args+=(--require-provider "${required_provider}"); fi
-fi
-report="$(python3 "${SCRIPT_DIR}/python-app-selftest.py" --root "${BUNDLE}" "${self_test_args[@]}" -- "${BUNDLE}/bin/${SELF_TEST[0]}" "${SELF_TEST[@]:1}")" ||
+report="$(python_app_selftest "${SCRIPT_DIR}/python-app-selftest.py" "${BUNDLE}" "${required_provider}" "${BUNDLE}/bin/${SELF_TEST[0]}" "${SELF_TEST[@]:1}")" ||
   err "self-test '${SELF_TEST[*]}' failed"
 info "== self-test through the bundled loader, as on a host with an older glibc"
-KATAGLYPHIS_BUNDLED_GLIBC=1 python3 "${SCRIPT_DIR}/python-app-selftest.py" --root "${BUNDLE}" "${self_test_args[@]}" -- "${BUNDLE}/bin/${SELF_TEST[0]}" "${SELF_TEST[@]:1}" >/dev/null ||
+KATAGLYPHIS_BUNDLED_GLIBC=1 python_app_selftest "${SCRIPT_DIR}/python-app-selftest.py" "${BUNDLE}" "${required_provider}" "${BUNDLE}/bin/${SELF_TEST[0]}" "${SELF_TEST[@]:1}" >/dev/null ||
   err "self-test '${SELF_TEST[*]}' failed through the bundled loader"
 # The packagers read the waived sonames back: a deb must not depend on a library nothing loads.
 python3 - "${BUNDLE}" "${report}" "$(basename "${app_wheel}")" "$(basename "${ort_wheel}")" "${PYTHON_VERSION}" "${GLIBC_VERSION}" "${ALLOWED_UNRESOLVED[*]}" "${required_provider}" "${HOST_GPU_SONAMES[*]}" "${SCRIPTS[@]}" <<'PY'

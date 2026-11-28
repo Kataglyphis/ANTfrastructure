@@ -17,6 +17,19 @@ def last_report(text: str) -> dict:
     return json.loads("\n".join(lines[starts[-1] : ends[-1] + 1]))
 
 
+def plugin_refusal(report: dict, name: str, deviceless_error: str, root: str) -> str:
+    """Why the report fails the plugin EP requirement, or '' when it registered or failed only for want of the device."""
+    registered = report.get("registered_plugin_eps", [])
+    if not name or name in registered:
+        return ""
+    error = str(report.get("plugin_ep_errors", {}).get(name, ""))
+    # Only the bundle's own module reaching the device query counts; an image copy or a load failure does not.
+    if deviceless_error and root and deviceless_error in error and root.rstrip("/") + "/" in error:
+        sys.stderr.write(f"{name} did not register on this host without the device, as accepted: {error}\n")
+        return ""
+    return f"the self-test did not register the plugin EP {name}: {registered}" + (f"; its error: {error}" if error else "")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default="", help="the report's onnxruntime_module must lie under this directory")
@@ -24,6 +37,8 @@ def main() -> int:
     parser.add_argument("--require-provider", default="", help="require the named execution provider in the inference session")
     parser.add_argument("--require-registered-plugin", default="",
                         help="require the named plugin EP (e.g. MIGraphX) among the report's registered_plugin_eps")
+    parser.add_argument("--deviceless-plugin-error", default="",
+                        help="on a host without the GPU: accept this error of that plugin EP, naming a module under --root, instead")
     parser.add_argument("command", nargs=argparse.REMAINDER, help="the launcher and its self-test arguments")
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
@@ -41,8 +56,9 @@ def main() -> int:
         sys.exit("the self-test did not report ok")
     if args.require_available_provider and args.require_available_provider not in report.get("available_providers", []):
         sys.exit(f"the self-test did not list {args.require_available_provider} as available: {report.get('available_providers', [])}")
-    if args.require_registered_plugin and args.require_registered_plugin not in report.get("registered_plugin_eps", []):
-        sys.exit(f"the self-test did not register the plugin EP {args.require_registered_plugin}: {report.get('registered_plugin_eps', [])}")
+    refusal = plugin_refusal(report, args.require_registered_plugin, args.deviceless_plugin_error, args.root)
+    if refusal:
+        sys.exit(refusal)
     if args.require_provider and args.require_provider not in report.get("providers", []):
         sys.exit(f"the self-test did not activate {args.require_provider}: {report.get('providers', [])}")
     module = report.get("onnxruntime_module", "")
