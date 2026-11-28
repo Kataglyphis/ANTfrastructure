@@ -287,5 +287,22 @@ class ParityReportTest(unittest.TestCase):
         self.assertIn("ORT-WEB-PARITY SHIP: cpu (ort/1.31.1-cpu/) [CPUExecutionProvider 100%]", stdout.getvalue())
 
 
+    def test_main_exits_zero_when_only_the_requested_jsep_is_refused(self) -> None:
+        def fake_run(args: argparse.Namespace) -> list[dict[str, Any]]:
+            reports = self.fx.run("--build", "cpu")
+            return [*reports, {**reports[0], "build": "jsep", "verdict": "refuse", "reasons": ["MaxPool ceil_mode"]}]
+
+        with mock.patch.object(web, "run", fake_run), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(web.main(["--site", "s", "--model", "m", "--image", "i", "--out", "o", "--jsep"]), 0)
+
+    def test_main_lets_jsep_decide_when_it_ran_alone(self) -> None:
+        def fake_run(args: argparse.Namespace) -> list[dict[str, Any]]:
+            reports = self.fx.run("--build", "cpu")
+            return [{**reports[0], "build": "jsep", "verdict": "refuse", "reasons": ["MaxPool ceil_mode"]}]
+
+        with mock.patch.object(web, "run", fake_run), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(web.main(["--site", "s", "--model", "m", "--image", "i", "--out", "o", "--build", "jsep"]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

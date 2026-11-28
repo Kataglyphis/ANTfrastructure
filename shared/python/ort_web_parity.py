@@ -377,7 +377,9 @@ def main(argv: list[str]) -> int:
         print(f"ORT-WEB-PARITY {entry['verdict'].upper()}: {entry['build']} ({entry['path']}) "
               f"[{shares or 'no placement'}]{'' if entry['decides'] else ' (decides nothing: not its own bundle)'}"
               + "".join(f"\n  - {reason}" for reason in entry["reasons"]))
-    return 0 if all(entry["verdict"] == "ship" for entry in reports) else 1
+    # JSEP runs only on request and cannot run DEIM, so the shipping builds decide unless none was run.
+    deciding = [entry for entry in reports if entry["build"] in DEFAULT_BUILDS] or reports
+    return 0 if all(entry["verdict"] == "ship" for entry in deciding) else 1
 
 
 if __name__ == "__main__":

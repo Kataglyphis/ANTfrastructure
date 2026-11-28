@@ -66504,6 +66504,22 @@
   "why": "an output of another shape decodes to garbage rows"
  },
  {
+  "id": "docs-site.ort-web-parity-jsep-informational",
+  "target": "shared/python/ort_web_parity.py",
+  "find": "    deciding = [entry for entry in reports if entry[\"build\"] in DEFAULT_BUILDS] or reports\n",
+  "replace": "    deciding = reports\n",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "a requested JSEP report would turn develop red although JSEP cannot run DEIM and never ships"
+ },
+ {
+  "id": "docs-site.ort-web-parity-jsep-alone-decides",
+  "target": "shared/python/ort_web_parity.py",
+  "find": " if entry[\"build\"] in DEFAULT_BUILDS] or reports\n",
+  "replace": " if entry[\"build\"] in DEFAULT_BUILDS]\n",
+  "test": "python3 shared/python/tests/test_ort_web_parity.py",
+  "why": "a run of JSEP alone must still fail on its refusal instead of passing on an empty set"
+ },
+ {
   "id": "packaging.ort-profile-webgpu-name",
   "target": "shared/python/verify_ort_profile.py",
   "find": "\"webgpu\": \"WebGpuExecutionProvider\",",

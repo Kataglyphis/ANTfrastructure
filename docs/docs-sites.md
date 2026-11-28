@@ -492,6 +492,20 @@ ORT 1.31.1. These reports decide nothing:
   `Cast`. `GridSample`, `GatherElements` and `TopK` ran on WebGPU.
 - The first WebGPU run compiles every shader on SwiftShader, so the repeat takes a tenth of its time.
 
+The deciding reports come from the amd64 image's own bundles, dispatch run 46103260764 on `b224ed00` with
+Chrome 157 on SwiftShader:
+
+| Build | Verdict | Worst IoU, score difference | Nodes on its provider | Session, first run, repeat |
+|---|---|---|---|---|
+| JSPI | ship | 0.999999, 0.000008 | 727 of 737 | 2.2 s, 38 s, 27 s |
+| Asyncify | ship | 0.999999, 0.000008 | 727 of 737 | 2.5 s, 35 s, 27 s |
+| CPU | ship | 0.999999, 0.00001 | 717 of 717 | 0.9 s, 0.3 s, 0.2 s |
+| JSEP | refuse | none: the first run failed | 760 of 773 | failed |
+
+- JSPI passed both runs on amd64; the Pi's `Conv2dMM` failure did not show.
+- JSEP failed at the same `MaxPool` with `ceil_mode`. It runs only on request and never ships, so its report
+  informs and the three shipping builds decide the job's exit. A run of JSEP alone still fails on its refusal.
+
 Suite `linux/scripts/tests/test-ort-web-parity.sh` covers the verdicts, the tolerance edges, the cat rule, every
 refusal and the report's shape over fixture builds, and the page and its server against a fake ORT module. The
 `docs-site.ort-web-parity-*`, `docs-site.ort-web-harness-*` and `packaging.ort-profile-*` mutations prove it.

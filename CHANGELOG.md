@@ -19,6 +19,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-28 — the ORT Web parity job is decided by the shipping builds
+
+- `ort_web_parity.py` exits on JSPI, Asyncify and CPU; a requested JSEP report informs, because JSEP cannot
+  run DEIM, which turned develop red (#419). A run of JSEP alone still fails on its refusal. Two recipes.
+- `docs-sites.md` records the deciding amd64 reports: JSPI, Asyncify and CPU ship.
+
 ## 2026-11-28 — the perf-baseline and repo-hygiene recipes run in harness suites (#425)
 
 - b1ccc563b pointed `lib.perf-baseline-not-run-refused`, `lib.perf-baseline-skipped-is-not-run`,
